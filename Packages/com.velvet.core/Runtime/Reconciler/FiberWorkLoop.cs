@@ -410,14 +410,14 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
 
-            var fiberPushed = FiberRenderer.PushFiber(fiber);
+            var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
                 // Resume at the budget the starting lane chose so a Transition slice keeps time-slicing.
                 // An inline-mount fiber commits its child-count delta incrementally across resume slices, so
-                // each slice's delta must be propagated to following siblings here exactly as the initial
-                // RenderAndReconcile pass does — otherwise a following parked sibling's captured slotStart goes
-                // stale against the rows this slice just inserted / removed.
+                // each slice's delta must be propagated here exactly as the initial RenderAndReconcile pass
+                // does — otherwise the recorded starts behind this fiber, and the captured slotStart of a
+                // fiber parked there, go stale against the rows this slice just inserted / removed.
                 // The resumed slice can still expand components, so it answers the deferred-commit question
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
@@ -437,12 +437,11 @@ namespace Velvet
                         // now also drains any Portal / z-layer mount this slice enqueued (see Reconciler.
                         // ContinueReconcile), and a first-of-its-sign container the drain creates or removes
                         // would otherwise leak its own +-1 into this fiber's delta exactly like
-                        // FiberCommitWork.ReconcileIntoSlotRange's own measurement — see
+                        // FiberCommitWork.ReconcileOwnRows's own measurement — see
                         // LogicalMountPointChildCount.
-                        var beforeChildCount = FiberCommitWork.LogicalMountPointChildCount(fiber.MountPoint);
+                        var slice = new FiberCommitWork.RowCountWindow(fiber);
                         fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
-                        var afterChildCount = FiberCommitWork.LogicalMountPointChildCount(fiber.MountPoint);
-                        FiberCommitWork.PropagateInlineSlotShift(fiber, afterChildCount - beforeChildCount);
+                        FiberCommitWork.PropagateInlineSlotShift(fiber, slice.UnshiftedChange);
                     }
                     else
                     {
@@ -500,7 +499,7 @@ namespace Velvet
             }
             finally
             {
-                FiberRenderer.PopFiber(fiber, fiberPushed);
+                FiberRenderer.PopFiber(pushedOnto);
             }
         }
 

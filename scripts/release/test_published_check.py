@@ -501,6 +501,27 @@ class GitReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(unpublished_reason(repository, "origin/nothing-like-this"))
 
+    def test_Given_ACommitAfterTheOneThatDatedAVersion_When_TheReleaseCommitIsRead_Then_ItIsTheDatingOne(self):
+        # Arrange — the release renames `[Unreleased]`, then an unrelated commit lands on top.
+        path = self.repository(changelog=PUBLISHED)
+        (path / CHANGELOG_PATH).write_text(AHEAD)
+        git(path, "commit", "--quiet", "-a", "-m", "release 2.1.0")
+        dated = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"],
+                               capture_output=True, text=True).stdout.strip()
+        (path / "note").write_text("after")
+        git(path, "add", "note")
+        git(path, "commit", "--quiet", "-m", "after the release")
+
+        # Act
+        found = published_check.release_commit(path, "HEAD")
+
+        # Assert
+        self.assertEqual(found, (dated, "2.1.0"))
+
+    def test_Given_ACHANGELOGClosingNoVersion_When_TheReleaseCommitIsRead_Then_NoneIsNamed(self):
+        # Act / Assert
+        self.assertIsNone(published_check.release_commit(self.repository(changelog=UNDATED), "HEAD"))
+
 
 class TagCommitTests(unittest.TestCase):
     """The commit a remote tag names, which is what the readings reaching back to a release run

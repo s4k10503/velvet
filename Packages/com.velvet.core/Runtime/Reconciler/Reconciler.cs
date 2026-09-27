@@ -144,11 +144,6 @@ namespace Velvet
         {
             if (_ctx.IsDisposed) { return; }
 
-            // Shared depth across all Reconciler instances that observe this context. Each fiber
-            // owns its own Reconciler (per-fiber pause/resume independence), but the context-keyed
-            // EffectiveKeys registry only flushes when the outermost pass across the whole fiber
-            // tree completes — instance-local depth would treat a child fiber's RenderAndReconcile
-            // as a fresh top-level and clear entries sibling subtrees still need to consume.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
 
             ProfilerMarker.AutoScope profilerScope = default;
@@ -237,13 +232,14 @@ namespace Velvet
                 // drain (a boundary inside a portal's children) is consumed at this boundary
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
+                // MUTANT_SURVIVES(equivalent): the set is read only for a placeholder the drain has just dequeued,
+                // and each placeholder is queued once, where FiberNodeFactory creates it, so an entry outliving
+                // the queue cleared above is never read again; what keeping it costs is holding the element.
+                _ctx.PendingHostPlaceholders.Clear();
                 _ctx.IsAborted = false;
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
-                // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
-                // per render, so unconsumed entries would otherwise accumulate across renders.
-                _ctx.EffectiveKeys.Clear();
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -301,7 +297,7 @@ namespace Velvet
             // A resume continues the same pass an earlier time-slice suspended, so while genuinely
             // nested inside an ancestor's still-unwinding pass (e.g. FiberCommitWork.DrainPendingWork
             // force-completing a parked inline fiber from inside another fiber's live expansion) it must
-            // not run the top-level reset (abort / EffectiveKeys / DeclaringResolveMisses / portal drain)
+            // not run the top-level reset (abort / DeclaringResolveMisses / portal drain)
             // that Reconcile's own isTopLevel finally performs — clearing those mid-pass would discard
             // state sibling subtrees still need, and the ancestor's own eventual top-level finally runs
             // them once already. But a resume driven by the scheduler tick (FiberWorkLoop.ContinueReconcile,
@@ -367,12 +363,13 @@ namespace Velvet
         /// Re-bases the captured slot offset of an in-flight time-sliced reconcile by <paramref name="delta"/>.
         /// </summary>
         /// <remarks>
-        /// Called when a preceding sibling fiber that shares this fiber's parent VE re-renders with a
-        /// child-count delta while this fiber's reconcile is suspended (<see cref="HasPendingWork"/> is
-        /// true). The sibling's insert / remove physically shifts this fiber's already-committed rows
-        /// within the shared parent, so the suspended <c>slotStart</c> — a captured absolute offset into
-        /// the parent's children — must move by the same delta. Without it the resume would write the
-        /// remaining rows at stale absolute indices, corrupting both the sibling's and this fiber's slots.
+        /// Called when the rows ahead of this fiber's on the parent VE they share change count while this
+        /// fiber's reconcile is suspended (<see cref="HasPendingWork"/> is true), from
+        /// <c>FiberCommitWork</c> as it moves this fiber's recorded start by the same delta. That insert /
+        /// remove physically shifts this fiber's already-committed rows within the shared parent, so the
+        /// suspended <c>slotStart</c> — a captured absolute offset into the parent's children — must move
+        /// by the same delta. Without it the resume would write the remaining rows at stale absolute
+        /// indices.
         /// No-op when no work is pending or <paramref name="delta"/> is zero.
         /// </remarks>
         internal void RebasePendingSlotStart(int delta)
@@ -765,6 +762,8 @@ namespace Velvet
             _ctx.ClearSuspenseState();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
+            _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables); these two
             // are not — a placeholder->real entry always accompanies a live container membership, and a
             // pending teardown check references a container that may still be attached — so both are dropped

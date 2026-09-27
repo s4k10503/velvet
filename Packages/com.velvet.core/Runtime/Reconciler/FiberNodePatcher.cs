@@ -22,6 +22,7 @@ namespace Velvet
             // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
             _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
+            _ctx.ClipPathWrapperModeSync = _appliers.SyncClipPathWrapperMode;
             // Same seam for every other class-driven pass a variant can change — the layout manipulators and
             // the paint layers (skew / gradient / animate / shadow / border-style). A variant that toggles
             // one of their gate tokens changes what the element should carry, and that toggle never reaches
@@ -1190,6 +1191,10 @@ namespace Velvet
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
             var beforeTailCount = LogicalChildSlots.Count(target);
+            // What a reconcile nested in this one already moved the starts on target for is left out of the
+            // shift below, for the reason FiberCommitWork.RowCountWindow gives.
+            var tenancy = _ctx.ComponentRegistry.TenancyOf(target);
+            var shiftedBefore = tenancy?.ShiftedRows ?? 0;
             // Restored rather than cleared: a Portal declared inside another Portal's children patches from
             // within this call, and what the outer one mounts after that returns is still the outer one's.
             var enclosingPortal = _ctx.CurrentPortalPlaceholder;
@@ -1221,7 +1226,9 @@ namespace Velvet
             // reference.
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
 
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, prevState.SlotStart, delta, placeholder);
+            var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
+            FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
         }
 
         // Applies the diff for a ContextProviderNode.

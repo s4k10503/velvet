@@ -63,18 +63,10 @@ namespace Velvet
             }
             if (fallback == null) return false;
             var fallbackTree = new[] { fallback };
-            // The rows to rewrite are the ones the container holds for this fiber now. An expansion that
-            // re-placed it wrote where those rows will be rather than where they are, and showing a
-            // fallback is what stops that expansion from placing them —
-            // ComponentFiber.PrePlacementSlotStart owns that window.
-            var slotStart = fiber.PrePlacementSlotStart >= 0
-                ? fiber.PrePlacementSlotStart
-                : FiberCommitWork.SlotStartOwnedBy(fiber);
             try
             {
-                fiber.Reconciler.Reconcile(
-                    fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree,
-                    slotStart: slotStart);
+                FiberCommitWork.ReconcileOwnRows(
+                    fiber, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree, frameBudgetMs: 0);
             }
             catch (FiberSuspendSignal)
             {
@@ -134,14 +126,7 @@ namespace Velvet
                 fiber.FallbackContentFailed = true;
                 return false;
             }
-            // Captured now, while fiber.Reconciler is guaranteed non-null (just checked above), rather than
-            // re-read from fiber.Reconciler in the finally below: a cascading escalation triggered by this
-            // very attempt's fallback content can dispose fiber (nulling fiber.Reconciler) before the
-            // finally runs. FiberRenderer.PopFiber re-reads fiber.Reconciler and silently no-ops when it's
-            // null, which would permanently leak this push on the shared FiberStack — popping through the
-            // captured reference instead pops the same stack regardless of what happened to fiber meanwhile.
-            var fiberStack = fiber.Reconciler.Context.FiberStack;
-            var fiberPushed = FiberRenderer.PushFiber(fiber);
+            var pushedOnto = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
             bool result;
@@ -152,7 +137,7 @@ namespace Velvet
             finally
             {
                 fiber.IsShowingFallback = false;
-                if (fiberPushed) fiberStack.Pop();
+                FiberRenderer.PopFiber(pushedOnto);
             }
             if (result)
             {

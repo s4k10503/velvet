@@ -28,16 +28,16 @@ HOOK_TOOLS = {"Bash"}
 
 # The operand names the pull request, and the pull request names the base this asks about, so an
 # operand the shell has not expanded leaves nothing to ask it of. Refused on the same rule as
-# stale_merge.py states over the same probe.
+# merge_unchecked_against_base.py states over the same probe.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
 # A base whose release state cannot be read leaves nothing to decide from, and answering either way
 # would be a guess. The merge is still refused: unreadable_state_check.py accepts an "allow" only
-# where another guard in this directory refuses the same probe. That sibling is stale_merge.py, and
-# it reads the pull request the same way and under the same bound — a bound tightened here alone is
-# a gh slow enough to lose this reading and fast enough to keep that one, which is this guard
-# skipping a base with the sibling reading it fine.
+# where another guard in this directory refuses the same probe. That sibling is
+# merge_unchecked_against_base.py, and it reads the pull request under the same bound — a bound
+# tightened here alone is a gh slow enough to lose this reading and fast enough to keep that one,
+# which is this guard skipping a base with the sibling reading it fine.
 UNREADABLE_POLICY = "allow"
 UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 

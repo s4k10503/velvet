@@ -173,7 +173,9 @@ whole, which is what a statement carrying one mutant wants. Only a
 whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
 question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
 suite, just a different one — so it reads declarations, and the platform is part of the verdict
-records' key so that a kill a PlayMode run took is never kept for an EditMode one.
+records' key so that a kill a PlayMode run took is never kept for an EditMode one. `--survivors-of`
+takes a run on one platform as the first of two passes: the run on the other platform measures only
+that run's survivors and decides over both, which is the decision CI takes.
 
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
@@ -188,16 +190,24 @@ something a mutation can ask about. Where a licence is configured, a diff of mor
 shards of 25 can measure inside the shard job's timeout is refused at the plan and is split into
 smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
-where a licence is configured, `Test ▸ mutation-shard` measures them in up to ten jobs, each running
-every Nth mutant against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and
-recording its verdicts, and `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads
-every shard's records and decides as a local run over the same diff decides: an unanswered survivor, a
-stale declaration or a mutant nothing measured fails it. Unlike a local run it takes every mutant
-rather than stopping at `--max`. A shard whose baseline is red fails on its own. Its job summary names
-each survivor and each unmeasured mutant by line, and each shard's editor logs and results files are
-uploaded as `Mutation shard N`. All three feed `Required checks (Unity)`, and every push to the pull
-request runs them again, so a review round that changes production code is measured by the push that
-carries it. Running the campaign locally is optional: it answers the same question before a push.
+where a licence is configured, the mutants are measured in two passes, because a mutant is killed
+when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
+`Test ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
+against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and recording its
+verdicts. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
+they left surviving, and `Test ▸ mutation-playmode-shard` measures only those against the whole
+PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
+pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
+EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split. `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads both passes' records
+and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
+recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
+`--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
+unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
+files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. All five feed
+`Required checks (Unity)`, and every push to the pull request runs them again, so a review round that
+changes production code is measured by the push that carries it. Running the campaign locally is
+optional: it answers the same question before a push.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
@@ -208,13 +218,19 @@ commit git placed and found unpushed is the ordinary case, and is what the predi
 **What the split costs.** A mutant is one editor launch. Over the twenty commits ending at `48057c8`,
 ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
 launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
-branch run locally is around 41 minutes. `--plan` gives a shard three mutants and stops adding shards
-at ten, because each shard pays for an image pull, a licence activation and a baseline before its
-first mutant. Measured on the pull request that moved the campaign here, over two campaigns — seven
-mutants in three shards, and forty-nine in ten — the pull took 79–146 s, the activation 31–52 s and
-the baseline 153–225 s, each mutant 119–190 s, and plan to verdict took 12m54s and 22m12s, against
-8–10 minutes for the rest of the run. The ten shards ran beside the three other licensed jobs, and all
-thirteen activated. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
+branch run locally is around 41 minutes. `--plan` gives an EditMode shard three mutants and stops
+adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
+before its first mutant; a PlayMode shard takes two, since each of its mutants costs more than
+twice an EditMode one measured on the same run. Measured for the EditMode shards on the pull request that moved
+the campaign here, over two campaigns — seven mutants in three shards, and forty-nine in ten — the
+pull took 79–146 s, the activation 31–52 s and the baseline 153–225 s, each mutant 119–190 s, and plan
+to verdict took 12m54s and 22m12s, against 8–10 minutes for the rest of the run. The ten shards ran
+beside the three other licensed jobs, and all thirteen activated. Measured on the pull request that
+added the PlayMode pass, over three mutants only a PlayMode fixture kills — one EditMode shard, which
+reported all three surviving, then two PlayMode shards, which killed all three — the EditMode shard
+took 13m05s with each mutant 144–149 s; the PlayMode shards took 20m35s and 14m32s, spending 97–130 s
+before activation, 32–37 s activating, 358–374 s on a baseline of the same 209 cases `Test ▸
+unity-tests` passed, and 340–364 s on each mutant; plan to verdict took 34m20s. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
 than one it silently refuses.
 
@@ -729,15 +745,16 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
-A third way is being right about the wrong branch. Two of the preconditions over a merge are asked
-of a base — whether the head contains it, and whether it holds an unpublished release — and both
-named `main` for as long as `main` was the only branch taking pull requests. So the day a
-maintenance line was cut, both refused its release outright and no case disagreed: nothing in the
-repository named a second branch at all. The base is the pull request's own field, read through
+A third way is being right about the wrong branch. Two of the preconditions over a merge were once
+asked of a base by naming `main` — whether the head contained it, and whether it held an unpublished
+release — for as long as `main` was the only branch taking pull requests. So the day a maintenance
+line was cut, both refused its release outright and no case disagreed: nothing in the repository
+named a second branch at all. The base is the pull request's own field, read through
 `.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses every
 guard in the directory a pull request based on a branch that is not `main`, in a repository where
-`main` holds both of those things and the named base holds neither. A guard that judges either of
-them against `main` fails it without anybody having remembered to write a case.
+`main` holds a failed push run and an unpublished release and the named base holds neither. A guard
+that judges either of them against `main` fails it without anybody having remembered to write a
+case.
 
 A fourth is being right about the wrong tree. A `PreToolUse` hook is handed the directory the tool
 call started in, and `cd <worktree> && gh pr create` runs somewhere else — so a guard reading that
@@ -839,6 +856,8 @@ on every platform.
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ mutation-plan` | every PR | not required | no |
 | `Test ▸ mutation-shard` | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-playmode-plan` | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-playmode-shard` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ mutation-verdict` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
@@ -864,7 +883,26 @@ passes `--base` anything else.
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
 combination it exists to protect any better than a merge does. What does test that combination is a merge
-queue, which is a separate change.
+queue, which is a separate change. `settle.py merge` and the `gh pr merge` guards do not require it
+either: a pull request whose own checks passed on its head merges while behind, once GitHub reports no
+conflict.
+
+What they require instead is a green base: they refuse a merge onto a base whose required workflows
+last failed on push, so a red `main` is fixed or reverted first. A head is exempt where it contains the
+failing commit and its own Unity suite jobs concluded success, which is how the fix and the revert land;
+`Required checks (Unity)` passes a suite job skipped for want of a licence secret, so a skip is not a
+run. A first attempt still in progress is passed over, so it refuses nothing and the newest verdict
+among the last 20 push runs stands; a re-run in progress reads as a failure until it finishes. A base
+with no push runs has no verdict and refuses nothing, which is every maintenance branch: both workflows
+run on push to `main` alone. `scripts/pr/red_base.py` decides all of that, and `settle.py` and
+`merge_unchecked_against_base.py` both ask it.
+
+They also require the head to contain its base's newest release commit — the commit that dated a
+CHANGELOG section, which `published_check.release_commit` finds. A branch cut before it filed its entry
+under `[Unreleased]`, a clean merge can file that entry inside the section the release closed, and
+`breaking_in_flight_check.py`, which reads the dated sections, runs on pull requests rather than on
+push. So a head behind a release takes its base in with `settle.py update`, and its pull request checks
+run again over the result. A head behind only commits that date nothing is not refused.
 
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
@@ -979,9 +1017,10 @@ branch whose window is open, and `Test ▸ publication` fails for one whose chec
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
 `strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
-move, so the merge button on github.com stays enabled for it. What refuses there is `merge_onto_unpublished_release.py`, `stale_merge.py`
-and `settle.py`'s contains-base precondition, none of which github.com consults; turning the strict
-policy on is what would close it server-side, at the cost that buys.
+move, so the merge button on github.com stays enabled for it. What refuses there is
+`merge_onto_unpublished_release.py` and `settle.py`'s publication precondition, neither of which
+github.com consults; turning the strict policy on is what would close it server-side, at the cost
+that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready

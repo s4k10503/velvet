@@ -132,6 +132,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pose. The exit's cancel put back the previous label's USS classes after the new ones had been applied, so
   a child re-added at `opacity-50` from `opacity-100` carried both and resolved to 1.
 
+- A component keeps the elements it rendered when a reorder or an inserted sibling moves it. Unless a
+  key scope stood between the component and its container — a keyed `V.Fragment`, or a `V.Memoized`, a
+  `V.Suspense` or a `V.AnimatePresence`, each of which opens one — a keyed component's unkeyed elements
+  were matched by their index in the container, so moving it rebuilt them while the component itself
+  kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its state
+  lost, and the elements already on the Portal's target were left there beside the remounted ones. A
+  keyed `V.Fragment` returned as a component's whole output did not count; `[Unreleased — breaking]`
+  states what keeping its key changes. A reordered `V.List` of components rebuilt the element of each
+  row whose index changed, the same way. An unkeyed element is now matched by its position counted from
+  where the output of the component that renders it begins. This still differs from React, which counts
+  a position in the parent's own child array, where a nested component, a Fragment or a `null` takes one
+  slot: Velvet counts the elements emitted ahead of it, so a change in how many elements an earlier
+  component in the same output renders still shifts it.
+
+- A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
+  behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns, when the
+  presence's own render creates it, that it is not the child's anchor and its exit is inert; the exit
+  used to be dropped without a word. The motion guide states which Motion a keyed child's enter and
+  exit play on, and that a Motion outside that rule keeps its own mount enter, which the presence's
+  `initial: false` does not suppress.
+
+- The preview-tooling guide's headless capture section now says when the target texture holds a
+  story. In Edit Mode the panel writes it on a later editor frame rather than during
+  `VelvetPreviewHost.Mount`, so a harness that reads the texture back in the frame it mounted in does
+  not find the story there; one that waits editor frames first captures it with public API alone. The
+  guide named no frame to wait for.
+
+- One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
+  the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
+  key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
+  was built again, and a row left on screen had its ref cleanup run.
+
+- A keyed element that leaves a keyed `V.Fragment` mounts a fresh element where an update that is
+  time-sliced reaches the move after resuming; it patched the element it had inside the Fragment. That is
+  the remount a synchronous update already gave, and the one React gives.
+
+- A node held across renders — the same `VNode` instance on both — is matched by the position it is
+  written at rather than by being the same node, wherever the previous render's child array held a
+  `V.Fragment`, a `V.Provider`, a component or another wrapper, or a `null`. It mounts a fresh element
+  when it leaves a keyed `V.Fragment`, keyed or not, and when as an unkeyed child it lands at a different
+  index, where an insertion or a removal before it could let it keep its element; both are remounts React
+  gives too. In a child array whose previous render held none of those, an unkeyed held node that lands at
+  a different index can still keep its element.
+
+- Two sibling components that each render an element under the same `key:` keep their elements when their
+  parent re-renders. The two keys were compared as siblings of one list, so a re-render of the parent
+  rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
+  elements one component renders, as React scopes it.
+
+- An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
+  declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
+  clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
+  it rather than against the parent: in a column parent the wrapper took the parent's width and no
+  height, so an element offset from all four edges came out with no height and its `inset-0` child
+  with it. The wrapper around an absolute element now leaves the flow, spans the parent and takes the
+  parent's flex-direction, `justify-content` and `align-items`, so an absolute clipped element with no
+  offsets is placed where the parent's alignment puts it rather than centred on the wrapper. The
+  wrapper follows the element into and out of the flow when a render or a variant adds or drops
+  `absolute`, including when that leaves the element's box where it was. Still different from CSS:
+  whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
+  or alignment alone is followed only once the element's own box or its clip next changes, or a later
+  render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
+  centred in its wrapper.
+
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component
   opened a key scope; a keyed `V.Fragment` does, as do the children of a `V.Suspense`, a child of a
@@ -176,8 +240,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
   named no component. The call past the previous render's count throws from itself instead of after the
   body returns, so when that call is made inside a plain helper method, the helper is on the
-  exception's stack. The error the editor alone logs for the same mistake with `Hooks.UseEffect`,
-  `Hooks.UseCallback` and eight more hooks takes the same wording.
+  exception's stack.
 
 - A component mounted through `V.Component(body, props)` or `V.Memo` is named by its method, or by its
   `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the StrictMode double-render
@@ -261,6 +324,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children hold a null and so are all built before any is placed — the child's ref was set up once and
   not cleaned up even when the list was disposed, and outside any list it was set up once; in each it is
   now never set up.
+
+- An element that an abandoned render built and had not placed is released. Where the keyed diff
+  matches rows by key rather than by their place at either end of the list, it builds every new row
+  before placing any, and it released none of them when a later row's creation threw, when an error
+  boundary caught a failure inside one of those rows, or when a new render discarded a time-sliced one
+  parked partway. The walk that expands components, fragments and `null`s in place released what it had
+  built on a throw, but not when a boundary's catch stopped the render. And where a list appends rows —
+  unkeyed, or keyed in a time-sliced pass — or rebuilds a range it found shorter than its last render,
+  the row whose creation raised the abort was dropped unplaced without being released. Each left a
+  `refCallback:` set up once on an element no tree holds, and where a row's creation threw with no
+  boundary above it, a component mounted inside an earlier new row ran its layout effect on the next
+  render. Where an element's creation threw, a `V.Portal` among its children still mounted its children
+  into the target, and a `z-*` absolute child still had its element placed into a layer container after
+  that element had gone back to the pool — measured on a `V.Button`, the pool's next button came out
+  with a parent.
+
+- An error boundary's catch no longer disposes a component that the render it stopped had not reached
+  yet. Such a component was taken as removed: its effect cleanups ran and it was disposed while its
+  elements stayed on screen, and the next render mounted it afresh. Measured on a boundary followed by a
+  counter at 1: the catch ran the counter's effect cleanup, and the next render showed `count:0` beside
+  the `count:1` the disposed instance left. The counter now keeps its state and its effect.
 
 - An error boundary above a `V.VirtualList` that catches a row's render during a range update no longer
   leaves that update's rows mounted. The boundary's fallback takes the list out of the tree from inside
@@ -360,10 +444,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a sibling ahead of it. That holds where the pass raising the exception was itself moving the boundary — a
   reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
   showing a fallback stops that pass from placing anything, so the container is still holding the rows
-  where they were and the swap is written there. It does not hold where the boundary's rows moved with
-  no pass placing them: a fiber that grows inside a co-located sibling shifts this boundary's rows along
-  the container, and a catch after that still writes the fallback over the sibling's rows and leaves the
-  boundary's own painted.
+  where they were and the swap is written there.
+
+- A component that shares its container with other components rewrites its own rows when it re-renders
+  on its own, instead of a neighbour's, after one of these moved them: a component growing inside the one
+  ahead of it, or ahead of the component holding it; a neighbouring `V.Portal` on the same target growing,
+  whether through its own children, a component inside it or a parked time-sliced render its patch
+  drained, or unmounting; an error boundary's fallback holding more or fewer rows than the boundary had;
+  a pass that moved the component and then stopped on an error a boundary caught; and a parked
+  time-sliced render drained inside the re-render of the component holding it, or inside a pass that then
+  reached a boundary which caught. Where the rows began was recorded when a pass decided where they would
+  go and moved afterwards only for a sibling's own row count changing, so after any of those moves the
+  re-render renamed a neighbour's rows, added its own a second time or left a stale copy behind, and a
+  fallback could replace a neighbour's row while the boundary's own stayed. A `V.Portal` whose child
+  component grew also left a row behind on the target when it unmounted, and a second `V.Portal` on that
+  target, patched after the first one's component grew, rewrote a row of the first. An empty `V.Portal`
+  sharing its first row with another Portal on the target that holds rows, and mounted before it, now
+  keeps its place
+  when that Portal's own children grow or it unmounts: its first rows landed between the other Portal's
+  rows, or its second row ahead of its first. Two Portals on one target that both held no rows keep the order they
+  are written in when either gains rows, where both are written in one element tree and neither inside
+  another Portal's children. Two components rendering
+  nothing that a keyed reorder swapped keep the swapped order when they grow, where they could render their
+  rows in the order they were created.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
@@ -757,6 +860,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A render that calls `Hooks.UseEffect`, `Hooks.UseLayoutEffect`, `Hooks.UseInsertionEffect`,
+  `Hooks.UseCallback`, `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef`,
+  `Hooks.UseImperativeHandle`, `Hooks.UseId`, `Hooks.UseDeferredValue`, `Hooks.UseOptimistic`,
+  `Hooks.UseMutation`, `Hooks.UseTransition` or `Hooks.UseBlocker` a different number of times from
+  the previous render now throws the hook-count `InvalidOperationException` `Hooks.UseState` throws, in
+  every build, and reaches an enclosing error boundary. It logged an error in the editor alone and
+  committed the render, or, for `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef` and
+  `Hooks.UseTransition`, was not checked. A hook built from them, such as `Hooks.UseFrame` or
+  `Hooks.UseNavigate`, throws the same way, and the message names the inner hook — `UseCallback` for
+  `Hooks.UseNavigate`.
+
 - `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
   `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the
   data — React Router's plain `loader` contract. It previously accepted only a loader that handed back
@@ -921,6 +1035,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
   own span. The motion guide states which pose each play reads.
 
+- An `exit:` label naming a pose that applies no class plays a variant exit: the removal takes the
+  resting pose's classes off, on the timing that pose resolves — its own `MotionVariant.Transition`,
+  else the Motion's `transition:`, the same choice a mount enter and a label change into a pose make.
+  It played the classic exit instead — on the Motion's own `transition:` and with that transition's own
+  exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
+  exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
+  class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
+  nothing on screen: the exit label does not reach inheriting children, so the coordinator is held for
+  that timing and then removed, where the classic exit used to play the transition's exit classes on it.
+  An `exit:` label the map has no pose for still plays the classic exit.
+
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
   in the parent's child list, and an Outlet whose location matches no route at its depth takes no
   position there at all. It used to emit a layout-passthrough container — absolutely positioned and
@@ -980,6 +1105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A keyed `V.Fragment` that a component returns as its whole output keeps its key. Its key was dropped
+  and its children taken as the component's output, so changing that key kept the components inside it
+  where React remounts them; they now remount, and so do the elements it holds. React unwraps only an
+  unkeyed top-level Fragment, and Velvet still unwraps that one. Such a component's own re-render now
+  reconciles its output through the general path, which is not time-sliced, where one whose Fragment
+  holds only elements took the flat diff, which a `StartTransition` update could spread across frames.
+
 - A node the renderer of `V.List` returns that a list has placed before — returned for an earlier item
   of the same call, or held from an earlier render — keeps the key it was placed under, and the slot of
   an item whose selected key differs takes a copy of the node carrying that key. `V.List` wrote each
@@ -1025,22 +1157,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all host leaves, since the time-sliced diff carries no owner to compare: a `Transition`-lane pass
   over such a container runs to completion, where the time-sliced one could park at the frame budget.
 
-  What a caller has to edit around, in three places. A `refCallback` on the arriving component is
+  What a caller has to edit around, in two places. A `refCallback` on the arriving component is
   handed a freshly built element where it used to be handed the departing component's, so a reference
   taken on an earlier render is stale — read the element from the callback each time it fires rather
   than holding one across renders. What the element instance itself carries does not survive a freshly
   built one — focus, a `V.ScrollView`'s scroll offset, a `V.TextField`'s caret and selection among
   them — so state to keep is lifted above both components, into a `Store` or a `Hooks.UseState` in the
-  component that declares the slot. And a `V.List` of components written straight into a container
-  rebuilds a row's element when the item moves to a different slot — a reorder, or an insert ahead of
-  it — because a component at a scope-less position opens no key scope, so the leaves it emits
-  reconcile by sibling index and a moved row lands on a leaf a different component emitted; its hook
-  state still travels, since the fiber is found by the item's key, but its element does not, so
-  everything above about a freshly built one reaches a reordered row too. A
-  `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes focus back
-  from wherever the user had moved it. Wrapping the list in
-  `V.ListFragment(items, …, key: "rows")` keeps the element: the Fragment's key establishes the scope,
-  each row's leaf then carries the item's own key, and the element moves to the new slot with it.
+  component that declares the slot.
 
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
   was holding. Every clearing path in the Outlet's own patch sat below an early return taken on a

@@ -572,40 +572,6 @@ namespace Velvet
             set => EnsureLanes().HasPromotedTransition = value;
         }
 
-        // Per-hook-kind counts from the previous render, compared against this render's counts to enforce a
-        // stable hook count (rules of hooks). -1 means no prior render, so the check is skipped on mount (the
-        // dispose/recycle path resets these to -1). They drive the editor-only stable-hook-count diagnostics;
-        // the kinds HookCountSentinel checks in player builds too read CommittedHookCounts below instead.
-#if UNITY_EDITOR
-        internal int PrevHookCount = -1;
-        internal int PrevLayoutEffectHookCount = -1;
-        internal int PrevInsertionEffectHookCount = -1;
-        internal int PrevEffectHookCount = -1;
-        internal int PrevImperativeHandleHookCount = -1;
-        internal int PrevBlockerHookCount = -1;
-        internal int PrevIdHookCount = -1;
-        internal int PrevDeferredValueHookCount = -1;
-        internal int PrevOptimisticHookCount = -1;
-        internal int PrevMutationHookCount = -1;
-
-        // Resets every editor-only per-hook-kind baseline to -1 (no prior render), so a re-mount or a
-        // discarded render does not compare against stale counts and trip a false stable-hook-count diagnostic.
-        // One site to update when a new hook category is added.
-        internal void ResetEditorHookCountBaselines()
-        {
-            PrevHookCount = -1;
-            PrevBlockerHookCount = -1;
-            PrevLayoutEffectHookCount = -1;
-            PrevInsertionEffectHookCount = -1;
-            PrevEffectHookCount = -1;
-            PrevImperativeHandleHookCount = -1;
-            PrevIdHookCount = -1;
-            PrevDeferredValueHookCount = -1;
-            PrevOptimisticHookCount = -1;
-            PrevMutationHookCount = -1;
-        }
-#endif
-
         // The cursors (and AsyncSlotCursor) as the last render that passed HookCountSentinel.ValidateAndCommit
         // left them, which the sentinel holds the next render to. Unmounting clears HasCommittedHookCounts,
         // so a remount is not compared.
@@ -645,26 +611,22 @@ namespace Velvet
         /// Absolute starting index in <see cref="MountPoint"/>.children at which this fiber's
         /// rendered output begins. Always 0 in wrapper-mounted mode; non-zero for inline-mounted
         /// fibers that share <see cref="MountPoint"/> with sibling fibers.
+        /// A walk that re-places the fiber writes it where it places the rows,
+        /// <c>GeneralPathReconciler.FinalizeGeneralCommit</c>, rather than where it decides to: until then it
+        /// names the rows the container still holds, which is what a boundary catching inside that walk
+        /// rewrites, and a walk that aborts before placing leaves it naming them. Between placements it is
+        /// moved by <c>FiberCommitWork.PropagateInlineSlotShift</c> and
+        /// <c>FiberCommitWork.ShiftTenantsAfterPortalRange</c>.
         /// </summary>
         internal int MountSlotStart { get; set; }
 
         /// <summary>
-        /// The <see cref="MountSlotStart"/> the container still holds this fiber's rows at while an
-        /// expansion has re-placed the fiber and not yet run its placement pass, or <c>-1</c> outside such
-        /// an expansion. They part where the walk moves the fiber, because its placement runs after the
-        /// whole walk (<c>GeneralPathReconciler.FinalizeGeneralCommit</c>): until then the recorded start
-        /// names rows the container has not got yet.
-        /// <c>ComponentRegistry.ReleasePrePlacementsTo</c> owns putting it back, from a finally and by
-        /// count, so it does not outlive the walk that recorded it.
-        /// </summary>
-        internal int PrePlacementSlotStart { get; set; } = -1;
-
-        /// <summary>
         /// Number of slots in <see cref="MountPoint"/>.children currently owned by this fiber.
         /// The sentinel <c>-1</c> means "owns the entire children list" (wrapper-mounted default);
-        /// non-negative values are used by inline-mounted fibers. Updated after each render when
-        /// the output VNode count changes; the delta is propagated to subsequent sibling fibers by
-        /// shifting their <see cref="MountSlotStart"/>.
+        /// non-negative values are used by inline-mounted fibers. Written beside
+        /// <see cref="MountSlotStart"/> where a walk places the rows, and changed by
+        /// <c>FiberCommitWork.PropagateInlineSlotShift</c> when this fiber's rows change or those of a fiber
+        /// they hold do.
         /// </summary>
         internal int MountSlotCount { get; set; } = -1;
 
@@ -676,16 +638,17 @@ namespace Velvet
         internal bool IsInlineMounted { get; set; }
 
         /// <summary>
-        /// The Portal placeholder whose children reconcile last placed this inline fiber, or null for one
-        /// placed outside any Portal. A Portal's top-level Component child mounts inline with the portal
+        /// The Portal placeholder whose children reconcile last reached this inline fiber, or null for one
+        /// reached outside any Portal. A Portal's top-level Component child mounts inline with the portal
         /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
         /// removes rather than a descendant of any of them; this is what tells the teardown which of the
         /// several Portals sharing that target the fiber belongs to.
-        /// <see cref="MountSlotStart"/> cannot answer that: a NEIGHBOURING Portal's own children changing
-        /// on the same target moves this fiber's output along it without rewriting it.
-        /// Rewritten on every placement rather than at creation only, so it names where the fiber renders
-        /// now; a fiber the teardown must reach that no placement ever named is reached instead through the
-        /// parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns which is which).
+        /// It is stamped rather than read off <see cref="MountSlotStart"/> because a fiber holding no rows can
+        /// start at the seam between two neighbouring Portals' ranges, where either could hold it.
+        /// Rewritten whenever a reconcile reaches the fiber rather than at creation only, so it names the
+        /// Portal of the last reconcile to reach it; a fiber the teardown must reach that carries none is
+        /// reached instead through the parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns
+        /// which is which).
         /// </summary>
         internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
 
@@ -930,6 +893,25 @@ namespace Velvet
                 tail = tail.Sibling;
             }
             tail.Sibling = child;
+        }
+
+        // The caller supplies the complete existing child set after its placement has committed.
+        internal void CommitChildOrder(IReadOnlyList<ComponentFiber> children)
+        {
+            // Every link is cleared before any is written, so no reordering can leave a sibling chain that
+            // loops back on itself.
+            Child = null;
+            foreach (var child in children)
+                child.Sibling = null;
+            ComponentFiber? previous = null;
+            foreach (var child in children)
+            {
+                if (previous == null)
+                    Child = child;
+                else
+                    previous.Sibling = child;
+                previous = child;
+            }
         }
 
         public void RemoveChild(ComponentFiber child)

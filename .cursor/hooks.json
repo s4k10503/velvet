@@ -33,7 +33,7 @@
     ],
     "preToolUse": [
       {
-        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/stale_merge.py",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_unchecked_against_base.py",
         "timeout": 25.0,
         "matcher": "Shell",
         "failClosed": true

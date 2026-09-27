@@ -478,6 +478,7 @@ namespace Velvet
         // processing via CleanupDescendants recursion.
         private void CleanupPortal(VisualElement element)
         {
+            _ctx.PendingHostPlaceholders.Remove(element);
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
             {
                 return;
@@ -528,7 +529,9 @@ namespace Velvet
 
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, element, portalInfo, -portalInfo.SlotLength);
+            FiberCommitWork.ShiftTenantsAfterPortalRange(
+                _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
         }
 
         // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
