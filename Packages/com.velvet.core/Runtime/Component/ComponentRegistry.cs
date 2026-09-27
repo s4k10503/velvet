@@ -38,6 +38,9 @@ namespace Velvet
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
         private readonly Dictionary<ComponentFiber, HashSet<ComponentFiber>> _parentToInlineFibers = new();
+        // Inline fibers by the container their rows share, whatever fiber or Portal placed them there:
+        // FiberCommitWork moves the starts of the ones a row-count change lands ahead of.
+        private readonly Dictionary<VisualElement, InlineTenancy> _tenancies = new();
         // Interns the boxed position key that keys an unkeyed inline ComponentNode in _inlineInstances.
         // The walkers that derive these keys (ExpandInlineRecursive, the context spine-rewalk) reuse one
         // box per position instead of allocating a fresh box on every pass. Sharing is equality-safe
@@ -97,10 +100,9 @@ namespace Velvet
         // Fiber identity is anchored on parentFiber, mountPoint and tree position (positionKey) — the
         // _inlineInstances key owns which of those carries what. The fiber's rendered output occupies
         // the sub-range starting at slotStart of mountPoint.children.
-        // On the existing-fiber path, the slot start is updated and the fiber is synchronously re-rendered
-        // when props changed or it is dirty (setState / context invalidation) so the caller observes the
-        // fresh ComponentFiber.PreviousTree; otherwise the previous tree is reused (the
-        // bailout path).
+        // On the existing-fiber path the fiber is synchronously re-rendered when props changed or it is
+        // dirty (setState / context invalidation) so the caller observes the fresh
+        // ComponentFiber.PreviousTree; otherwise the previous tree is reused (the bailout path).
         public ComponentFiber GetOrCreateInline(
             ComponentNode node,
             ComponentFiber? parentFiber,
@@ -138,27 +140,6 @@ namespace Velvet
             }
 
             return CreateAndMountFiber(node, identity, in site);
-        }
-
-        // The fibers re-placed since a caller's mark, so it can put every ComponentFiber.PrePlacementSlotStart
-        // back. Kept here rather than on the walk that reads it because a re-placement's own re-render can
-        // unwind past the walk's record of which fibers it reached — a suspend does, before the fiber
-        // reaches GeneralPathReconciler's NewFibers at all. A stack rather than an index: the outermost
-        // walk releases to a mark of zero, so it holds nothing between passes and the disposal contract
-        // below has nothing of it to clear.
-        private readonly List<ComponentFiber> _prePlacementStack = new();
-
-        internal int MarkPrePlacements() => _prePlacementStack.Count;
-
-        // Releases everything recorded since mark. Callers pair this with MarkPrePlacements in a finally,
-        // so the count is what bounds the release rather than any record of what the pass reached.
-        internal void ReleasePrePlacementsTo(int mark)
-        {
-            for (var i = _prePlacementStack.Count - 1; i >= mark; i--)
-            {
-                _prePlacementStack[i].PrePlacementSlotStart = -1;
-                _prePlacementStack.RemoveAt(i);
-            }
         }
 
         private ComponentFiber ReconcileExistingFiber(
@@ -209,24 +190,19 @@ namespace Velvet
 
             if (site.IsInline)
             {
-                // The parent reconcile may have shifted this fiber's slot range; update before any
-                // re-render. Synchronously re-render when props changed or the fiber is dirty
+                // Synchronously re-render when props changed or the fiber is dirty
                 // (setState / async resolve / context invalidation) so the caller's parent walk
                 // observes the fresh PreviousTree. The shared ReconcilerContext keeps the registry /
                 // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
-                // The MountSlotStart write below names where this walk's placement pass will put the
-                // fiber's rows; the container is still holding them where they were until that pass runs,
-                // and the re-render further down can abort it or unwind out of it on a suspend. Keep the
-                // start the container holds meanwhile, on the stack the walk releases.
-                existingFiber.PrePlacementSlotStart = existingFiber.MountSlotStart;
-                _prePlacementStack.Add(existingFiber);
-                existingFiber.MountSlotStart = site.SlotStart;
+                // MountSlotStart is deliberately not written here; ComponentFiber.MountSlotStart owns where it
+                // is written instead.
                 // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
                 // stamp a fiber below a Portal's own child was given at creation — its parent's isolated
                 // re-render is such a reconcile. Losing it costs nothing: that is the same fiber
-                // DisposeInlineFibersOwnedByPortal already reaches through the parent index.
+                // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
+                // reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
@@ -321,6 +297,15 @@ namespace Velvet
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
                 RetainExplicitPositionKey(site.PositionKey);
+                if (site.MountPoint != null)
+                {
+                    if (!_tenancies.TryGetValue(site.MountPoint, out var tenancy))
+                    {
+                        tenancy = new InlineTenancy();
+                        _tenancies[site.MountPoint] = tenancy;
+                    }
+                    tenancy.Fibers.Add(fiber);
+                }
                 // Written from the same source on both halves of GetOrCreate — see the carry half in
                 // ReconcileExistingFiber for why one write cannot serve.
                 fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
@@ -392,6 +377,11 @@ namespace Velvet
                 _inlineFiberToKey.Remove(fiber);
                 _inlineInstances.Remove(key);
                 ReleaseExplicitPositionKey(key.positionKey);
+                if (key.container != null && _tenancies.TryGetValue(key.container, out var tenancy))
+                {
+                    tenancy.Fibers.Remove(fiber);
+                    if (tenancy.Fibers.Count == 0) _tenancies.Remove(key.container);
+                }
                 if (key.parentFiber != null && _parentToInlineFibers.TryGetValue(key.parentFiber, out var siblings))
                 {
                     siblings.Remove(fiber);
@@ -441,6 +431,9 @@ namespace Velvet
             if (fiber == null) return;
             DisposeFiberInternal(fiber);
         }
+
+        internal InlineTenancy? TenancyOf(VisualElement container)
+            => _tenancies.TryGetValue(container, out var tenancy) ? tenancy : null;
 
         // Inline-mounted lookup by tree-position key, without the create half and without re-rendering
         // anything: the old-side walk in GeneralPathReconciler reads the previously rendered
@@ -648,10 +641,20 @@ namespace Velvet
             _inlineInstances.Clear();
             _inlineFiberToKey.Clear();
             _parentToInlineFibers.Clear();
+            _tenancies.Clear();
             _wrapperIndex.Clear();
             _wrapperFiberInfo.Clear();
             InlinePositionKeyBoxes.Clear();
             InlineExplicitPositionKeyBoxes.Clear();
         }
+    }
+
+    // The inline fibers whose rows share one container, and a running total of the rows FiberCommitWork has
+    // moved the recorded starts on that container for; FiberCommitWork.RowCountWindow owns why the total
+    // is kept.
+    internal sealed class InlineTenancy
+    {
+        internal readonly HashSet<ComponentFiber> Fibers = new();
+        internal int ShiftedRows;
     }
 }
