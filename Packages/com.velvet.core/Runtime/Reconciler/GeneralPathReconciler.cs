@@ -2074,22 +2074,28 @@ namespace Velvet
             for (var i = 0; i < wait.Descendants.Count; i++)
             {
                 var exit = wait.Descendants[i];
-                var status = wait.StatusOf(i);
-                if (status == ReconcilerContext.PresenceExitWait.DescendantStatus.Gone) continue;
-                _ctx.PresenceDescendantExitWaits.Remove(exit.Element);
-                var baseClasses = _ctx.MotionNodes.GetValueOrDefault(exit.Element)?.ClassNames;
-                var resting = _patcher.RestingClassSet(exit.Element, baseClasses);
-                if (status == ReconcilerContext.PresenceExitWait.DescendantStatus.Playing)
+                var element = exit.Element;
+                var baseClasses = _ctx.MotionNodes.GetValueOrDefault(element)?.ClassNames;
+                switch (wait.StatusOf(i))
                 {
-                    _ctx.StyleAnimationScheduler.CancelExit(exit.Element, resting.VariantClasses, resting.Merged);
+                    case ReconcilerContext.PresenceExitWait.DescendantStatus.Gone:
+                        break;
+                    case ReconcilerContext.PresenceExitWait.DescendantStatus.Playing:
+                        _ctx.PresenceDescendantExitWaits.Remove(element);
+                        var resting = _patcher.RestingClassSet(element, baseClasses);
+                        _ctx.StyleAnimationScheduler.CancelExit(element, resting.VariantClasses, resting.Merged);
+                        _patcher.RestoreInlineAfterExit(element, baseClasses);
+                        break;
+                    default:
+                        _ctx.PresenceDescendantExitWaits.Remove(element);
+                        StyleAnimationClassUtils.RemoveClasses(element, exit.Config.ExitToClasses);
+                        var restored = exit.RestoresResting
+                            ? _patcher.RestingClassSet(element, baseClasses).VariantClasses
+                            : Array.Empty<string>();
+                        StyleAnimationClassUtils.AddClasses(element, restored);
+                        _patcher.RestoreInlineAfterExit(element, baseClasses);
+                        break;
                 }
-                else
-                {
-                    StyleAnimationClassUtils.RemoveClasses(exit.Element, exit.Config.ExitToClasses);
-                    StyleAnimationClassUtils.AddClasses(exit.Element,
-                        exit.RestoresResting ? resting.VariantClasses : Array.Empty<string>());
-                }
-                _patcher.RestoreInlineAfterExit(exit.Element, baseClasses);
             }
         }
 

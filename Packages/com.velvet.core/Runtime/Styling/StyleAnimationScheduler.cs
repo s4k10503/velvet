@@ -193,12 +193,12 @@ namespace Velvet
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
 
-            // A variant play that does not tween still supersedes an earlier enter on the element, whose pending
-            // swap would otherwise put that play's target classes back beside this one's.
-            if (variantMode && !IsPlayableDuration(durationSec))
-            {
-                CancelPending(_pendingEnters, element, restingOverride: toClasses, keptClasses: toClasses);
-            }
+            // Cancelled ahead of the duration check, because a play that does not tween still supersedes an
+            // earlier enter whose pending swap would otherwise put that play's target classes back beside this
+            // one's. A variant play's to classes are its resting state, so the cancel puts those back rather
+            // than the cancelled play's.
+            var restingTo = variantMode ? toClasses : null;
+            CancelPending(_pendingEnters, element, restingOverride: restingTo, keptClasses: restingTo);
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -206,9 +206,6 @@ namespace Velvet
             {
                 return;
             }
-
-            // Cancel any existing enter animation.
-            CancelEnter(element);
 
             var staggerDelayMs = (long)(play.AdditionalDelaySec * 1000);
 
