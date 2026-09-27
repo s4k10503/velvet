@@ -793,9 +793,14 @@ jobs:
         with:
           lfs: true
 
+      # Library/DataStore stays out of the cache. With a previous run's store restored, the editor was
+      # killed by SIGKILL about a second after launch, with no out-of-memory kill in the kernel's log;
+      # with that one directory deleted from the same restored Library, the compile passed.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: Library
+          path: |
+            Library
+            !Library/DataStore
           key: Library-newest-6000.6.3f1-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
             Library-newest-6000.6.3f1-
