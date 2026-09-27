@@ -21,8 +21,7 @@ namespace Velvet
         // trace; CaughtErrorLogTests pins both.
         internal static void LogCaughtError(Exception exception, ErrorInfo info)
             => Debug.LogException(new CaughtErrorReport(
-                $"Caught by the {info.ErrorBoundary} error boundary, which rendered its fallback in place of its" +
-                $" children. Component stack:\n{info.ComponentStack}",
+                $"Caught by the {info.ErrorBoundary} error boundary. Component stack:\n{info.ComponentStack}",
                 exception));
 
         // Fallback path for a function-style Error Boundary: invokes the factory registered via

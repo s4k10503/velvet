@@ -70,8 +70,8 @@ namespace Velvet.Tests
             Assert.That(
                 secondLineEnd < 0 ? logged : logged.Substring(start, secondLineEnd - start),
                 Is.EqualTo(
-                    "Caught by the CaughtErrorLogTests.BoundaryRender error boundary, which rendered its fallback" +
-                    " in place of its children. Component stack:\nCaughtErrorLogTests.ThrowingChildRender"));
+                    "Caught by the CaughtErrorLogTests.BoundaryRender error boundary. Component stack:" +
+                    "\nCaughtErrorLogTests.ThrowingChildRender"));
         }
 
         [Component(IsErrorBoundary = true)]

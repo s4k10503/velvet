@@ -57,11 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `IsDelayed`.
 
 - `V.Mount(target, tree, options)` takes a `MountOptions`, the options object React's `createRoot`
-  takes. Its `OnCaughtError` is React's `onCaughtError`: it is called once for each error a boundary in
-  the tree catches, after that boundary has rendered its fallback, with the caught exception and an
-  `ErrorInfo` that now also carries `ErrorBoundary`, the name of the boundary that caught it. An
-  exception the handler throws is logged. The migration guide's error-boundary table states what
-  happens without one.
+  takes. Its `OnCaughtError` is React's `onCaughtError`: it is called when a boundary in the tree
+  catches an error, with the caught exception and an `ErrorInfo` that now also carries
+  `ErrorBoundary`, the name of the boundary that caught it. An exception the handler throws is logged.
+  The migration guide's error-boundary table states what happens without one.
 
 ### Changed
 
@@ -1032,7 +1031,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that reads as the caught exception itself, and its stack trace goes on to name the boundary and the
   component stack. What a working application notices is that entry, and a Unity Test Framework case
   that arranges a catch fails on it as an unhandled log: pass `V.Mount` a `MountOptions` whose
-  `OnCaughtError` handles the error, or expect the log with `LogAssert.Expect`.
+  `OnCaughtError` handles the error. Expecting the log with `LogAssert.Expect` also passes, but the
+  entry matches the one an uncaught error leaves, so it no longer tells a catch from an escape.
 
 - A node the renderer of `V.List` returns that a list has placed before — returned for an earlier item
   of the same call, or held from an earlier render — keeps the key it was placed under, and the slot of

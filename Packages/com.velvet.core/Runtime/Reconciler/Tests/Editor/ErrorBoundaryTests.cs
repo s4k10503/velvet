@@ -490,7 +490,7 @@ namespace Velvet.Tests
             // fiber's parent). Without a re-entrant guard, the boundary would attempt to show its own (still
             // broken) fallback again, recursing without bound. The guard makes it decline immediately instead.
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary"), CaughtErrors.Unlogged);
             Assume.That(s_brokenFallbackContentRenderCount, Is.EqualTo(0), "Precondition: nothing has thrown yet");
             s_trackingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
@@ -517,7 +517,7 @@ namespace Velvet.Tests
             // a raw throw reaching this call site. With no ancestor boundary here, an uncaught original
             // exception falls through to Debug.LogException like any other uncaught exception.
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary-logged"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary-logged"), CaughtErrors.Unlogged);
             s_trackingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test render error");
@@ -1295,7 +1295,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, "Exception: self-boom");
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"));
+            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"), CaughtErrors.Unlogged);
 
             // Assert — LogAssert.Expect verifies the own-Render exception was not self-caught but logged
         }
@@ -1307,7 +1307,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, "Exception: self-boom");
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"));
+            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_fallbackShown, Is.False,
@@ -1322,7 +1322,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, "Exception: boom-child");
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(NoFallbackBoundaryRender, key: "no-fallback"));
+            using var mounted = V.Mount(_root, V.Component(NoFallbackBoundaryRender, key: "no-fallback"), CaughtErrors.Unlogged);
 
             // Assert — LogAssert.Expect verifies the un-caught child exception was logged
         }
