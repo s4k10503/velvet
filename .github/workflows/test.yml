@@ -814,6 +814,13 @@ jobs:
               -projectPath /github/workspace -buildTarget StandaloneLinux64 \
               -executeMethod Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
 
+      # The container is gone by the time the step fails, so a kill's cause is read off the runner: the
+      # kernel's log names an out-of-memory kill, and the memory figures say what was left.
+      - if: failure()
+        run: |
+          free -m
+          sudo dmesg -T | grep -iE 'out of memory|oom|killed process' | tail -20 || true
+
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real
   # job instead would tie branch protection to that job's name and to its
