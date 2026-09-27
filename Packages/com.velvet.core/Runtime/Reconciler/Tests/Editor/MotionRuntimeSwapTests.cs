@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -110,6 +111,24 @@ namespace Velvet.Tests
                     transition: new StyleTransitionConfig { DurationSec = 0.35f }),
             });
         }
+
+        private static readonly Dictionary<string, MotionVariant> s_fadeWithInstantHalf = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+            ["half"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+        };
+
+        [Component]
+        private static VNode InstantHalfBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "m", name: "m", variants: s_fadeWithInstantHalf, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+        }
+
+        private static string OpacityClasses(VisualElement element)
+            => string.Join(" ", element.GetClasses().Where(c => c.StartsWith("opacity-")).OrderBy(c => c));
 
         [Component]
         private static VNode SpringBox()
@@ -342,6 +361,27 @@ namespace Velvet.Tests
             // asserted with it, because an exit that never had a claim to cancel finishes on time anyway.
             Assert.That((swapClaimedBeforeExit, Root.Q<VisualElement>("item-x") == null),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ATweenSwapThatHasNotSwappedYet_When_AZeroDurationSwapFollows_Then_OnlyTheLatestPosesClassIsCarried()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(InstantHalfBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert
+            Assert.That(OpacityClasses(Root.Q<VisualElement>("m")), Is.EqualTo("opacity-50"));
         }
     }
 }

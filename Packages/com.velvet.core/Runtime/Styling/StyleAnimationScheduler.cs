@@ -193,6 +193,13 @@ namespace Velvet
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
 
+            // A variant play that does not tween still supersedes an earlier enter on the element, whose pending
+            // swap would otherwise put that play's target classes back beside this one's.
+            if (variantMode && !IsPlayableDuration(durationSec))
+            {
+                CancelPending(_pendingEnters, element, restingOverride: toClasses, keptClasses: toClasses);
+            }
+
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
             if (!ValidateDuration(durationSec, onComplete))
