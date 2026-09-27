@@ -347,9 +347,14 @@ namespace Velvet
         // (general path) or collects it into the flat structural result (old-side / fast-path expansion),
         // recording beside it that key and the fiber the walk had reached. One method writes all three, so
         // neither KeysOut nor OwnersOut can fall behind Result.
+        //
+        // An unkeyed leaf's sibling index counts from where the output of the fiber the walk has reached began
+        // (InlineWalk.FiberLeafBase), not from the container's first leaf. With the owner the key carries, that
+        // matches a component's elements within its own output, so a component matched by key finds them again
+        // wherever its siblings moved it.
         private void Emit(InlineWalk walk, VNode? node, WalkPosition position, int nodeIndex)
         {
-            var siblingIndex = walk.Commit?.NewIndex ?? walk.Result!.Count;
+            var siblingIndex = (walk.Commit?.NewIndex ?? walk.Result!.Count) - walk.FiberLeafBase;
             var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, siblingIndex);
             if (walk.Commit != null) CommitLeaf(node, walk.Commit, key);
             else if (node != null)
@@ -588,6 +593,8 @@ namespace Velvet
             public List<ComponentFiber?>? OwnersOut;
             // The key each leaf was emitted under, index-aligned with Result, on the same terms as OwnersOut.
             public List<ChildKey>? KeysOut;
+            // How many leaves the walk had emitted when the output of the fiber it has reached began.
+            public int FiberLeafBase;
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -609,6 +616,7 @@ namespace Velvet
                 NewFibers = null!;
                 OwnersOut = null;
                 KeysOut = null;
+                FiberLeafBase = 0;
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
@@ -1017,6 +1025,8 @@ namespace Velvet
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
             _ctx.CurrentFiberTree = fiber.PreviousTree;
+            var enclosingLeafBase = walk.FiberLeafBase;
+            walk.FiberLeafBase = walk.Commit?.NewIndex ?? walk.Result!.Count;
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -1024,6 +1034,7 @@ namespace Velvet
             }
             finally
             {
+                walk.FiberLeafBase = enclosingLeafBase;
                 _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }
@@ -2094,8 +2105,7 @@ namespace Velvet
             _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor });
         }
 
-        // Expands one keyed AnimatePresence child (a Motion, or a transparent Provider / Fragment / Memo /
-        // Suspense resolving to one) into the parent's slot range via ExpandInlineRecursive,
+        // Expands one keyed AnimatePresence child into the parent's slot range via ExpandInlineRecursive,
         // under a render-stable per-child scope. Returns the child's anchor element — the first element it
         // emitted into GeneralCommitState.NewElements — for enter / exit animation, or null on
         // the structural (old-side) walk or when the child emitted nothing.
@@ -2222,14 +2232,14 @@ namespace Velvet
             exitClass = string.Empty;
             transition = null;
             if (motion?.Exit == null || motion.Animate == null || motion.Variants == null
-                || !motion.Variants.TryGetValue(motion.Exit, out var exit) || string.IsNullOrEmpty(exit.ClassName))
+                || !motion.Variants.TryGetValue(motion.Exit, out var exit))
             {
                 return false;
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var resting);
             restingClass = resting.ClassName ?? string.Empty;
-            exitClass = exit.ClassName!;
+            exitClass = exit.ClassName ?? string.Empty;
             transition = exit.Transition ?? motion.Transition;
             return true;
         }
@@ -2237,10 +2247,10 @@ namespace Velvet
         // Builds the exit transition for an `exit` variant: the element animates from its resting
         // variants[Animate] (ExitFromClass) to variants[Exit] (ExitToClass), on the timing
         // ResolveExitTransition resolves, before unmount. Returns null (caller falls back to the classic
-        // transition) unless the Motion sets its own Exit + Animate + Variants with a non-empty exit class and
-        // a transition resolves for it. The caller
-        // supplies the element the swap targets — the Motion's own, so a wrapped Motion's exit variant
-        // animates the same element its resting variant classes live on.
+        // transition) unless the Motion sets its own Exit + Animate + Variants, the exit label names a pose,
+        // and a transition resolves for it. The caller supplies the element the swap targets — the Motion's
+        // own, so a wrapped Motion's exit variant animates the same element its resting variant classes
+        // live on.
         internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
         {
             if (!TryResolveExitVariant(motion, out var restingClass, out var exitClass, out var transition)
