@@ -47,6 +47,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from repository import project_tree  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
+import release_notes  # noqa: E402
+
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 
 # The repository's own naming, which CONTRIBUTING.md's maintenance-line section owns. A branch that
@@ -72,6 +75,37 @@ def answer(args, cwd, timeout):
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout if done.returncode == 0 else None
+
+
+def reads_fragments(cwd, rev):
+    """Whether the tree at `rev` carries what compiles fragments, which a line cut before fragments
+    existed does not."""
+    return answer(["cat-file", "-e", f"{rev}:{release_notes.FRAGMENT_COMPILER}"],
+                  cwd, READ_TIMEOUT) is not None
+
+
+def changelog(cwd, rev, fragments=True):
+    """The CHANGELOG at `rev`, with its fragments filed into the open sections unless `fragments` is
+    false, or None where either could not be read or a fragment is one `release_notes.compose`
+    refuses."""
+    text = answer(["show", f"{rev}:{CHANGELOG}"], cwd, READ_TIMEOUT)
+    if text is None or not fragments:
+        return text
+    try:
+        return release_notes.compose(text, release_notes.fragments_at(cwd, rev, READ_TIMEOUT))
+    except (OSError, subprocess.SubprocessError, release_notes.ReleaseNotesError):
+        return None
+
+
+def unread_fragments(cwd, line):
+    """The fragments a line holds where its tree reads none, by path."""
+    if reads_fragments(cwd, line):
+        return []
+    try:
+        found = release_notes.fragments_at(cwd, line, READ_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [path for path, _ in found if not Path(path).name.startswith(".")]
 
 
 def lines(cwd):
@@ -128,8 +162,8 @@ def unmerged_into_main(cwd, line):
     Weaker than an ancestry: an item reworded on the way across reads as missing. That is a line too
     many on a report, where the ancestry reading was a report nobody could ever clear.
     """
-    there = answer(["show", f"origin/main:{CHANGELOG}"], cwd, READ_TIMEOUT)
-    here = answer(["show", f"{line}:{CHANGELOG}"], cwd, READ_TIMEOUT)
+    there = changelog(cwd, "origin/main")
+    here = changelog(cwd, line, reads_fragments(cwd, line))
     if there is None or here is None:
         return None
     outstanding = [item for item in items(here) if item not in set(items(there))]
@@ -138,7 +172,13 @@ def unmerged_into_main(cwd, line):
 
 def report(cwd):
     for line in lines(cwd):
-        text = answer(["show", f"{line}:{CHANGELOG}"], cwd, READ_TIMEOUT)
+        unread = unread_fragments(cwd, line)
+        if unread:
+            yield ("{} holds {} CHANGELOG fragment{}, starting with {}, and nothing in its tree reads\n"
+                   "one: its release note leaves them out and its package ships them. Write each as an\n"
+                   "entry under that line's `## [Unreleased]` and delete the fragment.").format(
+                       line, len(unread), "" if len(unread) == 1 else "s", unread[0])
+        text = changelog(cwd, line, reads_fragments(cwd, line))
         if text is None:
             continue
         entries = waiting(text)
