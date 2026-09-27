@@ -320,7 +320,7 @@ namespace Velvet.Tests
             s_rowRenderRefused = true;
             s_rowRef = CountRef;
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Component(KeyedAbortBoundaryRender, key: "boundary"));
+            using var mounted = V.Mount(root, V.Component(KeyedAbortBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
 
             // Act
             s_keyedAbortSetTick.Invoke(1);
@@ -365,7 +365,7 @@ namespace Velvet.Tests
             s_rowRenderRefused = true;
             s_rowRef = CountRef;
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Component(AppendBoundaryRender, key: "boundary"));
+            using var mounted = V.Mount(root, V.Component(AppendBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
 
             // Act
             s_appendSetTick.Invoke(1);
@@ -396,6 +396,7 @@ namespace Velvet.Tests
             // Arrange — every old key matches the new side's head, so the time-sliced machine appends the rest.
             s_rowRenderRefused = true;
             s_rowRef = CountRef;
+            Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var nextTree = new VNode[] { V.Label(key: "x", text: "x"), RowAbortedFromInside("d") };
@@ -416,6 +417,7 @@ namespace Velvet.Tests
             // shorter than the old side, which is what sends the keyed diff to rebuild the range.
             s_rowRenderRefused = true;
             s_rowRef = CountRef;
+            Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             Root.RemoveAt(1);
@@ -457,7 +459,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
 
             // Act
-            using var mounted = V.Mount(root, V.Component(GeneralAbortBoundaryRender, key: "boundary"));
+            using var mounted = V.Mount(root, V.Component(GeneralAbortBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
 
             // Assert — the fallback term for the reason the keyed case above gives.
             Assert.That(

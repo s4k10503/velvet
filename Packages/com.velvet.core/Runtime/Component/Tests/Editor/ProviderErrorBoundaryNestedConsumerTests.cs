@@ -215,7 +215,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_siblingThrows = false;
-            using var mounted = V.Mount(_root, V.Component(SiblingBoundaryHostRender, key: "sibling-host"));
+            using var mounted = V.Mount(_root, V.Component(SiblingBoundaryHostRender, key: "sibling-host"), CaughtErrors.Unlogged);
             var atMount = s_siblingSeen;
 
             // Act — the host re-renders, the boundary catches inside that pass, and the consumer then
