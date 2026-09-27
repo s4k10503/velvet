@@ -193,12 +193,10 @@ namespace Velvet
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
 
-            // Cancelled ahead of the duration check, because a play that does not tween still supersedes an
-            // earlier enter whose pending swap would otherwise put that play's target classes back beside this
-            // one's. A variant play's to classes are its resting state, so the cancel puts those back rather
-            // than the cancelled play's.
-            var restingTo = variantMode ? toClasses : null;
-            CancelPending(_pendingEnters, element, restingOverride: restingTo, keptClasses: restingTo);
+            if (!IsPlayableDuration(durationSec))
+            {
+                CancelSwapAhead(element, variantMode ? toClasses : null);
+            }
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -206,6 +204,9 @@ namespace Velvet
             {
                 return;
             }
+
+            // Cancel any existing enter animation.
+            CancelEnter(element);
 
             var staggerDelayMs = (long)(play.AdditionalDelaySec * 1000);
 
@@ -233,6 +234,7 @@ namespace Velvet
                 DelayList = delayList,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
+                SwapAhead = true,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -320,6 +322,7 @@ namespace Velvet
                 return;
             }
 
+            pending.SwapAhead = false;
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
             RunOnSwap(pending);
@@ -970,6 +973,19 @@ namespace Velvet
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
 
+        // What a play that does not tween cancels: an earlier tween enter whose swap has not run, which would
+        // otherwise put that enter's target classes back beside this play's. A swap that has run, and a
+        // reversal a cancelled exit parked, are left running, so a property this play does not name keeps
+        // moving on them. restingTo: a variant play's to classes, which the cancel puts back in place of the
+        // cancelled play's.
+        private void CancelSwapAhead(VisualElement element, string[]? restingTo)
+        {
+            if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
+            {
+                CancelPending(_pendingEnters, element, restingOverride: restingTo);
+            }
+        }
+
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
 
@@ -1488,6 +1504,8 @@ namespace Velvet
             public BezierTweenState? Bezier;
             // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
             public Action? OnSwap;
+            // True from a tween enter's registration until its swap runs; false for every other entry.
+            public bool SwapAhead;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
 

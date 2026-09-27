@@ -11,5 +11,4 @@
 
 - A `V.Motion` label change into a pose whose transition has zero duration, such as
   `StyleTransitionConfig.None`, lands on that pose alone when it follows a tween swap that has not swapped yet.
-  The earlier swap still ran afterwards and put its own pose's classes back beside the new one's. After a
-  tween swap that has swapped, such a change no longer leaves that swap's transition on the element.
+  The earlier swap still ran afterwards and put its own pose's classes back beside the new one's.

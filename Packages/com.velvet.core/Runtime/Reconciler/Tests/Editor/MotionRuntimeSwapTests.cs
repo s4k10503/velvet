@@ -117,6 +117,7 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
             ["half"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+            ["tagged"] = new MotionVariant("tag-b", StyleTransitionConfig.None),
         };
 
         [Component]
@@ -382,6 +383,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(OpacityClasses(Root.Q<VisualElement>("m")), Is.EqualTo("opacity-50"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap leaves a swapped tween's play alone.
+        // So the transition that tween's swap put on the element keeps timing a property the new pose leaves unnamed.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationSwapToAPoseNamingNoOpacityFollows_Then_TheTweensTransitionStays()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(InstantHalfBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Act
+            labels.Set("tagged");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("m")), Is.True);
         }
     }
 }
