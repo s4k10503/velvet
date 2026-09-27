@@ -2218,16 +2218,18 @@ namespace Velvet
         /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
         /// <param name="initial">Mount-time starting variant label. When this Motion also sets
         /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
-        /// and transitions to <c>variants[animate]</c> (its persistent resting state) — whether this Motion is
-        /// the DIRECT child of an AnimatePresence or mounts standalone. <see cref="MotionVariant.Transition"/>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state) — played by
+        /// AnimatePresence, under its <c>initial:</c>, when this Motion is a keyed child's anchor, and by the
+        /// Motion itself on mount anywhere else (the motion guide's <i>Exits</i> section says which Motion
+        /// is the anchor). <see cref="MotionVariant.Transition"/>
         /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
         /// must apply for the enter to play at all.</param>
-        /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
-        /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
-        /// from <c>variants[animate]</c> to <c>variants[exit]</c> before the element unmounts.
-        /// <see cref="MotionVariant.Transition"/> resolves the timing, and
-        /// <see cref="MotionVariant.ClassName"/> the class <c>variants[exit]</c> must apply for the variant
-        /// exit to run at all. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the
+        /// <param name="exit">Exit variant label. When this Motion is the anchor of a keyed AnimatePresence
+        /// child (the motion guide's <i>Exits</i> section says which Motion that is) and also sets
+        /// <paramref name="animate"/> + <paramref name="variants"/>, removal animates from
+        /// <c>variants[animate]</c> to <c>variants[exit]</c> before the element unmounts.
+        /// <see cref="MotionVariant.Transition"/> resolves the timing, whether or not <c>variants[exit]</c>
+        /// applies a class. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the
         /// unmount — set outside one, it is inert and logs a warning.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
         public static MotionNode Motion(
