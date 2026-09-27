@@ -12,20 +12,38 @@ namespace Velvet
         void ClearPooled();
     }
 
-    internal static class VelvetTaskSourcePool
+    // The stack is the main thread's alone: another thread's rent allocates and its return drops the
+    // item. A lock would make that thread safe to pool on too, at a cost every main-thread rent pays.
+    internal sealed class MainThreadPool<T>
+        where T : class
     {
         const int MaxPoolSize = 64;
 
-        static readonly Stack<VelvetTaskSource> VoidSources = new();
+        readonly Stack<T> _items = new();
+
+        internal T? Rent() => VelvetMainThread.IsCurrent && _items.Count > 0 ? _items.Pop() : null;
+
+        internal void Return(T item)
+        {
+            if (VelvetMainThread.IsCurrent && _items.Count < MaxPoolSize)
+            {
+                _items.Push(item);
+            }
+        }
+    }
+
+    internal static class VelvetTaskSourcePool
+    {
+        static readonly MainThreadPool<VelvetTaskSource> VoidSources = new();
 
         internal static VelvetTaskSource Rent()
         {
-            if (VoidSources.Count == 0)
+            var source = VoidSources.Rent();
+            if (source == null)
             {
                 return new VelvetTaskSource();
             }
 
-            var source = VoidSources.Pop();
             source.ClearPooled();
             source.ResetForPool();
             return source;
@@ -39,27 +57,22 @@ namespace Velvet
             }
 
             source.MarkPooled();
-            if (VoidSources.Count < MaxPoolSize)
-            {
-                VoidSources.Push(source);
-            }
+            VoidSources.Return(source);
         }
     }
 
     internal static class VelvetTaskSourcePool<T>
     {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<VelvetTaskSource<T>> Sources = new();
+        static readonly MainThreadPool<VelvetTaskSource<T>> Sources = new();
 
         internal static VelvetTaskSource<T> Rent()
         {
-            if (Sources.Count == 0)
+            var source = Sources.Rent();
+            if (source == null)
             {
                 return new VelvetTaskSource<T>();
             }
 
-            var source = Sources.Pop();
             source.ClearPooled();
             source.ResetForPool();
             return source;
@@ -73,29 +86,23 @@ namespace Velvet
             }
 
             source.MarkPooled();
-            if (Sources.Count < MaxPoolSize)
-            {
-                Sources.Push(source);
-            }
+            Sources.Return(source);
         }
     }
 
     internal static class YieldVelvetTaskSourcePool
     {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<YieldVelvetTaskSource> Sources = new();
+        static readonly MainThreadPool<YieldVelvetTaskSource> Sources = new();
 
         internal static YieldVelvetTaskSource Rent()
         {
-            YieldVelvetTaskSource source;
-            if (Sources.Count == 0)
+            var source = Sources.Rent();
+            if (source == null)
             {
                 source = new YieldVelvetTaskSource();
             }
             else
             {
-                source = Sources.Pop();
                 source.ClearPooled();
                 source.ResetForPool();
             }
@@ -112,10 +119,7 @@ namespace Velvet
             }
 
             source.MarkPooled();
-            if (Sources.Count < MaxPoolSize)
-            {
-                Sources.Push(source);
-            }
+            Sources.Return(source);
         }
     }
 }

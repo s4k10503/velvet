@@ -14,10 +14,18 @@ The Python lane of `base_red_check.py` is not exposed and the reason is worth ke
 the outcome reads as an error rather than a pass. The direct-invocation form is what loses it.
 
     python3 scripts/test_quality/run_suite.py scripts/hooks/test_merge_target.py
+    python3 scripts/test_quality/run_suite.py --jobs 4 scripts/test_quality/test_base_red_check.py
+
+`--jobs N` runs the module in N processes, each executing it as `__main__` and running its share of
+the tests, and refuses unless their counts add up to the one every process loaded. Each process
+still executes the module the way the direct invocation does, so a module that dies during its
+imports is refused there the same way. A class with class-level fixtures stays in one process, so
+they run once.
 
 Exits with the suite's own code where a test ran, and 1 where none did.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -28,6 +36,9 @@ from pathlib import Path
 # is a different failure with the same cost and is refused with the rest.
 RAN = re.compile(r"^Ran (\d+) tests? in ", re.M)
 NO_TESTS = re.compile(r"^NO TESTS RAN", re.M)
+# What a `--jobs` process prints before its tests: how many the whole module loaded.
+LOADED = re.compile(r"^run_suite: the module loaded (\d+) tests?$", re.M)
+SHARD = "--shard-of-jobs"
 
 
 def counted(text):
@@ -38,12 +49,100 @@ def counted(text):
     return int(found.group(1)) if found else None
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("usage: run_suite.py <test module> [args...]", file=sys.stderr)
+def loaded(text):
+    """How many tests a `--jobs` process said the whole module loaded, or None."""
+    found = LOADED.search(text or "")
+    return int(found.group(1)) if found else None
+
+
+def flattened(suite):
+    import unittest
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            yield from flattened(test)
+        else:
+            yield test
+
+
+def units(tests):
+    """The tests in load order, grouped where they have to share a process: a class with class-level
+    fixtures is one unit, so they run once, and every other test is a unit of its own."""
+    import unittest
+    grouped = {}
+    for test in tests:
+        kind = type(test)
+        fixtures = any(getattr(kind, name, None) is not None
+                       and getattr(getattr(kind, name), "__func__", None)
+                       is not getattr(unittest.TestCase, name).__func__
+                       for name in ("setUpClass", "tearDownClass"))
+        grouped.setdefault(kind if fixtures else test, []).append(test)
+    return list(grouped.values())
+
+
+def run_shard(position, count, module):
+    """Executes `module` as `__main__`, and where it calls `unittest.main` runs the units whose place
+    in load order is `position` modulo `count`."""
+    import runpy
+    import unittest
+
+    def shard_main(*_arguments, verbosity=1, **_keywords):
+        tests = list(flattened(unittest.defaultTestLoader.loadTestsFromModule(sys.modules["__main__"])))
+        sys.stderr.write("run_suite: the module loaded {} tests\n".format(len(tests)))
+        chosen = [test for place, unit in enumerate(units(tests)) if place % count == position
+                  for test in unit]
+        result = unittest.TextTestRunner(verbosity=verbosity).run(unittest.TestSuite(chosen))
+        sys.exit(0 if result.wasSuccessful() else 1)
+
+    path = Path(module).resolve()
+    unittest.main = shard_main
+    sys.argv = [str(path)]
+    sys.path[0] = str(path.parent)
+    runpy.run_path(str(path), run_name="__main__")
+    return 0
+
+
+def run_parallel(module, jobs):
+    processes = [subprocess.Popen([sys.executable, str(Path(__file__).resolve()), SHARD, str(position),
+                                   str(jobs), module],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                 for position in range(jobs)]
+    finished = [(process, *process.communicate()) for process in processes]
+    for _, out, err in finished:
+        sys.stdout.write(out)
+        sys.stderr.write(err)
+
+    counts = [counted(err) for _, _, err in finished]
+    totals = {loaded(err) for _, _, err in finished}
+    # A process that died during the module's imports printed neither number, so it is refused here
+    # with one that stopped part way: neither leaves the counts adding up to one loaded total.
+    ran = sum(count or 0 for count in counts)
+    if len(totals) != 1 or ran != next(iter(totals)):
+        print(f"\n{module} ran {counts} tests in its {jobs} processes, which loaded "
+              f"{sorted(totals, key=str)}, so some ran nowhere. A process with no count ran no test:\n"
+              "a module that dies during its own imports exits 0 having measured nothing, and that "
+              "reads\nthe same as a pass. Run it directly to see where it stopped.", file=sys.stderr)
         return 1
-    module = sys.argv[1]
-    done = subprocess.run([sys.executable, module, *sys.argv[2:]],
+    if ran == 0:
+        print(f"\n{module} ran 0 tests.", file=sys.stderr)
+        return 1
+    return 1 if any(process.returncode for process, _, _ in finished) else 0
+
+
+def main():
+    if len(sys.argv) == 5 and sys.argv[1] == SHARD:
+        return run_shard(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4])
+    arguments = sys.argv[1:]
+    jobs = 1
+    if arguments[:1] == ["--jobs"] and len(arguments) >= 2:
+        jobs = max(1, int(arguments[1]) if arguments[1] != "auto" else (os.cpu_count() or 1))
+        arguments = arguments[2:]
+    if not arguments:
+        print("usage: run_suite.py [--jobs N|auto] <test module> [args...]", file=sys.stderr)
+        return 1
+    module = arguments[0]
+    if jobs > 1 and len(arguments) == 1:
+        return run_parallel(module, jobs)
+    done = subprocess.run([sys.executable, module, *arguments[1:]],
                           capture_output=True, text=True)
     sys.stdout.write(done.stdout)
     sys.stderr.write(done.stderr)

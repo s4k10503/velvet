@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   editor, so an `async VelvetTask` method resumes in EditMode. A `UnityEngine.Awaitable` and a BCL
   `Task` are awaited inside one as they stand, with no adapter.
 
+- `VelvetTask.SwitchToMainThread()` brings an `async VelvetTask` body back to Unity's main thread:
+  awaited there it completes at once, and elsewhere it resumes the method on the main thread. A
+  `VelvetTask` awaited on the main thread resumes there whichever thread completes it — the
+  continuation is handed to Unity's main-thread synchronization context rather than run on the
+  completing thread — so a route loader that returns after awaiting `ConfigureAwait(false)` hands its
+  result back on the main thread. `VelvetTask.Yield()` called off the main thread throws
+  `InvalidOperationException` naming the switch. The async guide says what code resumed off the main
+  thread may call.
+
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
   argument position, whatever order the members arrived in; over an empty list it is complete already.
@@ -124,6 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stops — its utility is dropped, the child leaves, an edge is abandoned, or the child is the first of a
   `gap-*` or `divide-*` row and takes no gap or divider — the child shows its own arbitrary values and
   payloads rather than nothing.
+
 
 - A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
   the swap at its target or has the swap's transition drag the spring's frames. The spring takes what
@@ -1039,8 +1049,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
   exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
   class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
-  nothing on screen: the exit label does not reach inheriting children, so the coordinator is held for
-  that timing and then removed, where the classic exit used to play the transition's exit classes on it.
+  nothing on the coordinator itself, which is held until that timing and its inheriting children's
+  exits have finished and then removed, where the classic exit used to play the transition's exit
+  classes on it.
   An `exit:` label the map has no pose for still plays the classic exit.
 
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
@@ -1101,6 +1112,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A removed `AnimatePresence` child plays the exit of each Motion in it that declares or inherits one,
+  as Framer's does: one behind a component, `V.Memoized` or `V.Suspense`, or inside another element or
+  Motion, exits too, and the child stays mounted until the last of those exits completes. Only the
+  child's anchor used to exit, so a keyed `V.List` row rendered by a component vanished at once. A
+  Motion inheriting its labels takes its coordinator's exit label, staggered by the coordinator's exit
+  pose, and `initial: false` suppresses the mount enter of the Motions the presence's first render
+  creates outside a `V.Portal`, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
+  presence's. A variant Motion whose classic exit completed no longer keeps that exit's class when its
+  key returns before the removal.
 
 - An error an error boundary catches is logged, as React logs it. It was swallowed: the boundary showed
   its fallback and nothing reached the console, so a mistake a boundary caught — a hook-count violation

@@ -260,6 +260,7 @@ namespace Velvet
             var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient,
                 out var variantClasses, out _);
             var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+            _ctx.MotionNodes[element] = motionNode;
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the
             // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
             // it for the expansion that is emitting this keyed child right now.
@@ -346,13 +347,11 @@ namespace Velvet
             // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
             // purely a transient visual state: a later patch (PatchMotion) always diffs against the
             // resting baseline and never replays this entrance.
-            // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
+            // Gated on IDENTITY: the presence expansion drives an enter for
             // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
-            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
-            // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
-            // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
-            // managed at all and must keep this mount enter, or wrapping unrelated content in
-            // AnimatePresence would silently disable it.
+            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly), so every
+            // OTHER Motion created while that expansion is on the stack plays this one, unless
+            // PresenceSuppressesInitial says the presence's initial: false covers it.
             if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
             {
                 if (GeneralPathReconciler.TryResolveVariantInitial(
@@ -363,9 +362,17 @@ namespace Velvet
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
-                    _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                        standaloneTransition,
-                        GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
+                    var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
+                    if (_ctx.PresenceSuppressesInitial)
+                    {
+                        // The same completion a suppressed anchor enter reports.
+                        enterComplete?.Invoke();
+                    }
+                    else
+                    {
+                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses,
+                            standaloneToClasses, standaloneTransition, enterComplete);
+                    }
                 }
                 else
                 {
@@ -373,8 +380,7 @@ namespace Velvet
                     // configuration is not yet driven by the standalone enter), the label is missing
                     // from Variants / maps to an empty class, or neither the target variant nor this
                     // Motion carries a transition to play on. Warn instead of silently mounting inert,
-                    // matching the Exit gate's own inert-configuration diagnostic in
-                    // WarnIgnoredMotionUtilities.
+                    // matching the exit diagnostic in WarnIgnoredMotionUtilities.
                     FiberLogger.LogWarning("Motion",
                         "initial is set but has no resolvable enter: this Motion needs its own animate + "
                         + "variants (with initial mapping to a non-empty class) for a standalone mount "
@@ -454,28 +460,15 @@ namespace Velvet
                     "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
                     + "Wrap the Motion around a z-managed Div instead.");
             }
-            // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
-            // the unmount for a removal to animate against, and AnimatePresence is what does that — so
-            // exit outside one is genuinely inert. Initial is NOT warned here (see the standalone enter
-            // in CreateForMotionNode): unlike exit, a mount-time enter needs no deferred unmount to play
-            // against, so it works on any Motion (initial/animate apply anywhere; only exit is
-            // AnimatePresence-only).
-            if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
+            // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
+            // Warned only where this reconciler holds no presence at all: a Motion a component inside a
+            // presence child mounts on its own re-render, or a portal drains, is created with no presence
+            // expansion on the stack and still exits.
+            if (_ctx.PresenceStates.Count == 0 && motionNode.Exit != null)
             {
                 FiberLogger.LogWarning("Motion",
                     "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
                     + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
-            }
-            // Evaluated at create only, which is why the message speaks of now: a later render can make this
-            // Motion an anchor, or stop it being one.
-            else if (motionNode.Exit != null && !ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "exit on this Motion is inert while it is not the anchor of a keyed AnimatePresence child, "
-                    + "and it is not one now. The anchor is the child itself when it is a Motion, else the "
-                    + "first Motion found through the V.Provider, V.Fragment or z-managed element it wraps; "
-                    + "a Motion behind a component, V.Memoized or V.Suspense, or inside any other element "
-                    + "is none.");
             }
         }
 

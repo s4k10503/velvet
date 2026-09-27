@@ -534,6 +534,9 @@
 [Velvet] method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
 [Velvet] method Velvet.VelvetTask+Awaiter`1[T].GetResult(): T
 [Velvet] method Velvet.VelvetTask+Awaiter`1[T].OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.GetResult(): System.Void
+[Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable.GetAwaiter(): Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter
 [Velvet] method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
 [Velvet] method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
@@ -541,6 +544,7 @@
 [Velvet] method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
 [Velvet] method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
 [Velvet] method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.SwitchToMainThread(): Velvet.VelvetTask+SwitchToMainThreadAwaitable
 [Velvet] method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
 [Velvet] method Velvet.VelvetTask.WhenAll(Velvet.VelvetTask[]): Velvet.VelvetTask
 [Velvet] method Velvet.VelvetTask.WhenAll`1(Velvet.VelvetTask`1[T][]): Velvet.VelvetTask`1[T[]]
@@ -935,6 +939,7 @@
 [Velvet] property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
 [Velvet] property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
 [Velvet] property Velvet.VelvetTask+Awaiter`1[T].IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.IsCompleted: System.Boolean
 [Velvet] property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
 [Velvet] property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
 [Velvet] property Velvet.VelvetTaskCompletionSource.Task: Velvet.VelvetTask
@@ -1126,6 +1131,8 @@
 [Velvet] type Velvet.VelvetTask
 [Velvet] type Velvet.VelvetTask+Awaiter
 [Velvet] type Velvet.VelvetTask+Awaiter`1[T]
+[Velvet] type Velvet.VelvetTask+SwitchToMainThreadAwaitable
+[Velvet] type Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter
 [Velvet] type Velvet.VelvetTaskCompletionSource
 [Velvet] type Velvet.VelvetTaskCompletionSource`1[T]
 [Velvet] type Velvet.VelvetTaskExtensions

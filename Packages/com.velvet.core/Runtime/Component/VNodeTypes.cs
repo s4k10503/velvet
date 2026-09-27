@@ -180,23 +180,24 @@ namespace Velvet
         /// <c>variants[Animate]</c> (which it then rests at, persistently).
         /// <see cref="MotionVariant.Transition"/> resolves the timing, and
         /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
-        /// enter to play at all. AnimatePresence plays it, under its own <c>initial:</c>, when this Motion is
-        /// a keyed child's anchor (the motion guide's <i>Exits</i> section says which Motion that is); any
-        /// other Motion plays it itself on mount — <c>initial</c>/<c>animate</c> apply to any Motion node;
-        /// AnimatePresence is only required for <see cref="Exit"/>. Null = no variant initial state.
+        /// enter to play at all. AnimatePresence plays it when this Motion is a keyed child's anchor (the
+        /// motion guide's <i>Exits</i> section says which Motion that is); any other Motion plays it itself on
+        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal —
+        /// <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence is only required for
+        /// <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
         public string? Initial { get; init; }
 
         /// <summary>
-        /// Exit variant label. When this Motion is the anchor of a keyed AnimatePresence child (the motion
-        /// guide's <i>Exits</i> section says which Motion that is) and sets <see cref="Exit"/> +
-        /// <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
-        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> before the element unmounts, on the timing
-        /// <see cref="MotionVariant.Transition"/> resolves, whether or not <c>variants[Exit]</c> applies a
-        /// class (see <see cref="MotionVariant.ClassName"/>). A label <see cref="Variants"/> has no pose for
+        /// Exit variant label. When the keyed AnimatePresence child this Motion sits in, however deep, is
+        /// removed, the Motion animates from its resting pose to <c>variants[Exit]</c> before the child
+        /// unmounts, on the timing <see cref="MotionVariant.Transition"/> resolves, whether or not
+        /// <c>variants[Exit]</c> applies a class (see <see cref="MotionVariant.ClassName"/>), and hands the
+        /// label down to the Motions inheriting its labels. A label <see cref="Variants"/> has no pose for
         /// plays the classic exit instead.
         /// Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
-        /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.
+        /// defer the unmount for the removal to animate against — so it is inert outside one, which a warning
+        /// reports where the mounted tree holds no AnimatePresence at all.
         /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
         public string? Exit { get; init; }
