@@ -729,15 +729,16 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
-A third way is being right about the wrong branch. Two of the preconditions over a merge are asked
-of a base — whether the head contains it, and whether it holds an unpublished release — and both
-named `main` for as long as `main` was the only branch taking pull requests. So the day a
-maintenance line was cut, both refused its release outright and no case disagreed: nothing in the
-repository named a second branch at all. The base is the pull request's own field, read through
+A third way is being right about the wrong branch. Two of the preconditions over a merge were once
+asked of a base by naming `main` — whether the head contained it, and whether it held an unpublished
+release — for as long as `main` was the only branch taking pull requests. So the day a maintenance
+line was cut, both refused its release outright and no case disagreed: nothing in the repository
+named a second branch at all. The base is the pull request's own field, read through
 `.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses every
 guard in the directory a pull request based on a branch that is not `main`, in a repository where
-`main` holds both of those things and the named base holds neither. A guard that judges either of
-them against `main` fails it without anybody having remembered to write a case.
+`main` holds a failed push run and an unpublished release and the named base holds neither. A guard
+that judges either of them against `main` fails it without anybody having remembered to write a
+case.
 
 A fourth is being right about the wrong tree. A `PreToolUse` hook is handed the directory the tool
 call started in, and `cd <worktree> && gh pr create` runs somewhere else — so a guard reading that
@@ -864,7 +865,26 @@ passes `--base` anything else.
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
 combination it exists to protect any better than a merge does. What does test that combination is a merge
-queue, which is a separate change.
+queue, which is a separate change. `settle.py merge` and the `gh pr merge` guards do not require it
+either: a pull request whose own checks passed on its head merges while behind, once GitHub reports no
+conflict.
+
+What they require instead is a green base: they refuse a merge onto a base whose required workflows
+last failed on push, so a red `main` is fixed or reverted first. A head is exempt where it contains the
+failing commit and its own Unity suite jobs concluded success, which is how the fix and the revert land;
+`Required checks (Unity)` passes a suite job skipped for want of a licence secret, so a skip is not a
+run. A first attempt still in progress is passed over, so it refuses nothing and the newest verdict
+among the last 20 push runs stands; a re-run in progress reads as a failure until it finishes. A base
+with no push runs has no verdict and refuses nothing, which is every maintenance branch: both workflows
+run on push to `main` alone. `scripts/pr/red_base.py` decides all of that, and `settle.py` and
+`merge_unchecked_against_base.py` both ask it.
+
+They also require the head to contain its base's newest release commit — the commit that dated a
+CHANGELOG section, which `published_check.release_commit` finds. A branch cut before it filed its entry
+under `[Unreleased]`, a clean merge can file that entry inside the section the release closed, and
+`breaking_in_flight_check.py`, which reads the dated sections, runs on pull requests rather than on
+push. So a head behind a release takes its base in with `settle.py update`, and its pull request checks
+run again over the result. A head behind only commits that date nothing is not refused.
 
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
@@ -979,9 +999,10 @@ branch whose window is open, and `Test ▸ publication` fails for one whose chec
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
 `strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
-move, so the merge button on github.com stays enabled for it. What refuses there is `merge_onto_unpublished_release.py`, `stale_merge.py`
-and `settle.py`'s contains-base precondition, none of which github.com consults; turning the strict
-policy on is what would close it server-side, at the cost that buys.
+move, so the merge button on github.com stays enabled for it. What refuses there is
+`merge_onto_unpublished_release.py` and `settle.py`'s publication precondition, neither of which
+github.com consults; turning the strict policy on is what would close it server-side, at the cost
+that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready

@@ -15,12 +15,13 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
-The other four merge preconditions have their own hooks: `stale_merge.py` for a branch behind its
-base, `merge_without_branch_deletion.py` for the flag, `merge_branch_held_by_worktree.py` for a
-branch git will refuse to delete, `merge_onto_unpublished_release.py` for a base holding a release
-nobody dispatched. `scripts/pr/settle.py` reports these five together with two more it
-holds alone — a draft head and one on another repository, which its own docstring says why of — and
-that reporting is the convenience; these are what hold when nobody runs it.
+The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
+whose required workflows last failed on push, a head behind the base's newest release commit, and a
+head on another repository; `merge_without_branch_deletion.py` for the flag;
+`merge_branch_held_by_worktree.py` for a branch git will refuse to delete;
+`merge_onto_unpublished_release.py` for a base holding a release nobody dispatched.
+`scripts/pr/settle.py` reports these together with one more it holds alone — a draft head — and that
+reporting is the convenience; these are what hold when nobody runs it.
 """
 
 import json
@@ -155,7 +156,7 @@ def main():
         "Branch protection does not catch this. It requires the aggregate contexts without requiring "
         "the head to be up to date, which is deliberate — the alternative serialises every merge "
         "behind the Unity matrix — so a head whose own run never happened can satisfy it.\n\n"
-        "See all five merge preconditions at once:\n"
+        "See every merge precondition at once:\n"
         "  python3 scripts/pr/settle.py merge <pr> --dry-run\n"
     )
     return 2

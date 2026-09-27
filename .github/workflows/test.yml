@@ -196,8 +196,8 @@ jobs:
   #
   # It is also only half a guard where it does run: a pull request that went green BEFORE the release
   # landed keeps that green result, since main does not require heads to be up to date
-  # (CONTRIBUTING.md). settle.py's contains-base precondition and stale_merge.py are what refuse such
-  # a merge until the branch takes main in, and that push is a new head, which lands here.
+  # (CONTRIBUTING.md). settle.py's publication precondition and merge_onto_unpublished_release.py
+  # are what refuse such a merge, because they read the base itself rather than this job's result.
   #
   # fetch-depth 0 so whatever commit scripts/ci/change_base.py names is present, without a claim about
   # how far back a window has to reach. A base that cannot be read raises here rather than answering,
