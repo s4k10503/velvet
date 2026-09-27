@@ -333,6 +333,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, Named("plain-row-0").worldBound.size)));
         }
 
+        // GREEN_ON_BASE(characterization): the base's wrapper carries none of the element's classes, so nothing
+        // animates its mask. Mirroring `transition-all` without suspending it for the mask writes reddens this.
         [Test]
         public void Given_AClippedCardWithTransitionAll_When_LaidOut_Then_ItsWrapperShowsTheBakedMask()
         {
