@@ -4308,6 +4308,18 @@ class NarrowedAttemptTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
 
+    def test_Given_ANarrowedRunKilledAtItsBound_When_TheWholeSuiteThenPasses_Then_ItSurvivesRatherThanHangs(self):
+        # Arrange — the 90 s bound is the narrowed launch's own; the hang verdict reads the whole
+        # suite's run against the whole baseline, and that run finished.
+        campaign = AreaCampaign()
+        campaign.narrowed_times_out = True
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.verdict().get("verdict"), mutation_check.SURVIVED)
+
     def test_Given_ANarrowedRunWhereOnlyATextReaderFailed_When_Read_Then_TheWholeSuiteDecides(self):
         # Arrange
         campaign = AreaCampaign()
