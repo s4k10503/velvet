@@ -1744,6 +1744,40 @@ class FragmentsInTheSection(ReleaseHistory):
         # Assert
         self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
 
+    def in_flight(self, relative, text):
+        """A major closing on main while an open branch adds one malformed-or-not file under the
+        fragment directory; returns what the check says with a body naming nothing."""
+        root, commits = self.history(OPEN)
+        git(root, "checkout", "--quiet", "-b", "in-flight")
+        path = root / FRAGMENT.replace("breaking/api.md", relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        git(root, "add", "-A")
+        git(root, "commit", "--quiet", "-m", "in flight")
+        branch = revision(root)
+        git(root, "checkout", "--quiet", "main")
+        self.commit(root, CLOSED, "release")
+        return run(root, commits[0], listing(377, branch), body="Closes nothing in particular.")
+
+    def test_Given_AMalformedBreakingFragmentInFlight_When_AMajorCloses_Then_ThePullRequestIsNamedWithTheFile(self):
+        # Arrange -- what it adds cannot be read, and the release still has to say whether it
+        # carries that branch.
+        done = self.in_flight("breaking/bad.md", "- An entry under no kind.\n")
+
+        # Act / Assert
+        self.assertEqual((done.returncode, "#377" in done.stderr, "breaking/bad.md" in done.stderr),
+                         (UNNAMED, True, True))
+
+    # GREEN_ON_BASE(characterization): the base reads no fragment at all, so one on a branch is nothing to it.
+    # What this pins is that reading fragments did not make somebody's malformed unreleased one a
+    # reason every release goes unread.
+    def test_Given_AMalformedUnreleasedFragmentInFlight_When_AMajorCloses_Then_ItIsNotThisReadingsToRefuse(self):
+        # Arrange
+        done = self.in_flight("unreleased/bad.md", "- An entry under no kind.\n")
+
+        # Act / Assert
+        self.assertEqual(done.returncode, 0)
+
     # GREEN_ON_BASE(characterization): a base reading no fragment sees nothing leave the section.
     # This is the control for the deletion above, which is red there for that same reason.
     def test_Given_ABreakingFragmentMovedToTheOpenSection_When_Read_Then_ItPasses(self):

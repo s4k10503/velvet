@@ -38,6 +38,9 @@ DEFAULT_FRAGMENTS = REPO_ROOT / "Packages" / "com.velvet.core" / "Changelog~"
 FRAGMENT_PATH = DEFAULT_FRAGMENTS.relative_to(REPO_ROOT).as_posix()
 FRAGMENT_SECTIONS = {"unreleased": OPEN_SECTION, "breaking": BREAKING_SECTION}
 FRAGMENT_KINDS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+# A tree carrying this reads fragments. A maintenance line cut before fragments existed does not, and
+# takes its entries inline; CONTRIBUTING.md's maintenance-line section owns that rule.
+FRAGMENT_COMPILER = "scripts/release/compile_changelog.py"
 
 
 class ReleaseNotesError(Exception):
@@ -341,13 +344,17 @@ def compose(changelog_text, fragments):
 
 
 def fragments_in(directory=DEFAULT_FRAGMENTS):
-    """Every file under the fragment directory on disk, as `compose` takes them."""
+    """Every file under the fragment directory on disk, as `compose` takes them.
+
+    A dotfile's text is not read: `compose` passes it over, and a file browser's is not text.
+    """
     root = Path(directory)
     found = []
     for folder, _, names in os.walk(root):
         for name in names:
             path = Path(folder, name)
-            found.append((path.relative_to(root).as_posix(), path.read_text(encoding="utf-8")))
+            text = "" if name.startswith(".") else path.read_text(encoding="utf-8")
+            found.append((path.relative_to(root).as_posix(), text))
     return sorted(found)
 
 
@@ -457,6 +464,17 @@ def parse_args(argv):
 def main(argv=None):
     args = parse_args(argv)
     tag = args.tag or f"v{args.version}"
+    # The note is built from the file alone, so a fragment still beside it is an entry the release
+    # ships and the note leaves out: one merged after the release pull request went green lands here.
+    waiting = [path for path, _ in fragments_in(Path(args.changelog).parent / DEFAULT_FRAGMENTS.name)
+               if not Path(path).name.startswith(".")]
+    if waiting:
+        print(f"error: {len(waiting)} CHANGELOG fragment(s) still sit beside the CHANGELOG, starting "
+              f"with {waiting[0]}, and this note would describe none of them. Fold them into the "
+              f"version with {FRAGMENT_COMPILER} before its section is renamed, as CONTRIBUTING.md's "
+              f"release section gives, and dispatch from that commit.",
+              file=sys.stderr)
+        return 1
     try:
         notes = build_notes(
             Path(args.changelog).read_text(encoding="utf-8"),

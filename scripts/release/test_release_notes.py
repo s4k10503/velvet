@@ -7,6 +7,7 @@ Run: python3 scripts/release/test_release_notes.py
 import contextlib
 import io
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -694,39 +695,105 @@ class FragmentReadings(unittest.TestCase):
 
 
 class CompileChangelog(unittest.TestCase):
-    """The release step that writes the fragments into the file and deletes them."""
+    """The release step that writes the committed fragments into the file and deletes them."""
 
-    def test_Given_FragmentsBesideTheChangelog_When_Compiled_Then_TheFileIsTheComposedReading(self):
+    def project(self, root):
+        """A repository at `root` whose HEAD holds INLINE, one fragment and a `.gitkeep`, with a
+        file browser's binary dotfile beside them on disk. Returns (the CHANGELOG, the fragment
+        directory)."""
+        changelog = Path(root, "Packages/com.velvet.core/CHANGELOG.md")
+        changelog.parent.mkdir(parents=True)
+        changelog.write_text(INLINE, encoding="utf-8")
+        fragments = Path(root, release_notes.FRAGMENT_PATH)
+        (fragments / "unreleased").mkdir(parents=True)
+        (fragments / "unreleased" / "fix.md").write_text("### Fixed\n\n- A fragment fix.\n")
+        (fragments / "unreleased" / ".gitkeep").write_text("")
+        git(root, "init", "--quiet", "--initial-branch=main")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+        git(root, "add", "-A")
+        git(root, "commit", "--quiet", "-m", "fragments")
+        (fragments / "unreleased" / ".DS_Store").write_bytes(b"\x00\x01\xff\xfe")
+        return changelog, fragments
+
+    def test_Given_CommittedFragments_When_Compiled_Then_TheFileIsTheComposedReading(self):
         # Arrange -- imported here rather than at the top, so a tree without the script fails this
         # case alone rather than every case in the module.
         import compile_changelog
         with tempfile.TemporaryDirectory() as root:
-            changelog = Path(root, "CHANGELOG.md")
-            changelog.write_text(INLINE, encoding="utf-8")
-            fragments = Path(root, "Changelog~")
-            (fragments / "unreleased").mkdir(parents=True)
-            (fragments / "unreleased" / "fix.md").write_text("### Fixed\n\n- A fragment fix.\n")
-            (fragments / "unreleased" / ".gitkeep").write_text("")
-            expected = release_notes.compose(INLINE, release_notes.fragments_in(fragments))
+            changelog, fragments = self.project(root)
+            expected = release_notes.compose(INLINE, release_notes.fragments_at(root, "HEAD"))
 
             # Act
             with contextlib.redirect_stdout(io.StringIO()):
-                compile_changelog.main(["--changelog", str(changelog), "--fragments", str(fragments)])
+                compile_changelog.main(["--project", root])
 
-            # Assert — the `.gitkeep` stays, since the directory is where the next fragment goes.
-            self.assertEqual((changelog.read_text(encoding="utf-8"), release_notes.fragments_in(fragments)),
-                             (expected, [("unreleased/.gitkeep", "")]))
+            # Assert — the dotfiles stay, the `.gitkeep` because the directory is where the next
+            # fragment goes.
+            self.assertEqual((changelog.read_text(encoding="utf-8"),
+                              sorted(path for path, _ in release_notes.fragments_in(fragments))),
+                             (expected, ["unreleased/.DS_Store", "unreleased/.gitkeep"]))
+
+    def test_Given_AFragmentNoCommitHolds_When_Compiled_Then_NothingIsWritten(self):
+        # Arrange -- compiled, it would put an entry in the note for a change no commit carries.
+        import compile_changelog
+        with tempfile.TemporaryDirectory() as root:
+            changelog, fragments = self.project(root)
+            (fragments / "unreleased" / "stray.md").write_text("### Fixed\n\n- Nobody's fix.\n")
+
+            # Act
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = compile_changelog.main(["--project", root])
+
+            # Assert
+            self.assertEqual((code, changelog.read_text(encoding="utf-8")), (1, INLINE))
+
+
+class BuildingANoteBesideAFragment(unittest.TestCase):
+    def test_Given_AFragmentBesideTheChangelog_When_TheNoteIsBuilt_Then_ItIsRefused(self):
+        # Arrange -- one merged after the release pull request went green: the release ships its
+        # change, and a note built from the file alone describes none of it.
+        with tempfile.TemporaryDirectory() as root:
+            Path(root, "CHANGELOG.md").write_text(COMPLETE, encoding="utf-8")
+            Path(root, "package.json").write_text(json.dumps({"unity": "6000.3"}), encoding="utf-8")
+            argv = ["--version", "2.0.0", "--repo", REPO, "--changelog", str(Path(root, "CHANGELOG.md")),
+                    "--package-json", str(Path(root, "package.json")),
+                    "--output", str(Path(root, "note.md"))]
+            with contextlib.redirect_stderr(io.StringIO()):
+                alone = release_notes.main(argv)
+            Path(root, "Changelog~", "unreleased").mkdir(parents=True)
+            Path(root, "Changelog~", "unreleased", "late.md").write_text(
+                "### Fixed\n\n- A late fix.\n")
+
+            # Act
+            with contextlib.redirect_stderr(io.StringIO()):
+                beside = release_notes.main(argv)
+
+        # Assert -- the note built alone rides along, since a builder refusing everything refuses
+        # this too.
+        self.assertEqual((alone, beside), (0, 1))
 
 
 class FragmentsDoNotShip(unittest.TestCase):
-    def test_Given_TheSplitThatPublishesThePackage_When_ItStripsDeveloperFiles_Then_TheFragmentsGo(self):
-        # Arrange — the split is package-at-root, so the path it sees starts below the package.
+    def test_Given_TheFilesUnderTheFragmentDirectory_When_TheSplitStripsDeveloperFiles_Then_EachGoes(self):
+        # Arrange — the files this tree holds rather than a sample path. The UPM dispatch runs main's
+        # copy of this module over the line it publishes, and a line cut before fragments existed
+        # neither strips nor reads one, so a fragment picked onto it is refused here rather than
+        # shipped undescribed. On main the directory's `.gitkeep`s are what this reads. The split is
+        # package-at-root, so the path it sees starts below the package.
         workflow = (REPO_ROOT / ".github" / "workflows" / "upm.yml").read_text(encoding="utf-8")
         pattern = re.search(r"^\s*REMOVE=.*grep -E '([^']+)'", workflow, re.M).group(1)
-        fragment = release_notes.FRAGMENT_PATH.split("/", 2)[2] + "/unreleased/fix.md"
+        package = release_notes.DEFAULT_FRAGMENTS.parent
+        held = [Path(folder, name).relative_to(package).as_posix()
+                for folder, _, names in os.walk(release_notes.DEFAULT_FRAGMENTS) for name in names]
 
-        # Act / Assert
-        self.assertRegex(fragment, pattern)
+        # Act
+        shipped = [path for path in held if not re.search(pattern, path)]
+
+        # Assert
+        self.assertEqual(shipped, [],
+                         "this tree's upm split would publish these, and a tree whose split keeps "
+                         "fragments has a release that reads none: write them as inline entries")
 
 
 class ThisRepositorysChangelog(unittest.TestCase):

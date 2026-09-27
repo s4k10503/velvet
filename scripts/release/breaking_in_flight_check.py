@@ -99,9 +99,12 @@ def at(rev, path, cwd=None):
     return out
 
 
-def changelog_at(rev, cwd=None):
+def changelog_at(rev, cwd=None, directories=None):
     """The CHANGELOG at a revision with that revision's fragments filed into its open sections, or
-    None where git could not show either. A fragment `release_notes.compose` refuses raises."""
+    None where git could not show either. A fragment `release_notes.compose` refuses raises.
+
+    `directories` keeps only the fragments under those, by name, for a caller reading one section.
+    """
     text = at(rev, CHANGELOG, cwd)
     if text is None:
         return None
@@ -109,6 +112,9 @@ def changelog_at(rev, cwd=None):
         fragments = release_notes.fragments_at(cwd or ".", rev, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
+    if directories is not None:
+        fragments = [(path, body) for path, body in fragments
+                     if Path(path).parts[0] in directories]
     return release_notes.compose(text, fragments)
 
 
@@ -136,6 +142,10 @@ def open_pull_requests(repo):
         return None, str(failure)
 
 
+BREAKING_DIRECTORIES = {name for name, heading in release_notes.FRAGMENT_SECTIONS.items()
+                        if heading == BREAKING}
+
+
 def adds_breaking(pull, base):
     """Whether the branch holds a breaking entry the base does not.
 
@@ -146,14 +156,19 @@ def adds_breaking(pull, base):
     and the objects from a checkout taken before it, so any pull request pushed since this run
     started names a commit that is not here. That is ordinary while a queue is draining, and it was
     reported as something the reader should go and fetch.
+
+    Only the breaking fragments are composed, so a malformed fragment of the other section on
+    somebody's branch is not this reading's to refuse. A malformed breaking one is answered as an
+    entry naming it: what it adds cannot be read, and the release still has to say whether it
+    carries that branch.
     """
     try:
-        theirs = changelog_at(pull["headRefOid"])
+        theirs = changelog_at(pull["headRefOid"], directories=BREAKING_DIRECTORIES)
         if theirs is None:
             run(["git", "fetch", "--quiet", "--depth", "1", "origin", pull["headRefOid"]], timeout=60)
-            theirs = changelog_at(pull["headRefOid"])
-    except release_notes.ReleaseNotesError:
-        return None
+            theirs = changelog_at(pull["headRefOid"], directories=BREAKING_DIRECTORIES)
+    except release_notes.ReleaseNotesError as malformed:
+        return [f"- malformed fragment {malformed}"]
     if theirs is None:
         return None
     return [entry for entry in section(theirs, BREAKING)
