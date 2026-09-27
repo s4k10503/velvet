@@ -113,6 +113,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The preview-tooling guide's headless capture section now says when the target texture holds a
+  story. In Edit Mode the panel writes it on a later editor frame rather than during
+  `VelvetPreviewHost.Mount`, so a harness that reads the texture back in the frame it mounted in does
+  not find the story there; one that waits editor frames first captures it with public API alone. The
+  guide named no frame to wait for.
+
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
   key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
