@@ -1,3 +1,5 @@
+using System;
+using System.Diagnostics;
 using System.Threading;
 using NUnit.Framework;
 
@@ -7,6 +9,8 @@ namespace Velvet.Tests
     internal sealed class VelvetTaskCrossThreadCompletionEditorTests
     {
         const int Iterations = 2000;
+
+        static readonly TimeSpan StallBound = TimeSpan.FromSeconds(5);
 
         [Test]
         public void Given_TasksFaultedOnAnotherThread_When_TheMainThreadSeesEachComplete_Then_EveryGetResultThrowsTheFault()
@@ -23,20 +27,27 @@ namespace Velvet.Tests
             {
                 for (var i = 0; i < Iterations; i++)
                 {
-                    step.SignalAndWait();
+                    if (!step.SignalAndWait(StallBound))
+                    {
+                        return;
+                    }
+
                     sources[i].TrySetException(new System.InvalidOperationException("fault"));
                 }
             });
             var swallowed = 0;
+            var stalled = false;
 
             // Act
             worker.Start();
-            for (var i = 0; i < Iterations; i++)
+            for (var i = 0; i < Iterations && !stalled; i++)
             {
-                step.SignalAndWait();
+                step.SignalAndWait(StallBound);
                 var task = sources[i].Task;
-                while (!task.Status.IsCompleted())
+                var waited = Stopwatch.StartNew();
+                while (!task.Status.IsCompleted() && !stalled)
                 {
+                    stalled = waited.Elapsed > StallBound;
                 }
 
                 try
@@ -49,10 +60,10 @@ namespace Velvet.Tests
                 }
             }
 
-            worker.Join();
+            worker.Join(StallBound);
 
             // Assert
-            Assert.That(swallowed, Is.Zero);
+            Assert.That((stalled, swallowed), Is.EqualTo((false, 0)));
         }
     }
 }
