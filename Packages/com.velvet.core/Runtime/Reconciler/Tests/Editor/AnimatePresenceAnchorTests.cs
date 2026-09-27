@@ -277,11 +277,13 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, HostChildCount, s_exitsCompleted), Is.EqualTo((1, 0, 1)));
         }
 
-        [Test]
-        public void Given_AComponentChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible()
+        // "element" puts the Motion below the ghost's first element, which the removal's own cancel reaches.
+        [TestCase("component")]
+        [TestCase("element")]
+        public void Given_AChildExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItsMotionRestsVisible(string wrapper)
         {
             // Arrange
-            using var mounted = MountSettled("component", "a");
+            using var mounted = MountSettled(wrapper, "a");
             using var keys = s_keyStore;
             var before = Root.Q<VisualElement>("item");
             keys.Set(string.Empty);

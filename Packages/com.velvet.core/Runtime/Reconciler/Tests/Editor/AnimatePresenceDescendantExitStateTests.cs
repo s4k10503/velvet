@@ -24,11 +24,12 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100",
         };
 
-        // No channel a spring can drive, so a spring exit over this pair completes inside the removing pass.
+        // Classes no utility defines, so a spring finds no channel to drive and an exit over them completes
+        // inside the removing pass.
         private static readonly Dictionary<string, MotionVariant> s_recolor = new()
         {
-            ["hidden"] = "bg-red-500",
-            ["visible"] = "bg-blue-500",
+            ["hidden"] = "pose-exit",
+            ["visible"] = "pose-rest",
         };
 
         private readonly record struct KeySetState(string Keys);
@@ -182,14 +183,16 @@ namespace Velvet.Tests
             using var mounted = MountSettled("spring-row", keys);
             keys.Set(string.Empty);
             mounted.FlushStateForTest();
-            var whileParked = Entries(mounted);
+            var item = _sim.rootVisualElement.Q<VisualElement>("item");
+            var whileParked = Entries(mounted) + ","
+                + mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item);
 
             // Act
             keys.Set("a");
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(whileParked + "|" + Entries(mounted), Is.EqualTo("0,1,1,1|0,1,0,0"));
+            // Assert — parked with nothing still playing, then let go of.
+            Assert.That(whileParked + "|" + Entries(mounted), Is.EqualTo("0,1,1,1,False|0,1,0,0"));
         }
     }
 }
