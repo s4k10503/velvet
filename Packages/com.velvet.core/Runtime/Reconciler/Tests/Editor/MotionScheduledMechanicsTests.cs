@@ -59,6 +59,7 @@ namespace Velvet.Tests
         {
             base.SetUp();
             s_setMoved = default;
+            s_setStop = default;
             s_bump = null;
             s_store = null;
         }
@@ -120,6 +121,91 @@ namespace Velvet.Tests
             // reporting back to StyleKeyword.Auto / 0 the way MotionSpringDriver.ClearInlineOverrides always
             // leaves a settled channel.
             Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        private static StateUpdater<int> s_setStop;
+
+        // Three stops along x, transition-transform so the tween takes a transition suspension.
+        [Component]
+        private static VNode ThreeStopBoxRender()
+        {
+            var (stop, setStop) = Hooks.UseState(0);
+            s_setStop = setStop;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "shared",
+                    layoutId: "shared-box",
+                    transition: new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f },
+                    className: $"absolute left-[{stop * 200}px] top-[0px] w-[100px] h-[100px] transition-transform"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWhoseTweenSettled_When_ItMovesAgain_Then_TheInverseTranslateAppliesAgain()
+        {
+            // Arrange — one move, played out to rest.
+            using var mounted = V.Mount(Root, V.Component(SharedBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+            AdvancePast(2f);
+
+            // Act — move back to where it started.
+            s_setMoved.Invoke(false);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near its old screen position again, 200px to the right of the new one.
+            Assert.That(element.style.translate.value.x.value, Is.GreaterThan(50f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already stops a departing element's tween at teardown.
+        // The tick's new bookkeeping must go on doing so.
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItIsTornDown_Then_ItsTweenStopsWritingToIt()
+        {
+            // Arrange
+            var mounted = V.Mount(Root, V.Component(SharedBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+            mounted.Dispose();
+            var atTeardown = element.style.translate.value.x.value;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — nothing has written a later frame.
+            Assert.That(element.style.translate.value.x.value, Is.EqualTo(atTeardown));
+        }
+
+        [Test]
+        public void Given_ALayoutIdTweenSupersededMidFlight_When_TheLastTweenSettles_Then_TheElementsTransitionsAreHandedBack()
+        {
+            // Arrange — three moves, each landing while the tween before it is still in flight.
+            using var mounted = V.Mount(Root, V.Component(ThreeStopBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            for (var stop = 1; stop <= 3; stop++)
+            {
+                s_setStop.Invoke(stop);
+                mounted.FlushStateForTest();
+                Tick();
+                Tick();
+            }
+
+            // Act
+            AdvancePast(3f);
+
+            // Assert — every tween has settled and both inline slots are back with the classes.
+            Assert.That((element.style.translate.keyword, element.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

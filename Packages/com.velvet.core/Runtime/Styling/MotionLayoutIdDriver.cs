@@ -66,10 +66,11 @@ namespace Velvet
                 var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
                 if (state == null) return;
 
-                // Cancel a tween already in flight on this same element before starting a fresh one — a
-                // rapid-fire re-layout (two patches within one tween's own lifetime) must retarget from
-                // wherever the element visually sits right now, not stack a second independent tick.
-                CancelForTeardown(element, ctx);
+                // Supersede a tween already in flight on this same element before starting a fresh one — a
+                // rapid-fire re-layout (two patches within one tween's own lifetime) must not stack a second
+                // independent tick. Not CancelForTeardown: that also drops the registration written just
+                // above, and the next move of this id would then find nothing to tween from.
+                StopTick(element, ctx);
                 MotionSpringDriver.ApplyCurrentValues(element, state);
                 StartTick(element, state, ctx);
             }
@@ -80,31 +81,35 @@ namespace Velvet
             var host = element.panel?.visualTree;
             if (host == null) return;
 
-            ctx.LayoutIdTicks[element] = host.schedule.Execute((TimerState ts) =>
+            var tick = host.schedule.Execute((TimerState ts) =>
             {
                 var dt = ts.deltaTime / 1000f;
                 if (dt <= 0f) return;
                 if (!MotionSpringDriver.Step(element, state, dt)) return;
-
-                if (ctx.LayoutIdTicks.TryGetValue(element, out var self))
-                {
-                    self.Pause();
-                    ctx.LayoutIdTicks.Remove(element);
-                }
-                MotionSpringDriver.ClearInlineOverrides(element, state);
+                StopTick(element, ctx);
             }).Every(StyleAnimateDriver.TickMs);
+            ctx.LayoutIdTicks[element] = (tick, state);
+        }
+
+        // Ends the in-flight tween the way its own settle does, so one superseded mid-flight hands back the
+        // transition suspension it took, which no later settle would release.
+        private static void StopTick(VisualElement element, ReconcilerContext ctx)
+        {
+            if (ctx.LayoutIdTicks.Remove(element, out var running))
+            {
+                running.Tick.Pause();
+                MotionSpringDriver.ClearInlineOverrides(element, running.State);
+            }
         }
 
         // Cancels any in-flight tick and drops the registry entries for a departing element — called
         // from FiberElementCleaner before an element is pooled/disposed, so a layoutId tween never keeps
-        // ticking against (or leaves a stale rect behind for) a torn-down element. Also called internally
-        // above to retarget a rapid re-layout instead of stacking concurrent ticks on one element.
+        // ticking against (or leaves a stale rect behind for) a torn-down element.
         internal static void CancelForTeardown(VisualElement element, ReconcilerContext ctx)
         {
-            if (ctx.LayoutIdTicks.TryGetValue(element, out var tick))
+            if (ctx.LayoutIdTicks.Remove(element, out var running))
             {
-                tick.Pause();
-                ctx.LayoutIdTicks.Remove(element);
+                running.Tick.Pause();
             }
             if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)

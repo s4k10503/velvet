@@ -709,7 +709,7 @@ namespace Velvet
         // NOT enrolled in _pureElementSideTables — MotionLayoutIdDriver.CancelForTeardown pauses and
         // removes it explicitly, mirroring StyleAnimationScheduler's own spring-tick teardown for the
         // variant enter/exit case.
-        public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdTicks { get; } = new();
+        public Dictionary<VisualElement, (IVisualElementScheduledItem Tick, MotionSpringState State)> LayoutIdTicks { get; } = new();
 
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
