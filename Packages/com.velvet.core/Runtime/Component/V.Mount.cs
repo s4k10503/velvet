@@ -5,6 +5,8 @@ namespace Velvet
 {
     public static partial class V
     {
+        private static readonly MountOptions s_defaultMountOptions = new();
+
         /// <summary>
         /// Mounts a VNode tree onto <paramref name="target"/>, establishing it as a render root and performing
         /// the initial render. Dispose the returned <see cref="MountedTree"/> to unmount.
@@ -17,11 +19,23 @@ namespace Velvet
         /// </param>
         /// <returns>A handle for Unmount (dispose to tear down).</returns>
         public static MountedTree Mount(VisualElement target, VNode tree)
+            => Mount(target, tree, s_defaultMountOptions);
+
+        /// <summary>
+        /// Mounts a VNode tree onto <paramref name="target"/> as <see cref="Mount(VisualElement, VNode)"/> does,
+        /// with the root options React's <c>createRoot</c> takes.
+        /// </summary>
+        /// <param name="target">The VisualElement to mount onto.</param>
+        /// <param name="tree">The VNode tree to mount, treated as immutable as in <see cref="Mount(VisualElement, VNode)"/>.</param>
+        /// <param name="options">The root options, which <see cref="MountOptions"/> describes.</param>
+        /// <returns>A handle for Unmount (dispose to tear down).</returns>
+        public static MountedTree Mount(VisualElement target, VNode tree, MountOptions options)
         {
             if (target == null) throw new ArgumentNullException(nameof(target));
             if (tree == null) throw new ArgumentNullException(nameof(tree));
+            if (options == null) throw new ArgumentNullException(nameof(options));
             var rootFiber = FiberRenderer.CreateRoot(() => tree);
-            FiberRenderer.Mount(rootFiber, target);
+            FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError);
             var ctx = rootFiber.Reconciler!.Context;
             ctx.MainPanelRoot = target;
             if (!ctx.CrossPanelRouterAttached)

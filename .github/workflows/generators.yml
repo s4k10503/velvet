@@ -67,6 +67,7 @@ permissions:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
 
+# Timeouts sized as test.yml's are.
 jobs:
   # ---------------------------------------------------------------------------
   # Source-generator tests (.NET / xUnit). No Unity license required.
@@ -74,6 +75,7 @@ jobs:
   source-generators:
     name: Source generators (dotnet)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -145,6 +147,7 @@ jobs:
     name: Repository settings
     if: github.repository == 's4k10503/velvet'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Assert repository settings
         env:
@@ -243,6 +246,7 @@ jobs:
     if: always()
     needs: [source-generators, repository-settings]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - env:
           RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}

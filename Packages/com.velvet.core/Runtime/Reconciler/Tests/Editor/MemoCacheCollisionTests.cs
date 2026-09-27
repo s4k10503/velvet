@@ -584,7 +584,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var host = new VisualElement();
-            _mounted = V.Mount(host, V.Component(HostWithABoundary, key: "host"));
+            _mounted = V.Mount(host, V.Component(HostWithABoundary, key: "host"), CaughtErrors.Unlogged);
             s_throwNow = true;
             s_bumpHost.Invoke(1);
             _mounted.FlushStateForTest();
@@ -723,7 +723,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var host = new VisualElement();
-            _mounted = V.Mount(host, V.Component(TwoContainersAroundABoundary, key: "host"));
+            _mounted = V.Mount(host, V.Component(TwoContainersAroundABoundary, key: "host"), CaughtErrors.Unlogged);
             s_throwNow = true;
             s_bumpHost.Invoke(1);
             _mounted.FlushStateForTest();
