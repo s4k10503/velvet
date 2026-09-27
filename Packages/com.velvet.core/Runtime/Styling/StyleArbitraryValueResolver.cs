@@ -1034,9 +1034,13 @@ namespace Velvet
         // What the element's own layers resolve slot to, ignoring any hold on it: the value HandBack would
         // leave there. Null when no layer writes it.
         internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot)
-            => s_layers.TryGetValue(element, out var map) && TryLayeredWinner(map, slot, out var winner)
-                ? winner
-                : null;
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return null;
+            }
+            return TryLayeredWinner(map, slot, out var winner) ? winner : null;
+        }
 
         // The highest-priority layer among the properties writing slot; on a tie the narrower property, the
         // later one in WritersOf.
