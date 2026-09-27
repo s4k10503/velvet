@@ -750,37 +750,66 @@ class CompileChangelog(unittest.TestCase):
 
 
 class BuildingANoteBesideAFragment(unittest.TestCase):
-    def test_Given_AFragmentBesideTheChangelog_When_TheNoteIsBuilt_Then_ItIsRefused(self):
-        # Arrange -- one merged after the release pull request went green: the release ships its
-        # change, and a note built from the file alone describes none of it.
+    """A fragment beside the CHANGELOG at a dispatch is an entry the release ships and the note leaves
+    out; beside a preview or a repair it is one waiting for the next version."""
+
+    def notes(self, root, *extra):
+        argv = ["--version", "2.0.0", "--repo", REPO, "--changelog", str(Path(root, "CHANGELOG.md")),
+                "--package-json", str(Path(root, "package.json")),
+                "--output", str(Path(root, "note.md")), *extra]
+        # The exit code either way: argparse exits rather than returning where it refuses an argument.
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                return release_notes.main(argv)
+            except SystemExit as refused:
+                return refused.code
+
+    def beside_a_fragment(self, root):
+        Path(root, "CHANGELOG.md").write_text(COMPLETE, encoding="utf-8")
+        Path(root, "package.json").write_text(json.dumps({"unity": "6000.3"}), encoding="utf-8")
+        Path(root, "Changelog~", "unreleased").mkdir(parents=True)
+        Path(root, "Changelog~", "unreleased", "late.md").write_text("### Fixed\n\n- A late fix.\n")
+
+    def test_Given_AFragmentBesideTheChangelog_When_ADispatchBuildsTheNote_Then_ItIsRefused(self):
+        # Arrange -- one merged after the release pull request went green.
         with tempfile.TemporaryDirectory() as root:
-            Path(root, "CHANGELOG.md").write_text(COMPLETE, encoding="utf-8")
-            Path(root, "package.json").write_text(json.dumps({"unity": "6000.3"}), encoding="utf-8")
-            argv = ["--version", "2.0.0", "--repo", REPO, "--changelog", str(Path(root, "CHANGELOG.md")),
-                    "--package-json", str(Path(root, "package.json")),
-                    "--output", str(Path(root, "note.md"))]
-            with contextlib.redirect_stderr(io.StringIO()):
-                alone = release_notes.main(argv)
-            Path(root, "Changelog~", "unreleased").mkdir(parents=True)
-            Path(root, "Changelog~", "unreleased", "late.md").write_text(
-                "### Fixed\n\n- A late fix.\n")
+            self.beside_a_fragment(root)
 
             # Act
-            with contextlib.redirect_stderr(io.StringIO()):
-                beside = release_notes.main(argv)
+            code = self.notes(root, "--dispatch")
 
-        # Assert -- the note built alone rides along, since a builder refusing everything refuses
-        # this too.
-        self.assertEqual((alone, beside), (0, 1))
+        # Assert
+        self.assertEqual(code, 1)
+
+    # GREEN_ON_BASE(characterization): the base refuses nothing beside the CHANGELOG, so it builds this.
+    # What this pins is that the dispatch refusal did not reach the release skill's repair.
+    def test_Given_AFragmentBesideTheChangelog_When_APublishedNoteIsRebuilt_Then_ItIsBuilt(self):
+        # Arrange -- the release skill's repair of a published note, run on main between releases.
+        with tempfile.TemporaryDirectory() as root:
+            self.beside_a_fragment(root)
+
+            # Act
+            code = self.notes(root)
+            built = Path(root, "note.md").exists()
+
+        # Assert
+        self.assertEqual((code, built), (0, True))
+
+    def test_Given_TheDispatchWorkflow_When_ItBuildsTheNote_Then_ItAsksForTheDispatchReading(self):
+        # Arrange -- the refusal above is asked only under the flag, so a workflow not passing it
+        # leaves the refusal unreached.
+        workflow = (REPO_ROOT / ".github" / "workflows" / "upm.yml").read_text(encoding="utf-8")
+        block = re.search(r"^\s*ARGS=\((.*?)^\s*\)", workflow, re.M | re.S).group(1)
+
+        # Act / Assert
+        self.assertIn("--dispatch", block.split())
 
 
 class FragmentsDoNotShip(unittest.TestCase):
     def test_Given_TheFilesUnderTheFragmentDirectory_When_TheSplitStripsDeveloperFiles_Then_EachGoes(self):
-        # Arrange — the files this tree holds rather than a sample path. The UPM dispatch runs main's
-        # copy of this module over the line it publishes, and a line cut before fragments existed
-        # neither strips nor reads one, so a fragment picked onto it is refused here rather than
-        # shipped undescribed. On main the directory's `.gitkeep`s are what this reads. The split is
-        # package-at-root, so the path it sees starts below the package.
+        # Arrange — the files this tree holds rather than a sample path; on main the directory's
+        # `.gitkeep`s are what this reads. The split is package-at-root, so the path it sees starts
+        # below the package.
         workflow = (REPO_ROOT / ".github" / "workflows" / "upm.yml").read_text(encoding="utf-8")
         pattern = re.search(r"^\s*REMOVE=.*grep -E '([^']+)'", workflow, re.M).group(1)
         package = release_notes.DEFAULT_FRAGMENTS.parent
@@ -791,9 +820,7 @@ class FragmentsDoNotShip(unittest.TestCase):
         shipped = [path for path in held if not re.search(pattern, path)]
 
         # Assert
-        self.assertEqual(shipped, [],
-                         "this tree's upm split would publish these, and a tree whose split keeps "
-                         "fragments has a release that reads none: write them as inline entries")
+        self.assertEqual(shipped, [], "this tree's upm split would publish these")
 
 
 class ThisRepositorysChangelog(unittest.TestCase):

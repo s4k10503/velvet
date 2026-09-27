@@ -970,8 +970,8 @@ directory.
    before anything else is done to them, and `published_check.py` refuses a change
    that closes a version while `## [Unreleased]` still lists an entry, which is what renaming it
    before compiling leaves. `compile_changelog.py` reads the fragments HEAD holds and refuses one on
-   disk that HEAD does not hold as it stands, and the dispatch's note builder refuses a commit that
-   still holds a fragment — one merged after the release pull request went green would otherwise ship
+   disk that HEAD does not hold as it stands, and the note builder, given `--dispatch` as `upm.yml`
+   gives it, refuses a commit that still holds a fragment — one merged after the release pull request went green would otherwise ship
    in this version and be described in the next. A major moves the breaking entries up into `## [Unreleased]` and leaves
    their heading standing with none. A minor or a patch closes only over a section already empty,
    and `published_check.py` refuses one that is not: a release publishes the tree rather than the
@@ -1142,11 +1142,11 @@ that line's `## [Unreleased]` rather than as a fragment, and a fragment a pick c
 it: nothing in that line's tree reads one, so its note would leave the entry out and its package
 would ship the file. `unreleased_maintenance_line.py` reports a fragment on such a line as one to
 fix, `main`'s copy of `changelog_into_closed_version.py` sends a refused edit in such a tree inline
-where that copy is the one running, and the UPM
-dispatch, which runs `main`'s `test_release_notes.py`, refuses to publish a tree whose split would
-ship one. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
-`Bash|Edit|Write` and reads a shell command only for a literal operand naming the file, so a
-cherry-pick does not reach it — and the line does not carry that hook at all.
+where that copy is the one running. Both only warn: the line's dispatch runs the line's own
+`upm.yml` and scripts, so nothing refuses to publish a fragment there. `changelog_into_closed_version.py`,
+which step 1 above relies on, is registered against `Bash|Edit|Write` and reads a shell command only
+for a literal operand naming the file, so a cherry-pick does not reach it — and the line's own tree
+does not carry that hook, so a session rooted there runs none.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**. Do not reach for

@@ -130,6 +130,7 @@ jobs:
             --changelog "$PREFIX/CHANGELOG.md"
             --package-json "$PREFIX/package.json"
             --output "$NOTES_FILE"
+            --dispatch
           )
           # Absent for the first release, where the compare link has no earlier tag to start from.
           if [ -n "$PREV_MAIN_TAG" ]; then

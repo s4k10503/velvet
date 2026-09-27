@@ -458,16 +458,22 @@ def parse_args(argv):
     parser.add_argument("--changelog", default=str(DEFAULT_CHANGELOG))
     parser.add_argument("--package-json", default=str(DEFAULT_PACKAGE_JSON))
     parser.add_argument("--output", help="Write here instead of stdout")
+    parser.add_argument(
+        "--dispatch", action="store_true",
+        help="Building the note a UPM dispatch publishes: refuse while a fragment remains",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
     tag = args.tag or f"v{args.version}"
-    # The note is built from the file alone, so a fragment still beside it is an entry the release
-    # ships and the note leaves out: one merged after the release pull request went green lands here.
+    # The note is built from the file alone, so at a dispatch a fragment still beside it is an entry
+    # the release ships and the note leaves out: one merged after the release pull request went green
+    # lands here. Asked only there, because a preview or a repair of a published note is built from a
+    # tree where fragments waiting for the next version are the ordinary state.
     waiting = [path for path, _ in fragments_in(Path(args.changelog).parent / DEFAULT_FRAGMENTS.name)
-               if not Path(path).name.startswith(".")]
+               if not Path(path).name.startswith(".")] if args.dispatch else []
     if waiting:
         print(f"error: {len(waiting)} CHANGELOG fragment(s) still sit beside the CHANGELOG, starting "
               f"with {waiting[0]}, and this note would describe none of them. Fold them into the "

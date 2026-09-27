@@ -99,11 +99,12 @@ def at(rev, path, cwd=None):
     return out
 
 
-def changelog_at(rev, cwd=None, directories=None):
+def changelog_at(rev, cwd=None, leaving_out=()):
     """The CHANGELOG at a revision with that revision's fragments filed into its open sections, or
     None where git could not show either. A fragment `release_notes.compose` refuses raises.
 
-    `directories` keeps only the fragments under those, by name, for a caller reading one section.
+    `leaving_out` drops the fragments under those directories, by name, for a caller reading one
+    section.
     """
     text = at(rev, CHANGELOG, cwd)
     if text is None:
@@ -112,9 +113,8 @@ def changelog_at(rev, cwd=None, directories=None):
         fragments = release_notes.fragments_at(cwd or ".", rev, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
-    if directories is not None:
-        fragments = [(path, body) for path, body in fragments
-                     if Path(path).parts[0] in directories]
+    fragments = [(path, body) for path, body in fragments
+                 if Path(path).parts[0] not in leaving_out]
     return release_notes.compose(text, fragments)
 
 
@@ -142,8 +142,10 @@ def open_pull_requests(repo):
         return None, str(failure)
 
 
-BREAKING_DIRECTORIES = {name for name, heading in release_notes.FRAGMENT_SECTIONS.items()
-                        if heading == BREAKING}
+# Every other place a fragment may sit is composed, so one in a directory that fits no section is
+# refused and named rather than passed over.
+NOT_BREAKING = {name for name, heading in release_notes.FRAGMENT_SECTIONS.items()
+                if heading != BREAKING}
 
 
 def adds_breaking(pull, base):
@@ -157,16 +159,16 @@ def adds_breaking(pull, base):
     started names a commit that is not here. That is ordinary while a queue is draining, and it was
     reported as something the reader should go and fetch.
 
-    Only the breaking fragments are composed, so a malformed fragment of the other section on
-    somebody's branch is not this reading's to refuse. A malformed breaking one is answered as an
-    entry naming it: what it adds cannot be read, and the release still has to say whether it
-    carries that branch.
+    The fragments of the section that cannot break are left out, so a malformed one of those on
+    somebody's branch is not this reading's to refuse. Any other malformed one, a file in a misspelt
+    directory included, is answered as an entry naming it: what it adds cannot be read, and the
+    release still has to say whether it carries that branch.
     """
     try:
-        theirs = changelog_at(pull["headRefOid"], directories=BREAKING_DIRECTORIES)
+        theirs = changelog_at(pull["headRefOid"], leaving_out=NOT_BREAKING)
         if theirs is None:
             run(["git", "fetch", "--quiet", "--depth", "1", "origin", pull["headRefOid"]], timeout=60)
-            theirs = changelog_at(pull["headRefOid"], directories=BREAKING_DIRECTORIES)
+            theirs = changelog_at(pull["headRefOid"], leaving_out=NOT_BREAKING)
     except release_notes.ReleaseNotesError as malformed:
         return [f"- malformed fragment {malformed}"]
     if theirs is None:

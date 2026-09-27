@@ -1768,6 +1768,14 @@ class FragmentsInTheSection(ReleaseHistory):
         self.assertEqual((done.returncode, "#377" in done.stderr, "breaking/bad.md" in done.stderr),
                          (UNNAMED, True, True))
 
+    def test_Given_ABreakingFragmentInAMisspeltDirectoryInFlight_When_AMajorCloses_Then_ThePullRequestIsNamedWithTheFile(self):
+        # Arrange -- a file no section takes, which the release has to decide about all the same.
+        done = self.in_flight("Breaking/api.md", FRAGMENT_TEXT)
+
+        # Act / Assert
+        self.assertEqual((done.returncode, "#377" in done.stderr, "Breaking/api.md" in done.stderr),
+                         (UNNAMED, True, True))
+
     # GREEN_ON_BASE(characterization): the base reads no fragment at all, so one on a branch is nothing to it.
     # What this pins is that reading fragments did not make somebody's malformed unreleased one a
     # reason every release goes unread.
