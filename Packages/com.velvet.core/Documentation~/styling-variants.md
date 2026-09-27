@@ -316,13 +316,19 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
 approximation described here rather than a true shear transform.
 
-**Where `rounded-full` deviates from CSS.** CSS scales radii that overlap until they fit, so
-`rounded-full` is a pill. Where UI Toolkit paints the face, `rounded-full` on a 330 × 34 box paints
-the same silhouette as a `50%` radius on every corner, and four fifths of the way along its top edge
-has already fallen away where `rounded-[17px]`'s is still flat. Where Velvet paints it — the fill and border under `skew-*` or on the caster
-of a `shadow-*` / `drop-shadow-*`, and a `border-dashed` / `border-dotted` stroke — each corner is
-clamped to half the box's shorter side, which gives the pill, and a shadow's silhouette takes the same
-clamp. For a pill UI Toolkit paints, name the radius: `rounded-[17px]` on a 34 px-tall box.
+**How a radius larger than its box fits.** A `rounded-*` class or an arbitrary radius that does not fit
+its box is scaled the way CSS scales it: once two adjacent radii overlap on a side, every radius on the
+element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill with 17 px ends, and
+`rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style,
+and so:
+
+- A radius your own stylesheet sets is not fitted. On an element that also carries a `rounded-*` class, the
+  fit reads the class's radius even on a corner your rule outranks it on, and where that radius does not
+  fit, the fitted class radius replaces yours.
+- A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
+  there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
+- A change of size refits at once rather than running a transition, and a change of class under
+  `transition-all` animates between the fitted radii rather than the declared ones.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.

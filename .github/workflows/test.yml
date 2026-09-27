@@ -781,6 +781,11 @@ jobs:
   # --shm-size=1025M"), unity-builder v5 has no input reaching --shm-size, and v6 compiled everything
   # here and then failed the step because the build method's log carries no game-ci build result.
   # licensed_editor.py holds the licence around the launch and exits with the editor's status.
+  #
+  # No Library cache: with a Library a previous run saved restored, the editor was killed by SIGKILL
+  # about a second after launch in five runs of seven, with memory to spare and no out-of-memory kill
+  # in the kernel's log, and leaving Library/DataStore out of the cache did not stop it. Every run
+  # measured that imported from nothing compiled, in about five and a half minutes.
   # ---------------------------------------------------------------------------
   newest-editor-compile:
     name: Newest editor compilation
@@ -792,13 +797,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: Library
-          key: Library-newest-6000.6.3f1-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-newest-6000.6.3f1-
 
       - env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -813,6 +811,13 @@ jobs:
             python3 -u scripts/ci/licensed_editor.py -- \
               -projectPath /github/workspace -buildTarget StandaloneLinux64 \
               -executeMethod Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
+
+      # The container is gone by the time the step fails, so a kill's cause is read off the runner: the
+      # kernel's log names an out-of-memory kill, and the memory figures say what was left.
+      - if: failure()
+        run: |
+          free -m
+          sudo dmesg -T | grep -iE 'out of memory|oom|killed process' | tail -20 || true
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real

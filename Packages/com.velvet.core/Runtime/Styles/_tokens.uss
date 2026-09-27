@@ -109,8 +109,8 @@
     --radius-3xl: 24px;
     /* A length, not 50%: Velvet's own painters read the resolved radius as a number, and 50% reaches
        them as 50. RoundedFullSilhouettePlaybackTests' rounded-full shadow corner case reddens under 50%.
-       Where UI Toolkit paints the face this is not the CSS pill on a box that is not square;
-       Documentation~/styling-variants.md states the deviation. */
+       CornerRadiusFit scales it to the box as CSS does; Documentation~/styling-variants.md states where
+       that still differs. */
     --radius-full: 9999px;
 
     /* === Transition === */

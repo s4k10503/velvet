@@ -5,13 +5,13 @@ using UnityEngine;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the corner bound the Velvet-painted face takes on an inset outline — the path a border stroke
-    /// follows, inset by half the border width — when the declared radius exceeds the inset box.
+    /// Pins the corner radii the Velvet-painted outline takes — the path a border stroke follows, inset by half
+    /// the border width — when the declared radii do not fit the box.
     /// </summary>
     /// <remarks>
-    /// At inset 0 the outline's box is the element's, so only a positive inset separates a bound taken from
-    /// the inset box from one taken from the element's box. Each case makes a different side the shorter one,
-    /// since the bound follows whichever side that is.
+    /// The radii are fitted to the element's box and the inset is then taken off each, so only a positive inset
+    /// shows that it is taken off after the fit. The oversized cases each make a different side the shorter
+    /// one, since the fit follows whichever side that is.
     /// </remarks>
     internal sealed class SilhouetteFaceCornerBoundTests
     {
@@ -36,8 +36,9 @@ namespace Velvet.Tests
             return points[0].x - Inset;
         }
 
-        // GREEN_ON_BASE(characterization): the base already bounds the outline by the inset box.
-        // The extraction of that bound must keep it; `x1 - x0` -> `x1 + x0` reddens this case alone.
+        // GREEN_ON_BASE(characterization): the base already paints a uniform oversized radius this way.
+        // Fitting it to a square of the height, `ScaleFactor(w, h, …)` -> `ScaleFactor(h, h, …)`, reddens this
+        // case alone.
         [Test]
         public void Given_ATallInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsWidth()
         {
@@ -52,8 +53,9 @@ namespace Velvet.Tests
             Assert.That(radius, Is.EqualTo(16f).Within(1e-4f));
         }
 
-        // GREEN_ON_BASE(characterization): the base already bounds the outline by the inset box.
-        // The extraction of that bound must keep it; `y1 - y0` -> `y1 + y0` reddens this case alone.
+        // GREEN_ON_BASE(characterization): the base already paints a uniform oversized radius this way.
+        // Fitting it to a square of the width, `ScaleFactor(w, h, …)` -> `ScaleFactor(w, w, …)`, reddens this
+        // case alone.
         [Test]
         public void Given_AWideInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsHeight()
         {
@@ -66,6 +68,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(radius, Is.EqualTo(16f).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already paints a uniform oversized radius this way on every
+        // corner. Adding the inset to the top-right corner instead, `(outerTr * factor) - inset` ->
+        // `(outerTr * factor) + inset`, reddens it.
+        [Test]
+        public void Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius()
+        {
+            // Arrange — a 40 x 70 box fits a uniform oversized radius to 20, and the inset of 4 leaves 16. The
+            // outline is a move, then per corner a straight run and Samples chords.
+            const int Samples = 8;
+            var points = new List<Vector2>();
+
+            // Act
+            SilhouetteFace.BuildShearedRoundedRectPolyline(points, new ShearedRoundedRect
+            {
+                Width = 40f,
+                Height = 70f,
+                Inset = Inset,
+                RadiusTopLeft = 9999f,
+                RadiusTopRight = 9999f,
+                RadiusBottomRight = 9999f,
+                RadiusBottomLeft = 9999f,
+            }, Samples);
+
+            // Assert — each straight run ends one radius short of the corner it leads into.
+            var radii = new[]
+            {
+                points[0].x - Inset,
+                40f - Inset - points[1].x,
+                70f - Inset - points[2 + Samples].y,
+                points[3 + (2 * Samples)].x - Inset,
+            };
+            Assert.That(radii, Is.EqualTo(new[] { 16f, 16f, 16f, 16f }).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_MixedRadiiOverlappingOnTheTopEdge_When_Built_Then_TheSmallerCornerIsScaledWithTheLarger()
+        {
+            // Arrange — 10 + 100 across a 100px top edge scales every radius by 100/110. Bounding each corner by
+            // half the box on its own instead leaves the 10px corner untouched.
+            var points = new List<Vector2>();
+
+            // Act
+            SilhouetteFace.BuildShearedRoundedRectPolyline(points, new ShearedRoundedRect
+            {
+                Width = 100f,
+                Height = 100f,
+                RadiusTopLeft = 10f,
+                RadiusTopRight = 100f,
+            });
+
+            // Assert — the outline opens one top-left radius in from the left edge.
+            Assert.That(points[0].x, Is.EqualTo(10f * 100f / 110f).Within(1e-4f));
         }
     }
 }

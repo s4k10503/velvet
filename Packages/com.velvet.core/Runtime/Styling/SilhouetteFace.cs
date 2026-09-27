@@ -127,11 +127,17 @@ namespace Velvet
             var y0 = inset;
             var x1 = w - inset;
             var y1 = h - inset;
-            var maxR = MaxRadius(x1 - x0, y1 - y0);
-            var tl = Mathf.Clamp(box.RadiusTopLeft - inset, 0f, maxR);
-            var tr = Mathf.Clamp(box.RadiusTopRight - inset, 0f, maxR);
-            var br = Mathf.Clamp(box.RadiusBottomRight - inset, 0f, maxR);
-            var bl = Mathf.Clamp(box.RadiusBottomLeft - inset, 0f, maxR);
+            // The radii are fitted to the element's box, as CSS fits the outer border edge, and the inset then
+            // takes its own amount off each.
+            var outerTl = Mathf.Max(0f, box.RadiusTopLeft);
+            var outerTr = Mathf.Max(0f, box.RadiusTopRight);
+            var outerBr = Mathf.Max(0f, box.RadiusBottomRight);
+            var outerBl = Mathf.Max(0f, box.RadiusBottomLeft);
+            var factor = CornerRadiusFit.ScaleFactor(w, h, CornerRadii.Circular(outerTl, outerTr, outerBr, outerBl));
+            var tl = Mathf.Max(0f, (outerTl * factor) - inset);
+            var tr = Mathf.Max(0f, (outerTr * factor) - inset);
+            var br = Mathf.Max(0f, (outerBr * factor) - inset);
+            var bl = Mathf.Max(0f, (outerBl * factor) - inset);
 
             Vector2 S(float x, float y) => Shear(new Vector2(x, y), w, h, tanX, tanY);
 

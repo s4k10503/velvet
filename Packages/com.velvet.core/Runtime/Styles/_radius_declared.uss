@@ -1,0 +1,89 @@
+/*
+ * Derived from the border-radius declarations in Runtime/Styles/*.uss by Generators~/src/Velvet.StyleTable.
+ * Regenerate with Generators~/build.py after editing a stylesheet; edits made here are overwritten, and
+ * BundledStyleSheetCensusTests fails if this file no longer matches the stylesheets.
+ *
+ * CornerRadiusFit reads these to learn the radius a rule declares while it holds a fitted one inline.
+ */
+
+.rounded-none { --velvet-radius-top-left: var(--radius-none); --velvet-radius-top-right: var(--radius-none); --velvet-radius-bottom-right: var(--radius-none); --velvet-radius-bottom-left: var(--radius-none); }
+.rounded { --velvet-radius-top-left: var(--radius-default); --velvet-radius-top-right: var(--radius-default); --velvet-radius-bottom-right: var(--radius-default); --velvet-radius-bottom-left: var(--radius-default); }
+.rounded-sm { --velvet-radius-top-left: var(--radius-sm); --velvet-radius-top-right: var(--radius-sm); --velvet-radius-bottom-right: var(--radius-sm); --velvet-radius-bottom-left: var(--radius-sm); }
+.rounded-md { --velvet-radius-top-left: var(--radius-md); --velvet-radius-top-right: var(--radius-md); --velvet-radius-bottom-right: var(--radius-md); --velvet-radius-bottom-left: var(--radius-md); }
+.rounded-lg { --velvet-radius-top-left: var(--radius-lg); --velvet-radius-top-right: var(--radius-lg); --velvet-radius-bottom-right: var(--radius-lg); --velvet-radius-bottom-left: var(--radius-lg); }
+.rounded-xl { --velvet-radius-top-left: var(--radius-xl); --velvet-radius-top-right: var(--radius-xl); --velvet-radius-bottom-right: var(--radius-xl); --velvet-radius-bottom-left: var(--radius-xl); }
+.rounded-2xl { --velvet-radius-top-left: var(--radius-2xl); --velvet-radius-top-right: var(--radius-2xl); --velvet-radius-bottom-right: var(--radius-2xl); --velvet-radius-bottom-left: var(--radius-2xl); }
+.rounded-3xl { --velvet-radius-top-left: var(--radius-3xl); --velvet-radius-top-right: var(--radius-3xl); --velvet-radius-bottom-right: var(--radius-3xl); --velvet-radius-bottom-left: var(--radius-3xl); }
+.rounded-full { --velvet-radius-top-left: var(--radius-full); --velvet-radius-top-right: var(--radius-full); --velvet-radius-bottom-right: var(--radius-full); --velvet-radius-bottom-left: var(--radius-full); }
+.rounded-t { --velvet-radius-top-left: var(--radius-default); --velvet-radius-top-right: var(--radius-default); }
+.rounded-r { --velvet-radius-top-right: var(--radius-default); --velvet-radius-bottom-right: var(--radius-default); }
+.rounded-b { --velvet-radius-bottom-right: var(--radius-default); --velvet-radius-bottom-left: var(--radius-default); }
+.rounded-l { --velvet-radius-top-left: var(--radius-default); --velvet-radius-bottom-left: var(--radius-default); }
+.rounded-t-none { --velvet-radius-top-left: var(--radius-none); --velvet-radius-top-right: var(--radius-none); }
+.rounded-t-sm { --velvet-radius-top-left: var(--radius-sm); --velvet-radius-top-right: var(--radius-sm); }
+.rounded-t-md { --velvet-radius-top-left: var(--radius-md); --velvet-radius-top-right: var(--radius-md); }
+.rounded-t-lg { --velvet-radius-top-left: var(--radius-lg); --velvet-radius-top-right: var(--radius-lg); }
+.rounded-t-xl { --velvet-radius-top-left: var(--radius-xl); --velvet-radius-top-right: var(--radius-xl); }
+.rounded-t-2xl { --velvet-radius-top-left: var(--radius-2xl); --velvet-radius-top-right: var(--radius-2xl); }
+.rounded-t-3xl { --velvet-radius-top-left: var(--radius-3xl); --velvet-radius-top-right: var(--radius-3xl); }
+.rounded-t-full { --velvet-radius-top-left: var(--radius-full); --velvet-radius-top-right: var(--radius-full); }
+.rounded-r-none { --velvet-radius-top-right: var(--radius-none); --velvet-radius-bottom-right: var(--radius-none); }
+.rounded-r-sm { --velvet-radius-top-right: var(--radius-sm); --velvet-radius-bottom-right: var(--radius-sm); }
+.rounded-r-md { --velvet-radius-top-right: var(--radius-md); --velvet-radius-bottom-right: var(--radius-md); }
+.rounded-r-lg { --velvet-radius-top-right: var(--radius-lg); --velvet-radius-bottom-right: var(--radius-lg); }
+.rounded-r-xl { --velvet-radius-top-right: var(--radius-xl); --velvet-radius-bottom-right: var(--radius-xl); }
+.rounded-r-2xl { --velvet-radius-top-right: var(--radius-2xl); --velvet-radius-bottom-right: var(--radius-2xl); }
+.rounded-r-3xl { --velvet-radius-top-right: var(--radius-3xl); --velvet-radius-bottom-right: var(--radius-3xl); }
+.rounded-r-full { --velvet-radius-top-right: var(--radius-full); --velvet-radius-bottom-right: var(--radius-full); }
+.rounded-b-none { --velvet-radius-bottom-right: var(--radius-none); --velvet-radius-bottom-left: var(--radius-none); }
+.rounded-b-sm { --velvet-radius-bottom-right: var(--radius-sm); --velvet-radius-bottom-left: var(--radius-sm); }
+.rounded-b-md { --velvet-radius-bottom-right: var(--radius-md); --velvet-radius-bottom-left: var(--radius-md); }
+.rounded-b-lg { --velvet-radius-bottom-right: var(--radius-lg); --velvet-radius-bottom-left: var(--radius-lg); }
+.rounded-b-xl { --velvet-radius-bottom-right: var(--radius-xl); --velvet-radius-bottom-left: var(--radius-xl); }
+.rounded-b-2xl { --velvet-radius-bottom-right: var(--radius-2xl); --velvet-radius-bottom-left: var(--radius-2xl); }
+.rounded-b-3xl { --velvet-radius-bottom-right: var(--radius-3xl); --velvet-radius-bottom-left: var(--radius-3xl); }
+.rounded-b-full { --velvet-radius-bottom-right: var(--radius-full); --velvet-radius-bottom-left: var(--radius-full); }
+.rounded-l-none { --velvet-radius-top-left: var(--radius-none); --velvet-radius-bottom-left: var(--radius-none); }
+.rounded-l-sm { --velvet-radius-top-left: var(--radius-sm); --velvet-radius-bottom-left: var(--radius-sm); }
+.rounded-l-md { --velvet-radius-top-left: var(--radius-md); --velvet-radius-bottom-left: var(--radius-md); }
+.rounded-l-lg { --velvet-radius-top-left: var(--radius-lg); --velvet-radius-bottom-left: var(--radius-lg); }
+.rounded-l-xl { --velvet-radius-top-left: var(--radius-xl); --velvet-radius-bottom-left: var(--radius-xl); }
+.rounded-l-2xl { --velvet-radius-top-left: var(--radius-2xl); --velvet-radius-bottom-left: var(--radius-2xl); }
+.rounded-l-3xl { --velvet-radius-top-left: var(--radius-3xl); --velvet-radius-bottom-left: var(--radius-3xl); }
+.rounded-l-full { --velvet-radius-top-left: var(--radius-full); --velvet-radius-bottom-left: var(--radius-full); }
+.rounded-tl { --velvet-radius-top-left: var(--radius-default); }
+.rounded-tr { --velvet-radius-top-right: var(--radius-default); }
+.rounded-bl { --velvet-radius-bottom-left: var(--radius-default); }
+.rounded-br { --velvet-radius-bottom-right: var(--radius-default); }
+.rounded-tl-none { --velvet-radius-top-left: var(--radius-none); }
+.rounded-tl-sm { --velvet-radius-top-left: var(--radius-sm); }
+.rounded-tl-md { --velvet-radius-top-left: var(--radius-md); }
+.rounded-tl-lg { --velvet-radius-top-left: var(--radius-lg); }
+.rounded-tl-xl { --velvet-radius-top-left: var(--radius-xl); }
+.rounded-tl-2xl { --velvet-radius-top-left: var(--radius-2xl); }
+.rounded-tl-3xl { --velvet-radius-top-left: var(--radius-3xl); }
+.rounded-tl-full { --velvet-radius-top-left: var(--radius-full); }
+.rounded-tr-none { --velvet-radius-top-right: var(--radius-none); }
+.rounded-tr-sm { --velvet-radius-top-right: var(--radius-sm); }
+.rounded-tr-md { --velvet-radius-top-right: var(--radius-md); }
+.rounded-tr-lg { --velvet-radius-top-right: var(--radius-lg); }
+.rounded-tr-xl { --velvet-radius-top-right: var(--radius-xl); }
+.rounded-tr-2xl { --velvet-radius-top-right: var(--radius-2xl); }
+.rounded-tr-3xl { --velvet-radius-top-right: var(--radius-3xl); }
+.rounded-tr-full { --velvet-radius-top-right: var(--radius-full); }
+.rounded-bl-none { --velvet-radius-bottom-left: var(--radius-none); }
+.rounded-bl-sm { --velvet-radius-bottom-left: var(--radius-sm); }
+.rounded-bl-md { --velvet-radius-bottom-left: var(--radius-md); }
+.rounded-bl-lg { --velvet-radius-bottom-left: var(--radius-lg); }
+.rounded-bl-xl { --velvet-radius-bottom-left: var(--radius-xl); }
+.rounded-bl-2xl { --velvet-radius-bottom-left: var(--radius-2xl); }
+.rounded-bl-3xl { --velvet-radius-bottom-left: var(--radius-3xl); }
+.rounded-bl-full { --velvet-radius-bottom-left: var(--radius-full); }
+.rounded-br-none { --velvet-radius-bottom-right: var(--radius-none); }
+.rounded-br-sm { --velvet-radius-bottom-right: var(--radius-sm); }
+.rounded-br-md { --velvet-radius-bottom-right: var(--radius-md); }
+.rounded-br-lg { --velvet-radius-bottom-right: var(--radius-lg); }
+.rounded-br-xl { --velvet-radius-bottom-right: var(--radius-xl); }
+.rounded-br-2xl { --velvet-radius-bottom-right: var(--radius-2xl); }
+.rounded-br-3xl { --velvet-radius-bottom-right: var(--radius-3xl); }
+.rounded-br-full { --velvet-radius-bottom-right: var(--radius-full); }

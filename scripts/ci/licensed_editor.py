@@ -21,6 +21,7 @@ import base64
 import functools
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -129,6 +130,23 @@ def randomize_machine_id():
     link.symlink_to("/etc/machine-id")
 
 
+def reported(status, what):
+    """`status` as the shell would report it, named in the log.
+
+    `subprocess.call` gives a death by signal N as -N, and handing that to `sys.exit` exits 256 - N,
+    which reads as a status the child chose: -9 exits 247. 128 + N is the shell's reading.
+    """
+    if status < 0:
+        try:
+            name = signal.Signals(-status).name
+        except ValueError:
+            name = "signal {}".format(-status)
+        print("::error::{} was killed by {}".format(what, name), flush=True)
+        return 128 - status
+    say("{} exited with status {}".format(what, status))
+    return status
+
+
 def run_licensed(command, what, version_file=VERSION_FILE, environ=os.environ, run=subprocess.call,
                  sleep=time.sleep, machine_id=randomize_machine_id, display=start_display):
     """`command`'s exit status, run under a display between an activation and a return; 1 where the
@@ -153,7 +171,7 @@ def run_licensed(command, what, version_file=VERSION_FILE, environ=os.environ, r
                 return 1
             try:
                 say("running {}".format(what))
-                return launch(command)
+                return reported(launch(command), what)
             finally:
                 say("returning the licence")
                 bounded(launch, licence_command(UNITY, blank, "-returnlicense", "-username", email,

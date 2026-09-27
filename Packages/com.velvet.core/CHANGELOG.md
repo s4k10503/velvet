@@ -128,6 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A radius a `rounded-*` class or an arbitrary radius declares larger than its box is scaled to the box the
+  way CSS scales it, so `rounded-full` on a 330 × 34 button paints a pill with 17 px ends rather than an
+  ellipse, and `rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. `Documentation~/styling-variants.md`
+  states where the fit still differs from CSS.
+
 - A `[&>*]:` arbitrary payload and a `gap-*`, `grid-cols-*` or `divide-*` container no longer erase
   each other's value on a child they both write. The container's value wins while it applies; where it
   stops — its utility is dropped, the child leaves, an edge is abandoned, or the child is the first of a
