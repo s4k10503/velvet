@@ -20,6 +20,16 @@ namespace Velvet.Tests
     {
         const int ConcurrentChains = 20000;
         const long SettleTimeoutMilliseconds = 30000;
+        const int DrainTimeoutMilliseconds = 5000;
+
+        static readonly MethodInfo CaptureMethod =
+            typeof(VelvetMainThread).GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        static readonly FieldInfo ThreadIdField =
+            typeof(VelvetMainThread).GetField("_threadId", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        static readonly FieldInfo ContextField =
+            typeof(VelvetMainThread).GetField("_context", BindingFlags.Static | BindingFlags.NonPublic)!;
 
         static int s_mainThreadId;
         static int s_resumedOffTheMainThread;
@@ -33,6 +43,7 @@ namespace Velvet.Tests
         public void TearDown()
         {
             VelvetMainThread.RunHandoffs();
+            CaptureMethod.Invoke(null, null);
 #if UNITY_EDITOR
             DrainEditorUpdateForTest();
 #endif
@@ -276,15 +287,102 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHandoffThatReentersTheDrain_When_TheHandoffsRun_Then_EachHandoffRunsOnce()
+        {
+            // Arrange
+            var reenteringRuns = 0;
+            var postedRuns = 0;
+            OnAnotherThread(() => VelvetMainThread.Post(_ =>
+            {
+                reenteringRuns++;
+                if (reenteringRuns > 1)
+                {
+                    return;
+                }
+
+                VelvetMainThread.Post(_ => postedRuns++, null);
+                VelvetMainThread.Post(_ => postedRuns++, null);
+                VelvetMainThread.RunHandoffs();
+                VelvetMainThread.RunHandoffs();
+            }, null));
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That((reenteringRuns, postedRuns), Is.EqualTo((1, 2)));
+        }
+
+        [Test]
+        public void Given_TwoBatchesOfHandoffs_When_EachIsRun_Then_TheFirstDoesNotRunAgain()
+        {
+            // Arrange
+            var firstRuns = 0;
+            VelvetMainThread.Post(_ => firstRuns++, null);
+            VelvetMainThread.RunHandoffs();
+            VelvetMainThread.Post(_ => { }, null);
+            var drain = new Thread(VelvetMainThread.RunHandoffs) { IsBackground = true };
+
+            // Act
+            drain.Start();
+            var finished = drain.Join(DrainTimeoutMilliseconds);
+
+            // Assert
+            Assert.That((finished, firstRuns), Is.EqualTo((true, 1)));
+        }
+
+        [Test]
+        public void Given_NothingCapturedYet_When_TheLoadTimeCaptureRuns_Then_AnotherThreadCanHandOffBeforeTheMainThreadAsks()
+        {
+            // Arrange
+            ThreadIdField.SetValue(null, 0);
+            ContextField.SetValue(null, null);
+            CaptureMethod.Invoke(null, null);
+            Exception? thrown = null;
+            var ran = false;
+
+            // Act
+            OnAnotherThread(() =>
+            {
+                try
+                {
+                    VelvetMainThread.Post(_ => ran = true, null);
+                }
+                catch (Exception exception)
+                {
+                    thrown = exception;
+                }
+            });
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That((thrown, ran), Is.EqualTo(((Exception?)null, true)));
+        }
+
+        [Test]
+        public void Given_TheMainThreadNotYetCaptured_When_AnotherThreadAsksFirst_Then_OnlyTheMainThreadIsTakenForIt()
+        {
+            // Arrange
+            ThreadIdField.SetValue(null, 0);
+            var elsewhere = true;
+            OnAnotherThread(() => elsewhere = VelvetMainThread.IsCurrent);
+
+            // Act
+            var here = VelvetMainThread.IsCurrent;
+
+            // Assert
+            Assert.That((elsewhere, here), Is.EqualTo((false, true)));
+        }
+
+        [Test]
         public void Given_APendingHandoff_When_TheMainThreadIsCapturedAgain_Then_TheHandoffIsDropped()
         {
             // Arrange
             var ran = false;
             OnAnotherThread(() => VelvetMainThread.Post(_ => ran = true, null));
-            var capture = typeof(VelvetMainThread).GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)!;
 
             // Act
-            capture.Invoke(null, null);
+            CaptureMethod.Invoke(null, null);
             VelvetMainThread.RunHandoffs();
 
             // Assert

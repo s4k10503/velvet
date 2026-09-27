@@ -15,7 +15,10 @@ namespace Velvet
         TResult _result;
         object? _error;
         short _version;
+        // The first completer to raise the count owns the outcome; readers wait for the publish, which
+        // follows the outcome's store, so a thread that sees completion also sees the result or fault.
         int _completedCount;
+        int _published;
         Action<object?>? _continuation;
         object? _continuationState;
         bool _resumeOnMainThread;
@@ -30,6 +33,7 @@ namespace Velvet
             }
 
             _completedCount = 0;
+            _published = 0;
             _result = default!;
             _error = null;
             _continuation = null;
@@ -44,6 +48,7 @@ namespace Velvet
             }
 
             _result = result;
+            Volatile.Write(ref _published, 1);
             InvokeContinuation();
             return true;
         }
@@ -58,6 +63,7 @@ namespace Velvet
             _error = exception is OperationCanceledException
                 ? exception
                 : ExceptionDispatchInfo.Capture(exception);
+            Volatile.Write(ref _published, 1);
             InvokeContinuation();
             return true;
         }
@@ -70,6 +76,7 @@ namespace Velvet
             }
 
             _error = new OperationCanceledException(cancellationToken);
+            Volatile.Write(ref _published, 1);
             InvokeContinuation();
             return true;
         }
@@ -77,7 +84,7 @@ namespace Velvet
         public VelvetTaskStatus GetStatus(short token)
         {
             ValidateToken(token);
-            if (_completedCount == 0)
+            if (Volatile.Read(ref _published) == 0)
             {
                 return VelvetTaskStatus.Pending;
             }
@@ -95,7 +102,7 @@ namespace Velvet
         public TResult GetResult(short token)
         {
             ValidateToken(token);
-            if (_completedCount == 0)
+            if (Volatile.Read(ref _published) == 0)
             {
                 throw new InvalidOperationException("The VelvetTask is not completed.");
             }
