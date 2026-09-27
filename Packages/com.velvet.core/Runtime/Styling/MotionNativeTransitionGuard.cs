@@ -130,10 +130,7 @@ namespace Velvet
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
-            if (drivenSlots != MotionTransitionSlots.None && HoldsAForeignValue(element))
-            {
-                ExcludeFromHeldList(element, drivenSlots);
-            }
+            ExcludeFromHeldList(element, drivenSlots);
             if (drivenSlots == MotionTransitionSlots.None
                 || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -384,24 +381,16 @@ namespace Velvet
             {
                 return;
             }
-            // Everything is read before anything is written: a list read out of a slot is refilled by that slot's
-            // next write, which MotionNativeTransitionGuardSuspensionTests pins.
-            var durations = Realigned(element.style.transitionDuration.value, held.Count, sources);
-            var easings = Realigned(element.style.transitionTimingFunction.value, held.Count, sources);
-            var delays = Realigned(element.style.transitionDelay.value, held.Count, sources);
+            // Counted before the write below: a list read out of a slot is refilled by that slot's next write, which
+            // MotionNativeTransitionGuardSuspensionTests pins.
+            var heldCount = held.Count;
             element.style.transitionProperty = names;
-            if (durations != null)
-            {
-                element.style.transitionDuration = durations;
-            }
-            if (easings != null)
-            {
-                element.style.transitionTimingFunction = easings;
-            }
-            if (delays != null)
-            {
-                element.style.transitionDelay = delays;
-            }
+            WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
+                list => element.style.transitionDuration = list);
+            WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
+                list => element.style.transitionTimingFunction = list);
+            WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
+                list => element.style.transitionDelay = list);
         }
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
@@ -412,20 +401,19 @@ namespace Velvet
             return longhand >= 0 && driven.Contains((StyleLonghand)longhand);
         }
 
-        // Null, leaving the list as it was, where the slot holds none or it does not pair one-to-one with the held
-        // list.
-        private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
+        // Leaves the list as it was where the slot holds none or it does not pair one-to-one with the held list.
+        private static void WriteRealigned<T>(List<T> list, int heldCount, List<int> sources, Action<List<T>> write)
         {
             if (list == null || list.Count != heldCount)
             {
-                return null;
+                return;
             }
             var realigned = new List<T>(sources.Count);
             foreach (var source in sources)
             {
                 realigned.Add(list[source]);
             }
-            return realigned;
+            write(realigned);
         }
 
         private static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
