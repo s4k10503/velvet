@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Velvet.StyleTable;
 using Xunit;
@@ -403,6 +404,23 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.Equal(probe.LonghandCount, covered);
+        }
+
+        [Fact]
+        public void Given_TheEmittedTable_When_EachLonghandsUssNameIsRead_Then_ItIsTheVocabularysName()
+        {
+            // Arrange
+            var probe = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".bg-white { background-color: rgb(255, 255, 255); }")));
+
+            // Act
+            var names = probe.UssNamesByIdentifier().OrderBy(pair => pair, StringComparer.Ordinal);
+
+            // Assert
+            Assert.Equal(
+                UssPropertyVocabulary.Longhands.Select(l => l.Identifier + "=" + l.UssName)
+                    .OrderBy(pair => pair, StringComparer.Ordinal),
+                names);
         }
 
         [Fact]
