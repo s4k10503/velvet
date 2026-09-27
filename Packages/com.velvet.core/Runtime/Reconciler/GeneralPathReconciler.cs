@@ -1896,19 +1896,54 @@ namespace Velvet
             }
 
             var staggerSec = pass.Presence.StaggerDelaySec(tally.ExitIndex, tally.AnimatedExitCount);
+            // A spring or bezier exit reads the element's inline translate as PlayExit starts it and holds an axis
+            // neither pose names there, so a hold lands before it. A tween exit writes its transition in PlayExit,
+            // so a hold landed after moves on it where the exit plays on this element, as the resting USS classes
+            // the enter's cancel put back do. The hold lands whether or not the anchor plays an exit, since the
+            // enter StartPresenceExit cancelled never reaches the swap that would release it, and the descendants'
+            // holds land on the same terms.
+            var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.RunsOnSwap(exitTransition);
+            var landsAfterExit = landsBeforeExit ? null : ghostMotionElement;
+            if (landsBeforeExit && ghostMotionElement != null)
+            {
+                _patcher.LandInlineHold(ghostMotionElement);
+            }
             if (anchorPlays)
             {
+                var onExitSwap = variantExit != null
+                    ? _patcher.PlanInlineExit(ghostMotionElement!, ghostMotionNode!.ClassNames, variantExit.ExitToClasses)
+                    : null;
                 // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
                 // cancelled (the key is re-added before it finishes) the element must return to that resting
                 // variant rather than be left without it (interrupt handling).
                 _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, exitWait.CompleteAnchor,
-                    restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec);
+                    restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec, onSwap: onExitSwap);
+            }
+            if (landsAfterExit != null)
+            {
+                _patcher.LandInlineHold(landsAfterExit);
             }
             foreach (var exit in descendants)
             {
-                var element = exit.Element;
-                _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => exitWait.CompleteDescendant(element),
-                    restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec);
+                PlayDescendantExit(exit, exitWait, staggerSec);
+            }
+        }
+
+        // Lands the descendant's hold on the anchor's terms (DispatchPresenceExits).
+        private void PlayDescendantExit(ReconcilerContext.PresenceDescendantExit exit,
+            ReconcilerContext.PresenceExitWait wait, float staggerSec)
+        {
+            var element = exit.Element;
+            var landsBeforeExit = !StyleAnimationScheduler.RunsOnSwap(exit.Config);
+            if (landsBeforeExit)
+            {
+                _patcher.LandInlineHold(element);
+            }
+            _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => wait.CompleteDescendant(element),
+                restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec);
+            if (!landsBeforeExit)
+            {
+                _patcher.LandInlineHold(element);
             }
         }
 
@@ -1979,7 +2014,7 @@ namespace Velvet
                 }
                 if (wasExiting)
                 {
-                    CancelInterruptedPresenceExit(anchor, motionElement, presence, node);
+                    CancelInterruptedPresenceExit(anchor, motionElement, motion, presence, node);
                 }
                 else if (wasExitComplete)
                 {
@@ -2060,15 +2095,26 @@ namespace Velvet
         private void CancelInterruptedPresenceExit(
             VisualElement anchor,
             VisualElement? motionElement,
+            MotionNode? motion,
             AnimatePresenceNode presence,
             VNode node)
         {
-            _ctx.StyleAnimationScheduler.CancelExit(anchor);
+            // The re-added node was reconciled onto the element before this runs, so the variant exit's cancel
+            // restores the resting classes that reconcile recorded rather than the ones the exit started from.
+            MotionAppliedClassSet? resting = motionElement != null
+                ? _patcher.RestingClassSet(motionElement, motion?.ClassNames)
+                : null;
+            var anchorResting = ReferenceEquals(anchor, motionElement) ? resting : null;
+            _ctx.StyleAnimationScheduler.CancelExit(anchor, anchorResting?.VariantClasses, anchorResting?.Merged);
             // A wrapped Motion's variant exit ran on its own element, not the anchor — the
             // cancel (whose reversal restores the resting variant) must land there too.
             if (motionElement != null && !ReferenceEquals(motionElement, anchor))
             {
-                _ctx.StyleAnimationScheduler.CancelExit(motionElement);
+                _ctx.StyleAnimationScheduler.CancelExit(motionElement, resting?.VariantClasses, resting?.Merged);
+            }
+            if (motionElement != null)
+            {
+                _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
             }
             if (presence.Mode == AnimatePresenceMode.PopLayout)
             {
@@ -2084,7 +2130,7 @@ namespace Velvet
         // that nothing downstream un-parks: there is no pending animation left to cancel, so the
         // interruption restores that CancelInterruptedPresenceExit handles never run. Reverse the exit-time
         // mutations here so the enter branches start from the same state a fresh mount would.
-        private static void RestoreAfterCompletedPresenceExit(
+        private void RestoreAfterCompletedPresenceExit(
             VisualElement anchor,
             VisualElement? motionElement,
             MotionNode? motion,
@@ -2122,6 +2168,7 @@ namespace Velvet
             // resolves — the same staleness any heuristic over the new declaration has.
             StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
             StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
+            _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
         }
 
         private void PlayPresenceEnter(
@@ -2200,8 +2247,10 @@ namespace Velvet
             {
                 // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
                 // resting state).
+                var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
+                    enterTransition);
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
+                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec, onSwap);
             }
             else if (isVariantMotion)
             {

@@ -370,8 +370,10 @@ namespace Velvet
                     }
                     else
                     {
+                        var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
+                            standaloneFromClasses!, standaloneTransition);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses,
-                            standaloneToClasses, standaloneTransition, enterComplete);
+                            standaloneToClasses, standaloneTransition, enterComplete, onSwap: onSwap);
                     }
                 }
                 else
