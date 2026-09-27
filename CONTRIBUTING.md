@@ -187,14 +187,17 @@ readings `--list` takes, and stops there when there are none — because no muta
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
 something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
-shards of 25 can measure inside the shard job's timeout is refused at the plan and is split into
+shards of 16 can measure inside the shard job's timeout is refused at the plan and is split into
 smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
 `Test ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
-against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and recording its
-verdicts. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
+in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
+test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
+not kill it, which
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
+owns. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
 they left surviving, and `Test ▸ mutation-playmode-shard` measures only those against the whole
 PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
 pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
@@ -215,17 +218,23 @@ without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuse
 when a `refs/remotes/*` ref reaches HEAD, and when git could not say whether one does. Amending a
 commit git placed and found unpushed is the ordinary case, and is what the predicate leaves alone.
 
-**What the split costs.** A mutant is one editor launch. Over the twenty commits ending at `48057c8`,
+**What the split costs.** A mutant is one editor launch, or two where its narrowed run did not kill
+it. Over the twenty commits ending at `48057c8`,
 ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
 launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
-branch run locally is around 41 minutes. `--plan` gives an EditMode shard three mutants and stops
+branch run locally is around 41 minutes. `--plan` gives an EditMode shard six mutants and stops
 adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; a PlayMode shard takes two, since each of its mutants costs more than
-twice an EditMode one measured on the same run. Measured for the EditMode shards on the pull request that moved
-the campaign here, over two campaigns — seven mutants in three shards, and forty-nine in ten — the
-pull took 79–146 s, the activation 31–52 s and the baseline 153–225 s, each mutant 119–190 s, and plan
-to verdict took 12m54s and 22m12s, against 8–10 minutes for the rest of the run. The ten shards ran
-beside the three other licensed jobs, and all thirteen activated. Measured on the pull request that
+twice an EditMode one measured on the same run. Measured over 121 EditMode shards of the 100 pull-request runs
+completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
+before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
+645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
+tests took a median of 159 s, 47 s of it in the fixtures reading this tree's text, which is why no
+launch runs them; `Reconciler/`'s assemblies took 5.9 s, `Styling/`'s 26.4 s and `Component/`'s
+122 s, so the last runs its mutants on the whole suite. Over the 2284 EditMode mutants those runs
+recorded, the area's own assemblies held a failing case for 83% of those in `Reconciler/` and 75% of
+those in `Styling/`. On the pull request that moved
+the campaign here, ten shards ran beside the three other licensed jobs, and all thirteen activated. Measured on the pull request that
 added the PlayMode pass, over three mutants only a PlayMode fixture kills — one EditMode shard, which
 reported all three surviving, then two PlayMode shards, which killed all three — the EditMode shard
 took 13m05s with each mutant 144–149 s; the PlayMode shards took 20m35s and 14m32s, spending 97–130 s

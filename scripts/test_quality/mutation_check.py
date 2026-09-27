@@ -28,7 +28,8 @@ folded into it, and a change nothing reaches at all refuses.
 
 The default scope is the whole platform suite rather than the fixtures nearest the mutated file,
 so that nothing is reported as surviving merely because the fixture that would have killed it was
-out of scope.
+out of scope. A mutant in a cheap area is asked of that area's assemblies first, and only a kill
+there stands; every other verdict comes from the whole suite.
 
 A campaign holds a mutation in the working tree while the suite runs, so it records what it holds
 before writing it and clears that record only after putting the original back. Nothing else in the
@@ -38,6 +39,7 @@ already touching, and two of them reached a commit that way.
 
 import argparse
 import bisect
+import functools
 import hashlib
 import json
 import os
@@ -83,15 +85,27 @@ UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
 # has the measured cost of each.
-SHARD_SIZE = {"EditMode": 3, "PlayMode": 2}
+SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
-# The most a shard is given before `--plan` refuses: this many of the slowest mutant, after the longest
-# of each setup phase, fit that platform's shard job's timeout in test.yml. `ShardCeilingTests` holds
-# each pair together.
-SHARD_CEILING = {"EditMode": 25, "PlayMode": 10}
+# The most a shard is given before `--plan` refuses: this many of the slowest mutant, each with two
+# launches at its platform's NARROW_TIMEOUT where it has one, after the longest of each setup phase,
+# fit that platform's shard job's timeout in test.yml. `ShardCeilingTests` holds each pair together.
+SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
+
+# A mutant under an area whose own test assemblies took at most 1/NARROW_SHARE of the baseline's test
+# time runs against those assemblies first, and a kill there is its verdict. Anything else is measured
+# again on the whole suite, so the narrowed run can end a mutant early and never decides that it
+# survived.
+NARROW_SHARE = 4
+# The seconds one narrowed launch -- an area's baseline or a mutant's attempt -- is given before the
+# editor is killed and the whole suite decides instead. A platform absent here is not narrowed.
+# PlayMode is absent: its pass measures only what the whole EditMode suite left surviving, and the two
+# launches `ShardCeilingTests` would charge each of its mutants at this bound take its ceiling from 10
+# to 7.
+NARROW_TIMEOUT = {"EditMode": 90}
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -204,11 +218,30 @@ def declared_lines(text, marker, spans):
     a lost declaration accept such a marker, so the file balances and nothing reports it.
     """
     starts = [start for start, _ in line_spans(text)]
+    inside = within(spans)
     found = {}
     for match in marker.finditer(text):
-        if any(start <= match.start() < end for start, end in spans):
+        if inside(match.start()):
             found.setdefault(bisect.bisect_right(starts, match.start()), match)
     return found
+
+
+def within(spans):
+    """Whether an offset sits inside any of the (start, end) `spans`, asked by bisecting their union."""
+    union = []
+    for opened, closed in sorted(spans):
+        if closed <= opened:
+            continue
+        if union and opened <= union[-1][1]:
+            union[-1][1] = max(union[-1][1], closed)
+        else:
+            union.append([opened, closed])
+    starts = [opened for opened, _ in union]
+
+    def inside(offset):
+        position = bisect.bisect_right(starts, offset) - 1
+        return position >= 0 and offset < union[position][1]
+    return inside
 
 
 def comment_lines(text, spans):
@@ -217,13 +250,14 @@ def comment_lines(text, spans):
     Which lines are prose rather than which hold a marker, so a block comment's continuation counts
     and a remark trailing a statement does not.
     """
+    inside = within(spans)
     found = set()
     for number, (start, end) in enumerate(line_spans(text), start=1):
         line = text[start:end]
         if not line.strip():
             continue
         head = start + len(line) - len(line.lstrip())
-        if any(opened <= head < closed for opened, closed in spans):
+        if inside(head):
             found.add(number)
     return found
 
@@ -295,6 +329,8 @@ CHARACTER = "character literal"
 # read one, so refusing is the answer rather than trusting the mask over that file.
 SINGLE_LINE_CONSTRUCTS = (DIRECTIVE, LINE_COMMENT, STRING, CHARACTER)
 
+MASK_OPENER = re.compile(r"[#/\"'@$]")
+
 
 def mask_spans(text):
     """(start, end, kind) for the spans this reads as something other than code.
@@ -307,6 +343,11 @@ def mask_spans(text):
     i = 0
     n = len(text)
     while i < n:
+        # Every branch below opens on one of these characters, so the offsets between are code.
+        found = MASK_OPENER.search(text, i)
+        if found is None:
+            break
+        i = found.start()
         two = text[i:i + 2]
         if text[i] == "#" and not text[text.rfind("\n", 0, i) + 1:i].strip():
             # A preprocessor line is blanked whole. Nothing downstream of this mask reads a directive,
@@ -367,8 +408,7 @@ def code_mask(text, spans=None):
     """True at each offset `mask_spans` did not read as a comment, a literal or a directive."""
     mask = [True] * len(text)
     for start, end, _ in mask_spans(text) if spans is None else spans:
-        for offset in range(start, end):
-            mask[offset] = False
+        mask[start:end] = [False] * max(0, min(end, len(text)) - start)
     return mask
 
 
@@ -1218,13 +1258,15 @@ def refusal_census(project):
     return rows
 
 
+# Cached because a file's mutants are each applied to the same text, and every one of them asks.
+@functools.lru_cache(maxsize=16)
 def line_spans(text):
     spans = []
     offset = 0
     for line in text.splitlines(keepends=True):
         spans.append((offset, offset + len(line)))
         offset += len(line)
-    return spans
+    return tuple(spans)
 
 
 def mutations_for(path, text, target_lines):
@@ -1648,15 +1690,18 @@ def text_reading_fixtures(project):
     repository pins against, and it is the shape that goes stale silently.
     """
     found = set()
-    for path in Path(project).rglob("*Tests.cs"):
-        if "Library" in path.parts or "obj" in path.parts:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if any(name in text for name in TEXT_CORPUS):
-            found.update(FIXTURE_CLASS.findall(text))
+    # Pruned while walking rather than filtered after, so a restored Library is never walked.
+    for root, directories, files in os.walk(str(project)):
+        directories[:] = [name for name in directories if name not in ("Library", "obj")]
+        for name in files:
+            if not name.endswith("Tests.cs"):
+                continue
+            try:
+                text = (Path(root) / name).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if any(corpus in text for corpus in TEXT_CORPUS):
+                found.update(FIXTURE_CLASS.findall(text))
     return found
 
 
@@ -1670,6 +1715,79 @@ def killed_by_behaviour(names, text_readers):
     """
     return [name for name in names
             if not any(part in text_readers for part in name.split("."))]
+
+
+def excluding(scope, text_readers):
+    """`scope` with every fixture of `text_readers` taken out of the run.
+
+    `killed_by_behaviour` discounts their failures whatever they are, so running them cannot move a
+    verdict. A term matches a suite whose full name ends in the class, so a case it takes out is one
+    whose name carries that class, which `killed_by_behaviour` discounts too.
+    """
+    terms = ["!\\.{}$".format(name) for name in sorted(text_readers)]
+    if not terms:
+        return list(scope)
+    scope = list(scope)
+    if "-testFilter" in scope:
+        position = scope.index("-testFilter") + 1
+        scope[position] = ";".join([scope[position]] + terms)
+    else:
+        scope += ["-testFilter", ";".join(terms)]
+    return scope
+
+
+def area_of(path, project):
+    """The `Runtime/<Area>` directory a source sits under, or None for one outside every area."""
+    try:
+        parts = path.relative_to(project).parts
+    except ValueError:
+        return None
+    root = tuple(PACKAGE.split("/")) + ("Runtime",)
+    if len(parts) > len(root) + 1 and parts[:len(root)] == root:
+        return project.joinpath(*parts[:len(root) + 1])
+    return None
+
+
+def assembly_seconds(results):
+    """(the run's test seconds, test assembly -> its seconds) from a results file."""
+    root = ET.parse(str(results)).getroot()
+    found = {}
+    for suite in root.iter("test-suite"):
+        if suite.get("type") == "Assembly":
+            name = suite.get("name", "")
+            found[name[:-len(".dll")] if name.endswith(".dll") else name] = float(
+                suite.get("duration", "0"))
+    return float(root.get("duration", "0")), found
+
+
+def narrowable(results, areas):
+    """Area -> the test assemblies under it that `results` ran, for each of `areas` whose assemblies
+    took at most 1/NARROW_SHARE of that run's test seconds.
+
+    Read off the baseline rather than listed, so what is taken is the platform's own assemblies, and
+    an area whose fixtures grow slow stops being narrowed without anyone editing a list.
+    """
+    total, seconds = assembly_seconds(results)
+    found = {}
+    for area in sorted(areas):
+        names = sorted(name for name in (json.loads(asmdef.read_text())["name"]
+                                         for asmdef in area.rglob("*.asmdef"))
+                       if name in seconds)
+        if names and sum(seconds[name] for name in names) * NARROW_SHARE <= total:
+            found[area] = names
+    return found
+
+
+def narrowed_kill(results, log, timed_out, dll, baseline_hashes, text_readers):
+    """Every case that failed in a narrowed run that `measure` would read as a kill had the whole
+    suite run, or nothing."""
+    counts = read_counts(results)
+    if timed_out or build_error(log) or counts is None or not counts["failed"]:
+        return []
+    if sha(dll) == baseline_hashes.get(dll.name):
+        return []
+    names = failing_names(results)
+    return names if killed_by_behaviour(names, text_readers) else []
 
 
 def failing_names(results):
@@ -1971,8 +2089,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
+    # Derived once: which fixtures redden on the edit rather than on what it does.
+    text_readers = text_reading_fixtures(project)
     # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
-    launched = scope + args.editor_arg
+    launched = excluding(scope, text_readers) + args.editor_arg
     baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, launched,
                                                   baseline_results, output / "baseline.log",
                                                   args.timeout, holder)
@@ -1997,9 +2117,30 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     assemblies_dir = project / "Library" / "ScriptAssemblies"
     baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
 
+    # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
+    # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
+    # built. Not
+    # taken under a scope the caller chose, which already asks a question of its own.
+    attempts = {}
+    narrow_bound = min(args.timeout, NARROW_TIMEOUT.get(args.platform, 0))
+    if not scope and narrow_bound:
+        areas = {area_of(mutants[index - 1].path, project) for index in selected} - {None}
+        for area, names in narrowable(baseline_results, areas).items():
+            attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
+            results = output / "baseline-{}.xml".format(area.name)
+            if results.exists():
+                results.unlink()
+            _, timed_out, _ = run_suite(args.unity, project, args.platform, attempt, results,
+                                        output / "baseline-{}.log".format(area.name), narrow_bound,
+                                        holder)
+            counts = read_counts(results)
+            if timed_out or not counts or counts["failed"] or counts["inconclusive"] or not counts["passed"]:
+                print("{} alone did not pass green, so its mutants run on the whole suite".format(
+                    ", ".join(names)))
+                continue
+            attempts[area] = (attempt, names)
+
     originals = {path: path.read_text() for path in targets}
-    # Derived once: which fixtures redden on the edit rather than on what it does.
-    text_readers = text_reading_fixtures(project)
     started = time.time()
     resumed = measured = 0
     try:
@@ -2026,8 +2167,23 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutated = apply_mutation(originals[mutant.path], mutant)
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
-            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, launched, results, log,
-                                        args.timeout, holder)
+            dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
+            attempt, narrowed_to = attempts.get(area_of(mutant.path, project), (None, ()))
+            early, wall, neighbours = [], 0.0, 0
+            if attempt is not None:
+                narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
+                narrowed_log = output / "mutant-{:03d}-narrowed.log".format(index)
+                if narrowed.exists():
+                    narrowed.unlink()
+                wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, attempt,
+                                                        narrowed, narrowed_log, narrow_bound, holder)
+                early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
+                                      text_readers)
+            timed_out = False
+            if not early:
+                spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
+                                                   results, log, args.timeout, holder)
+                wall, neighbours = wall + spent, max(neighbours, seen)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
                 # next mutation over this one and end by restoring the wrong text.
@@ -2036,9 +2192,15 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
 
             counts = read_counts(results)
             killers = ()
-            dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
-            if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
+            if early:
+                killers = early
+                behavioural = killed_by_behaviour(early, text_readers)
+                mutant.verdict = KILLED
+                mutant.detail = "{} failed in {}: {}".format(
+                    len(behavioural), ", ".join(narrowed_to),
+                    ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+            elif timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
                 mutant.verdict = HUNG
                 mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
                                  "{:.0f}s".format(args.timeout, baseline_wall))
@@ -2301,7 +2463,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     scope = []
     if args.assemblies:
-        scope += ["-assemblyNames", args.assemblies]
+        scope += ["-assemblyNames", ";".join(name.strip() for name in args.assemblies.split(","))]
     if args.filter:
         scope += ["-testFilter", args.filter]
 

@@ -231,7 +231,7 @@ jobs:
           python3 scripts/release/published_check.py --result HEAD --timeout 30 \
             ${BASE:+--base "$BASE"}
 
-      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_breaking_in_flight_check.py
+      - run: python3 scripts/test_quality/run_suite.py --jobs auto scripts/release/test_breaking_in_flight_check.py
 
       # Every other reading here is of one tree, so a branch carrying a breaking entry is invisible
       # to all of them — which is how v3.0.0 shipped twelve of the thirteen written for it. Skipped
@@ -463,7 +463,7 @@ jobs:
       github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -686,7 +686,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_mutation_check.py
+      - run: python3 scripts/test_quality/run_suite.py --jobs auto scripts/test_quality/test_mutation_check.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_ci_mutation_shard.py
 
@@ -694,13 +694,13 @@ jobs:
 
       - run: python3 scripts/test_quality/neuter_check.py --audit
 
-      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_base_red_check.py
+      - run: python3 scripts/test_quality/run_suite.py --jobs auto scripts/test_quality/test_base_red_check.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_fixture_filter.py
 
-      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assert_results_from_this_tree.py
+      - run: python3 scripts/test_quality/run_suite.py --jobs auto scripts/test_quality/test_assert_results_from_this_tree.py
 
-      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assume_gate_check.py
+      - run: python3 scripts/test_quality/run_suite.py --jobs auto scripts/test_quality/test_assume_gate_check.py
 
       - run: python3 scripts/test_quality/assume_gate_check.py
 

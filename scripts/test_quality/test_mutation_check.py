@@ -201,6 +201,18 @@ class TextReadingKillerTests(unittest.TestCase):
         self.assertEqual(("DocumentationDriftTests" in found, "HookBailoutEqualityTests" in found),
                          (True, False))
 
+    def test_Given_AProjectInsideADirectoryNamedLibrary_When_TheReadersAreDerived_Then_TheyAreFound(self):
+        # Arrange — the Library a scan skips is the project's own, not a directory the checkout sits in.
+        root = Path(tempfile.mkdtemp(prefix="text-readers-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        project = root / "Library" / "velvet"
+        fixture = project / "Packages/com.velvet.core/Runtime/Tests/Editor/DriftTests.cs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("internal sealed class DriftTests { DocumentationCorpus Corpus; }\n")
+
+        # Act / Assert
+        self.assertEqual(mutation_check.text_reading_fixtures(project), {"DriftTests"})
+
 
 class RewritesThatCannotCompile(unittest.TestCase):
     """Two of the three mechanisms behind a mutant that cannot compile from a rewrite.
@@ -4007,16 +4019,324 @@ class CampaignPlanTests(unittest.TestCase):
             mutation_check.parse_shard("2/2")
 
 
+class LaunchRecordingCampaign(ParityKilledCampaign):
+    """The two-mutant campaign, keeping the scope of every launch beside its results file's name."""
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        self.scopes = []
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        self.scopes.append((Path(results).name, list(scope)))
+        return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+
+
+class TextReaderExclusionTests(unittest.TestCase):
+    """A fixture reading this tree's text can move no verdict, so no launch pays for running it."""
+
+    def test_Given_TextReadingFixtures_When_AScopeIsBuilt_Then_EachIsTakenOut(self):
+        # Act
+        scope = mutation_check.excluding([], {"CrefTargetTests", "DocumentationDriftTests"})
+
+        # Assert
+        self.assertEqual(scope, ["-testFilter", "!\\.CrefTargetTests$;!\\.DocumentationDriftTests$"])
+
+    def test_Given_ACallersFilter_When_TextReadersAreTakenOut_Then_ItStillSelectsWhatItNamed(self):
+        # Act
+        scope = mutation_check.excluding(["-testFilter", "Velvet.Tests.HookTests"], {"CrefTargetTests"})
+
+        # Assert
+        self.assertEqual(scope, ["-testFilter", "Velvet.Tests.HookTests;!\\.CrefTargetTests$"])
+
+    def test_Given_AReaderNamedLikeAnArea_When_ItsTermIsMatched_Then_ItTakesTheFixtureAndNotTheAssembly(self):
+        # Arrange — a term matching an assembly's full name takes out every case in it, which
+        # `killed_by_behaviour` does not discount.
+        term = mutation_check.excluding([], {"Component"})[1][1:]
+
+        # Act
+        matched = (bool(re.search(term, "Velvet.Tests.Component")),
+                   bool(re.search(term, "/github/workspace/Library/ScriptAssemblies/"
+                                        "Velvet.Tests.Component.Editor.dll")))
+
+        # Assert
+        self.assertEqual(matched, (True, False))
+
+    def test_Given_AFixtureReadingTheTreesText_When_TheCampaignRuns_Then_EveryLaunchLeavesItOut(self):
+        # Arrange — a fixture that walks the corpus, under a test directory the campaign never mutates.
+        campaign = LaunchRecordingCampaign()
+        reader = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/DriftTests.cs"
+        reader.parent.mkdir(parents=True)
+        reader.write_text("internal sealed class DriftTests { DocumentationCorpus Corpus; }\n")
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual({tuple(scope) for _, scope in campaign.scopes},
+                         {("-testFilter", "!\\.DriftTests$")})
+
+
+class AssemblyScopeTests(unittest.TestCase):
+    def test_Given_TwoAssemblies_When_TheCampaignLaunches_Then_TheEditorIsHandedTwoNames(self):
+        # Arrange — the value is split on semicolons where it is read, so a comma list arrives as one
+        # name no assembly carries.
+        campaign = LaunchRecordingCampaign()
+
+        # Act
+        campaign.run_over_diff("--assemblies", "Velvet.Tests.Hooks.Editor,Velvet.Tests.Store.Editor")
+
+        # Assert
+        self.assertEqual(campaign.scopes[0][1],
+                         ["-assemblyNames", "Velvet.Tests.Hooks.Editor;Velvet.Tests.Store.Editor"])
+
+
+def timed_results(duration, assemblies=(), failed=()):
+    """A results file carrying the run's test seconds, each assembly's, and the cases that failed."""
+    suites = "".join('<test-suite type="Assembly" name="{}.dll" duration="{}" />'.format(name, seconds)
+                     for name, seconds in assemblies)
+    cases = "".join('<test-case fullname="{}" result="Failed" />'.format(name) for name in failed)
+    return '<test-run total="2" passed="{}" failed="{}" inconclusive="0" duration="{}">{}{}</test-run>'.format(
+        2 - len(failed), len(failed), duration, suites, cases)
+
+
+class AreaCampaign(StubbedCampaign):
+    """One mutant in an area that owns a test assembly, where the whole EditMode suite took `TOTAL`
+    seconds of tests and that assembly `area_seconds` of them.
+
+    What each launch reports is set per kind: the area's own baseline, the narrowed attempt, and the
+    whole-suite run a mutant falls back to.
+    """
+
+    SOURCE = "Packages/com.velvet.core/Runtime/Reconciler/Probe.cs"
+    ASSEMBLY = "Velvet.Tests.Reconciler.Editor"
+    TOTAL = 100.0
+
+    def __init__(self, body=None, area_seconds=1.0):
+        super().__init__(body)
+        asmdef = self.project / "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/{}.asmdef".format(
+            self.ASSEMBLY)
+        asmdef.parent.mkdir(parents=True)
+        asmdef.write_text(json.dumps({"name": self.ASSEMBLY}))
+        self.area_seconds = area_seconds
+        self.launches = []
+        self.area_green = True
+        self.narrowed_fails = ("Velvet.Tests.ProbeTests.Given_X",)
+        self.narrowed_times_out = False
+        self.narrowed_log = ""
+        self.whole_fails = ()
+        self.rebuilt = True
+
+    def run_suite(self, _unity, _project, _platform, scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.launches.append(name)
+        Path(log).write_text(self.narrowed_log if name.endswith("-narrowed.xml") else "")
+        dll = self.project / "Library" / "ScriptAssemblies" / "None.dll"
+        if name == "baseline.xml" or not self.rebuilt:
+            dll.write_bytes(b"unmutated")
+        elif name.startswith("mutant-"):
+            dll.write_bytes(b"mutated")
+        if name == "baseline.xml":
+            text = timed_results(self.TOTAL, [(self.ASSEMBLY, self.area_seconds), ("Velvet.Tests.Other", 50.0)])
+        elif name.startswith("baseline-"):
+            text = timed_results(1.0, failed=() if self.area_green else ("Velvet.Tests.ProbeTests.Given_Y",))
+        elif name.endswith("-narrowed.xml"):
+            text = timed_results(1.0, failed=self.narrowed_fails)
+        else:
+            text = timed_results(self.TOTAL, failed=self.whole_fails)
+        Path(results).write_text(text)
+        return 0.0, name.endswith("-narrowed.xml") and self.narrowed_times_out, 0
+
+    def verdict(self):
+        record = self.project / "out" / "mutant-001.json"
+        return json.loads(record.read_text()) if record.exists() else {}
+
+
+class NarrowedAttemptTests(unittest.TestCase):
+    """A mutant in a cheap area is asked of that area's assemblies first, and only a kill there stands:
+    every other verdict is the whole suite's, so the narrowing can end a run and never decide that a
+    mutant survived."""
+
+    def test_Given_AMutantItsAreaKills_When_Measured_Then_TheWholeSuiteIsNotLaunchedForIt(self):
+        # Arrange
+        campaign = AreaCampaign()
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml",
+                                             "mutant-001-narrowed.xml"])
+
+    def test_Given_AMutantItsAreaKills_When_Recorded_Then_ItIsKilledByTheAreasCases(self):
+        # Arrange — the whole suite would have let it survive, so the kill can only be the area's.
+        campaign = AreaCampaign()
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        record = campaign.verdict()
+        self.assertEqual((record.get("verdict"), record.get("killers"),
+                          "in {}:".format(AreaCampaign.ASSEMBLY) in record.get("detail", "")),
+                         (mutation_check.KILLED, ["Velvet.Tests.ProbeTests.Given_X"], True))
+
+    def test_Given_AMutantItsAreaSpares_When_TheWholeSuiteKillsIt_Then_ThatKillIsTheVerdict(self):
+        # Arrange
+        campaign = AreaCampaign()
+        campaign.narrowed_fails = ()
+        campaign.whole_fails = ("Velvet.Tests.ElsewhereTests.Given_Z",)
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual((campaign.launches[-2:], campaign.verdict().get("killers")),
+                         (["mutant-001-narrowed.xml", "mutant-001.xml"],
+                          ["Velvet.Tests.ElsewhereTests.Given_Z"]))
+
+    def test_Given_ANarrowedRunOverTheUnmutatedAssembly_When_ItFails_Then_TheWholeSuiteDecides(self):
+        # Arrange — a failure over a binary the edit never reached is not the mutation's.
+        campaign = AreaCampaign()
+        campaign.rebuilt = False
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
+
+    def test_Given_ANarrowedRunTheBuildStopped_When_ItReportsAFailure_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        campaign = AreaCampaign()
+        campaign.narrowed_log = ("Packages/com.velvet.core/Runtime/Reconciler/Probe.cs(5,9): "
+                                 "error CS0019: nope\n")
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
+
+    def test_Given_ANarrowedRunKilledAtItsBound_When_ItLeftAFailure_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        campaign = AreaCampaign()
+        campaign.narrowed_times_out = True
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
+
+    def test_Given_ANarrowedRunWhereOnlyATextReaderFailed_When_Read_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        campaign = AreaCampaign()
+        reader = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/DriftTests.cs"
+        reader.parent.mkdir(parents=True)
+        reader.write_text("internal sealed class DriftTests { TrackedFiles Files; }\n")
+        campaign.narrowed_fails = ("Velvet.Tests.DriftTests.Given_X",)
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
+
+    def test_Given_AnAreaThatFailsByItself_When_TheCampaignStarts_Then_ItsMutantsRunOnTheWholeSuite(self):
+        # Arrange
+        campaign = AreaCampaign()
+        campaign.area_green = False
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml", "mutant-001.xml"])
+
+    # GREEN_ON_BASE(characterization): a caller's filter keeps its question whole, as on the base.
+    # The base narrows nothing at all, so what this pins is that the branch does not under a filter.
+    def test_Given_ACallersFilter_When_Measured_Then_NothingIsNarrowed(self):
+        # Arrange
+        campaign = AreaCampaign()
+
+        # Act
+        campaign.run_over_diff("--filter", "Velvet.Tests.ProbeTests")
+
+        # Assert
+        self.assertEqual(campaign.launches, ["baseline.xml", "mutant-001.xml"])
+
+    # GREEN_ON_BASE(characterization): the PlayMode pass stays whole, as everything does on the base.
+    # Only the EditMode survivors reach that pass, and nothing here has measured a narrowed kill there.
+    def test_Given_ThePlayModePlatform_When_Measured_Then_NothingIsNarrowed(self):
+        # Arrange
+        campaign = AreaCampaign()
+
+        # Act
+        campaign.run_over_diff("--platform", "PlayMode")
+
+        # Assert
+        self.assertEqual(campaign.launches, ["baseline.xml", "mutant-001.xml"])
+
+
+class NarrowableAreaTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="narrowable-"))
+        self.area = self.root / "Reconciler"
+        (self.area / "Tests" / "Editor").mkdir(parents=True)
+        (self.area / "Tests" / "Editor" / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.A"}))
+        self.results = self.root / "baseline.xml"
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def narrowed(self, seconds):
+        self.results.write_text(timed_results(100.0, [("Velvet.Tests.A", seconds), ("Velvet.Tests.B", 60.0)]))
+        return mutation_check.narrowable(self.results, {self.area})
+
+    def test_Given_AnAreaTakingAQuarterOfTheSuite_When_Read_Then_ItIsNarrowed(self):
+        # Act / Assert
+        self.assertEqual(self.narrowed(25.0), {self.area: ["Velvet.Tests.A"]})
+
+    def test_Given_AnAreaTakingMoreThanAQuarter_When_Read_Then_ItIsLeftWhole(self):
+        # Act / Assert
+        self.assertEqual(self.narrowed(25.5), {})
+
+    def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
+        # Arrange — an assembly of the other platform sits under the same area.
+        (self.area / "Tests" / "PlayMode").mkdir()
+        (self.area / "Tests" / "PlayMode" / "P.asmdef").write_text(json.dumps({"name": "Velvet.Tests.P"}))
+
+        # Act / Assert
+        self.assertEqual(self.narrowed(1.0), {self.area: ["Velvet.Tests.A"]})
+
+
+class AreaOfTests(unittest.TestCase):
+    def test_Given_SourcesInsideAndOutsideAnArea_When_Read_Then_OnlyTheOneInsideHasOne(self):
+        # Arrange
+        project = Path("/p")
+        runtime = project / "Packages/com.velvet.core/Runtime"
+
+        # Act
+        areas = [mutation_check.area_of(path, project) for path in (
+            runtime / "Reconciler/Deep/Probe.cs", runtime / "Probe.cs",
+            project / "Packages/com.velvet.core/Editor/Probe.cs")]
+
+        # Assert
+        self.assertEqual(areas, [runtime / "Reconciler", None, None])
+
 
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Per platform: the shard job, the slowest mutant measured on CI, and the longest measured of each
-    # setup phase added together. EditMode's is image pull, activation and baseline, 146 + 52 + 225 s,
-    # with the checkout and cache restore's 20 s. PlayMode's setup is everything before activation,
-    # activation and baseline, 130 + 37 + 374 s. Its mutant is the slowest measured, 364 s, plus the
-    # 100 s its five bounded cases spend where a mutant stops the frame driver, 5 x 20 s measured locally.
-    COSTS = {"EditMode": ("mutation-shard", 190, 443),
+    # Per platform: the shard job, a mutant's cost, and the longest measured of each setup phase added
+    # together. EditMode's setup is everything before activation, activation and baseline, 152 + 41 +
+    # 362 s, over 121 of its shards on CI; its mutant is 215 s, which 18 of their 645 mutant runs
+    # exceeded -- ten kills of up to 540 s and eight hangs at --timeout. PlayMode's setup is the same
+    # three, 130 + 37 + 374 s. Its mutant is the slowest measured, 364 s, plus the 100 s its five
+    # bounded cases spend where a mutant stops the frame driver, 5 x 20 s measured locally. Each mutant
+    # is charged two launches at its platform's `NARROW_TIMEOUT` besides: its narrowed attempt, and its
+    # area's baseline, which a shard takes once for each area it holds.
+    COSTS = {"EditMode": ("mutation-shard", 215, 555),
              "PlayMode": ("mutation-playmode-shard", 464, 541)}
 
     def fits(self, platform):
@@ -4025,7 +4345,8 @@ class ShardCeilingTests(unittest.TestCase):
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
-        return per is not None and found is not None and setup + per * slowest <= int(found.group(1)) * 60
+        mutant = slowest + 2 * getattr(mutation_check, "NARROW_TIMEOUT", {}).get(platform, 0)
+        return per is not None and found is not None and setup + per * mutant <= int(found.group(1)) * 60
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Act
