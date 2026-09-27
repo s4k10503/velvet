@@ -147,6 +147,10 @@ namespace Velvet.Tests
                 animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f },
                 children: new[] { SlowMotion() }),
             "classic" => V.Component(ClassicRender, key: key),
+            "z-nested" => V.Div(key: key, children: new[]
+            {
+                V.Div(className: "absolute z-10", children: new[] { TimedMotion(null) }),
+            }),
             "portal" => V.Div(key: key, children: new VNode[] { V.Portal(s_portalTarget, new[] { TimedMotion(null) }) }),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
         };
@@ -389,6 +393,24 @@ namespace Velvet.Tests
 
             // Assert — mounted, with no enter timing on it.
             Assert.That((Root.Q<VisualElement>("item") != null, float.IsNaN(ItemDurationMs())), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMotionInsideAZManagedElementExiting_When_ItsExitCompletes_Then_TheChildIsRemoved()
+        {
+            // Arrange
+            using var mounted = MountSettled("z-nested", "a");
+            using var keys = s_keyStore;
+            keys.Set(string.Empty);
+            Drain(mounted);
+            var heldWhileExiting = HostChildCount;
+
+            // Act — well past the 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert — held while the exit played, then gone, with onExitComplete fired once.
+            Assert.That((heldWhileExiting, HostChildCount, s_exitsCompleted), Is.EqualTo((1, 0, 1)));
         }
 
         [Test]

@@ -82,10 +82,12 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - **A removed child's exits play however deep their Motion sits** — behind a component,
   `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
-  the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers its inheriting children as a label
-  change does (see *Orchestration* below). The children of an inner `V.AnimatePresence` are that
-  presence's, as in Framer without `propagate`. `initial: false` suppresses the mount enter of the
-  Motions the presence's first render creates.
+  the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers
+  its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`: each
+  inheriting child whose exit plays takes the next slot, in the order the children sit in the
+  element tree. The children of an inner `V.AnimatePresence` are that presence's, as in Framer
+  without `propagate`. `initial: false` suppresses the mount enter of the Motions the presence's
+  first render creates, other than those inside a `V.Portal`, which mount after that render.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
   Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A

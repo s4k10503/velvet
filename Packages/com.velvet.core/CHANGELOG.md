@@ -986,8 +986,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
   exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
   class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
-  nothing on the coordinator itself, which is held for that timing and then removed, where the classic
-  exit used to play the transition's exit classes on it.
+  nothing on the coordinator itself, which is held until that timing and its inheriting children's
+  exits have finished and then removed, where the classic exit used to play the transition's exit
+  classes on it.
   An `exit:` label the map has no pose for still plays the classic exit.
 
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
@@ -1055,7 +1056,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child's anchor used to exit, so a keyed `V.List` row rendered by a component vanished at once. A
   Motion inheriting its labels takes its coordinator's exit label, staggered by the coordinator's exit
   pose, and `initial: false` suppresses the mount enter of the Motions the presence's first render
-  creates, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
+  creates outside a `V.Portal`, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
   presence's. A variant Motion whose classic exit completed no longer keeps that exit's class when its
   key returns before the removal.
 

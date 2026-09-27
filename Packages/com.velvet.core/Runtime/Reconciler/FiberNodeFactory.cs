@@ -347,7 +347,7 @@ namespace Velvet
             // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
             // purely a transient visual state: a later patch (PatchMotion) always diffs against the
             // resting baseline and never replays this entrance.
-            // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
+            // Gated on IDENTITY: the presence expansion drives an enter for
             // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
             // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly), so every
             // OTHER Motion created while that expansion is on the stack plays this one, unless
@@ -380,8 +380,7 @@ namespace Velvet
                     // configuration is not yet driven by the standalone enter), the label is missing
                     // from Variants / maps to an empty class, or neither the target variant nor this
                     // Motion carries a transition to play on. Warn instead of silently mounting inert,
-                    // matching the Exit gate's own inert-configuration diagnostic in
-                    // WarnIgnoredMotionUtilities.
+                    // matching the exit diagnostic in WarnIgnoredMotionUtilities.
                     FiberLogger.LogWarning("Motion",
                         "initial is set but has no resolvable enter: this Motion needs its own animate + "
                         + "variants (with initial mapping to a non-empty class) for a standalone mount "
@@ -461,13 +460,11 @@ namespace Velvet
                     "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
                     + "Wrap the Motion around a z-managed Div instead.");
             }
-            // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
-            // the unmount for a removal to animate against, and AnimatePresence is what does that — so
-            // exit outside one is genuinely inert. Initial is NOT warned here (see the standalone enter
-            // in CreateForMotionNode): unlike exit, a mount-time enter needs no deferred unmount to play
-            // against, so it works on any Motion (initial/animate apply anywhere; only exit is
-            // AnimatePresence-only).
-            if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
+            // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
+            // Warned only where this reconciler holds no presence at all: a Motion a component inside a
+            // presence child mounts on its own re-render, or a portal drains, is created with no presence
+            // expansion on the stack and still exits.
+            if (_ctx.PresenceStates.Count == 0 && motionNode.Exit != null)
             {
                 FiberLogger.LogWarning("Motion",
                     "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "

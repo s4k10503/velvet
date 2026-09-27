@@ -182,7 +182,7 @@ namespace Velvet
         /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
         /// enter to play at all. AnimatePresence plays it when this Motion is a keyed child's anchor (the
         /// motion guide's <i>Exits</i> section says which Motion that is); any other Motion plays it itself on
-        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates —
+        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal —
         /// <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence is only required for
         /// <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
@@ -196,7 +196,8 @@ namespace Velvet
         /// label down to the Motions inheriting its labels. A label <see cref="Variants"/> has no pose for
         /// plays the classic exit instead.
         /// Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
-        /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.
+        /// defer the unmount for the removal to animate against — so it is inert outside one, which a warning
+        /// reports where the mounted tree holds no AnimatePresence at all.
         /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
         public string? Exit { get; init; }

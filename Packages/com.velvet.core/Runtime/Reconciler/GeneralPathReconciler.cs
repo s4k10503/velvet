@@ -846,18 +846,7 @@ namespace Velvet
                         // into the parent's slot range (so the parent's flex / wrap / gap reach them), with
                         // enter / exit / stagger played on each keyed child's anchor element. Old/new sides
                         // are reproduced from the per-boundary presence state, mirroring ExpandSuspenseInline.
-                        // Depth marker: Motion nodes created while a presence expansion is on the
-                        // stack are presence-managed (initial/exit are live); a standalone Motion
-                        // mount sees depth 0 and warns that those props are inert.
-                        _ctx.PresenceExpansionDepth++;
-                        try
-                        {
-                            ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
-                        }
-                        finally
-                        {
-                            _ctx.PresenceExpansionDepth--;
-                        }
+                        ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
                         break;
                     case BaseElementNode:
                         // Regular element: CreateElement / PatchNode reconciles its children via the
@@ -1659,7 +1648,10 @@ namespace Velvet
             }
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
-                count += CollectDescendantExitsUnder(element.hierarchy[i], inheritedExit, frame, in walk);
+                // A layer container holds the z-managed elements whose placeholders the walk follows already.
+                var child = element.hierarchy[i];
+                if (FiberZLayerCoordinator.IsLayerContainer(child)) continue;
+                count += CollectDescendantExitsUnder(child, inheritedExit, frame, in walk);
             }
             return count;
         }
@@ -1687,8 +1679,7 @@ namespace Velvet
         // One Motion's exit, returning 1 when it plays, and what it hands its descendants in place of
         // inheritedExit and frame. A Motion with no animate of its own exits to the inherited label unless it
         // names an exit itself, the way an animate label propagates, and one with its own animate hands down
-        // only its own exit. One that exits to an inherited label claims the frame's next slot, as an
-        // inheriting label swap does in FiberNodePatcher.PatchMotion.
+        // only its own exit. One that plays an exit to an inherited label claims the frame's next slot.
         private int CollectOwnExit(
             VisualElement element,
             MotionNode motion,
@@ -1865,9 +1856,10 @@ namespace Velvet
             }
 
             ReconcilerContext.PresenceExitWait? wait = null;
-            // Deferred to the next frame: a torn-down descendant settles the wait from inside
-            // FiberElementCleaner, which unmounting the whole presence reaches as well, and by the next frame
-            // the check below finds that presence's state retired and fires no onExitComplete for it.
+            // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
+            // presence reaches as well. Where either element still has a panel the check below waits for the
+            // next frame, by which that presence's state is retired and no onExitComplete fires; with neither
+            // attached it runs at the teardown itself.
             void SettledByTeardown(VisualElement tornDown)
             {
                 void SettleIfStillExiting()

@@ -2221,7 +2221,7 @@ namespace Velvet
         /// and transitions to <c>variants[animate]</c> (its persistent resting state) — played by
         /// AnimatePresence when this Motion is a keyed child's anchor, and by the Motion itself on mount
         /// anywhere else (the motion guide's <i>Exits</i> section says which Motion is the anchor); a
-        /// presence's <c>initial: false</c> suppresses it in the Motions its first render creates.
+        /// presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal.
         /// <see cref="MotionVariant.Transition"/>
         /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
         /// must apply for the enter to play at all.</param>
@@ -2230,7 +2230,8 @@ namespace Velvet
         /// the child unmounts, and hands the label down to the Motions inheriting its labels.
         /// <see cref="MotionVariant.Transition"/> resolves the timing, whether or not <c>variants[exit]</c>
         /// applies a class. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the
-        /// unmount — set outside one, it is inert and logs a warning.</param>
+        /// unmount — set outside one, it is inert, which a warning reports where the mounted tree holds no
+        /// AnimatePresence at all.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
         public static MotionNode Motion(
             string? className = null,

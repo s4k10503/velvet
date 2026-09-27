@@ -1496,18 +1496,13 @@ namespace Velvet
         // host element is reused), and disambiguates inner from outer.
         internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, long presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
 
-        // Non-zero while an AnimatePresence expansion is on the stack. Motion nodes created inside
-        // it are presence-managed (initial/exit tweens are scheduled by the expansion); a Motion
-        // created at depth 0 mounts standalone, where those props are inert and warn.
-        internal int PresenceExpansionDepth;
-
         // The MotionNode a presence expansion is CURRENTLY dispatching enter/exit for — the one
         // FindFirstMotionDescendant resolved for whichever keyed child GeneralPathReconciler is expanding right
         // now (set/restored around each EmitPresenceChild call, not just cleared, so a nested AnimatePresence
         // inside that child's own subtree does not lose the OUTER anchor once its own expansion returns). Null
         // outside any presence expansion, and also null for a keyed child whose FindFirstMotionDescendant walk
         // found no Motion (e.g. a plain Div wrapper). FiberNodeFactory's standalone-enter gate compares a
-        // freshly created MotionNode against this BY REFERENCE — not PresenceExpansionDepth — so only the ONE
+        // freshly created MotionNode against this BY REFERENCE, so only the ONE
         // node the presence itself already plays an enter for (via PlayVariantEnter/PlayEnter) skips its
         // redundant standalone enter; every OTHER Motion created while the expansion is on the stack (nested
         // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) plays its own mount enter unless
