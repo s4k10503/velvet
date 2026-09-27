@@ -5,6 +5,10 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
+// Same split as PanelHostFactory's.
+#if !UNITY_6000_5_OR_NEWER
+using WorldSpaceSizeMode = UnityEngine.UIElements.UIDocument.WorldSpaceSizeMode;
+#endif
 
 namespace Velvet.Tests
 {
@@ -31,8 +35,8 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
-        private HashSet<int> _baselineDocs;
-        private HashSet<int> _baselineSettings;
+        private HashSet<EntityId> _baselineDocs;
+        private HashSet<EntityId> _baselineSettings;
 
         private static StateUpdater<bool> s_setFlag;
         private static string s_observedContext;
@@ -55,22 +59,22 @@ namespace Velvet.Tests
             FiberPortalRegistry.Unregister("late-target");
         }
 
-        private static HashSet<int> DocIds()
+        private static HashSet<EntityId> DocIds()
         {
-            var ids = new HashSet<int>();
+            var ids = new HashSet<EntityId>();
             foreach (var doc in Resources.FindObjectsOfTypeAll<UIDocument>())
             {
-                ids.Add(doc.GetInstanceID());
+                ids.Add(doc.GetEntityId());
             }
             return ids;
         }
 
-        private static HashSet<int> SettingsIds()
+        private static HashSet<EntityId> SettingsIds()
         {
-            var ids = new HashSet<int>();
+            var ids = new HashSet<EntityId>();
             foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
             {
-                ids.Add(settings.GetInstanceID());
+                ids.Add(settings.GetEntityId());
             }
             return ids;
         }
@@ -81,7 +85,7 @@ namespace Velvet.Tests
             var created = new List<UIDocument>();
             foreach (var doc in Resources.FindObjectsOfTypeAll<UIDocument>())
             {
-                if (!_baselineDocs.Contains(doc.GetInstanceID()))
+                if (!_baselineDocs.Contains(doc.GetEntityId()))
                 {
                     created.Add(doc);
                 }
@@ -96,7 +100,7 @@ namespace Velvet.Tests
             var created = new List<PanelSettings>();
             foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
             {
-                if (!_baselineSettings.Contains(settings.GetInstanceID()))
+                if (!_baselineSettings.Contains(settings.GetEntityId()))
                 {
                     created.Add(settings);
                 }
@@ -622,6 +626,8 @@ namespace Velvet.Tests
             Assert.That(NewDocs().Count, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): the enum is respelled for 6.5 and later, and at the floor it names the
+        // same member the base's assertion named.
         [Test]
         public void Given_APanelSizeMatchingTheDocumentDefault_When_Mounted_Then_FixedSizingStillApplies()
         {
@@ -650,7 +656,7 @@ namespace Velvet.Tests
             var docs = NewDocs();
             Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
             Assert.That((docs[0].worldSpaceSizeMode, docs[0].worldSpaceSize),
-                Is.EqualTo((UIDocument.WorldSpaceSizeMode.Fixed, documentDefault)));
+                Is.EqualTo((WorldSpaceSizeMode.Fixed, documentDefault)));
         }
 
         #endregion

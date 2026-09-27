@@ -145,13 +145,22 @@ namespace Velvet
                 }
                 var col = logicalIndex % n;
                 var row = logicalIndex / n;
-                // The column owns the box: width + all four margins. Width is deferred (Null) until a real
-                // row width resolves on panel.
-                child.style.width = hasWidth ? new StyleLength(colWidth) : new StyleLength(StyleKeyword.Null);
-                child.style.marginLeft = new StyleLength(col == 0 ? 0f : _spec.ColumnGap);
-                child.style.marginTop = new StyleLength(row == 0 ? 0f : _spec.RowGap);
-                child.style.marginRight = new StyleLength(0f);
-                child.style.marginBottom = new StyleLength(0f);
+                // The column owns the box: width + all four margins. Width is deferred — handed back — until a
+                // real row width resolves on panel.
+                if (hasWidth)
+                {
+                    StyleArbitraryValueResolver.Hold(child, HeldSlot.Width, new StyleLength(colWidth));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
+                }
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft,
+                    new StyleLength(col == 0 ? 0f : _spec.ColumnGap));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop,
+                    new StyleLength(row == 0 ? 0f : _spec.RowGap));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginRight, new StyleLength(0f));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginBottom, new StyleLength(0f));
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _sized.Add(child);
                 logicalIndex++;
@@ -206,8 +215,8 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
-        // turn-off on a child that has LEFT the container goes through here. The one null that lands on a
-        // CURRENT child does not ask — Apply defers the width to Null while no row width has resolved yet.
+        // turn-off on a child that has LEFT the container goes through here. The one hand-back that lands on a
+        // CURRENT child does not ask — Apply hands the width back while no row width has resolved yet.
         private void ReleaseChild(VisualElement child)
         {
             if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
@@ -216,15 +225,13 @@ namespace Velvet
             }
         }
 
-        // Resets the width + four margins this manipulator may have written, falling each back to its
-        // class / default value.
         private static void ResetChild(VisualElement child)
         {
-            child.style.width = new StyleLength(StyleKeyword.Null);
-            child.style.marginLeft = new StyleLength(StyleKeyword.Null);
-            child.style.marginTop = new StyleLength(StyleKeyword.Null);
-            child.style.marginRight = new StyleLength(StyleKeyword.Null);
-            child.style.marginBottom = new StyleLength(StyleKeyword.Null);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginLeft);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginTop);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginRight);
+            StyleArbitraryValueResolver.HandBack(child, HeldSlot.MarginBottom);
         }
 
         // Order-sensitive hash of the inputs that change the sizing: columns, gaps, resolved row width

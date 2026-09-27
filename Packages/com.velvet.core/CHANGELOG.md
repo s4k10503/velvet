@@ -128,6 +128,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `[&>*]:` arbitrary payload and a `gap-*`, `grid-cols-*` or `divide-*` container no longer erase
+  each other's value on a child they both write. The container's value wins while it applies; where it
+  stops — its utility is dropped, the child leaves, an edge is abandoned, or the child is the first of a
+  `gap-*` or `divide-*` row and takes no gap or divider — the child shows its own arbitrary values and
+  payloads rather than nothing.
+
 
 - A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
   the swap at its target or has the swap's transition drag the spring's frames. The spring takes what
