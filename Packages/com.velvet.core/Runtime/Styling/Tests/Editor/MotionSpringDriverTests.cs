@@ -383,6 +383,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOldRectNeverLaidOut_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange
+            var oldRect = new Rect(0f, 0f, float.NaN, float.NaN);
+            var newRect = new Rect(110f, 220f, 100f, 50f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_ANewRectNeverLaidOut_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange
+            var oldRect = new Rect(110f, 220f, 100f, 50f);
+            var newRect = new Rect(0f, 0f, float.NaN, float.NaN);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
         public void Given_ARectMovedWithoutResizing_When_DeltaComputed_Then_OnlyTranslateChannelsAreSet()
         {
             // Arrange — moved from (10,20) to (110,220), same 100x50 size.

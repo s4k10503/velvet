@@ -56,16 +56,12 @@ namespace Velvet
             onSettled = _ =>
             {
                 CancelPendingSettle(element, ctx);
-                var newRect = element.layout;
                 var parent = element.hierarchy.parent;
-                if (parent == null || !IsFiniteRect(newRect)) return;
-
                 var from = ReferenceEquals(fromBox.Parent, parent)
                     ? fromBox.Local
                     : new Rect(parent.WorldToLocal(fromBox.PanelPosition), fromBox.Local.size);
-                if (!IsFiniteRect(from)) return;
 
-                var plan = ComputeDeltaPlan(from, newRect);
+                var plan = ComputeDeltaPlan(from, element.layout);
                 if (plan.IsEmpty) return;
 
                 var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
@@ -87,11 +83,8 @@ namespace Velvet
         {
             box = default;
             var layout = element.layout;
-            var parent = element.hierarchy.parent;
-            if (element.panel == null || parent == null || !IsFiniteRect(layout)) return false;
-            var panelPosition = parent.LocalToWorld(layout.position);
-            if (!float.IsFinite(panelPosition.x) || !float.IsFinite(panelPosition.y)) return false;
-            box = new LayoutIdBox(parent, layout, panelPosition);
+            if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
+            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout.position));
             return true;
         }
 
@@ -145,10 +138,9 @@ namespace Velvet
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)
                 && ReferenceEquals(current.Element, element))
             {
-                var box = TryReadBox(element, out var live) ? live : current.Box;
-                if (ctx.CurrentPass != null && box != null)
+                if (ctx.CurrentPass != null)
                 {
-                    ctx.LayoutIdRegistry[layoutId] = (null, box);
+                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, out var live) ? live : current.Box);
                     ctx.LayoutIdSnapshots.Add(layoutId);
                 }
                 else
@@ -161,7 +153,6 @@ namespace Velvet
         // Called at the top-level pass boundary.
         internal static void ExpireSnapshots(ReconcilerContext ctx)
         {
-            if (ctx.LayoutIdSnapshots.Count == 0) return;
             foreach (var layoutId in ctx.LayoutIdSnapshots)
             {
                 if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) && entry.Element == null)
@@ -169,6 +160,8 @@ namespace Velvet
                     ctx.LayoutIdRegistry.Remove(layoutId);
                 }
             }
+            // MUTANT_SURVIVES(equivalent): CancelForTeardown lists every id it gives a null element, so an id
+            // left over here is removed at a later boundary exactly when it would have been listed again.
             ctx.LayoutIdSnapshots.Clear();
         }
 
@@ -177,9 +170,12 @@ namespace Velvet
         // TranslateX/Y channels animate the position delta back to zero and whose Scale channel
         // animates the (averaged, uniform) size ratio back to 1 — empty (IsEmpty) when the rects are
         // equal within Mathf.Approximately's tolerance, so the caller can skip building spring state
-        // for a patch that didn't actually move/resize anything.
+        // for a patch that didn't actually move/resize anything, and when either rect is not a resolved
+        // layout (NaN).
         internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect)
         {
+            if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return default;
+
             var dx = oldRect.x - newRect.x;
             var dy = oldRect.y - newRect.y;
             var scaleX = newRect.width > 0.01f ? oldRect.width / newRect.width : 1f;

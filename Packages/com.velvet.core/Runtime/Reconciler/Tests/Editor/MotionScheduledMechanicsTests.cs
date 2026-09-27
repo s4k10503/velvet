@@ -209,7 +209,7 @@ namespace Velvet.Tests
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            return V.Div(children: new VNode[] { step == 0 ? SharedBox(200) : SharedBox(400, typeof(Box)) });
+            return V.Div(children: new VNode[] { step == 0 ? SharedBox(200) : SharedBox(200 + step * 200, typeof(Box)) });
         }
 
         [Test]
@@ -231,6 +231,29 @@ namespace Velvet.Tests
                     UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value + 200f) < 50f,
                     replacement.style.scale.keyword),
                 Is.EqualTo((false, true, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base tweens a moved Motion from its own previous box.
+        // A replacement's registration must outlive the pass boundary that expires teardown boxes.
+        [Test]
+        public void Given_ASameKeyTypeFlipsReplacementWhoseTweenSettled_When_ItMovesAgain_Then_ItTweensFromItsOwnBox()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(TypeFlipBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            AdvancePast(2f);
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near its own previous box, 200px left of the new one.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That(UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value + 200f), Is.LessThan(50f));
         }
 
         // Step 1 removes the Motion and step 2 mounts another under the same id: two renders, with no
@@ -306,8 +329,8 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true, StyleKeyword.Null)));
         }
 
-        // A pooled Label-typed layoutId Motion moves (step 1) and is removed (step 2) before any layout
-        // settles the move; step 3 rents a Label for an unrelated Motion that carries no layoutId.
+        // A pooled Label-typed layoutId Motion moves twice (steps 1 and 2) and is removed (step 3) before any
+        // layout settles either move; step 4 rents a Label for an unrelated Motion that carries no layoutId.
         [Component]
         private static VNode PooledMotionReuseRender()
         {
@@ -317,7 +340,8 @@ namespace Velvet.Tests
             {
                 0 => new[] { SharedBox(0, typeof(Label)) },
                 1 => new[] { SharedBox(200, typeof(Label)) },
-                2 => Array.Empty<VNode>(),
+                2 => new[] { SharedBox(250, typeof(Label)) },
+                3 => Array.Empty<VNode>(),
                 _ => new VNode[]
                 {
                     V.Motion(name: "reused", elementType: typeof(Label), transition: s_layoutSpring,
@@ -327,7 +351,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionRemovedBeforeItsMoveSettled_When_ThePoolHandsItsElementToAnotherMotion_Then_TheOtherMotionCarriesNoInversePose()
+        public void Given_ALayoutIdMotionRemovedBeforeEitherOfTwoMovesSettled_When_ThePoolHandsItsElementToAnotherMotion_Then_TheOtherMotionCarriesNoInversePose()
         {
             // Arrange
             using var mounted = V.Mount(Root, V.Component(PooledMotionReuseRender, key: "root"));
@@ -337,9 +361,11 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             s_setStep.Invoke(2);
             mounted.FlushStateForTest();
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
 
             // Act
-            s_setStep.Invoke(3);
+            s_setStep.Invoke(4);
             mounted.FlushStateForTest();
             Tick();
 
@@ -428,6 +454,81 @@ namespace Velvet.Tests
             Assert.That((outer.style.translate.value.x.value < -150f,
                     UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 10f),
                 Is.EqualTo((true, true)));
+        }
+
+        // The host's padding changes outside any render: the box moves without a patch.
+        [Component]
+        private static VNode PaddedHostBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(name: "host", children: new VNode[] { SharedBox(step * 200) });
+        }
+
+        // GREEN_ON_BASE(characterization): the base plays a layoutId tween once per patch that moved the box.
+        // A layout change no render made must not replay the wait a settled tween already consumed.
+        [Test]
+        public void Given_ALayoutIdTweenThatSettled_When_ALayoutChangeNoRenderMadeMovesTheBox_Then_NoTweenPlays()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PaddedHostBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            AdvancePast(2f);
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act
+            Root.Q<VisualElement>("host").style.paddingLeft = 30f;
+            Tick();
+
+            // Assert — the box did move, and carries no inline translate.
+            Assert.That((element.layout.x, element.style.translate.keyword), Is.EqualTo((230f, StyleKeyword.Null)));
+        }
+
+        private static readonly string[] s_rowIds =
+        {
+            "row-0", "row-1", "row-2", "row-3", "row-4", "row-5", "row-6", "row-7", "row-8", "row-9", "row-10", "row-11",
+        };
+
+        // Each row is a layoutId Motion under its own id; a scroll renders the range outside any render.
+        private static VirtualListNode LayoutIdRows() => V.VirtualList(
+            items: s_rowIds,
+            keySelector: id => id,
+            itemHeight: 50f,
+            renderer: id => V.Motion(key: id, name: id, layoutId: id, transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
+            overscan: 0);
+
+        // GREEN_ON_BASE(characterization): the base forgets an id whose element a scroll took out of range.
+        // A teardown outside every pass must not leave a box a later render claims.
+        [Test]
+        public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItCarriesNoInversePose()
+        {
+            // Arrange — the rows re-render once after layout, so row-0 holds its own box when the scroll takes it.
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            Root.Add(scrollView);
+            using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            Tick();
+            controller.Update(LayoutIdRows());
+            Tick();
+            var row0 = Root.Q<VisualElement>("row-0");
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
+            var host = new VisualElement();
+            Root.Add(host);
+
+            // Act
+            _reconciler.Reconcile(host, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "remount", layoutId: "row-0", transition: s_layoutSpring,
+                    className: "left-[300px] top-[0px] w-[100px] h-[50px]"),
+            });
+            Tick();
+
+            // Assert
+            var remounted = host.Q<VisualElement>("remount");
+            Assert.That((row0.panel, remounted.style.translate.keyword), Is.EqualTo(((IPanel)null, StyleKeyword.Null)));
         }
 
         private static StateUpdater<int> s_setStop;
