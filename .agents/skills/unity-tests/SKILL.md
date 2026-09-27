@@ -12,7 +12,7 @@ The editor must be closed — it holds the project lock.
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
 mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/run.XXXXXX") && echo "$R"
-"$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
+"$UNITY" -runTests -batchmode -debugCodeOptimization -projectPath "$PWD" -testPlatform EditMode \
   -testResults "$R/results.xml" -logFile "$R/run.log"
 python3 scripts/test_quality/assert_results_from_this_tree.py "$R" --log "$R/run.log"
 python3 scripts/test_quality/assert_no_inconclusive.py "$R"
