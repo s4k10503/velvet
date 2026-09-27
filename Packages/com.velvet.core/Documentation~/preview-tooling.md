@@ -241,7 +241,11 @@ building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories
 through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]` environment), and
 render it into a `RenderTexture` on an instantiated `PanelSettings` with a real
 `referenceResolution`, writing one PNG per story — scale-accurate where the live window is not
-(see [Scale caveat](#scale-caveat) above). Velvet does not ship a prebuilt capture harness;
+(see [Scale caveat](#scale-caveat) above). In Edit Mode the panel writes the texture on a later
+editor frame, not during `VelvetPreviewHost.Mount`, so a harness waits for frames before reading
+back — a `[UnityTest]` yields `null`; `EditModeStoryCaptureTests` holds that path.
+`StoryCaptureTests` captures every registered story in Play Mode, waiting frames the same way.
+Velvet does not ship a prebuilt capture harness;
 `VelvetPreviewRegistry` and `VelvetPreviewHost` are the two public pieces it exposes for one, so
 a hand-rolled harness can share story discovery and mount lifecycle with the live window.
 
