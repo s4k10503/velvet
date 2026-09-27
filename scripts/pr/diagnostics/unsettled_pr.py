@@ -276,7 +276,8 @@ a single PR number, which leaves the next one unwatched behind a fresh heartbeat
 
 And merge through the same script. It reads the head SHA on both sides of the check list, so a
 force-push between them voids the answer instead of merging a SHA nothing tested, and it declines
-while the branch is behind main or held by a worktree:
+while the base holds a failed push run or a release the head's checks do not cover, or while a
+worktree holds the branch:
 
   python3 scripts/pr/settle.py merge <pr> --dry-run""", file=sys.stderr)
     return 2
