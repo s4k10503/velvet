@@ -70,6 +70,9 @@ HANG_MARGIN = 3
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
+# Neither a survivor nor unmeasured: there was no mutated program to measure. `operator_does_not_apply`
+# says when a build failure is this rather than UNCOMPILABLE.
+INAPPLICABLE = "not a mutant (the operator does not apply)"
 NOT_BUILT = "not rebuilt"
 UNRECORDED = "not measured (no shard recorded it)"
 
@@ -1109,6 +1112,11 @@ def statement_span(text, mask, spans, number):
     return first, last
 
 
+def statement_start(text, number):
+    """The first line of the statement holding line `number`."""
+    return statement_span(text, code_mask(text), line_spans(text), number)[0]
+
+
 def assigned_above(text, mask, spans, number, name):
     """Whether a write to `name` above line `number` reaches it on every path.
 
@@ -1587,6 +1595,40 @@ def build_error(log):
     return found.group(1).replace("\\", "/") if found else None
 
 
+# Any compiler or analyzer error line. The editor log can cut the front off one -- measured,
+# `r/Tests/Editor/InlineOwnerListPoolingTests.cs(45,33): error CS1061: ...` beside three whole copies of
+# it -- so the path is kept as the fragment it arrived as rather than required to open at the root.
+ERROR_LINE = re.compile(r"(\S*?)\((\d+),\d+\): error ([A-Z]+\d+): (.*)")
+ANY_ERROR = re.compile(r"\berror [A-Z]+\d+:")
+
+
+def operator_does_not_apply(log, mutant, project, first_line):
+    """Whether an arithmetic `+ -> -` mutant's build stopped on CS0019 for its `-` and nothing else, in
+    the statement it wrote it in.
+
+    That is no `-` applying to the operands `+` joined, so the rewrite produced no program and there
+    was nothing a test could have been asked. The statement rather than the
+    mutated line, so a diagnostic placed on a left operand that starts above the operator still counts;
+    `Generators~/README.md` ▸ the verdict list carries where that was measured. Any other error stays
+    UNCOMPILABLE, so a generator emitting broken C# stays loud.
+    """
+    if (mutant.operator, mutant.before, mutant.after) != ("arithmetic", "+", "-") or not log.exists():
+        return False
+    where = relative_to(mutant.path, project).as_posix()
+    claim = "Operator '-' cannot be applied"
+    lines = [line for line in log.read_text(errors="replace").splitlines() if ANY_ERROR.search(line)]
+    for line in lines:
+        found = ERROR_LINE.search(line)
+        if found is None:
+            return False
+        fragment, number, code, message = found.groups()
+        fragment = fragment.replace("\\", "/")
+        if not (fragment.endswith(".cs") and where.endswith(fragment) and code == "CS0019"
+                and message.startswith(claim) and first_line <= int(number) <= mutant.line):
+            return False
+    return bool(lines)
+
+
 # What a fixture reads when it walks this repository's own text rather than running its code. A
 # mutation edits a source file, so such a fixture reddens on the edit itself -- measured on the
 # campaign for Hooks.cs:1603, where a clause-removal mutant was recorded killed by three cases and
@@ -1999,6 +2041,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = ("the editor was killed at --timeout {}s and the baseline took {:.0f}s; "
                                  "raise it, or read the log for a mutation that does not terminate"
                                  .format(args.timeout, baseline_wall))
+            elif blamed and operator_does_not_apply(log, mutant, project, statement_start(
+                    originals[mutant.path], mutant.line)):
+                mutant.verdict = INAPPLICABLE
+                mutant.detail = "CS0019: '{}' has no overload for these operands".format(mutant.after)
             elif blamed:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the build stopped in {}".format(blamed)
@@ -2332,6 +2378,13 @@ def main():
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:
+            print("{}  {}".format(mutant.describe(project), mutant.detail))
+
+    # Named, because the reach printed below counts their lines as reached with nothing asked there.
+    inapplicable = [m for m in mutants if m.verdict == INAPPLICABLE]
+    if inapplicable:
+        print("\n--- rewrites the compiler rejected as no program at all ---")
+        for mutant in inapplicable:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a
