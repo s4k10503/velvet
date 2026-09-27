@@ -19,7 +19,10 @@ produced it — a section still holding entries under a freshly closed major is 
 move them, and under an older major it is the ordinary state of collecting breaks for the next one. So
 the question is posed of the edit rather than of either tree's contents, and only of an edit that
 closes a version: an entry leaves that section reclassified, reworded, or dropped as untrue, and a
-change closing nothing is free to do any of those.
+change closing nothing is free to do any of those. `## [Unreleased]` is asked the same way, since an
+entry there is ordinary until a change closes a version over it.
+
+Both open sections are read with the fragments filed into them, through `changelog_at`.
 
 Run, locally, both of these, after a fetch, with BASE naming the branch the pull request targets --
 origin/main for most, origin/2.x for one onto the maintenance line:
@@ -54,9 +57,12 @@ from release_notes import (
     BREAKING_SECTION,
     DEFAULT_CHANGELOG,
     DEFAULT_PACKAGE_JSON,
+    OPEN_SECTION,
     ReleaseNotesError,
     VERSION_HEADING,
+    compose,
     extract_version_section,
+    fragments_at,
     normalize,
     split_entries,
 )
@@ -169,6 +175,40 @@ def reopened_by(changelog_text, tags, result_changelog):
     return not any(version in still for version in unpublished)
 
 
+def closing_versions(base_changelog, result_changelog, tags=()):
+    """The versions the result closes that the base did not, and that no tag already answers for.
+
+    A version the remote already tags is one this change records rather than closes. Merging a
+    maintenance line forward brings its released sections across, and asked without the tags that
+    reads as a release closing over whatever the breaking section holds — measured, on the merge that
+    first carried 2.1.1 through 2.1.3 onto main.
+    """
+    before = released_versions(base_changelog)
+    return [named for named in released_versions(result_changelog)
+            if named not in before and f"v{named}" not in tags]
+
+
+def left_open_reason(base_changelog, result_changelog, tags=()):
+    """Why this change closes a version over entries it leaves in `## [Unreleased]`, or None.
+
+    Renaming the section takes into the version what the file holds under it, and a fragment is in
+    the file only once `compile_changelog.py` has written it there. A rename made first leaves the
+    fragments behind: the release ships the code they describe, its note names none of it, and the
+    next version's note claims it.
+    """
+    closing = closing_versions(base_changelog, result_changelog, tags)
+    waiting = section_entries(result_changelog, OPEN_SECTION)
+    if not closing or not waiting:
+        return None
+    return (f"{closing[0]} closes and '## [{OPEN_SECTION}]' still lists {counted(waiting)}, "
+            f"starting with:\n"
+            f"  {waiting[0].splitlines()[0]}\n"
+            f"A release publishes the tree, so each of those ships in {closing[0]} with its note "
+            f"describing none of them. A fragment is in the section only once "
+            f"scripts/release/compile_changelog.py has written it there, which comes before the "
+            f"rename.")
+
+
 def drain_reason(base_changelog, result_changelog, tags=()):
     """Why this change may not close the version it closes, or None.
 
@@ -184,14 +224,8 @@ def drain_reason(base_changelog, result_changelog, tags=()):
     wording change in a change that closes no version; the miss is a break published in a major with
     nothing describing it.
     """
-    before = released_versions(base_changelog)
     after = released_versions(result_changelog)
-    # A version the remote already tags is one this change records rather than closes. Merging a
-    # maintenance line forward brings its released sections across, and asked without the tags that
-    # reads as a release closing over whatever the breaking section holds — measured, on the merge
-    # that first carried 2.1.1 through 2.1.3 onto main.
-    closing = [named for named in after
-               if named not in before and f"v{named}" not in tags]
+    closing = closing_versions(base_changelog, result_changelog, tags)
     waiting_before = section_entries(base_changelog, BREAKING_SECTION)
     waiting_after = section_entries(result_changelog, BREAKING_SECTION)
 
@@ -349,6 +383,11 @@ def read_at(project, rev, path):
     return git(project, "show", f"{rev}:{path}")
 
 
+def changelog_at(project, rev):
+    """The CHANGELOG at a revision with that revision's fragments filed into its open sections."""
+    return compose(read_at(project, rev, CHANGELOG_PATH), fragments_at(project, rev))
+
+
 def release_commit(project, rev, timeout=5):
     """(the newest commit on `rev` that dated its CHANGELOG's newest closed version, that version),
     or None where the CHANGELOG at `rev` closes none.
@@ -442,12 +481,17 @@ def main():
                "could not be released as it stands", "package.json and the CHANGELOG agree")
 
     if args.base and args.result:
+        composed_base = changelog_at(project, args.base)
+        composed_result = changelog_at(project, args.result)
+        tags = remote_tags(project, args.remote)
         report(f"{args.base}..{args.result}",
-               drain_reason(read_at(project, args.base, CHANGELOG_PATH),
-                            read_at(project, args.result, CHANGELOG_PATH),
-                            remote_tags(project, args.remote)),
+               drain_reason(composed_base, composed_result, tags),
                "leaves the breaking section wrong for the version it closes",
                "the breaking section suits whatever this closes")
+        report(f"{args.base}..{args.result}",
+               left_open_reason(composed_base, composed_result, tags),
+               "closes a version over entries it leaves unreleased",
+               "nothing this closes leaves an entry unreleased")
 
     return 1 if failed else 0
 

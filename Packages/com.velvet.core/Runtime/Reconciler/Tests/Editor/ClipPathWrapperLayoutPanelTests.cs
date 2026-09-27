@@ -166,8 +166,61 @@ namespace Velvet.Tests
             Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(350f, 0f, 50f, 40f))));
         }
 
+        // GREEN_ON_BASE(characterization): the base bakes a patch-time wrap's mask at the wrap itself.
+        // Removing the geometry sync FiberClipPathApplier runs when it builds the wrapper reddens this.
+        [Test]
+        public void Given_ALaidOutCard_When_ClipAddedByPatch_Then_TheMaskIsBakedBeforeTheNextLayoutPass()
+        {
+            // Arrange
+            Mount(s => InFlowBox + (s == 0 ? "" : " " + Triangle));
+
+            // Act: the patch alone, with no layout pass to raise a geometry event.
+            s_setStep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            var wrapper = Named("card").parent;
+            Assert.That((IsClipWrapped(Named("card")), wrapper.style.backgroundImage.value.vectorImage != null),
+                Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base positions and sizes a fresh bake by the shape's bounds.
+        // Removing the ApplyClipPathBackgroundRect call after a fresh bake reddens this.
+        [Test]
+        public void Given_AnInsetClip_When_LaidOut_Then_TheMaskIsPositionedAndSizedByTheInsetBox()
+        {
+            // Arrange: the 100x50 card inset by 10 top, 20 right, 30 bottom and 40 left leaves a 40x10 box at (40, 10).
+            s_hostClass = "items-start";
+            Mount(_ => InFlowBox + " clip-path-[inset(10px_20px_30px_40px)]");
+
+            // Act
+            var ws = Named("card").parent.style;
+
+            // Assert
+            Assert.That((ws.backgroundPositionX.value.offset.value, ws.backgroundPositionY.value.offset.value,
+                    ws.backgroundSize.value.x.value, ws.backgroundSize.value.y.value),
+                Is.EqualTo((40f, 10f, 40f, 10f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rescales an all-percentage shape's bake to a new size.
+        // Removing the ApplyClipPathBackgroundRect call on that rescale reddens this.
+        [Test]
+        public void Given_APercentageClip_When_TheCardIsPatchedWider_Then_TheMaskIsRescaledToTheNewBox()
+        {
+            // Arrange
+            s_hostClass = "items-start";
+            Mount(s => (s == 0 ? "w-[100px]" : "w-[200px]") + " h-[50px] " + Triangle);
+
+            // Act
+            Step(1);
+
+            // Assert
+            var ws = Named("card").parent.style;
+            Assert.That((ws.backgroundSize.value.x.value, ws.backgroundSize.value.y.value), Is.EqualTo((200f, 50f)));
+        }
+
         // GREEN_ON_BASE(characterization): the base already anchors a patch-time wrap's mask at the wrapper origin.
-        // Anchoring it at the old layout position, as `innerAtWrapperOrigin: false` does, reddens this.
+        // Anchoring it at the element's old layout position reddens this.
         [Test]
         public void Given_ACardAwayFromItsParentsOrigin_When_ClipAddedByPatch_Then_TheWrapTimeMaskIgnoresItsOldPosition()
         {
@@ -222,10 +275,12 @@ namespace Velvet.Tests
             Assert.That((IsClipWrapped(Named("card")), RelativeToHost(Named("next")).y), Is.EqualTo((true, 40f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the wrapper out of the flow when `absolute` arrives.
+        // A wrapper that stays in the flow after the element's position changed is what reddens this.
         [Test]
-        public void Given_AnInFlowClippedElement_When_AbsoluteIsAddedWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        public void Given_AnInFlowClippedElement_When_AbsoluteIsAddedWithoutMovingIt_Then_TheNextSiblingTakesItsPlace()
         {
-            // Arrange: under items-start the in-flow wrapper hugs the card at the host's origin, which is where
+            // Arrange: under items-start the in-flow card sits at the host's origin, which is where
             // `absolute left-0 top-0` puts it too.
             s_hostClass = "items-start";
             Mount(s => (s == 0 ? "" : "absolute left-0 top-0 ") + "w-[50px] h-[40px] " + Triangle);
@@ -234,13 +289,13 @@ namespace Velvet.Tests
             Step(1);
 
             // Assert
-            var card = Named("card");
-            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((IsClipWrapped(Named("card")), RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the wrapper out of the flow when a hover makes the
+        // element absolute. A wrapper that does not follow a variant's position is what reddens this.
         [Test]
-        public void Given_AnInFlowClippedElement_When_AHoverMakesItAbsoluteWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        public void Given_AnInFlowClippedElement_When_AHoverMakesItAbsoluteWithoutMovingIt_Then_TheNextSiblingTakesItsPlace()
         {
             // Arrange: the same no-move shape as the patch case above, with the position coming from a variant.
             s_hostClass = "items-start";
@@ -255,12 +310,14 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((IsClipWrapped(card), RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the wrapper out of the flow across a render when a user
+        // stylesheet makes the element absolute. A wrapper whose mode a render re-derives from Velvet's own
+        // declarations alone is what reddens this.
         [Test]
-        public void Given_AnElementMadeAbsoluteByAUserStylesheet_When_RerenderedWithoutMovingIt_Then_ItsWrapperStillSpansTheHost()
+        public void Given_AnElementMadeAbsoluteByAUserStylesheet_When_RerenderedWithoutMovingIt_Then_TheNextSiblingStillTakesItsPlace()
         {
             // Arrange: a stylesheet of the application's own sets the position, which no Velvet utility declares;
             // under items-start the card sits at the host's origin whichever mode its wrapper is in.
@@ -271,15 +328,13 @@ namespace Velvet.Tests
             s_hostClass = "items-start";
             Mount(s => "clip-test-overlay left-0 top-0 w-[50px] h-[40px] "
                 + (s == 0 ? "bg-[#ff0000] " : "bg-[#0000ff] ") + Triangle);
-            var card = Named("card");
-            var mounted = RelativeToHost(card.parent);
+            var mounted = RelativeToHost(Named("next")).y;
 
             // Act
             Step(1);
 
             // Assert
-            Assert.That((sheet != null, mounted, RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f), new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((sheet != null, mounted, RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f, 0f)));
         }
 
         // V.Anchored makes its element absolute with an inline position and no `absolute` class.

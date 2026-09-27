@@ -14,6 +14,7 @@ namespace Velvet
                 CornerRadiusFit.TrackClass(element, cls);
                 element.AddToClassList(cls);
             }
+            ClipPathLayoutBox.SyncClasses(element);
         }
 
         internal static void RemoveClasses(VisualElement element, string[]? classes)
@@ -23,6 +24,7 @@ namespace Velvet
             {
                 element.RemoveFromClassList(cls);
             }
+            ClipPathLayoutBox.SyncClasses(element);
         }
     }
 }

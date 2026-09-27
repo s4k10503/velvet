@@ -21,6 +21,9 @@ twice, and nothing is written straight into the GitHub release.
 
 ## 1. Close the version in the CHANGELOG
 
+Run `python3 scripts/release/compile_changelog.py` before anything else: a fragment is in the file
+only once it has folded it in, and CONTRIBUTING.md's release section owns why it comes first.
+
 Write everything into `## [Unreleased]` while it still carries that name: the `### Highlights`
 block above its `### Added` / `### Changed` / `### Fixed` headings, and, for a major, the entries
 drained out of `## [Unreleased — breaking]`. Rename it to `## [X.Y.Z] - YYYY-MM-DD` last. The order
