@@ -401,13 +401,18 @@ def project_state(project, base):
                                     rest_json(f"repos/{slug}/{red_base.runs_path(workflow, base)}"))
                for workflow in red_base.REQUIRED_WORKFLOWS)
            if failing]
-    try:
-        release = published_check.release_commit(project, f"origin/{base}", timeout=GIT_TIMEOUT)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:
-        raise RuntimeError(f"the newest release commit on origin/{base} could not be read: {failure}")
     return ProjectState(worktree_branches(project),
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
-                        red, release)
+                        red, release_commit(project, base))
+
+
+def release_commit(project, base):
+    """`published_check.release_commit` for origin/<base>, raising a failure as the RuntimeError
+    `watch` catches per pull request rather than as one that stops the watcher."""
+    try:
+        return published_check.release_commit(project, f"origin/{base}", timeout=GIT_TIMEOUT)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:
+        raise RuntimeError(f"the newest release commit on origin/{base} could not be read: {failure}")
 
 
 def blocking_reasons(project, number, base=None, states=None):

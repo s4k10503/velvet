@@ -1046,8 +1046,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(settle, name, answer))
             stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                                   lambda *_, **__: None))
-            stack.enter_context(mock.patch.object(settle.published_check, "release_commit",
-                                                  lambda *_, **__: None))
+            stack.enter_context(mock.patch.object(settle, "release_commit", lambda *_: None))
 
             # Act
             red = settle.project_state(Path("."), "2.x").red
@@ -1067,8 +1066,7 @@ def project_readings(release_commit):
             stack.enter_context(mock.patch.object(settle, name, answer))
         stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                               lambda *_, **__: None))
-        stack.enter_context(mock.patch.object(settle.published_check, "release_commit",
-                                              release_commit))
+        stack.enter_context(mock.patch.object(settle, "release_commit", release_commit))
         yield
 
 
@@ -1097,12 +1095,12 @@ class ReleaseCommitMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
-    def test_Given_ABase_When_ItsStateIsRead_Then_TheReleaseCommitIsAskedOfThatBaseOnOrigin(self):
+    def test_Given_ABase_When_ItsStateIsRead_Then_ItsReleaseCommitIsWhatItHolds(self):
         # Arrange
         asked = []
 
-        def release_commit(_project, rev, **_):
-            asked.append(rev)
+        def release_commit(_project, base):
+            asked.append(base)
             return (RELEASED, "2.1.0")
 
         with project_readings(release_commit):
@@ -1110,17 +1108,34 @@ class ReleaseCommitMergeTests(unittest.TestCase):
             release = settle.project_state(Path("."), "2.x").release
 
         # Assert
-        self.assertEqual((release, asked), ((RELEASED, "2.1.0"), ["origin/2.x"]))
+        self.assertEqual((release, asked), ((RELEASED, "2.1.0"), ["2.x"]))
 
-    def test_Given_AReleaseCommitGitCannotRead_When_ItsStateIsRead_Then_ItRaisesWhatTheWatcherCatches(self):
+    def test_Given_ABase_When_ItsReleaseCommitIsRead_Then_ItIsAskedOfThatBaseOnOrigin(self):
+        # Arrange
+        read, asked = settle.release_commit, []
+
+        def dated(_project, rev, **_):
+            asked.append(rev)
+            return (RELEASED, "2.1.0")
+
+        with mock.patch.object(settle.published_check, "release_commit", dated):
+            # Act
+            read(Path("."), "2.x")
+
+        # Assert
+        self.assertEqual(asked, ["origin/2.x"])
+
+    def test_Given_AReleaseCommitGitCannotRead_When_ItIsRead_Then_ItRaisesWhatTheWatcherCatches(self):
         # Arrange — `watch` catches RuntimeError per pull request; anything else stops the watcher.
-        def release_commit(*_, **__):
+        read = settle.release_commit
+
+        def unreadable(*_, **__):
             raise subprocess.CalledProcessError(128, ["git", "log"])
 
-        with project_readings(release_commit):
+        with mock.patch.object(settle.published_check, "release_commit", unreadable):
             # Act / Assert
             with self.assertRaises(RuntimeError):
-                settle.project_state(Path("."), "2.x")
+                read(Path("."), "2.x")
 
 
 def workflow_run(number, conclusion, sha=BROKE, status="completed", attempt=1):
