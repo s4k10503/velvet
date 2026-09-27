@@ -2066,8 +2066,8 @@ namespace Velvet
         // A re-entry's half of the descendant exits StartPresenceExit started. A variant exit returns to the
         // resting pose the re-added child's reconcile recorded, as CancelInterruptedPresenceExit's does for the
         // anchor: one still playing through its cancel, one that completed by hand, since nothing is left to
-        // cancel. Either way the exit's inline values are written back. A descendant that left the tree is not
-        // touched.
+        // cancel. Either way the resting inline values are written back over the exit's. A descendant that left
+        // the tree is not touched.
         private void ReleaseDescendantExits(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             if (!state.ExitWaits.Remove(key, out var wait)) return;
