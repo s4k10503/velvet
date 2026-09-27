@@ -364,10 +364,11 @@ namespace Velvet
                 _margined.Add(child);
             }
 
-            container.style.marginLeft = negHalf;
-            container.style.marginRight = negHalf;
-            container.style.marginTop = negHalf;
-            container.style.marginBottom = negHalf;
+            var box = ClipPathLayoutBox.Of(container).style;
+            box.marginLeft = negHalf;
+            box.marginRight = negHalf;
+            box.marginTop = negHalf;
+            box.marginBottom = negHalf;
         }
 
         // Clears every margin this manipulator still owns (invoked on detach / removal / mode flip).
@@ -444,10 +445,11 @@ namespace Velvet
                 child.style.marginTop = nullLength;
                 child.style.marginBottom = nullLength;
             }
-            container.style.marginLeft = nullLength;
-            container.style.marginRight = nullLength;
-            container.style.marginTop = nullLength;
-            container.style.marginBottom = nullLength;
+            var box = ClipPathLayoutBox.Of(container).style;
+            box.marginLeft = nullLength;
+            box.marginRight = nullLength;
+            box.marginTop = nullLength;
+            box.marginBottom = nullLength;
             _applied = Edge.None;
         }
 

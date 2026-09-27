@@ -13,6 +13,7 @@ namespace Velvet
             {
                 element.AddToClassList(cls);
             }
+            ClipPathLayoutBox.SyncClasses(element);
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
@@ -31,6 +32,7 @@ namespace Velvet
                     element.RemoveFromClassList(cls);
                 }
             }
+            ClipPathLayoutBox.SyncClasses(element);
         }
     }
 }

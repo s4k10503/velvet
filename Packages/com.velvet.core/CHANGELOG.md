@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   editor, so an `async VelvetTask` method resumes in EditMode. A `UnityEngine.Awaitable` and a BCL
   `Task` are awaited inside one as they stand, with no adapter.
 
+- `VelvetTask.SwitchToMainThread()` brings an `async VelvetTask` body back to Unity's main thread:
+  awaited there it completes at once, and elsewhere it resumes the method on the main thread. A
+  `VelvetTask` awaited on the main thread resumes there whichever thread completes it — the
+  continuation is handed to Unity's main-thread synchronization context rather than run on the
+  completing thread — so a route loader that returns after awaiting `ConfigureAwait(false)` hands its
+  result back on the main thread. `VelvetTask.Yield()` called off the main thread throws
+  `InvalidOperationException` naming the switch. The async guide says what code resumed off the main
+  thread may call.
+
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
   argument position, whatever order the members arrived in; over an empty list it is complete already.
@@ -119,24 +128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A `V.Motion` label change tweens a `translate-*` pose — written as inline style, since translate has no
-  USS form — on the transition of the pose it swaps into. It took whatever transition the element carried
-  before the change: the previous swap's while that was still on the element, so a 0.3s
-  `Hooks.UseAnimationSequence` step after a near-instant one arrived in a single frame; and, once it had
-  been released, the element's own, so a step following a finished one jumped unless the element's own
-  classes gave it a transition. A pose's inline values now land at the swap itself, alongside its USS
-  classes and in its stagger slot.
-
-- Under a tween transition, a `V.Motion`'s mount enter and `V.AnimatePresence` enter show a `translate-*`
-  `initial` pose and tween from it to `animate`, and a presence exit tweens to a `translate-*` `exit` pose
-  before the child is removed. None of the three moved a translate pose: the enters rested at `animate`
-  from the first frame and the exit stayed there until removal. An exit interrupted by its key coming back
-  leaves the child at the values the re-added child declares; so does one that finished just before its key
-  came back, except that a re-add changing the variants map can keep the previous exit pose's USS classes.
-
-- A `V.AnimatePresence` child re-added mid-exit with a different `animate` label rests at the new label's
-  pose. The exit's cancel put back the previous label's USS classes after the new ones had been applied, so
-  a child re-added at `opacity-50` from `opacity-100` carried both and resolved to 1.
 
 - A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
   the swap at its target or has the swap's transition drag the spring's frames. The spring takes what
@@ -192,20 +183,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
   elements one component renders, as React scopes it.
 
-- An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
-  declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
-  clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
-  it rather than against the parent: in a column parent the wrapper took the parent's width and no
-  height, so an element offset from all four edges came out with no height and its `inset-0` child
-  with it. The wrapper around an absolute element now leaves the flow, spans the parent and takes the
-  parent's flex-direction, `justify-content` and `align-items`, so an absolute clipped element with no
-  offsets is placed where the parent's alignment puts it rather than centred on the wrapper. The
-  wrapper follows the element into and out of the flow when a render or a variant adds or drops
-  `absolute`, including when that leaves the element's box where it was. Still different from CSS:
-  whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
-  or alignment alone is followed only once the element's own box or its clip next changes, or a later
-  render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
-  centred in its wrapper.
+- An element carrying a `clip-path-*` utility is placed and sized in its parent as the same element
+  without the clip is, apart from the differences stated last, since `clip-path` changes painting only.
+  The wrapper that hosts the clip was laid out in the element's place as a relative flex row centring
+  it, so an in-flow clipped element sat centred across its parent,
+  lost the parent's cross-axis stretch and its own `self-*`, resolved a percentage size or an auto margin
+  against the wrapper, and came out with no size in a `grid-cols-*` cell or a `V.VirtualList` row, whose
+  slot size landed on the wrapper. An absolutely positioned one resolved its edge offsets against the
+  wrapper, so one offset from all four edges of a column parent came out with no height, and an
+  `absolute inset-0` child with it. The wrapper now carries the element's classes and the inline values
+  that place or size it, the element keeps its paint and fills the wrapper, and a parent's `[&>*]:`
+  payload and `divide-*` border are applied to the clipped child rather than to its wrapper. Still
+  different from CSS: a percentage padding on the clipped element resolves against its own width rather
+  than its parent's, and a query by class finds the wrapper before the element.
 
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component
@@ -1053,8 +1043,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
   exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
   class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
-  nothing on screen: the exit label does not reach inheriting children, so the coordinator is held for
-  that timing and then removed, where the classic exit used to play the transition's exit classes on it.
+  nothing on the coordinator itself, which is held until that timing and its inheriting children's
+  exits have finished and then removed, where the classic exit used to play the transition's exit
+  classes on it.
   An `exit:` label the map has no pose for still plays the classic exit.
 
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
@@ -1115,6 +1106,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A removed `AnimatePresence` child plays the exit of each Motion in it that declares or inherits one,
+  as Framer's does: one behind a component, `V.Memoized` or `V.Suspense`, or inside another element or
+  Motion, exits too, and the child stays mounted until the last of those exits completes. Only the
+  child's anchor used to exit, so a keyed `V.List` row rendered by a component vanished at once. A
+  Motion inheriting its labels takes its coordinator's exit label, staggered by the coordinator's exit
+  pose, and `initial: false` suppresses the mount enter of the Motions the presence's first render
+  creates outside a `V.Portal`, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
+  presence's. A variant Motion whose classic exit completed no longer keeps that exit's class when its
+  key returns before the removal.
 
 - An error an error boundary catches is logged, as React logs it. It was swallowed: the boundary showed
   its fallback and nothing reached the console, so a mistake a boundary caught — a hook-count violation

@@ -22,7 +22,6 @@ namespace Velvet
             // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
             _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
-            _ctx.ClipPathWrapperModeSync = _appliers.SyncClipPathWrapperMode;
             // Same seam for every other class-driven pass a variant can change — the layout manipulators and
             // the paint layers (skew / gradient / animate / shadow / border-style). A variant that toggles
             // one of their gate tokens changes what the element should carry, and that toggle never reaches
@@ -461,6 +460,7 @@ namespace Velvet
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
+            _ctx.MotionNodes[element] = newNode;
             // Mirror the create path's anchor-element recording: a presence keyed child that REUSES its
             // element (a ghost's old-side reproduction, a cancelled exit's re-entry) reaches its Motion
             // through this patch, and the expansion still needs the Motion's own element to dispatch
@@ -856,7 +856,7 @@ namespace Velvet
         // - Otherwise (a pure pass-through inheritor with no orchestration of its own) the ambient frame is
         //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
         //   ancestor's stagger sequence reaching its own grandchildren.
-        private static MotionOrchestrationFrame? ResolveChildOrchestration(
+        internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
         {

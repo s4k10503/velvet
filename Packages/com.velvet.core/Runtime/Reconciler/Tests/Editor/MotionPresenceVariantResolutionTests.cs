@@ -47,21 +47,23 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
         };
-        // Color classes on purpose: MotionSpringClassParser recognizes no spring-animatable channel in
-        // them, so a spring exit over this pair completes SYNCHRONOUSLY (the swap lands, no tick) —
-        // the only EditMode-reachable way to park a presence key in its completed-exit window.
+        // Classes no utility defines, on purpose: a spring finds no channel in them to drive, so a spring
+        // exit over this pair completes SYNCHRONOUSLY (the swap lands, no tick) — the only EditMode-reachable
+        // way to park a presence key in its completed-exit window. A color pair no longer does: springs drive
+        // colors, so such an exit is still playing when the key returns. Each completed-exit case reads
+        // IsExiting beside the parked pose, so a pair that starts playing again fails there.
         private static readonly Dictionary<string, MotionVariant> s_recolor = new()
         {
-            ["hidden"] = "bg-red-500",
-            ["visible"] = "bg-blue-500",
+            ["hidden"] = "pose-exit",
+            ["visible"] = "pose-rest",
         };
         // A third label distinct from the exit's: with initial == exit the initial→animate replay would
         // wash the exit residue out coincidentally, hiding a missing restoration.
         private static readonly Dictionary<string, MotionVariant> s_recolorWithStart = new()
         {
-            ["hidden"] = "bg-red-500",
-            ["start"] = "bg-green-500",
-            ["visible"] = "bg-blue-500",
+            ["hidden"] = "pose-exit",
+            ["start"] = "pose-start",
+            ["visible"] = "pose-rest",
         };
         private static bool s_withInitial;
 
@@ -175,6 +177,57 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_recolor, animate: "visible", exit: "hidden",
                     transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        // A variant Motion with no exit label: its removal plays the classic exit of this spring, whose class
+        // pair names no channel either, so that exit completes synchronously too.
+        private static readonly StyleTransitionConfig s_classicSpringExit = new()
+        {
+            Type = TransitionType.Spring,
+            ExitFromClass = "anim-fade-exit-from",
+            ExitToClass = "anim-fade-exit-to",
+        };
+
+        [Component]
+        private static VNode CompletedClassicExitHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_recolor, animate: "visible", transition: s_classicSpringExit));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        // Whether the exit has completed and left element at variants[exit]: that pose is on it and nothing
+        // is still playing there.
+        private static bool Parked(MountedTree mounted, VisualElement element)
+            => element != null && element.ClassListContains("pose-exit")
+                && !mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(element);
+
+        [Component]
+        private static VNode RecolorRow() => V.Motion(name: "item", variants: s_recolor, animate: "visible",
+            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring });
+
+        // CompletedExitHost's Motion, behind a component, so it exits as a descendant rather than an anchor.
+        [Component]
+        private static VNode CompletedDescendantExitHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Component(RecolorRow, key: key.ToString()));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -412,6 +465,7 @@ namespace Velvet.Tests
                 "Cancelling an in-flight variant enter restores the resting variant");
         }
 
+        // GREEN_ON_BASE(characterization): an anchor's completed variant exit was already undone on re-entry.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheRestingVariantIsRestored()
         {
@@ -423,8 +477,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
-            Assume.That(_root.Q<VisualElement>("item-a")?.ClassListContains("bg-red-500"), Is.True,
-                "Precondition: the completed exit parked the still-attached element at variants[exit]");
+            var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
             // Act — re-add the key inside the completed-exit window; the re-entry reproduces the SAME
             // still-attached element.
@@ -434,11 +487,58 @@ namespace Velvet.Tests
             // Assert — the re-entry must put the resting pose back: no pending animation is left to
             // cancel, and the class diff cannot restore it (the resting set is still recorded as applied).
             var item = _root.Q<VisualElement>("item-a");
-            Assert.AreEqual((false, true),
-                (item.ClassListContains("bg-red-500"), item.ClassListContains("bg-blue-500")),
+            Assert.AreEqual((true, false, true),
+                (parked, item.ClassListContains("pose-exit"), item.ClassListContains("pose-rest")),
                 "A re-entry after a completed exit restores the resting variant");
         }
 
+        [Test]
+        public void Given_ACompletedExitOnAMotionBehindAComponent_When_TheKeyIsReAddedBeforeTheDropRender_Then_ItsRestingVariantIsRestored()
+        {
+            // Arrange — the same completed-exit window as above, on a Motion the presence reaches as a descendant.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedDescendantExitHost, key: "host"));
+            var before = _root.Q<VisualElement>("item");
+            store.Set("");
+            mounted.FlushStateForTest();
+            var parked = Parked(mounted, _root.Q<VisualElement>("item"));
+
+            // Act
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the exit parked the same element at variants[exit], and the re-entry put the resting pose back.
+            var item = _root.Q<VisualElement>("item");
+            Assert.That(
+                (parked, ReferenceEquals(item, before), item.ClassListContains("pose-exit"),
+                    item.ClassListContains("pose-rest")),
+                Is.EqualTo((true, true, false, true)));
+        }
+
+        [Test]
+        public void Given_ACompletedClassicExitOnAVariantMotion_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitClassIsRemoved()
+        {
+            // Arrange — the same completed-exit window as above, reached by the classic exit.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedClassicExitHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+            var item0 = _root.Q<VisualElement>("item-a");
+            var parked = item0?.ClassListContains("anim-fade-exit-to") == true
+                && !mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item0);
+
+            // Act — re-add the key inside that window, reproducing the same still-attached element.
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the completed exit parked its class on the element, and the re-entry took it off.
+            Assert.That((parked, _root.Q<VisualElement>("item-a").ClassListContains("anim-fade-exit-to")),
+                Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the re-entry already took an anchor's exit pose off first.
         [Test]
         public void Given_ACompletedVariantExitWithInitial_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitPoseIsFullyReplaced()
         {
@@ -450,8 +550,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CompletedExitWithInitialHost, key: "host"));
             store.Set("");
             mounted.FlushStateForTest();
-            Assume.That(_root.Q<VisualElement>("item-a")?.ClassListContains("bg-red-500"), Is.True,
-                "Precondition: the completed exit parked the still-attached element at variants[exit]");
+            var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
 
             // Act
             store.Set("a");
@@ -460,8 +559,8 @@ namespace Velvet.Tests
             // Assert — the exit residue is gone and the (synchronously settled) spring replay landed the
             // element at its resting variant.
             var item = _root.Q<VisualElement>("item-a");
-            Assert.AreEqual((false, true),
-                (item.ClassListContains("bg-red-500"), item.ClassListContains("bg-blue-500")),
+            Assert.AreEqual((true, false, true),
+                (parked, item.ClassListContains("pose-exit"), item.ClassListContains("pose-rest")),
                 "The re-entry replaces the exit pose before replaying the enter");
         }
 

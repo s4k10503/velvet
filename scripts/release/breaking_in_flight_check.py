@@ -99,6 +99,25 @@ def at(rev, path, cwd=None):
     return out
 
 
+def changelog_at(rev, cwd=None, leaving_out=()):
+    """The CHANGELOG at a revision with that revision's fragments filed into its open sections, or
+    None where git could not show either. A fragment `release_notes.compose` refuses raises.
+
+    `leaving_out` drops the fragments under those directories, by name, for a caller reading one
+    section.
+    """
+    text = at(rev, CHANGELOG, cwd)
+    if text is None:
+        return None
+    try:
+        fragments = release_notes.fragments_at(cwd or ".", rev, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    fragments = [(path, body) for path, body in fragments
+                 if Path(path).parts[0] not in leaving_out]
+    return release_notes.compose(text, fragments)
+
+
 def closing(base, result, tags=()):
     """The versions this change closes, which is the whole of when the question is asked.
 
@@ -107,7 +126,7 @@ def closing(base, result, tags=()):
     reads as a release, so the question goes to a body that decides nothing about it. The same
     reading published_check.drain_reason takes, for the same reason.
     """
-    return sorted(named for named in released(at(result, CHANGELOG)) - released(at(base, CHANGELOG))
+    return sorted(named for named in released(changelog_at(result)) - released(changelog_at(base))
                   if "v" + named not in tags)
 
 
@@ -123,6 +142,12 @@ def open_pull_requests(repo):
         return None, str(failure)
 
 
+# Every other place a fragment may sit is composed, so one in a directory that fits no section is
+# refused and named rather than passed over.
+NOT_BREAKING = {name for name, heading in release_notes.FRAGMENT_SECTIONS.items()
+                if heading != BREAKING}
+
+
 def adds_breaking(pull, base):
     """Whether the branch holds a breaking entry the base does not.
 
@@ -133,15 +158,23 @@ def adds_breaking(pull, base):
     and the objects from a checkout taken before it, so any pull request pushed since this run
     started names a commit that is not here. That is ordinary while a queue is draining, and it was
     reported as something the reader should go and fetch.
+
+    The fragments of the section that cannot break are left out, so a malformed one of those on
+    somebody's branch is not this reading's to refuse. Any other malformed one, a file in a misspelt
+    directory included, is answered as an entry naming it: what it adds cannot be read, and the
+    release still has to say whether it carries that branch.
     """
-    theirs = at(pull["headRefOid"], CHANGELOG)
-    if theirs is None:
-        run(["git", "fetch", "--quiet", "--depth", "1", "origin", pull["headRefOid"]], timeout=60)
-        theirs = at(pull["headRefOid"], CHANGELOG)
+    try:
+        theirs = changelog_at(pull["headRefOid"], leaving_out=NOT_BREAKING)
+        if theirs is None:
+            run(["git", "fetch", "--quiet", "--depth", "1", "origin", pull["headRefOid"]], timeout=60)
+            theirs = changelog_at(pull["headRefOid"], leaving_out=NOT_BREAKING)
+    except release_notes.ReleaseNotesError as malformed:
+        return [f"- malformed fragment {malformed}"]
     if theirs is None:
         return None
     return [entry for entry in section(theirs, BREAKING)
-            if entry not in section(at(base, CHANGELOG), BREAKING)]
+            if entry not in section(changelog_at(base), BREAKING)]
 
 
 def lost_from_breaking(base, result):
@@ -152,14 +185,14 @@ def lost_from_breaking(base, result):
     the emptiness reading only ever saw a section emptied completely: measured, moving a single
     entry out moved no case at all.
     """
-    before = section(at(base, CHANGELOG), BREAKING)
-    after = (at(result, CHANGELOG) or "")
+    before = section(changelog_at(base), BREAKING)
+    after = (changelog_at(result) or "")
     return [entry for entry in before if entry.strip() not in after]
 
 
 def left_in_breaking(result):
     """What the breaking section still holds."""
-    return section(at(result, CHANGELOG), BREAKING)
+    return section(changelog_at(result), BREAKING)
 
 
 def version_key(tag):
@@ -232,8 +265,8 @@ def reachable_release(result, tags, cwd=None):
 
 def held_in_breaking(release, base, cwd=None):
     """Every entry the breaking section held at the release, at the base, or at any commit between
-    them that touched the CHANGELOG, oldest sighting first, or None when that history could not be
-    read.
+    them that touched the CHANGELOG or a fragment, oldest sighting first, or None when that history
+    could not be read.
 
     The base rather than the result: the result's own history is the pull request's, where a line is
     written and corrected without ever reaching main, and the memory here is main's. The release
@@ -242,12 +275,12 @@ def held_in_breaking(release, base, cwd=None):
     followed, so a sighting on the side a resolution dropped is read; the tests hold that merge.
     """
     out, _ = run(["git", "log", "--full-history", "--format=%H", f"{release}..{base}",
-                  "--", CHANGELOG], cwd=cwd)
+                  "--", CHANGELOG, release_notes.FRAGMENT_PATH], cwd=cwd)
     if out is None:
         return None
     held = []
     for revision in [release] + out.split()[::-1] + [base]:
-        for entry in section(at(revision, CHANGELOG, cwd), BREAKING):
+        for entry in section(changelog_at(revision, cwd), BREAKING):
             if entry.strip() not in held:
                 held.append(entry.strip())
     return held
@@ -542,7 +575,7 @@ def main():
     else:
         print("reading '{}' back to {}, the newest release {} descends from, and each dated "
               "section to its own release's tag".format(BREAKING, release[0], args.result))
-    base_text, result_text = at(args.base, CHANGELOG), at(args.result, CHANGELOG)
+    base_text, result_text = changelog_at(args.base), changelog_at(args.result)
     # Before the version reading, because it holds whatever this change closes and also when it
     # closes nothing: an entry moved out of the section and into no other is lost, and the reading
     # that watched the section only ever saw it emptied completely.
@@ -568,7 +601,7 @@ def main():
                 failure.args[0], failure.args[1], args.result))
         return UNREADABLE
     gone = gone_sections(result_text, base_text,
-                         at(release[1], CHANGELOG) if release else None, tagged)
+                         changelog_at(release[1]) if release else None, tagged)
     if gone or changed:
         rule = textwrap.fill(
             "A file cannot tell a correction from a deletion, so neither is made past the tag: a "
@@ -580,7 +613,8 @@ def main():
         sys.stderr.write(
             "{} dated section(s) of {} do not carry the note their release shipped:\n{}\n\n"
             "{}\n{}\n"
-            "and put what this change has to say under '## [Unreleased]'.\n".format(
+            "and put what this change has to say in a fragment, as CONTRIBUTING.md's release section "
+            "gives.\n".format(
                 len(gone) + len(changed), args.result,
                 "\n".join(["  ## [{}]: gone, and {} carries it".format(version, tag)
                            for version, tag in gone]
@@ -639,7 +673,7 @@ def main():
         # closed, merged and not yet published is the section its entries went to.
         order = released_in_order(result_text)
         opened = [named for named in dated_sections(result_text)
-                  if named not in dated_sections(at(release[1], CHANGELOG))
+                  if named not in dated_sections(changelog_at(release[1]))
                   and named in order and published_check.is_major_bump(order, named)]
         carried = {entry.strip() for named in opened for entry in section(result_text, named)}
         astray = [entry for entry in held if entry not in still and entry not in carried]

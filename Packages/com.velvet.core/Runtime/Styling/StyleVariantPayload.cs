@@ -103,10 +103,6 @@ namespace Velvet
                 }
             }
 
-            // A payload that makes a clipped element absolute, or stops it being so, may leave its box where it
-            // was and raise no geometry event for the clip wrapper to follow.
-            ctx?.ClipPathWrapperModeSync?.Invoke(target);
-
             if (gateChanged || reSyncOnly)
             {
                 // A gate class just appeared on (or left) the live class list without passing through the
@@ -115,6 +111,9 @@ namespace Velvet
                 // come (a breakpoint crossing re-renders nothing).
                 ctx?.VariantGatedReSync?.Invoke(target);
             }
+
+            // A clipped element's wrapper lays the element out from the same classes, so it takes the toggle too.
+            ClipPathLayoutBox.SyncClasses(target);
         }
 
         // Applies or clears one payload whose important modifier is already stripped and whose priority is

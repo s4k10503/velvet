@@ -945,8 +945,34 @@ written rather than when the version closes. `## [Unreleased]` is what a minor o
 `## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
 behaviour a working application would notice changing.
 
+A change does not write either section in the file. It adds one fragment, a markdown file under
+`Packages/com.velvet.core/Changelog~/unreleased/` for `## [Unreleased]` or under
+`Packages/com.velvet.core/Changelog~/breaking/` for `## [Unreleased — breaking]`, named for its
+branch with each `/` written as `-` (so a branch named fix/list-keys writes fix-list-keys.md), since a fragment
+sits directly in its directory: pull requests appending to one spot in `CHANGELOG.md` conflict with
+each other whenever one of them merges, and two that write different paths do not. A change onto a
+maintenance line whose tree has no `scripts/release/compile_changelog.py` writes its entry into that
+line's `CHANGELOG.md` instead, as the maintenance-line section below gives. A fragment is one or more `### <kind>`
+headings, each opening with its entries. The kinds are `release_notes.FRAGMENT_KINDS`; Highlights is
+not one of them, since it is written when the version closes. `release_notes.compose` refuses a
+fragment with any other heading, with text above its first heading, or with a subsection that does
+not open with a `- ` entry, and any file under `Packages/com.velvet.core/Changelog~/` outside those
+two directories that is not a dotfile; `test_release_notes.py` composes this repository's fragments.
+`published_check.py`, `breaking_in_flight_check.py` and `test_release_notes.py` read the open
+sections through it, and it files each fragment's entries under its kind after the entries the file
+already holds there — so an entry written into the file itself before fragments existed stays valid,
+and is carried into a version exactly as the fragments beside it are. The `upm` split strips the
+directory.
+
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
-   `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
+   `package.json` to match. Run `scripts/release/compile_changelog.py` first: it writes that
+   composed reading into the file and deletes the fragments, so the sections hold every entry
+   before anything else is done to them, and `published_check.py` refuses a change
+   that closes a version while `## [Unreleased]` still lists an entry, which is what renaming it
+   before compiling leaves. `compile_changelog.py` reads the fragments HEAD holds and refuses one on
+   disk that HEAD does not hold as it stands, and the note builder, given `--dispatch` as `upm.yml`
+   gives it, refuses a commit that still holds a fragment — one merged after the release pull request went green would otherwise ship
+   in this version and be described in the next. A major moves the breaking entries up into `## [Unreleased]` and leaves
    their heading standing with none. A minor or a patch closes only over a section already empty,
    and `published_check.py` refuses one that is not: a release publishes the tree rather than the
    section, and `main` was found carrying the code an entry described while that entry still
@@ -1111,9 +1137,16 @@ adds and removes and the line has nothing to remove, the merge keeps the additio
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
-attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
-`Bash|Edit|Write` and reads a shell command only for a literal operand naming the file, so a
-cherry-pick does not reach it — and the line does not carry that hook at all.
+attract it. A change onto a line cut before fragments existed, as `2.x` was, writes its entry under
+that line's `## [Unreleased]` rather than as a fragment, and a fragment a pick carries comes out with
+it: nothing in that line's tree reads one, so its note would leave the entry out and its package
+would ship the file. `unreleased_maintenance_line.py` reports a fragment on such a line as one to
+fix, `main`'s copy of `changelog_into_closed_version.py` sends a refused edit in such a tree inline
+where that copy is the one running. Both only warn: the line's dispatch runs the line's own
+`upm.yml` and scripts, so nothing refuses to publish a fragment there. `changelog_into_closed_version.py`,
+which step 1 above relies on, is registered against `Bash|Edit|Write` and reads a shell command only
+for a literal operand naming the file, so a cherry-pick does not reach it — and the line's own tree
+does not carry that hook, so a session rooted there runs none.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**. Do not reach for
