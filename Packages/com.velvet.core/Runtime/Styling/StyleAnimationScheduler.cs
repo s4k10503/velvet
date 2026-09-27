@@ -975,10 +975,10 @@ namespace Velvet
         // What a variant play that does not tween cancels: an earlier tween variant enter whose swap has not run,
         // which would otherwise put that enter's target classes back beside this play's. A swap that has run, a
         // reversal a cancelled exit parked, and a classic enter, whose classes are transient overlays, are left
-        // running, so a property this play does not name keeps moving on them. A classic play cancels nothing:
-        // it adds no class that a pending swap could land beside. The cancel puts back restingTo, and those of
-        // the cancelled enter's to classes, which it stripped as it started, that appliedClasses still holds: a
-        // Motion's own class is among them where the interrupted pose repeats it.
+        // running, so a property this play does not name keeps moving on them. A classic play that does not tween
+        // cancels nothing: it adds no class that a pending swap could land beside. The cancel puts back restingTo,
+        // and those of the cancelled enter's to classes, which it stripped as it started, that appliedClasses still
+        // holds: a Motion's own class is among them where the interrupted pose repeats it.
         private void CancelSwapAhead(VisualElement element, string[] restingTo, string[] appliedClasses)
         {
             if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
