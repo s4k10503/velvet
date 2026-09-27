@@ -858,6 +858,7 @@ on every platform.
 | `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ player-compile` | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
+| `Test ▸ newest-editor-compile` | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |

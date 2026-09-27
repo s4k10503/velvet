@@ -55,7 +55,8 @@ env:
 # than holding it; scripts/ci/test_job_timeouts.py fails for a job of a required workflow that has
 # none. Each is twice the 95th percentile of that job's successful runs, rounded up to a multiple of
 # five minutes and at least ten, but for the shard jobs', which ShardCeilingTests holds against the
-# plan's ceiling, and base-red's, which is sized for the four editor rounds it may take.
+# plan's ceiling, base-red's, which is sized for the four editor rounds it may take, and
+# newest-editor-compile's, which has no run to take a percentile of.
 jobs:
   # ---------------------------------------------------------------------------
   # Detect whether a Unity license secret is configured. Secrets cannot be
@@ -690,6 +691,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_ci_mutation_shard.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_licensed_editor.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_neuter_check.py
 
       - run: python3 scripts/test_quality/neuter_check.py --audit
@@ -720,17 +723,6 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
         run: python3 scripts/test_quality/stranded_name_check.py --base "${BASE:-HEAD^}"
 
-  # ---------------------------------------------------------------------------
-  # The one check branch protection requires from this workflow. Naming a real
-  # job instead would tie branch protection to that job's name and to its
-  # continuing to run at all; this reports for every pull request whatever the
-  # jobs above do.
-  #
-  # skipped counts as passing, which is what lets a fork with no UNITY_LICENSE
-  # merge anything: unity-tests is skipped in exactly that case. cancelled does
-  # not, because a superseded run and a run somebody stopped both arrive here
-  # with nothing having been tested.
-  # ---------------------------------------------------------------------------
   # ---------------------------------------------------------------------------
   # The one compile the suite never performs. EditMode and PlayMode both run inside the editor, where
   # UNITY_EDITOR is defined, so a call to a member declared under `#if UNITY_EDITOR` from outside one
@@ -771,15 +763,77 @@ jobs:
           buildMethod: Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
           allowDirtyBuild: true
 
+  # ---------------------------------------------------------------------------
+  # package.json declares a floor and both READMEs say "or newer", while every other Unity job builds
+  # the floor, so an API a later editor turned into a compile error reaches consumers unseen. This
+  # opens the project on a later editor and runs player-compile's build method there. Opening it
+  # compiles the editor-side assemblies, the test assemblies among them, and batchmode stops before
+  # the build method on a compile error among them: measured on the floor with an error planted
+  # in a test assembly no build method reaches, the editor exits 1 on "Scripts have compiler errors"
+  # and the method never runs. The build method then compiles the player side on the same editor.
+  #
+  # The version moves by hand as game-ci publishes images; EditorVersionTests exempts this job from
+  # naming the project's version and holds it above that one.
+  #
+  # The image runs under this step's own docker run, as the mutation shards' does, rather than
+  # through player-compile's game-ci action: with Docker's 64 MiB /dev/shm the 6.6 editor asked for
+  # 1 GiB and aborted before importing anything ("Insufficient shared memory available ...
+  # --shm-size=1025M"), unity-builder v5 has no input reaching --shm-size, and v6 compiled everything
+  # here and then failed the step because the build method's log carries no game-ci build result.
+  # licensed_editor.py holds the licence around the launch and exits with the editor's status.
+  # ---------------------------------------------------------------------------
+  newest-editor-compile:
+    name: Newest editor compilation
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-newest-6000.6.3f1-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-newest-6000.6.3f1-
+
+      - env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          docker run --rm --init --shm-size=1025m --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            unityci/editor:ubuntu-6000.6.3f1-linux-il2cpp-3 \
+            python3 -u scripts/ci/licensed_editor.py -- \
+              -projectPath /github/workspace -buildTarget StandaloneLinux64 \
+              -executeMethod Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
+
+  # ---------------------------------------------------------------------------
+  # The one check branch protection requires from this workflow. Naming a real
+  # job instead would tie branch protection to that job's name and to its
+  # continuing to run at all; this reports for every pull request whatever the
+  # jobs above do.
+  #
+  # skipped counts as passing, which is what lets a fork with no UNITY_LICENSE
+  # merge anything: unity-tests is skipped in exactly that case. cancelled does
+  # not, because a superseded run and a run somebody stopped both arrive here
+  # with nothing having been tested.
+  # ---------------------------------------------------------------------------
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, player-compile, release-notes, publication, test-quality, base-red-python, base-red, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
+    needs: [license-check, unity-tests, player-compile, newest-editor-compile, release-notes, publication, test-quality, base-red-python, base-red, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }} ${{ needs.mutation-plan.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.newest-editor-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }} ${{ needs.mutation-plan.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
         run: |
           failed=0
           for result in $RESULTS; do

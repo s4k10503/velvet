@@ -16,9 +16,9 @@ namespace Velvet
     {
         public ParticlesSettings Settings;
         public ParticleSystem? Host;
-        // GetInstanceID of the source the current Host was cloned from — an id (not the object
+        // GetEntityId of the source the current Host was cloned from — an id (not the object
         // reference) so a source destroyed after the clone still compares meaningfully.
-        public int SourceId;
+        public EntityId SourceId;
         // The play trigger last applied to the live Host, so a settings change applies a playOn flip
         // exactly once instead of re-triggering on every unrelated diff.
         public PlayTrigger AppliedPlayOn;
@@ -224,7 +224,7 @@ namespace Velvet
                 // clone, unaffected by the source's death, so it is destroyed explicitly either way.
                 DestroyHost(binding);
             }
-            else if (binding.Host == null || binding.SourceId != effect.GetInstanceID())
+            else if (binding.Host == null || binding.SourceId != effect.GetEntityId())
             {
                 // A first effect, a swapped source, or a host killed underneath us (a scene unload —
                 // Host reads as null then): rebuild from the current source.
@@ -280,7 +280,7 @@ namespace Velvet
                 renderer.enabled = false;
             }
             binding.Buffer = new ParticleSystem.Particle[Mathf.Clamp(main.maxParticles, 1, MaxDrawnParticles)];
-            binding.SourceId = source.GetInstanceID();
+            binding.SourceId = source.GetEntityId();
             binding.Host = host;
             ApplyPlayTrigger(binding);
         }
@@ -309,7 +309,7 @@ namespace Velvet
                 VelvetObjectUtil.Destroy(binding.Host.gameObject);
             }
             binding.Host = null;
-            binding.SourceId = 0;
+            binding.SourceId = EntityId.None;
             binding.Buffer = null;
             binding.Texture = null;
             binding.LogicallyPlaying = false;
