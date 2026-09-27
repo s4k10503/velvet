@@ -4199,6 +4199,7 @@ class AreaCampaign(StubbedCampaign):
         asmdef.write_text(json.dumps({"name": self.ASSEMBLY}))
         self.area_seconds = area_seconds
         self.launches = []
+        self.bounds = {}
         self.area_green = True
         self.narrowed_fails = ("Velvet.Tests.ProbeTests.Given_X",)
         self.narrowed_times_out = False
@@ -4206,9 +4207,10 @@ class AreaCampaign(StubbedCampaign):
         self.whole_fails = ()
         self.rebuilt = True
 
-    def run_suite(self, _unity, _project, _platform, scope, results, log, _timeout, _holder=None):
+    def run_suite(self, _unity, _project, _platform, scope, results, log, timeout, _holder=None):
         name = Path(results).name
         self.launches.append(name)
+        self.bounds[name] = timeout
         Path(log).write_text(self.narrowed_log if name.endswith("-narrowed.xml") else "")
         dll = self.project / "Library" / "ScriptAssemblies" / "None.dll"
         if name == "baseline.xml" or not self.rebuilt:
@@ -4246,6 +4248,21 @@ class NarrowedAttemptTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml",
                                              "mutant-001-narrowed.xml"])
+
+    def test_Given_AnAreaAndAMutantItSpares_When_Launched_Then_OnlyTheNarrowedLaunchesTakeTheNarrowBound(self):
+        # Arrange — both narrowed launches and both whole-suite ones, so a bound swapped between the
+        # two kinds shows on either side. `ShardCeilingTests` charges each mutant two launches at the
+        # narrow bound, which a narrowed launch given the whole-suite bound would void.
+        campaign = AreaCampaign()
+        campaign.narrowed_fails = ()
+
+        # Act
+        campaign.run_over_diff("--timeout", "900")
+
+        # Assert
+        narrow = mutation_check.NARROW_TIMEOUT["EditMode"]
+        self.assertEqual(campaign.bounds, {"baseline.xml": 900, "baseline-Reconciler.xml": narrow,
+                                           "mutant-001-narrowed.xml": narrow, "mutant-001.xml": 900})
 
     def test_Given_AMutantItsAreaKills_When_Recorded_Then_ItIsKilledByTheAreasCases(self):
         # Arrange — the whole suite would have let it survive, so the kill can only be the area's.

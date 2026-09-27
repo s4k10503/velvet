@@ -87,9 +87,12 @@ UNMEASURED = (NOT_BUILT, TIMED_OUT, UNCOMPILABLE, UNRECORDED)
 # has the measured cost of each.
 SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
-# The most a shard is given before `--plan` refuses: this many of the slowest mutant, each with two
-# launches at its platform's NARROW_TIMEOUT where it has one, after the longest of each setup phase,
-# fit that platform's shard job's timeout in test.yml. `ShardCeilingTests` holds each pair together.
+# The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
+# charges one on its platform, each with two launches at the platform's NARROW_TIMEOUT where it has
+# one, after the longest of each setup phase, fit that platform's shard job's timeout in test.yml, and
+# that case holds each pair together. The charge is not a worst case -- the EditMode one is a mutant
+# 18 of 645 measured runs exceeded -- so a full shard holding a slower mutant or a hang can still
+# outrun the job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
@@ -1909,9 +1912,10 @@ def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
         "digest": digest, "scope": list(scope), "index": index, "mutant": mutant.describe(project),
         "column": mutant.column,
         "verdict": mutant.verdict, "detail": mutant.detail,
-        # Every case that failed under this mutation, not the three the detail names. Which cases kill
-        # which mutant is a reading the decision does not carry, and it is on disk here anyway -- the
-        # detail truncates it for a reader rather than because that is all there was.
+        # Every case that failed in the run that decided the verdict, not the three the detail names:
+        # for a kill the narrowed run took, the area's cases alone, since the whole suite never ran.
+        # Which cases kill which mutant is a reading the decision does not carry, and it is on disk
+        # here anyway -- the detail truncates it for a reader rather than because that is all there was.
         "killers": sorted(killers),
     }, indent=2))
 
