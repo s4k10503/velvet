@@ -2131,6 +2131,8 @@ class StubbedCampaign:
     times_out = False
     no_results = False
     build_error = False
+    # The editor log a mutant's build leaves, where a case needs its exact lines.
+    error_log = None
     not_rebuilt = False
     # What the baseline is reported to have taken. Zero is a baseline with the whole bound to spare,
     # which is what separates a mutant that hung from a bound the suite was always going to outrun.
@@ -2150,7 +2152,8 @@ class StubbedCampaign:
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text(
             "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
-            if (mutant and self.build_error) else "")
+            if (mutant and self.build_error) else
+            self.error_log if (mutant and self.error_log is not None) else "")
         return wall, False, 0
 
     def unity_busy(self):
@@ -2951,6 +2954,58 @@ class UncompilableMutantTests(unittest.TestCase):
         # undeclared, and passes declared.
         self.assertEqual(run, 1)
 
+
+class InapplicableOperatorTests(unittest.TestCase):
+    """A `+ -> -` rewrite the build stops on with CS0019 for its `-` produced no program, so it is
+    neither a survivor nor a mutant nobody measured.
+
+    The arithmetic reader declines a join only where a literal shows the string, and this answers for
+    the rest.
+    """
+
+    SOURCE = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static string Label(Row row, int k) => row.Name
+                    + k;
+            }
+        }
+        """)
+
+    def log(self, code, message):
+        # The editor log's shape: whole copies, one with its front cut off, and the closing banner.
+        whole = "Packages/com.velvet.core/Runtime/Probe.cs(5,58): error {}: {}".format(code, message)
+        return "\n".join([whole, whole, whole[len("Packages/com.velvet.core/Runt"):],
+                          "Scripts have compiler errors."])
+
+    def test_Given_CS0019ForTheRewrittenMinus_When_TheCampaignDecides_Then_ItPassesAndNamesIt(self):
+        # Arrange -- placed where the binary expression starts, one line above the operator, and no
+        # declaration above the line: there was nothing a test could be asked.
+        campaign = StubbedCampaign(self.SOURCE)
+        campaign.error_log = self.log(
+            "CS0019", "Operator '-' cannot be applied to operands of type 'string' and 'int'")
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((code, "--- rewrites the compiler rejected" in campaign.printed), (0, True))
+
+    # GREEN_ON_BASE(characterization): the base fails this too; this pins that another error on the
+    # same line still fails the campaign now that CS0019 for the `-` does not.
+    def test_Given_AnotherErrorForTheRewrittenLine_When_TheCampaignDecides_Then_ItFails(self):
+        # Arrange -- CS0023 reads the same up to its operand count, and is a unary operator's.
+        campaign = StubbedCampaign(self.SOURCE)
+        campaign.error_log = self.log(
+            "CS0023", "Operator '-' cannot be applied to operand of type 'string'")
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((code, mutation_check.UNCOMPILABLE in campaign.printed), (1, True))
 
 class HoldOrderingTests(unittest.TestCase):
     """The record is written before the mutation, which is the whole of the interruption mechanism.
