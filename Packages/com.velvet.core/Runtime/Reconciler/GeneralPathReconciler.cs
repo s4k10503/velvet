@@ -1896,36 +1896,54 @@ namespace Velvet
             }
 
             var staggerSec = pass.Presence.StaggerDelaySec(tally.ExitIndex, tally.AnimatedExitCount);
+            // A spring or bezier exit reads the element's inline translate as PlayExit starts it and holds an axis
+            // neither pose names there, so a hold lands before it. A tween exit writes its transition in PlayExit,
+            // so a hold landed after moves on it where the exit plays on this element, as the resting USS classes
+            // the enter's cancel put back do. The hold lands whether or not the anchor plays an exit, since the
+            // enter StartPresenceExit cancelled never reaches the swap that would release it, and the descendants'
+            // holds land on the same terms.
+            var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.RunsOnSwap(exitTransition);
+            var landsAfterExit = landsBeforeExit ? null : ghostMotionElement;
+            if (landsBeforeExit && ghostMotionElement != null)
+            {
+                _patcher.LandInlineHold(ghostMotionElement);
+            }
             if (anchorPlays)
             {
-                // A spring or bezier exit reads the element's inline translate as PlayExit starts it and holds an
-                // axis neither pose names there, so a hold lands before it. A tween exit writes its transition in
-                // PlayExit, so a hold landed after moves on it where the exit plays on this element, as the
-                // resting USS classes the enter's cancel put back do.
-                var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.RunsOnSwap(exitTransition);
-                if (landsBeforeExit && ghostMotionElement != null)
-                {
-                    _patcher.LandInlineHold(ghostMotionElement);
-                }
                 var onExitSwap = variantExit != null
-                    ? _patcher.PlanInlineExit(ghostMotionElement!, ghostMotionNode!.ClassNames,
-                        variantExit.ExitToClasses, variantExit)
+                    ? _patcher.PlanInlineExit(ghostMotionElement!, ghostMotionNode!.ClassNames, variantExit.ExitToClasses)
                     : null;
                 // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
                 // cancelled (the key is re-added before it finishes) the element must return to that resting
                 // variant rather than be left without it (interrupt handling).
                 _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, exitWait.CompleteAnchor,
                     restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec, onSwap: onExitSwap);
-                if (!landsBeforeExit && ghostMotionElement != null)
-                {
-                    _patcher.LandInlineHold(ghostMotionElement);
-                }
+            }
+            if (landsAfterExit != null)
+            {
+                _patcher.LandInlineHold(landsAfterExit);
             }
             foreach (var exit in descendants)
             {
-                var element = exit.Element;
-                _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => exitWait.CompleteDescendant(element),
-                    restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec);
+                PlayDescendantExit(exit, exitWait, staggerSec);
+            }
+        }
+
+        // Lands the descendant's hold on the anchor's terms (DispatchPresenceExits).
+        private void PlayDescendantExit(ReconcilerContext.PresenceDescendantExit exit,
+            ReconcilerContext.PresenceExitWait wait, float staggerSec)
+        {
+            var element = exit.Element;
+            var landsBeforeExit = !StyleAnimationScheduler.RunsOnSwap(exit.Config);
+            if (landsBeforeExit)
+            {
+                _patcher.LandInlineHold(element);
+            }
+            _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => wait.CompleteDescendant(element),
+                restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec);
+            if (!landsBeforeExit)
+            {
+                _patcher.LandInlineHold(element);
             }
         }
 

@@ -118,17 +118,4 @@ namespace Velvet
             Target = target;
         }
     }
-
-    // A variant exit whose pose's inline-resolved tokens its swap writes (see FiberNodePatcher.PlanInlineExit).
-    // Swapped is whether the swap has written them.
-    internal sealed class MotionInlineExit
-    {
-        public readonly string[] ExitTokens;
-        public bool Swapped;
-
-        public MotionInlineExit(string[] exitTokens)
-        {
-            ExitTokens = exitTokens;
-        }
-    }
 }

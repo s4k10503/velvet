@@ -657,7 +657,7 @@ namespace Velvet
             if (_ctx.MotionHeldInline.Remove(element, out var hold))
             {
                 syncOld = hold.Applied;
-                if (swapTransition == null && SequenceEqual(oldVariantClasses, newVariantClasses)
+                if (SequenceEqual(oldVariantClasses, newVariantClasses)
                     && _ctx.StyleAnimationScheduler.IsSwapPending(element, hold.Release))
                 {
                     // A re-render inside the window before the swap: the swap still owes the held tokens.
@@ -673,7 +673,7 @@ namespace Velvet
                 var created = TryHoldInline(element, baseClasses, oldVariantClasses, next);
                 return (syncOld, created?.Applied ?? appliedNew, created?.Release);
             }
-            if (kept == null || SameTokens(kept.HeldTokens, CollectInlineResolved(newVariantClasses)))
+            if (kept == null)
             {
                 return (syncOld, appliedNew, null);
             }
@@ -700,7 +700,7 @@ namespace Velvet
                 target.Merged);
             hold.Release = () =>
             {
-                if (_ctx.MotionHeldInline.TryGetValue(element, out var current) && ReferenceEquals(current, hold))
+                if (ReferenceEquals(_ctx.MotionHeldInline.GetValueOrDefault(element), hold))
                 {
                     _ctx.MotionHeldInline.Remove(element);
                     SyncClassDrivenStyling(element, hold.Applied, hold.Target);
@@ -750,26 +750,20 @@ namespace Velvet
         // A variant exit's counterpart of ResolveInlineHold: the exit pose's inline-resolved tokens are written
         // at the exit's swap, after the play has put the exit's transition on the element, and
         // RestoreInlineAfterExit writes the resting ones back. Returns the play's onSwap, or null when the exit
-        // moves no such token.
-        internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses,
-            StyleTransitionConfig transition)
+        // moves no such token. The onSwap writes the record, so a play that never runs it leaves
+        // RestoreInlineAfterExit nothing to write back; PlayVariantEnter's onSwap says which plays those are.
+        internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses)
         {
             var exitTokens = CollectInlineResolved(exitVariantClasses);
-            if (!StyleAnimationScheduler.RunsOnSwap(transition)
-                || SameTokens(exitTokens, CollectInlineResolved(RestingClassSet(element, baseClasses).VariantClasses)))
+            if (SameTokens(exitTokens, CollectInlineResolved(RestingClassSet(element, baseClasses).VariantClasses)))
             {
                 return null;
             }
-            var exit = new MotionInlineExit(exitTokens);
-            _ctx.MotionInlineExits[element] = exit;
             return () =>
             {
-                if (_ctx.MotionInlineExits.TryGetValue(element, out var current) && ReferenceEquals(current, exit))
-                {
-                    var resting = RestingClassSet(element, baseClasses);
-                    SyncClassDrivenStyling(element, resting.Merged, WithExitTokens(baseClasses, resting, exit));
-                    exit.Swapped = true;
-                }
+                var resting = RestingClassSet(element, baseClasses);
+                SyncClassDrivenStyling(element, resting.Merged, WithExitTokens(baseClasses, resting, exitTokens));
+                _ctx.MotionInlineExits[element] = exitTokens;
             };
         }
 
@@ -779,16 +773,16 @@ namespace Velvet
         // recorded, and baseClasses are the re-added node's.
         internal void RestoreInlineAfterExit(VisualElement element, string[]? baseClasses)
         {
-            if (_ctx.MotionInlineExits.Remove(element, out var exit) && exit.Swapped)
+            if (_ctx.MotionInlineExits.Remove(element, out var exitTokens))
             {
                 var resting = RestingClassSet(element, baseClasses);
-                SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exit), resting.Merged);
+                SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exitTokens), resting.Merged);
             }
         }
 
         private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
-            MotionInlineExit exit)
-            => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exit.ExitTokens);
+            string[] exitTokens)
+            => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exitTokens);
 
         private static string[] CollectInlineResolved(string[] classes)
         {
@@ -810,11 +804,15 @@ namespace Velvet
         {
             foreach (var token in tokens)
             {
+                // MUTANT_SURVIVES(equivalent): a flip at index 0 only reports equal token sets unequal, and each
+                // SameTokens caller then holds or writes the same tokens the element already carries.
                 if (Array.IndexOf(container, token) < 0)
                 {
                     return false;
                 }
             }
+            // MUTANT_SURVIVES(equivalent): false here only reports equal token sets unequal, and each SameTokens
+            // caller then holds or writes the same tokens the element already carries.
             return true;
         }
 
@@ -823,7 +821,7 @@ namespace Velvet
         private static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
             string[] heldTokens)
         {
-            var composed = new List<string>(baseClasses.Length + variantClasses.Length + heldTokens.Length);
+            var composed = new List<string>();
             composed.AddRange(baseClasses);
             foreach (var cls in variantClasses)
             {
@@ -1350,20 +1348,17 @@ namespace Velvet
 
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {
-            core = rawCls;
-            important = false;
-            if (string.IsNullOrEmpty(rawCls) || StyleVariantClass.IsVariant(rawCls)
+            core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
+            return !IsEmptyOrVariantToken(rawCls) && StyleArbitraryValueResolver.IsInlineResolved(core);
+        }
+
+        private static bool IsEmptyOrVariantToken(string rawCls)
+            => string.IsNullOrEmpty(rawCls) || StyleVariantClass.IsVariant(rawCls)
                 || StyleStructuralVariantClass.IsStructural(rawCls)
                 || StyleHasVariantClass.IsHas(rawCls)
                 || StyleAttributeVariantClass.IsAttribute(rawCls)
                 || StyleSupportsVariantClass.IsSupports(rawCls)
-                || StyleChildVariantClass.IsChildVariant(rawCls))
-            {
-                return false;
-            }
-            core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
-            return StyleArbitraryValueResolver.IsInlineResolved(core);
-        }
+                || StyleChildVariantClass.IsChildVariant(rawCls);
 
         private static bool SequenceEqual(string[] a, string[] b)
         {

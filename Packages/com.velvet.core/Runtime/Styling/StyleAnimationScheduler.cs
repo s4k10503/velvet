@@ -126,6 +126,9 @@ namespace Velvet
             => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
+            // MUTANT_SURVIVES(unreachable): a hold is registered beside the play it hands its Release to.
+            // No other play starts on the element while it stays registered: ResolveInlineHold and an exit's
+            // landing take it first, and an enter holds only on a fresh element or after an exit landed its hold.
             => _pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending.OnSwap, onSwap);
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
@@ -359,6 +362,8 @@ namespace Velvet
         // exit staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
         // onSwap: as PlayVariantEnter's.
         public void PlayExit(VisualElement? element, StyleTransitionConfig? config, Action? onComplete,
+            // MUTANT_SURVIVES(unreachable): every PlayExit call outside the test assemblies passes the flag.
+            // Only a test's call reads this default, and none of those reads what a cancel restores.
             bool restoreFromOnCancel = false, float additionalDelaySec = 0f, Action? onSwap = null)
         {
             if (element == null || config == null)
@@ -979,6 +984,8 @@ namespace Velvet
         }
 
         private static bool IsPlayableDuration(float durationSec)
+            // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros.
+            // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
 
         private static bool ValidateDuration(float durationSec, Action? onComplete)

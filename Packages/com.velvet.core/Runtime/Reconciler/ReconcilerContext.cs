@@ -653,9 +653,9 @@ namespace Velvet
         // pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, MotionHeldInline> MotionHeldInline { get; } = new();
 
-        // Per-Motion-element record of a variant exit's inline-resolved tokens (see MotionInlineExit). A pure
-        // side-table, enrolled in _pureElementSideTables.
-        public Dictionary<VisualElement, MotionInlineExit> MotionInlineExits { get; } = new();
+        // Per-Motion-element record of the inline-resolved tokens a variant exit's swap wrote (see
+        // FiberNodePatcher.PlanInlineExit). A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, string[]> MotionInlineExits { get; } = new();
 
         // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
         // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
