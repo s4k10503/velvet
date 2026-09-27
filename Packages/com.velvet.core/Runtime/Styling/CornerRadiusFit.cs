@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -85,7 +84,7 @@ namespace Velvet
 
         }
 
-        private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
 
         public static void TrackClass(VisualElement element, string cls)
         {
