@@ -161,5 +161,22 @@ class EditorVersionTests(unittest.TestCase):
         self.assertEqual((named, derived), ({project.group(1)} if project else None, True))
 
 
+class ShardPlatformTests(unittest.TestCase):
+    """Which suites the workflow's shards run a campaign against."""
+
+    def test_Given_TheWorkflow_When_ItsShardLaunchesAreRead_Then_EachPlatformHasOne(self):
+        # Arrange — a mutant only a PlayMode fixture kills survives wherever no shard runs that suite.
+        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        launches = [launch.partition("\n\n")[0]
+                    for launch in workflow.split("ci_mutation_shard.py --")[1:]]
+
+        # Act
+        platforms = sorted((re.findall(r"--platform (\w+)", launch) or ["EditMode"])[0]
+                           for launch in launches)
+
+        # Assert
+        self.assertEqual(platforms, ["EditMode", "PlayMode"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

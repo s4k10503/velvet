@@ -65,7 +65,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/stale_merge.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_unchecked_against_base.py\"",
             "timeout": 25.0,
             "type": "command"
           }

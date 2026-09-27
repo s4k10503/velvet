@@ -12,6 +12,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from unittest import mock
 
 GREEN = "a" * 40
 MOVED = "b" * 40
+BROKE = "c" * 40
 
 
 def load_module():
@@ -37,12 +39,29 @@ settle = load_module()
 
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
-            holds_base=True, held_by_worktree=False, unpublished_release=None, draft=False,
-            merge_state="clean", fork=False):
+            held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
+            fork=False, failing_runs=(), behind_release=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
-    return settle.reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                               unpublished_release, draft, merge_state, fork)
+    return settle.reasons_from(before, after, results, branch, base,
+                               held_by_worktree=held_by_worktree,
+                               unpublished_release=unpublished_release, draft=draft,
+                               merge_state=merge_state, fork=fork, failing_runs=failing_runs,
+                               behind_release=behind_release)
+
+
+def failing(workflow="test.yml", sha=BROKE):
+    return settle.red_base.Failing(workflow, sha)
+
+
+RED_REASON = ("origin/main's last test.yml push run failed at ccccccc: fix or revert it on main "
+              "first. A head is exempt only where it contains that commit and its own Unity tests "
+              "ran and passed")
+
+RELEASED = "d" * 40
+
+RELEASE_REASON = ("does not contain ddddddd, which dated 2.1.0 on main: take main in with "
+                  "`settle.py update`, so its checks run again over the section that commit closed")
 
 
 class MergeDecisionTests(unittest.TestCase):
@@ -55,7 +74,7 @@ class MergeDecisionTests(unittest.TestCase):
         results = [{"name": "Unity", "bucket": "fail"}]
 
         # Act
-        decided = reasons(after=MOVED, results=results, holds_base=False, held_by_worktree=True)
+        decided = reasons(after=MOVED, results=results, failing_runs=[failing()], held_by_worktree=True)
 
         # Assert
         self.assertEqual(len(decided), 1)
@@ -116,13 +135,12 @@ class MergeDecisionTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(reasons(results=results), [])
 
-    def test_Given_ABranchBehindItsBase_When_Decided_Then_ItBlocksThoughEveryCheckPassed(self):
-        # Arrange — GitHub reports BEHIND only where the base requires up-to-date heads, which this
-        # repository deliberately does not, so mergeStateStatus reads CLEAN here.
-        decided = reasons(holds_base=False)
+    def test_Given_ABaseWhoseLastPushRunFailed_When_Decided_Then_ItBlocksThoughEveryCheckPassed(self):
+        # Arrange — a failing run the head does not contain, with every other input clean.
+        decided = reasons(failing_runs=[failing()])
 
         # Act / Assert
-        self.assertEqual(decided, ["does not contain origin/main: merge it in and let the checks run again"])
+        self.assertEqual(decided, [RED_REASON])
 
     def test_Given_AWorktreeHoldingTheBranch_When_Decided_Then_ItBlocksBeforeTheMergeHappens(self):
         # Arrange — the local delete would otherwise fail once the merge had already happened.
@@ -136,7 +154,7 @@ class MergeDecisionTests(unittest.TestCase):
         results = [{"name": "Unity", "bucket": "pending"}]
 
         # Act
-        decided = reasons(results=results, holds_base=False, held_by_worktree=True)
+        decided = reasons(results=results, failing_runs=[failing()], held_by_worktree=True)
 
         # Assert
         self.assertEqual(len(decided), 3)
@@ -156,56 +174,73 @@ class MergeDecisionTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(len(decided), 2)
 
-    def test_Given_APullRequestConflictingWithTheBase_When_Decided_Then_TheConflictIsNamedBesideIt(self):
-        # Arrange — a conflicting branch does not contain the base either, so both are asked at once:
-        # the conflict alone would be reported by a branch that is merely behind.
-        decided = reasons(merge_state="dirty", holds_base=False)
+    def test_Given_APullRequestConflictingWithTheBase_When_Decided_Then_TheConflictIsNamed(self):
+        # Arrange — nothing else blocks, so the conflict is the only thing that can.
+        decided = reasons(merge_state="dirty")
 
         # Act / Assert
         self.assertEqual(decided, [
             "it conflicts with main: resolve the conflict in the branch, which `settle.py update` "
-            "declines to do",
-            "does not contain origin/main: merge it in and let the checks run again"])
+            "declines to do"])
 
-    def test_Given_AHeadOnAFork_When_Decided_Then_ItBlocksWithoutClaimingAContainmentReading(self):
-        # Arrange — `holds_base` is the default nothing computed for a fork, so the case asks that
-        # the reason naming it is absent as well as that the fork reason is there.
-        decided = reasons(fork=True, holds_base=False)
+    def test_Given_AHeadOnAFork_When_Decided_Then_ItBlocks(self):
+        # Act
+        decided = reasons(fork=True)
 
-        # Act / Assert
-        self.assertEqual(decided, [
-            "its head is on another repository: this settles branches on origin, so nothing here "
-            "read whether it contains origin/main"])
+        # Assert
+        self.assertEqual(decided, ["its head is on another repository: this settles branches on origin"])
 
-    def test_Given_ADirtyStateBesideAContainmentThatHolds_When_Decided_Then_ItIsWhatBlocks(self):
-        # Arrange — the state the predicate earns its keep in, and the reason it is read rather than
-        # left to the message: the containment reading is of the tip the cycle's fetch saw, GitHub's
-        # is of a newer one, so a branch can hold the first and conflict with the second. Posed
-        # beside `unknown` to keep the absence of a reading from becoming a reason.
-        counted = (len(reasons(merge_state="dirty", holds_base=True)),
-                   len(reasons(merge_state="unknown", holds_base=True)))
+    def test_Given_ADirtyStateAndAnUnknownOne_When_Decided_Then_OnlyTheDirtyOneBlocks(self):
+        # Arrange — posed beside `unknown` to keep the absence of a reading from becoming a reason.
+        counted = (len(reasons(merge_state="dirty")), len(reasons(merge_state="unknown")))
 
         # Act / Assert
         self.assertEqual(counted, (1, 0))
 
 
-# One pull request's whole state, so `watch` and `merge` can be posed the same table.
+# One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
+# base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds_base held fork")
+    "Fabricated", "sha after branch base draft merge_state results holds held fork")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
+# The suites ran as well as the aggregate passing, which is what the red-base exemption asks.
+SUITES_RAN = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "pass"},
+                        {"name": "Unity tests (PlayMode)", "bucket": "pass"}]
+SUITES_SKIPPED = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "skipping"},
+                            {"name": "Unity tests (PlayMode)", "bucket": "skipping"}]
 
-def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds_base=True,
+# The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
+# for anything else, so a case posing another base reads it green.
+RED = "1.x"
+
+# The base whose newest release commit is `RELEASED`, dating 2.1.0. No case poses it for anything else.
+RELEASING = "3.x"
+
+
+def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main"):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=f"topic-{number}", base=base,
-                      draft=draft, merge_state=merge_state, results=results, holds_base=holds_base,
+                      draft=draft, merge_state=merge_state, results=results, holds=holds,
                       held=held, fork=fork)
 
 
+def base_state(held, base, red=(RED,), releasing=(RELEASING,)):
+    """What `project_state` answers for one base, with each base in `red` failing at `BROKE` and
+    each in `releasing` last released at `RELEASED`.
+
+    The attributes the decision reads rather than settle.ProjectState itself, for the reason
+    `fabricated_readings` gives about the pull request.
+    """
+    return types.SimpleNamespace(held=held, unpublished_release=None,
+                                 red=[failing()] if base in red else [],
+                                 release=(RELEASED, "2.1.0") if base in releasing else None)
+
+
 @contextlib.contextmanager
-def fabricated_readings(states):
+def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -226,11 +261,12 @@ def fabricated_readings(states):
                 fork=states[number].fork)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_sha", lambda _project, number: states[number].after),
-            ("contains_base", lambda _project, branch, _base: (
+            ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
-                else by_branch[branch].holds_base)),
-            ("project_state", lambda *_: settle.ProjectState(
-                {state.branch for state in states.values() if state.held}, None)),
+                else sha in by_branch[branch].holds)),
+            ("project_state", lambda _project, base: base_state(
+                {state.branch for state in states.values() if state.held}, base, red,
+                releasing)),
         ):
             stack.enter_context(mock.patch.object(settle, name, answer))
         yield stack
@@ -310,18 +346,23 @@ class ReadinessTests(unittest.TestCase):
     # Every per-pull-request state the two readings could differ on, plus the ordinary green one so
     # the table is not made of exceptions alone. The publication reason is not among them: it is one
     # reading for the whole repository, so it cannot differ between entries of a table like this.
+    # The red base and the release commit are, because whether each blocks is decided per head.
     TABLE = {
         1: fabricate(1),
         2: fabricate(2, draft=True),
-        3: fabricate(3, merge_state="dirty", holds_base=False),
-        4: fabricate(4, holds_base=False),
+        3: fabricate(3, merge_state="dirty"),
+        4: fabricate(4, base=RED),
         5: fabricate(5, held=True),
         6: fabricate(6, results=[{"name": "Unity", "bucket": "pending"}]),
         7: fabricate(7, results=[{"name": "Unity", "bucket": "fail"}]),
         8: fabricate(8, results=[]),
         9: fabricate(9, moved=True),
-        10: fabricate(10, draft=True, merge_state="dirty", holds_base=False),
+        10: fabricate(10, draft=True, merge_state="dirty"),
         11: fabricate(11, fork=True),
+        12: fabricate(12, base=RED, holds=(BROKE,), results=SUITES_RAN),
+        13: fabricate(13, base=RED, holds=(BROKE,), results=SUITES_SKIPPED),
+        14: fabricate(14, base=RELEASING),
+        15: fabricate(15, base=RELEASING, holds=(RELEASED,)),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -666,15 +707,15 @@ class RetirementTests(unittest.TestCase):
 class ForkMergeTests(unittest.TestCase):
     """What `settle.py merge` does with a head this checkout has no ref for."""
 
-    def test_Given_AForkPullRequest_When_TheMergeIsDecided_Then_ItIsRefusedRatherThanRaising(self):
-        # Arrange — `contains_base` is what would run on `origin/<a branch on the fork>`, and it
+    def test_Given_AForkPullRequestOntoARedBase_When_TheMergeIsDecided_Then_ItIsRefusedRatherThanRaising(self):
+        # Arrange — `contains_commit` is what would run on `origin/<a branch on the fork>`, and it
         # exits 128 rather than answering, so a merge decided without the fork reading raises out of
         # a command whose whole job is to report what blocks.
         printed = io.StringIO()
-        with fabricated_readings({8: fabricate(8, fork=True)}):
+        with fabricated_readings({8: fabricate(8, fork=True, base=RED)}):
             with contextlib.redirect_stderr(printed):
                 # Act
-                code = settle.merge(Path("."), 8, "main", dry_run=True)
+                code = settle.merge(Path("."), 8, None, dry_run=True)
 
         # Assert
         self.assertEqual((code, "head is on another repository" in printed.getvalue()), (1, True))
@@ -925,6 +966,281 @@ class HeartbeatTests(unittest.TestCase):
                 yield
 
 
+class RedBaseMergeTests(unittest.TestCase):
+    """What a base whose required workflows last failed on push does to the merge decision."""
+
+    def test_Given_MainsLastPushRunFailed_When_AHeadWithoutThatCommitIsDecided_Then_ItIsRefused(self):
+        # Arrange
+        states = {1: fabricate(1)}
+
+        # Act
+        with fabricated_readings(states, red=("main",)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [RED_REASON])
+
+    def test_Given_MainsLastPushRunFailed_When_AHeadContainingThatCommitIsDecided_Then_NothingBlocksIt(self):
+        # Arrange — the fix or the revert, whose own suites ran over the failing commit.
+        states = {1: fabricate(1, holds=(BROKE,), results=SUITES_RAN)}
+
+        # Act
+        with fabricated_readings(states, red=("main",)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_MainsLastPushRunFailed_When_AHeadContainingItSkippedItsSuites_Then_ItIsRefused(self):
+        # Arrange — the aggregate check passed with the suite jobs skipped, so nothing ran over it.
+        states = {1: fabricate(1, holds=(BROKE,), results=SUITES_SKIPPED)}
+
+        # Act
+        with fabricated_readings(states, red=("main",)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [RED_REASON])
+
+    def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
+        # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
+        state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
+                                      merge_state="clean", fork=False)
+        answers = {"merge-base": MOVED, "rev-parse": BROKE}
+        with contextlib.ExitStack() as stack:
+            for name, answer in (
+                ("repository", lambda *_: "owner/name"),
+                ("pull_request", lambda *_: state),
+                ("checks", lambda *_: PASSING),
+                ("head_sha", lambda *_: GREEN),
+                ("project_state", lambda _project, base: base_state(set(), base)),
+                ("gh_git", lambda _project, command, *_: answers[command]),
+            ):
+                stack.enter_context(mock.patch.object(settle, name, answer))
+
+            # Act
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_OneRequiredWorkflowFailedOnTheBase_When_ItsStateIsRead_Then_ThatOneIsKept(self):
+        # Arrange — a base other than main, so a reading that asks about main answers wrong here.
+        payloads = {"test.yml": {"workflow_runs": [workflow_run(1, "success", GREEN)]},
+                    "generators.yml": {"workflow_runs": [workflow_run(1, "failure", BROKE)]}}
+        expected = ([failing("generators.yml")],
+                    ["repos/owner/name/" + settle.red_base.runs_path(workflow, "2.x")
+                     for workflow in ("test.yml", "generators.yml")])
+        asked = []
+
+        def listing(path):
+            asked.append(path)
+            return payloads[path.split("/actions/workflows/")[1].split("/")[0]]
+
+        with contextlib.ExitStack() as stack:
+            for name, answer in (("gh_git", lambda *_: ""),
+                                 ("repository", lambda *_: "owner/name"),
+                                 ("worktree_branches", lambda *_: set()),
+                                 ("rest_json", listing)):
+                stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
+                                                  lambda *_, **__: None))
+            stack.enter_context(mock.patch.object(settle, "release_commit", lambda *_: None))
+
+            # Act
+            red = settle.project_state(Path("."), "2.x").red
+
+        # Assert
+        self.assertEqual((red, asked), expected)
+
+
+@contextlib.contextmanager
+def project_readings(release_commit):
+    """`project_state` with every reading but the release commit answered as nothing to report."""
+    with contextlib.ExitStack() as stack:
+        for name, answer in (("gh_git", lambda *_: ""),
+                             ("repository", lambda *_: "owner/name"),
+                             ("worktree_branches", lambda *_: set()),
+                             ("rest_json", lambda _path: {"workflow_runs": []})):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
+                                              lambda *_, **__: None))
+        stack.enter_context(mock.patch.object(settle, "release_commit", release_commit))
+        yield
+
+
+class ReleaseCommitMergeTests(unittest.TestCase):
+    """What the base's newest release commit does to the merge decision."""
+
+    def test_Given_AHeadLackingTheBasesNewestReleaseCommit_When_Decided_Then_ItIsRefused(self):
+        # Arrange
+        states = {1: fabricate(1)}
+
+        # Act
+        with fabricated_readings(states, releasing=("main",)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [RELEASE_REASON])
+
+    def test_Given_AHeadHoldingTheNewestReleaseCommitAndBehindLaterOnes_When_Decided_Then_NothingBlocksIt(self):
+        # Arrange — `holds` names the release commit alone, so the head lacks everything after it.
+        states = {1: fabricate(1, holds=(RELEASED,))}
+
+        # Act
+        with fabricated_readings(states, releasing=("main",)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ABase_When_ItsStateIsRead_Then_ItsReleaseCommitIsWhatItHolds(self):
+        # Arrange
+        asked = []
+
+        def release_commit(_project, base):
+            asked.append(base)
+            return (RELEASED, "2.1.0")
+
+        with project_readings(release_commit):
+            # Act
+            release = settle.project_state(Path("."), "2.x").release
+
+        # Assert
+        self.assertEqual((release, asked), ((RELEASED, "2.1.0"), ["2.x"]))
+
+    def test_Given_ABase_When_ItsReleaseCommitIsRead_Then_ItIsAskedOfThatBaseOnOrigin(self):
+        # Arrange
+        read, asked = settle.release_commit, []
+
+        def dated(_project, rev, **_):
+            asked.append(rev)
+            return (RELEASED, "2.1.0")
+
+        with mock.patch.object(settle.published_check, "release_commit", dated):
+            # Act
+            read(Path("."), "2.x")
+
+        # Assert
+        self.assertEqual(asked, ["origin/2.x"])
+
+    def test_Given_AReleaseCommitGitCannotRead_When_ItIsRead_Then_ItRaisesWhatTheWatcherCatches(self):
+        # Arrange — `watch` catches RuntimeError per pull request; anything else stops the watcher.
+        read = settle.release_commit
+
+        def unreadable(*_, **__):
+            raise subprocess.CalledProcessError(128, ["git", "log"])
+
+        with mock.patch.object(settle.published_check, "release_commit", unreadable):
+            # Act / Assert
+            with self.assertRaises(RuntimeError):
+                read(Path("."), "2.x")
+
+
+def workflow_run(number, conclusion, sha=BROKE, status="completed", attempt=1):
+    """One entry of the runs listing, carrying the fields `failing_run` reads."""
+    return {"run_number": number, "status": status, "conclusion": conclusion, "head_sha": sha,
+            "run_attempt": attempt}
+
+
+class RedBaseRunTests(unittest.TestCase):
+    """Which run of a base's push runs `red_base.failing_run` takes as the verdict."""
+
+    def verdict(self, *entries):
+        return settle.red_base.failing_run("test.yml", {"workflow_runs": list(entries)})
+
+    def test_Given_TheNewestRunFailed_When_Read_Then_ItIsTheVerdict(self):
+        # Act / Assert
+        self.assertEqual(self.verdict(workflow_run(2, "failure"), workflow_run(1, "success", GREEN)),
+                         failing())
+
+    def test_Given_TheNewestRunPassedOverAnOlderFailure_When_Read_Then_NothingIsFailing(self):
+        # Act / Assert
+        self.assertIsNone(self.verdict(workflow_run(2, "success", GREEN), workflow_run(1, "failure")))
+
+    def test_Given_ARunStillGoingOverAPass_When_Read_Then_NothingIsFailing(self):
+        # Act / Assert — a pending base refuses nothing.
+        self.assertIsNone(self.verdict(workflow_run(2, None, status="in_progress"),
+                                       workflow_run(1, "success", GREEN)))
+
+    def test_Given_ARunStillGoingOverAFailure_When_Read_Then_TheFailureStands(self):
+        # Act / Assert
+        self.assertEqual(self.verdict(workflow_run(2, None, MOVED, status="in_progress"),
+                                      workflow_run(1, "failure")),
+                         failing())
+
+    def test_Given_AReRunStillGoingOverAPass_When_Read_Then_ItIsTheFailureItReRuns(self):
+        # Act / Assert — the listing shows the re-run's attempt, so the failure it replaced is gone
+        # from the page and the pass before it would otherwise be the verdict.
+        self.assertEqual(self.verdict(workflow_run(2, None, status="in_progress", attempt=2),
+                                      workflow_run(1, "success", GREEN)),
+                         failing())
+
+    def test_Given_ACancelledRunOverAFailure_When_Read_Then_TheFailureStands(self):
+        # Act / Assert — a newer push supersedes a run without passing it.
+        self.assertEqual(self.verdict(workflow_run(2, "cancelled", MOVED), workflow_run(1, "failure")),
+                         failing())
+
+    def test_Given_AConclusionNobodyClassified_When_Read_Then_ItCountsAsAFailure(self):
+        # Act / Assert
+        self.assertEqual(self.verdict(workflow_run(1, "something_new")), failing())
+
+    def test_Given_RunsListedOldestFirst_When_Read_Then_TheNewestNumberIsTheVerdict(self):
+        # Act / Assert
+        self.assertIsNone(self.verdict(workflow_run(1, "failure"), workflow_run(2, "success", GREEN)))
+
+    def test_Given_NoRunAtAll_When_Read_Then_NothingIsFailing(self):
+        # Act / Assert
+        self.assertIsNone(self.verdict())
+
+
+class UnityRanTests(unittest.TestCase):
+    """Whether a head's own suites ran, which the red-base exemption asks."""
+
+    def test_Given_BothSuiteJobsSucceeded_When_Read_Then_TheyRan(self):
+        # Act / Assert
+        self.assertTrue(settle.red_base.unity_ran(
+            [("Required checks (Unity)", "success"), ("Unity tests (EditMode)", "success"),
+             ("Unity tests (PlayMode)", "success")]))
+
+    def test_Given_SuiteJobsSkippedUnderAPassingAggregate_When_Read_Then_TheyDidNotRun(self):
+        # Act / Assert
+        self.assertFalse(settle.red_base.unity_ran(
+            [("Required checks (Unity)", "success"), ("Unity tests (EditMode)", "skipped"),
+             ("Unity tests (PlayMode)", "skipped")]))
+
+    def test_Given_NoSuiteJobAtAll_When_Read_Then_TheyDidNotRun(self):
+        # Act / Assert
+        self.assertFalse(settle.red_base.unity_ran([("Required checks (Unity)", "success")]))
+
+
+class RequiredWorkflowTests(unittest.TestCase):
+    def test_Given_TheWorkflowDirectory_When_RequiredChecksAreFound_Then_TheyAreTheWorkflowsRead(self):
+        # Arrange
+        declaring = re.compile(r"^\s+name: Required checks \(", re.M)
+        workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+
+        # Act
+        found = sorted(path.name for path in workflows.glob("*.yml")
+                       if declaring.search(path.read_text(encoding="utf-8")))
+
+        # Assert
+        self.assertEqual(found, sorted(settle.red_base.REQUIRED_WORKFLOWS))
+
+    def test_Given_TestYml_When_ItsSuiteJobIsRead_Then_ItsNameCarriesTheUnityPrefix(self):
+        # Arrange
+        prefix = settle.red_base.UNITY_TESTS
+        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "test.yml"
+
+        # Act
+        names = re.findall(r"^  unity-tests:\n    name: (.*)$",
+                           workflow.read_text(encoding="utf-8"), re.M)
+
+        # Assert
+        self.assertEqual([name.startswith(prefix + " (") for name in names], [True])
+
+
 class PullRequestBaseTests(unittest.TestCase):
     """Which branch the decision is taken against, once more than one of them takes pull requests.
 
@@ -934,15 +1250,14 @@ class PullRequestBaseTests(unittest.TestCase):
 
     def test_Given_APullRequestBasedOnAMaintenanceBranch_When_ItsReasonsAreRead_Then_TheyNameIt(self):
         # Arrange
-        states = {1: fabricate(1, base="2.x", holds_base=False)}
+        states = {1: fabricate(1, base=RED)}
 
         # Act
         with fabricated_readings(states):
             decided = settle.blocking_reasons(Path("."), 1, None).reasons
 
         # Assert
-        self.assertEqual(
-            decided, ["does not contain origin/2.x: merge it in and let the checks run again"])
+        self.assertEqual(decided, [RED_REASON.replace("main", RED)])
 
     def test_Given_PullRequestsOnTwoBases_When_OnePollReadsThem_Then_EachBaseIsAskedOnce(self):
         # Arrange — the dict a poll carries, which is what keeps N pull requests at one fetch per
@@ -954,8 +1269,7 @@ class PullRequestBaseTests(unittest.TestCase):
         with fabricated_readings(states) as stack:
             stack.enter_context(mock.patch.object(
                 settle, "project_state",
-                lambda _project, base: (asked.append(base),
-                                        settle.ProjectState(set(), None))[1]))
+                lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
             for number in sorted(states):
                 settle.blocking_reasons(Path("."), number, None, states=shared)
 
@@ -975,8 +1289,7 @@ class PullRequestBaseTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
                 stack.enter_context(mock.patch.object(
                     settle, "project_state",
-                    lambda _project, base: (asked.append(base),
-                                            settle.ProjectState(set(), None))[1]))
+                    lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
                 stack.enter_context(mock.patch.object(settle.time, "sleep",
                                                       side_effect=[None, Polled]))
                 stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
