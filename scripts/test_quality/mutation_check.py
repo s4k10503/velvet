@@ -120,7 +120,7 @@ UNREADABLE = object()
 CARRIED_REFUSAL = 3
 
 # Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 8
+MUTATION_MODEL_VERSION = 7
 
 
 class Mutant:
@@ -751,7 +751,7 @@ def preceding_addition(text, mask, index):
     return None
 
 
-def bounded_expression_is_string(text, mask, start, end, comments, names=None):
+def bounded_expression_is_string(text, mask, start, end, comments):
     """Whether the bounded expression's text alone establishes a string result."""
     start = skip_trivia_right(text, start, comments)
     end = skip_trivia_left(text, end, comments)
@@ -763,18 +763,17 @@ def bounded_expression_is_string(text, mask, start, end, comments, names=None):
         nested = matching_close_parenthesis(text, mask, start, end)
         if nested == end - 1:
             return bounded_expression_is_string(
-                text, mask, start + 1, nested, comments, names)
+                text, mask, start + 1, nested, comments)
     conditional = top_level_conditional(text, mask, start, end)
     if conditional is not None:
         question, colon = conditional
         return (bounded_expression_is_string(
-                    text, mask, question + 1, colon, comments, names)
+                    text, mask, question + 1, colon, comments)
                 and bounded_expression_is_string(
-                    text, mask, colon + 1, end, comments, names))
+                    text, mask, colon + 1, end, comments))
     addition = top_level_addition(text, mask, start, end)
-    if addition is None:
-        return names is not None and names.spans_a_string(start, end)
-    return joins_a_string(text, mask, addition, comments, names)
+    return addition is not None and joins_a_string(
+        text, mask, addition, comments)
 
 
 def continues_with_postfix(text, end, comments):
@@ -787,8 +786,8 @@ def continues_with_postfix(text, end, comments):
         ("?.", "?["), following)
 
 
-def joins_a_string(text, mask, index, comments, names=None):
-    """Whether the ` + ` at `index` has a string literal, or a name `names` reads, for an operand.
+def joins_a_string(text, mask, index, comments):
+    """Whether the ` + ` at `index` has a string literal for one of its operands.
 
     A prior addition in the same chain is an operand too: once one addition produced a string, every
     addition after it is string concatenation. Expression boundaries keep a string in another
@@ -805,431 +804,17 @@ def joins_a_string(text, mask, index, comments, names=None):
         opened = matching_open_parenthesis(text, mask, left - 1)
         if (opened is not None and is_grouping_parenthesis(text, opened, comments)
                 and bounded_expression_is_string(
-                    text, mask, opened + 1, left - 1, comments, names)):
+                    text, mask, opened + 1, left - 1, comments)):
             return True
     if right < len(text) and text[right] == "(":
         closed = matching_close_parenthesis(text, mask, right, len(text))
         if (closed is not None and not continues_with_postfix(text, closed + 1, comments)
                 and bounded_expression_is_string(
-                    text, mask, right + 1, closed, comments, names)):
+                    text, mask, right + 1, closed, comments)):
             return True
-    if names is not None and (names.ends_a_string(left) or names.starts_a_string(right)):
-        return True
     previous = preceding_addition(text, mask, index)
     return previous is not None and joins_a_string(
-        text, mask, previous, comments, names)
-
-
-# `string` as the whole type: a tuple, an array or a type argument naming it is some other type.
-STRING_TYPE = re.compile(r"(?:^|[\s(,])(?:string|String|System\.String)\s*\??\s*$")
-TYPE_HEAD = re.compile(r"\b(?:class|struct|interface|record)\s+(?:(?:class|struct)\s+)?([A-Za-z_]\w*)")
-IDENTIFIER_TAIL = re.compile(r"([A-Za-z_]\w*)\s*$")
-# Words that stand in front of a use rather than in front of the name a declaration introduces, so
-# `return name;` and `x is not name` are not read as a declaration of `name`. Anything else in front
-# of a name counts: `from` and `let` declare one without saying its type, and such a declaration is
-# read as not a string rather than skipped, since skipping it lets a member of the same name answer for
-# a local that shadows it.
-USE_PREFIXES = frozenset((
-    "return", "throw", "yield", "await", "new", "else", "case", "in", "is", "as", "out", "ref",
-    "goto", "when", "and", "or", "not"))
-# C#'s reserved words, none of which names a local, a member or a type without an `@`.
-KEYWORDS = frozenset((
-    "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class",
-    "const", "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event",
-    "explicit", "extern", "false", "finally", "fixed", "float", "for", "foreach", "goto", "if",
-    "implicit", "in", "int", "interface", "internal", "is", "lock", "long", "namespace", "new",
-    "null", "object", "operator", "out", "override", "params", "private", "protected", "public",
-    "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static",
-    "string", "struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong",
-    "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"))
-
-
-def blanked(text, spans):
-    """The text with every comment, literal and directive `mask_spans` reads spaced out, lines kept."""
-    pieces = []
-    reached = 0
-    for start, end, _ in spans:
-        pieces.append(text[reached:start])
-        pieces.append(re.sub(r"[^\n]", " ", text[start:end]))
-        reached = end
-    pieces.append(text[reached:])
-    return "".join(pieces)
-
-
-def matching_bracket(code, opened):
-    depth = 0
-    for offset in range(opened, len(code)):
-        depth += code[offset] == "["
-        depth -= code[offset] == "]"
-        if depth == 0:
-            return offset
-    return None
-
-
-def matching_open_bracket(code, closed):
-    depth = 0
-    for offset in range(closed, -1, -1):
-        depth += code[offset] == "]"
-        depth -= code[offset] == "["
-        if depth == 0:
-            return offset
-    return None
-
-
-def type_bodies(code):
-    """(open brace, close brace, name) for each class, struct, interface or record with a body."""
-    closes = {}
-    opened = []
-    for offset, character in enumerate(code):
-        if character == "{":
-            opened.append(offset)
-        elif character == "}" and opened:
-            closes[opened.pop()] = offset
-    bodies = []
-    for head in TYPE_HEAD.finditer(code):
-        if head.group(1) in KEYWORDS or head.group(1) == "where":
-            continue
-        depth = 0
-        for offset in range(head.end(), len(code)):
-            character = code[offset]
-            if character == "(":
-                depth += 1
-            elif character == ")":
-                depth -= 1
-            elif depth == 0 and character == ";":
-                break
-            elif depth == 0 and character == "{":
-                close = closes.get(offset)
-                if close is not None:
-                    bodies.append((offset, close, head.group(1)))
-                break
-    return bodies
-
-
-def member_segments(code, opened, closed):
-    """(start, end) of each stretch directly inside the body between two braces that a `;` or a
-    closing brace ends, end inclusive -- a member declaration, or the initializer trailing a property's."""
-    segments = []
-    depth = 0
-    start = opened + 1
-    for offset in range(opened + 1, closed):
-        character = code[offset]
-        if character in "([{":
-            depth += 1
-        elif character in ")]}":
-            depth -= 1
-        if depth == 0 and (character == ";" or character == "}"):
-            segments.append((start, offset))
-            start = offset + 1
-    if code[start:closed].strip():
-        segments.append((start, closed - 1))
-    return segments
-
-
-def member_declaration(segment):
-    """(name, declared string) for the member a body-level declaration introduces, or None."""
-    head = segment.strip()
-    while head.startswith("["):
-        depth = 0
-        for offset, character in enumerate(head):
-            depth += character == "["
-            depth -= character == "]"
-            if depth == 0:
-                head = head[offset + 1:].lstrip()
-                break
-        else:
-            return None
-    cuts = [offset for offset in (head.find(mark) for mark in "(={;") if offset >= 0]
-    header = head[:min(cuts)].rstrip() if cuts else head
-    if header.endswith(">"):
-        depth = 0
-        for offset in range(len(header) - 1, -1, -1):
-            depth += header[offset] == ">"
-            depth -= header[offset] == "<"
-            if depth == 0:
-                header = header[:offset].rstrip()
-                break
-    named = IDENTIFIER_TAIL.search(header)
-    if not named or named.group(1) in KEYWORDS:
-        return None
-    rest = header[:named.start()]
-    # A nested type is not a member a qualifier could be an instance of, and an operator or a
-    # delegate type names no value.
-    if re.search(r"\b(?:class|struct|interface|record|enum|delegate|operator)\b", rest):
-        return None
-    return named.group(1), bool(STRING_TYPE.search(rest))
-
-
-def string_members(texts):
-    """Type name -> member name -> the set of whether each declaration of it is `string`.
-
-    Keyed by the simple name and pooled over every type spelling it, so a partial type's halves are
-    read together, and where two unrelated types of one name disagree the name reads as not a string.
-    """
-    members = {}
-    for text in texts:
-        code = blanked(text, mask_spans(text))
-        for opened, closed, name in type_bodies(code):
-            table = members.setdefault(name, {})
-            for start, end in member_segments(code, opened, closed):
-                declared = member_declaration(code[start:end + 1])
-                if declared:
-                    table.setdefault(declared[0], set()).add(declared[1])
-    return members
-
-
-def package_string_members(project):
-    """`string_members` over the sources a campaign can mutate; the test sources beside them declare
-    nothing those can name."""
-    return string_members(path.read_text() for path in sorted((project / PACKAGE).rglob("*.cs"))
-                          if mutable(path, project))
-
-
-class StringNames:
-    """Whether an operand beside a ` + ` is one the source declares `string`, which `-` has no overload
-    for. `Generators~/README.md` ▸ Mutation testing owns which declarations count.
-    """
-
-    def __init__(self, text, mask, members, spans):
-        self.text, self.mask, self.members = text, mask, members
-        self.comments = comment_edges(spans)
-        self.code = blanked(text, spans)
-        # The blanked code has no literal left to skip, so a bracket reader may read every offset.
-        self.everything = [True] * len(self.code)
-        self.bodies = sorted(type_bodies(self.code), key=lambda body: -body[0])
-        self.initializers = set()
-        self.segments = {}
-
-    def enclosing(self, offset):
-        return [body for body in self.bodies if body[0] < offset < body[1]]
-
-    def local_declarations(self, start, end, name):
-        """Whether each declaration of `name` between two offsets is `string`, as a set."""
-        found = set()
-        segment = self.code[start:end + 1]
-        pattern = re.compile(
-            r"(?<![\w.])([A-Za-z_][\w.]*(?:<[^;{}()=]*?>)?\??(?:\[[\s,]*\])*\??)\s+"
-            + re.escape(name) + r"\b(?=\s*(?:=(?![=>])|;|,|\)|:(?!:)|\(|\bin\b))")
-        for declared in pattern.finditer(segment):
-            if declared.group(1) == "var":
-                found.add(self.initializer_is_string(start + declared.end()))
-            elif declared.group(1) not in USE_PREFIXES:
-                found.add(bool(STRING_TYPE.search(declared.group(1))))
-        # An untyped lambda parameter or a deconstructed local declares the name without a type. A
-        # name with a type word in front of it is a typed parameter, which the pattern above read --
-        # and in front of `=>` it is an expression-bodied member's own name.
-        spelled = re.escape(name)
-        for arrow in re.finditer(r"(?<![\w.])" + spelled + r"\s*=>", segment):
-            before = segment[:arrow.start()].rstrip()
-            word = IDENTIFIER_TAIL.search(before)
-            if not before or before[-1] not in ">]?" and (not word or word.group(1) in USE_PREFIXES):
-                found.add(False)
-        if (re.search(r"\((?:[^()]*,)?\s*" + spelled + r"\s*(?:,[^()]*)?\)\s*=>", segment)
-                or re.search(r"\bvar\s*\([^()]*(?<![\w.])" + spelled + r"\b", segment)):
-            found.add(False)
-        return found
-
-    def initializer_is_string(self, after_name):
-        """Whether `var name` is initialized, at `after_name`, by an expression reading as a string.
-
-        Guarded against re-entry, because the initializer can name a local whose own reading reaches
-        this declaration again.
-        """
-        code = self.code
-        position = after_name
-        while position < len(code) and code[position] in " \t\r\n":
-            position += 1
-        if code[position:position + 1] != "=" or position in self.initializers:
-            return False
-        depth = 0
-        end = position + 1
-        while end < len(code):
-            character = code[end]
-            if character in "([{":
-                depth += 1
-            elif character in ")]}":
-                if depth == 0:
-                    break
-                depth -= 1
-            elif depth == 0 and character in ";,":
-                break
-            end += 1
-        self.initializers.add(position)
-        try:
-            return bounded_expression_is_string(
-                self.text, self.mask, position + 1, end, self.comments, self)
-        finally:
-            self.initializers.discard(position)
-
-    def declared_string(self, offset, qualifier, name):
-        enclosing = self.enclosing(offset)
-        if not enclosing:
-            return False
-        innermost = enclosing[0]
-        if innermost not in self.segments:
-            self.segments[innermost] = member_segments(self.code, *innermost[:2])
-        member = next(((start, end) for start, end in self.segments[innermost]
-                       if start <= offset <= end), None)
-        if member is None:
-            return False
-        if qualifier == "this":
-            return self.members.get(innermost[2], {}).get(name) == {True}
-        if qualifier is None:
-            local = self.local_declarations(*member, name)
-            if local:
-                return local == {True}
-            for _, _, type_name in enclosing:
-                declared = self.members.get(type_name, {}).get(name)
-                if declared:
-                    return declared == {True}
-            return False
-        # A qualifier that is also a local or a member of the enclosing types is an instance of some
-        # type rather than the type itself.
-        if self.local_declarations(*member, qualifier) or any(
-                qualifier in self.members.get(type_name, {}) for _, _, type_name in enclosing):
-            return False
-        return self.members.get(qualifier, {}).get(name) == {True}
-
-    def identifier_before(self, end):
-        start = end
-        while start > 0 and (self.code[start - 1].isalnum() or self.code[start - 1] == "_"):
-            start -= 1
-        word = self.code[start:end]
-        return (start, word) if word and not word[0].isdigit() else (start, None)
-
-    def identifier_after(self, start):
-        end = start
-        while end < len(self.code) and (self.code[end].isalnum() or self.code[end] == "_"):
-            end += 1
-        word = self.code[start:end]
-        return (end, word) if word and not word[0].isdigit() else (end, None)
-
-    def chain_after(self, start):
-        """(tokens, end) of the member-access chain starting at `start`, or None where none starts.
-
-        A token is ("id", name), (".",), ("?.",), ("call", arguments) or ("index",); a null-forgiving
-        `!` is dropped, since it leaves the type as it was.
-        """
-        code = self.code
-        tokens = []
-        position = start
-        while True:
-            position, word = self.identifier_after(position)
-            if word is None or code[position:position + 1] == "<":
-                return None
-            tokens.append(("id", word))
-            while True:
-                if code[position:position + 1] == "(":
-                    closed = matching_close_parenthesis(code, self.everything, position, len(code))
-                    if closed is None:
-                        return None
-                    tokens.append(("call", code[position + 1:closed].strip()))
-                    position = closed + 1
-                elif code[position:position + 1] == "[":
-                    closed = matching_bracket(code, position)
-                    if closed is None:
-                        return None
-                    tokens.append(("index",))
-                    position = closed + 1
-                elif code[position:position + 1] == "!" and code[position + 1:position + 2] != "=":
-                    position += 1
-                else:
-                    break
-            if code.startswith("?.", position):
-                tokens.append(("?.",))
-                position += 2
-            elif code[position:position + 1] == ".":
-                tokens.append((".",))
-                position += 1
-            else:
-                return tokens, position
-
-    def chain_before(self, end):
-        """(tokens, start) of the member-access chain ending at `end`, in `chain_after`'s tokens."""
-        code = self.code
-        tokens = []
-        position = end
-        while True:
-            while position > 0 and code[position - 1] in ")]!":
-                if code[position - 1] == ")":
-                    opened = matching_open_parenthesis(code, self.everything, position - 1)
-                    if opened is None:
-                        return None
-                    tokens.insert(0, ("call", code[opened + 1:position - 1].strip()))
-                    position = opened
-                elif code[position - 1] == "]":
-                    opened = matching_open_bracket(code, position - 1)
-                    if opened is None:
-                        return None
-                    tokens.insert(0, ("index",))
-                    position = opened
-                else:
-                    position -= 1
-            position, word = self.identifier_before(position)
-            if word is None:
-                return None
-            tokens.insert(0, ("id", word))
-            if code[max(0, position - 2):position] == "?.":
-                tokens.insert(0, ("?.",))
-                position -= 2
-            elif position > 0 and code[position - 1] == ".":
-                tokens.insert(0, (".",))
-                position -= 1
-            else:
-                return tokens, position
-
-    def chain_is_string(self, tokens, offset):
-        """Whether a chain's own shape establishes a string: a parameterless `ToString()`, or a name,
-        call, `Type.` or `this.` member `declared_string` finds declared so."""
-        if tokens[-1] == ("call", "") and len(tokens) >= 2 and tokens[-2] == ("id", "ToString"):
-            return True
-        body = tokens[:-1] if tokens[-1][0] == "call" else tokens
-        if len(body) == 1 and body[0][0] == "id":
-            qualifier, name = None, body[0][1]
-        elif (len(body) == 3 and body[0][0] == body[2][0] == "id" and body[1] == (".",)
-              and (body[0][1] not in KEYWORDS or body[0][1] == "this")):
-            qualifier, name = body[0][1], body[2][1]
-        else:
-            return False
-        if name in KEYWORDS:
-            return False
-        return self.declared_string(offset, qualifier, name)
-
-    def ends_a_string(self, end):
-        """Whether the operand ending at `end` is a chain `chain_is_string` accepts, standing alone
-        rather than as the tail of a longer expression."""
-        read = self.chain_before(end)
-        if read is None:
-            return False
-        tokens, start = read
-        before = start
-        while before > 0 and self.code[before - 1] in " \t\r\n":
-            before -= 1
-        if before > 0 and self.code[before - 1] in ".)]" or self.code[max(0, before - 2):before] == "::":
-            return False
-        if self.identifier_before(before)[1] in ("new", "await", "stackalloc"):
-            return False
-        return self.chain_is_string(tokens, start)
-
-    def starts_a_string(self, start):
-        """Whether the operand starting at `start` is a chain `chain_is_string` accepts, with nothing
-        after it computing something else from it."""
-        read = self.chain_after(start)
-        if read is None:
-            return False
-        tokens, end = read
-        following = end
-        while following < len(self.code) and self.code[following] in " \t\r\n":
-            following += 1
-        if self.code.startswith(("++", "--", "->", ".", "?.", "?[", "["), following) or re.match(
-                r"(?:switch|with)\b", self.code[following:following + 7]):
-            return False
-        return self.chain_is_string(tokens, start)
-
-    def spans_a_string(self, start, end):
-        """Whether the bounded expression is exactly one chain `chain_is_string` accepts."""
-        read = self.chain_after(start)
-        return read is not None and read[1] == end and self.chain_is_string(read[0], start)
+        text, mask, previous, comments)
 
 # `while (true)`, which is how a method with no other returning path returns at all.
 FOREVER_LOOP = re.compile(r"\bwhile\s*\(\s*true\s*$")
@@ -1641,13 +1226,10 @@ def line_spans(text):
     return spans
 
 
-def mutations_for(path, text, target_lines, members=None):
-    """`members` is what `StringNames` reads other types from: `package_string_members` in a campaign,
-    this file's own `string_members` when None."""
+def mutations_for(path, text, target_lines):
     constructs = mask_spans(text)
     mask = code_mask(text, constructs)
     comments = comment_edges(constructs)
-    names = StringNames(text, mask, string_members([text]) if members is None else members, constructs)
     spans = line_spans(text)
     found = []
     for number in sorted(target_lines):
@@ -1667,7 +1249,7 @@ def mutations_for(path, text, target_lines, members=None):
                 # the line took 650 arithmetic mutants where the mechanism is 93.
                 if (all(mask[start + index:start + index + len(before)])
                         and not (before == " + " and joins_a_string(
-                            text, mask, start + index, comments, names))):
+                            text, mask, start + index, comments))):
                     found.append(Mutant(path, number, index, before.strip(), after.strip(), operator))
                 index = line.find(before, index + 1)
         for before, after, operator in WORD_OPERATORS:
@@ -2024,8 +1606,8 @@ def operator_does_not_apply(log, mutant, project, first_line):
     """Whether an arithmetic `+ -> -` mutant's build stopped on CS0019 for its `-` and nothing else, in
     the statement it wrote it in.
 
-    That is `-` with no overload for the operands `+` joined -- two strings -- so the rewrite produced
-    no program and there was nothing a test could have been asked. The statement rather than the
+    That is no `-` applying to the operands `+` joined, so the rewrite produced no program and there
+    was nothing a test could have been asked. The statement rather than the
     mutated line, so a diagnostic placed on a left operand that starts above the operator still counts;
     `Generators~/README.md` ▸ the verdict list carries where that was measured. Any other error stays
     UNCOMPILABLE, so a generator emitting broken C# stays loud.
@@ -2660,13 +2242,12 @@ def main():
         # holds the originals anyway. What it gets from here is this script's edit, not its opinion
         # of whether the edit parses -- that is the half it exists to answer independently.
         emitted = []
-        members = package_string_members(project)
         for source in sorted(project.glob("Packages/com.velvet.core/**/*.cs")):
             if not mutable(source, project):
                 continue
             text = source.read_text()
             numbers = set(range(1, len(text.splitlines()) + 1))
-            for mutant in mutations_for(source, text, numbers, members):
+            for mutant in mutations_for(source, text, numbers):
                 applied = apply_mutation(text, mutant).splitlines()
                 emitted.append({
                     "path": relative_to(source, project).as_posix(),
@@ -2717,10 +2298,9 @@ def main():
 
     mutants = []
     unreached = {}
-    members = package_string_members(project)
     for path, lines in sorted(targets.items()):
         text = path.read_text()
-        found = mutations_for(path, text, lines, members)
+        found = mutations_for(path, text, lines)
         mutants.extend(found)
         covered = {mutant.line for mutant in found}
         left = [number for number in code_line_numbers(text, lines) if number not in covered]
