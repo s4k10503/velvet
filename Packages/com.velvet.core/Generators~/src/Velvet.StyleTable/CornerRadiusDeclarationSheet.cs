@@ -87,26 +87,32 @@ namespace Velvet.StyleTable
             return corners;
         }
 
-        /// <summary>
-        /// Only the one-value form is expanded. A multi-value or elliptical shorthand is reported instead, because
-        /// the bundled sheets hold none, and an expansion nothing exercises is one nothing would notice breaking.
-        /// </summary>
+        /// <summary>For one to four shorthand values, which of them each corner takes, in <see cref="Corners"/> order.</summary>
+        private static readonly int[][] ShorthandSources =
+        {
+            new[] { 0, 0, 0, 0 },
+            new[] { 0, 1, 0, 1 },
+            new[] { 0, 1, 2, 1 },
+            new[] { 0, 1, 2, 3 },
+        };
+
         private static void ExpandShorthand(
             UssSheet sheet, UssDeclaration declaration, string?[] corners, ImmutableArray<UssProblem>.Builder problems)
         {
-            var value = declaration.Value.Trim();
-            if (value.IndexOf(' ') >= 0 || value.IndexOf('/') >= 0)
+            var values = declaration.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (values.Length == 0 || values.Length > ShorthandSources.Length || declaration.Value.IndexOf('/') >= 0)
             {
                 problems.Add(sheet.ProblemAt(
-                    UssProblemCode.UnsupportedRadiusShorthand,
-                    $"'{Shorthand}: {value}' has more than one value. Only the one-value form is restated for " +
-                    "CornerRadiusFit; write the corners as longhands.",
+                    UssProblemCode.MalformedUss,
+                    $"Could not read the stylesheet: '{Shorthand}: {declaration.Value.Trim()}' is not one to four " +
+                    "radii.",
                     declaration.Offset));
                 return;
             }
+            var sources = ShorthandSources[values.Length - 1];
             for (var i = 0; i < corners.Length; i++)
             {
-                corners[i] = value;
+                corners[i] = values[sources[i]];
             }
         }
 

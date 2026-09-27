@@ -93,17 +93,41 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(new[] { ".rounded-md", ".rounded-tl-lg" }, selectors);
         }
 
-        [Fact]
-        public void Given_AMultiValueShorthand_When_Derived_Then_TheUnsupportedShorthandIsReported()
+        [Theory]
+        [InlineData("1px 2px", "1px 2px 1px 2px")]
+        [InlineData("1px 2px 3px", "1px 2px 3px 2px")]
+        [InlineData("1px 2px 3px 4px", "1px 2px 3px 4px")]
+        public void Given_AMultiValueShorthand_When_Derived_Then_EachCornerTakesTheValueCssGivesIt(string shorthand, string expected)
+        {
+            // Arrange — CSS lists the corners top-left, top-right, bottom-right, bottom-left, and a missing value
+            // repeats the one diagonally across.
+            var result = Build($".mixed {{ border-radius: {shorthand}; }}");
+
+            // Act
+            var rule = RulesOf(result).Single();
+
+            // Assert
+            var values = expected.Split(' ');
+            Assert.Equal(
+                ".mixed { " +
+                $"--velvet-radius-top-left: {values[0]}; --velvet-radius-top-right: {values[1]}; " +
+                $"--velvet-radius-bottom-right: {values[2]}; --velvet-radius-bottom-left: {values[3]}; }}",
+                rule);
+        }
+
+        [Theory]
+        [InlineData("1px 2px 3px 4px 5px")]
+        [InlineData("10px / 20px")]
+        public void Given_AShorthandThatIsNotOneToFourRadii_When_Derived_Then_TheStylesheetIsReportedUnreadable(string shorthand)
         {
             // Arrange
-            var result = Build(".mixed { border-radius: 4px 8px; }");
+            var result = Build($".bad {{ border-radius: {shorthand}; }}");
 
             // Act
             var codes = result.Problems.Select(problem => problem.Code).ToArray();
 
             // Assert
-            Assert.Equal(new[] { UssProblemCode.UnsupportedRadiusShorthand }, codes);
+            Assert.Equal(new[] { UssProblemCode.MalformedUss }, codes);
         }
     }
 }

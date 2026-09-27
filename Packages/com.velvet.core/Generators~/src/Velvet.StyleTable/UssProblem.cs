@@ -43,11 +43,7 @@ namespace Velvet.StyleTable
         public const string UnknownTransitionProperty = "USS010";
 
         /// <summary>A gated rule declared <c>transition-property</c>.</summary>
-        public const string GatedTransitionProperty = "USS011";
-
-        /// <summary>A <c>border-radius</c> shorthand gave more than one value.</summary>
-        public const string UnsupportedRadiusShorthand = "USS012";
-    }
+        public const string GatedTransitionProperty = "USS011";    }
 
     /// <summary>One reason the table could not be derived, located in the stylesheet that caused it.</summary>
     internal readonly struct UssProblem
