@@ -160,6 +160,34 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        [Component]
+        private static VNode OffsetAnchoredHost()
+            => V.Anchored(s_target, camera: s_camera, offset: new Vector2(30f, 20f), name: "anchored",
+                className: "w-[10px] h-[10px]");
+
+        // GREEN_ON_BASE(characterization): the base already adds the offset to the projected point.
+        // Subtracting it on either axis, `+` to `-` in AnchoredDriver.Sync's left/top writes, reddens this.
+        [UnityTest]
+        public IEnumerator Given_AnOffset_When_ARealPanelTicks_Then_TheElementLandsThatFarFromTheProjectedPoint()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(OffsetAnchoredHost, key: "root"));
+            yield return null;
+            yield return null;
+            yield return null;
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+
+            // Act
+            var screenPoint = _cameraGo.GetComponent<Camera>().WorldToScreenPoint(_targetGo.transform.position);
+            var expectedLeft = screenPoint.x + 30f;
+            var expectedTop = Screen.height - screenPoint.y + 20f;
+
+            // Assert
+            Assert.That((Mathf.Abs(element.worldBound.x - expectedLeft) < 5f, Mathf.Abs(element.worldBound.y - expectedTop) < 5f),
+                Is.EqualTo((true, true)));
+        }
+
         [UnityTest]
         public IEnumerator Given_VisibleIsFalse_When_ATargetInFrontOfTheCameraTicks_Then_TheElementStaysHidden()
         {

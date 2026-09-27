@@ -43,7 +43,7 @@ namespace Velvet
         internal bool IsAlreadyWrapped(VisualElement element)
             => !ReferenceEquals(ResolveOuter(element), element);
 
-        // A layout-passthrough wrapper, laid out by FiberClipPathApplier.SyncWrapperLayout.
+        // A wrapper that stands in for its inner in the parent's layout (see ClipPathLayoutBox).
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
             var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -67,23 +67,6 @@ namespace Velvet
             element.RemoveFromHierarchy();
             wrapper.RemoveFromHierarchy();
             parent.Insert(index, element);
-        }
-
-        // Forwards the inner's resolved flex participation onto its passthrough wrapper so a
-        // flex-grow/shrink declared on the inner acts on the wrapper (the element the parent
-        // actually lays out).
-        internal static void ForwardInnerFlexToWrapper(VisualElement element, VisualElement wrapper)
-        {
-            var flexGrow = element.resolvedStyle.flexGrow;
-            if (!float.IsNaN(flexGrow))
-            {
-                wrapper.style.flexGrow = flexGrow;
-            }
-            var flexShrink = element.resolvedStyle.flexShrink;
-            if (!float.IsNaN(flexShrink))
-            {
-                wrapper.style.flexShrink = flexShrink;
-            }
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue

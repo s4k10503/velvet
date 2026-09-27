@@ -51,6 +51,8 @@ namespace Velvet.Tests
         private const string ClipShapeReader =
             "System.Boolean Velvet.StyleClipPathClass.TryExtractLive("
             + "UnityEngine.UIElements.VisualElement, Velvet.ClipPathSpec&)";
+        private const string ClipWrapperMirrorReader =
+            "System.Void Velvet.ClipPathLayoutBox.SyncClasses(UnityEngine.UIElements.VisualElement)";
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
@@ -515,6 +517,30 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false)),
                 "the divider colour this path configures the manipulator with is whichever divide colour "
                 + "token the class list hands over last");
+        }
+
+        [Test]
+        [ReaderVerdict(ClipWrapperMirrorReader)]
+        public void Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays()
+        {
+            // Arrange
+            var added = Carrying("w-32", "self-end");
+            var reversed = Carrying("self-end", "w-32");
+            var addedWrapper = new VisualElement();
+            var reversedWrapper = new VisualElement();
+            addedWrapper.Add(added);
+            reversedWrapper.Add(reversed);
+            ClipPathLayoutBox.Adopt(added, new ClipPathBinding(addedWrapper) { Inner = added });
+            ClipPathLayoutBox.Adopt(reversed, new ClipPathBinding(reversedWrapper) { Inner = reversed });
+
+            // Act
+            ClipPathLayoutBox.SyncClasses(added);
+            ClipPathLayoutBox.SyncClasses(reversed);
+
+            // Assert — both hold the pair rather than merely agree: two empty lists would agree too.
+            string Sorted(VisualElement wrapper) => string.Join(" ", wrapper.GetClasses().OrderBy(c => c, StringComparer.Ordinal));
+            Assert.That((Sorted(addedWrapper), Sorted(reversedWrapper)), Is.EqualTo(("self-end w-32", "self-end w-32")),
+                "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
         }
 
         // GREEN_ON_BASE(characterization): the base already answers this from the set, not the order.
