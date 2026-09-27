@@ -1168,16 +1168,16 @@ namespace Velvet
         // is written out-of-band as a single-element list. The stored Value is in SECONDS. No null layer -> clear.
         private static void ApplyTransitionDuration(VisualElement element, LayerMap map)
         {
+            StyleList<TimeValue> duration = StyleKeyword.Null;
             if (TryWinningLayer(map, ArbitraryProperty.TransitionDuration, out var winner))
             {
-                element.style.transitionDuration = new List<TimeValue>
-                {
-                    new TimeValue(winner.Value, TimeUnit.Second),
-                };
+                duration = new List<TimeValue> { new TimeValue(winner.Value, TimeUnit.Second) };
             }
-            else
+            element.style.transitionDuration = duration;
+            var box = ClipPathLayoutBox.Of(element);
+            if (box != element)
             {
-                element.style.transitionDuration = StyleKeyword.Null;
+                box.style.transitionDuration = duration;
             }
         }
 

@@ -19,6 +19,8 @@ namespace Velvet
             Reset,
             // Written by FiberClipPathApplier for the mask.
             Owned,
+            // Copied onto the wrapper and left on the element too.
+            Shared,
             // Left to the mirrored classes: an inherited one computes on the element as it would without the
             // wrapper, and the rest style text, picking, padding, slices or a transform, none of which the
             // wrapper has.
@@ -29,7 +31,7 @@ namespace Velvet
         {
             public readonly StyleLonghand Longhand;
             public readonly Role Role;
-            // Outer only: copies the inline value from one style to the other.
+            // Outer and Shared: copies the inline value from one style to the other.
             public readonly Action<IStyle, IStyle>? Move;
             // Outer: the value held on the element. Reset: the value held on the wrapper.
             public readonly Action<IStyle>? Write;
@@ -68,7 +70,7 @@ namespace Velvet
             Outer(StyleLonghand.FlexBasis, (f, t) => t.flexBasis = f.flexBasis, s => s.flexBasis = StyleKeyword.Auto),
             Outer(StyleLonghand.AlignSelf, (f, t) => t.alignSelf = f.alignSelf, s => s.alignSelf = Align.Stretch),
             Outer(StyleLonghand.AspectRatio, (f, t) => t.aspectRatio = f.aspectRatio, s => s.aspectRatio = StyleKeyword.Auto),
-            // V.Anchored hides its element inline; the wrapper has to go with it or it keeps the element's slot.
+            // An inline display: none has to hide the wrapper, or the wrapper keeps the element's slot.
             Outer(StyleLonghand.Display, (f, t) => t.display = f.display, s => s.display = StyleKeyword.Null),
 
             Reset(StyleLonghand.FlexDirection, s => s.flexDirection = FlexDirection.Column),
@@ -140,9 +142,11 @@ namespace Velvet
             new(StyleLonghand.UnitySliceScale, Role.Kept),
             new(StyleLonghand.UnitySliceType, Role.Kept),
             new(StyleLonghand.TransformOrigin, Role.Kept),
-            // The wrapper animates the layout the element would have animated.
+            // The wrapper animates the element's layout with the transition classes it mirrors and the duration
+            // StyleArbitraryValueResolver writes to both; an inline transition a Motion or the animation
+            // scheduler writes stays on the element.
             new(StyleLonghand.TransitionProperty, Role.Kept),
-            new(StyleLonghand.TransitionDuration, Role.Kept),
+            new(StyleLonghand.TransitionDuration, Role.Shared, (f, t) => t.transitionDuration = f.transitionDuration),
             new(StyleLonghand.TransitionTimingFunction, Role.Kept),
             new(StyleLonghand.TransitionDelay, Role.Kept),
         };
@@ -197,6 +201,10 @@ namespace Velvet
                 {
                     entry.Move!(inner, outer);
                     entry.Write!(inner);
+                }
+                else if (entry.Role == Role.Shared)
+                {
+                    entry.Move!(inner, outer);
                 }
                 else if (entry.Role == Role.Reset)
                 {

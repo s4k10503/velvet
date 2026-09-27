@@ -141,16 +141,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
   elements one component renders, as React scopes it.
 
-- An element carrying a `clip-path-*` utility is laid out where the same element without the clip is,
-  since `clip-path` changes painting only. The wrapper that hosts the clip was laid out in the element's
-  place as a relative flex row centring it, so an in-flow clipped element sat centred across its parent,
+- An element carrying a `clip-path-*` utility is placed and sized in its parent as the same element
+  without the clip is, apart from the differences stated last, since `clip-path` changes painting only.
+  The wrapper that hosts the clip was laid out in the element's place as a relative flex row centring
+  it, so an in-flow clipped element sat centred across its parent,
   lost the parent's cross-axis stretch and its own `self-*`, resolved a percentage size or an auto margin
   against the wrapper, and came out with no size in a `grid-cols-*` cell or a `V.VirtualList` row, whose
   slot size landed on the wrapper. An absolutely positioned one resolved its edge offsets against the
   wrapper, so one offset from all four edges of a column parent came out with no height, and an
   `absolute inset-0` child with it. The wrapper now carries the element's classes and the inline values
   that place or size it, the element keeps its paint and fills the wrapper, and a parent's `[&>*]:`
-  payload is applied to the clipped child rather than to its wrapper.
+  payload and `divide-*` border are applied to the clipped child rather than to its wrapper. Still
+  different from CSS: a percentage padding on the clipped element resolves against its own width rather
+  than its parent's, and a query by class finds the wrapper before the element.
 
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component

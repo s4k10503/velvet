@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// <summary>
     /// CSS <c>clip-path</c> changes painting only, so a clipped element has to sit and size exactly as the same
     /// element without the clip does. The layout cases mount the two side by side in identical hosts and compare
-    /// the clipped element's box, and the box of the sibling after it, with its unclipped twin's; one case asks
-    /// where a parent's paint payload lands. GWT, one assert per case.
+    /// the clipped element's box, and the box of the sibling after it, with its unclipped twin's; the rest ask
+    /// what the wrapper paints and animates. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class ClipPathLayoutParityPanelTests : PanelTestBase
@@ -105,6 +105,8 @@ namespace Velvet.Tests
         [TestCase("", "w-[100px] aspect-[2/1]")]
         [TestCase("", "w-[100px] h-[50px] p-[8px] border-[2px]")]
         [TestCase("grid grid-cols-2", "h-[50px]")]
+        [TestCase("", "flex flex-row flex-wrap gap-4 w-[200px] h-[100px]")]
+        [TestCase("divide-y", "w-[100px] h-[50px] border-4 border-red-500")]
         public void Given_AClippedCard_When_LaidOut_Then_ItSitsWhereItsUnclippedTwinSits(string hostClass, string cardClass)
         {
             // Arrange
@@ -329,6 +331,35 @@ namespace Velvet.Tests
             // Assert
             Assert.That((IsClipWrapped(clipped), clipped.worldBound.size),
                 Is.EqualTo((true, Named("plain-row-0").worldBound.size)));
+        }
+
+        [Test]
+        public void Given_AClippedCardWithTransitionAll_When_LaidOut_Then_ItsWrapperShowsTheBakedMask()
+        {
+            // Arrange
+            Mount("", _ => "w-[80px] h-[80px] bg-red-500 transition-all");
+
+            // Act
+            var wrapper = Named("clip-card").parent;
+
+            // Assert
+            var baked = wrapper.style.backgroundImage.value.vectorImage;
+            Assert.That((baked != null, wrapper.resolvedStyle.backgroundImage.vectorImage == baked),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AClippedCardWithAnArbitraryDuration_When_LaidOut_Then_ItsWrapperTransitionsForAsLongAsItsTwin()
+        {
+            // Arrange
+            Mount("", _ => "w-[80px] h-[50px] transition-all duration-[400ms]");
+
+            // Act
+            var wrapper = Named("clip-card").parent;
+
+            // Assert
+            Assert.That(string.Join(",", wrapper.resolvedStyle.transitionDuration),
+                Is.EqualTo(string.Join(",", Named("plain-card").resolvedStyle.transitionDuration)));
         }
 
         private static VNode List(string prefix, string rowClass)

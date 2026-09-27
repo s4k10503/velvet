@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -175,10 +176,35 @@ namespace Velvet
             WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
         }
 
+        private static readonly List<StylePropertyName> s_noTransition = new() { new StylePropertyName("none") };
+
+        // The wrapper carries the element's transition classes for its layout; left on for the mask writes
+        // they would start the new mask from the old one rather than show it
+        // (ClipPathLayoutParityPanelTests pins it). The saved list is copied because the getter returns the
+        // slot's own list, which the suspending write refills in place.
+        private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding)
+        {
+            var ws = binding.Wrapper.style;
+            var saved = ws.transitionProperty;
+            if (saved.keyword == StyleKeyword.Undefined && saved.value != null)
+            {
+                saved = new List<StylePropertyName>(saved.value);
+            }
+            ws.transitionProperty = s_noTransition;
+            try
+            {
+                SyncMask(element, binding);
+            }
+            finally
+            {
+                ws.transitionProperty = saved;
+            }
+        }
+
         // Keeps the mask tracking its target: (re)bakes the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
         // the analytic path bounds, anchored at the wrapper's origin, where the inner sits (ClipPathLayoutBox).
-        private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding)
+        private static void SyncMask(VisualElement element, ClipPathBinding binding)
         {
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
             // while not hovered): the persistent wrapper shows the subtree unclipped. Drop the mask but KEEP
