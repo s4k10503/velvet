@@ -4308,6 +4308,9 @@ class NarrowedAttemptTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
 
+    # GREEN_ON_BASE(characterization): the base launches no narrowed run, so its verdict is the whole
+    # suite's alone and the mutant survives there too. What reddens this on the branch is carrying
+    # the narrowed launch's timeout into the whole-suite verdict, measured on this case alone.
     def test_Given_ANarrowedRunKilledAtItsBound_When_TheWholeSuiteThenPasses_Then_ItSurvivesRatherThanHangs(self):
         # Arrange — the 90 s bound is the narrowed launch's own; the hang verdict reads the whole
         # suite's run against the whole baseline, and that run finished.
