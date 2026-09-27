@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -8,7 +9,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what a label change into a zero-duration pose does to the reversal a presence child's exit cancel
     /// leaves running when its key comes back mid-exit: the reversal keeps the classes its cancel was told to
-    /// keep, and keeps its transition.
+    /// keep, and keeps its transition. Also pins that a re-entry's classic enter that plays nothing leaves the
+    /// pose swap the same render's inherited label change starts to land.
     /// </summary>
     [TestFixture]
     internal sealed class PresenceReversalLabelChangeTests : MotionSimulatedPanelTestsBase
@@ -20,6 +22,7 @@ namespace Velvet.Tests
             public PresenceStore(string label) : base(new PresenceState("a", label)) { }
             public void SetKeys(string keys) => SetState(s => s with { Keys = keys });
             public void SetLabel(string label) => SetState(s => s with { Label = label });
+            public void Set(string keys, string label) => SetState(_ => new PresenceState(keys, label));
             protected override void ResetCore() => SetState(_ => new PresenceState("a", "lit"));
         }
 
@@ -43,6 +46,38 @@ namespace Velvet.Tests
                 children.Add(s_child(state, key.ToString()));
             }
             return V.AnimatePresence(key: "presence", children: children.ToArray());
+        }
+
+        private static readonly StyleTransitionConfig s_tween = new() { DurationSec = 0.35f };
+
+        // A presence child following its parent's label, whose own transition plays nothing: its removal is held
+        // by a descendant's timed exit, and its re-entry plays the classic enter on that transition.
+        [Component]
+        private static VNode FollowerHost()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            var children = new List<VNode>();
+            foreach (var key in state.Keys)
+            {
+                children.Add(V.Motion(key: key.ToString(), name: "item", transition: StyleTransitionConfig.None,
+                    variants: new Dictionary<string, MotionVariant>
+                    {
+                        ["hidden"] = new MotionVariant("opacity-0", s_tween),
+                        ["visible"] = new MotionVariant("opacity-50", s_tween),
+                    },
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", variants: new Dictionary<string, MotionVariant>
+                        {
+                            ["rest"] = "scale-100",
+                            ["gone"] = "scale-50",
+                        }, animate: "rest", exit: "gone", transition: s_tween),
+                    }));
+            }
+            return V.Motion(name: "parent", animate: state.Label, children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
         }
 
         // Mounts key "a", removes it, runs frames into its exit, then adds it back, which cancels the exit into
@@ -122,6 +157,31 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's classic enter that plays nothing cancels no pending swap.
+        // So a follower re-added in the render that changes its inherited label lands on the new pose.
+        [Test]
+        public void Given_AFollowerHeldByADescendantsExit_When_ItReturnsAsItsInheritedLabelChanges_Then_ItRestsAtTheNewPose()
+        {
+            // Arrange
+            using var store = new PresenceStore("hidden");
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(FollowerHost, key: "root"));
+            Tick();
+            store.SetKeys(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+
+            // Act
+            store.Set("a", "visible");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert
+            var classes = Root.Q<VisualElement>("item").GetClasses()
+                .Where(c => c.StartsWith("opacity-") || c.StartsWith("anim-"));
+            Assert.That(string.Join(" ", classes), Is.EqualTo("opacity-50"));
         }
     }
 }
