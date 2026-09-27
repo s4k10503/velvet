@@ -115,8 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A `[&>*]:` arbitrary payload and a `gap-*`, `grid-cols-*` or `divide-*` container no longer erase
   each other's value on a child they both write. The container's value wins while it applies; where it
-  stops — its utility is dropped, the child leaves, an edge is abandoned, or the child is the first and
-  takes no gap or divider — the child shows its own arbitrary values and payloads rather than nothing.
+  stops — its utility is dropped, the child leaves, an edge is abandoned, or the child is the first of a
+  `gap-*` or `divide-*` row and takes no gap or divider — the child shows its own arbitrary values and
+  payloads rather than nothing.
 
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's

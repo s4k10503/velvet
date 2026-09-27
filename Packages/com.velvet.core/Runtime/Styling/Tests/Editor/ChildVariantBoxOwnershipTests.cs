@@ -353,6 +353,48 @@ namespace Velvet.Tests
                 Is.EqualTo(("2", "4")));
         }
 
+        // GREEN_ON_BASE(characterization): the base never re-resolved an edge the gap does not write, which a
+        // hand-back re-resolving the payload's whole shorthand would do.
+        [Test]
+        public void Given_AGapRowWithAShorthandPayloadAndAChildsOwnLonghand_When_ItRenders_Then_TheFirstChildKeepsThePayloadsOtherEdge()
+        {
+            // Arrange — the payload's layer outranks the child's own mt-[8px] on the top edge, which the gap
+            // never writes; only the first child's leading edge is handed back.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-x-4 [&>*]:m-[4px]",
+                    children: new VNode[] { V.Div(className: "mt-[8px]"), V.Div(className: "mt-[8px]") }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert — the second child, never handed back, is the row's own answer for the same edge.
+            var row = scope.Root[0];
+            Assert.That((Inline(row[0].style.marginTop), Inline(row[1].style.marginTop)), Is.EqualTo(("4", "4")));
+        }
+
+        [Test]
+        public void Given_AGridWithASizePayloadAndAChildsOwnHeight_When_ItHandsTheWidthBack_Then_TheHeightKeepsThePayload()
+        {
+            // Arrange — no layout runs here, so the grid hands every child's width back; size-[40px] outranks
+            // the child's own h-[20px] on the height, which the grid never writes.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "grid grid-cols-2 [&>*]:size-[40px]",
+                    children: new VNode[] { V.Div(className: "h-[20px]"), V.Div(className: "h-[20px]") }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert — the width is the handed-back slot, so a grid that handed nothing back cannot pass.
+            var child = scope.Root[0][0];
+            Assert.That((Inline(child.style.width), Inline(child.style.height)), Is.EqualTo(("40", "40")));
+        }
+
         [Test]
         public void Given_APayloadWithAShorthandAndAnotherEdgesLonghand_When_TheGapHandsOneEdgeBack_Then_TheOtherEdgeKeepsItsLonghand()
         {

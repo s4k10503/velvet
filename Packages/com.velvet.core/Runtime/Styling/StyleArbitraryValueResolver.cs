@@ -1011,46 +1011,56 @@ namespace Velvet
         // resolve to there, or nothing when none does. Gap, grid and divide stop owning a slot through here
         // rather than by writing Null, which would erase a layer's value along with their own.
         //
-        // Re-resolves every property WritersOf names, not only the slot's own writers: a shorthand
-        // re-resolved for this edge rewrites its other edges too, and the narrower layers after it put those
-        // back.
+        // Writes the slot alone rather than re-resolving the winner's property: a shorthand re-resolved here
+        // would rewrite edges the container never held, over layers of higher priority.
         internal static void HandBack(VisualElement element, HeldSlot slot)
         {
-            StyleHeldSlots.WriteNull(element.style, slot);
             if (!s_layers.TryGetValue(element, out var map))
             {
+                StyleHeldSlots.WriteNull(element.style, slot);
                 return;
             }
             map.Holds?.Drop(slot);
-            foreach (var writer in HeldSlotGroups.WritersOf(slot))
+            if (TryLayeredWinner(map, slot, out var winner))
             {
-                // A writer with no layer is skipped rather than resolved: resolving it clears its whole fan-out.
-                if (map.ContainsKey(writer))
-                {
-                    ResolveAndApply(element, writer, map);
-                }
+                StyleHeldSlots.WriteLayered(element.style, slot, winner);
+            }
+            else
+            {
+                StyleHeldSlots.WriteNull(element.style, slot);
             }
         }
 
         // What the element's own layers resolve slot to, ignoring any hold on it: the value HandBack would
         // leave there. Null when no layer writes it.
         internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) && TryLayeredWinner(map, slot, out var winner)
+                ? winner
+                : null;
+
+        // The highest-priority layer among the properties writing slot; on a tie the narrower property, the
+        // later one in WritersOf.
+        private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
-            var map = s_layers.GetValue(element, static _ => new LayerMap());
-            var bit = StyleHeldSlots.Bit(slot);
-            ArbitraryStyle? winner = null;
+            winner = default;
+            var best = int.MinValue;
+            var found = false;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
-                if ((HeldSlotGroups.SlotsOf(writer) & bit) == 0)
+                if (!TryWinningLayer(map, writer, out var style))
                 {
                     continue;
                 }
-                if (TryWinningLayer(map, writer, out var style))
+                var layers = map[writer];
+                var priority = layers.Keys[layers.Count - 1];
+                if (priority >= best)
                 {
                     winner = style;
+                    best = priority;
+                    found = true;
                 }
             }
-            return winner;
+            return found;
         }
 
         // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it

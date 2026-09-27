@@ -2708,7 +2708,7 @@ namespace Velvet
         // the grid-class verdict, so it selects the order — and is forwarded so the gap gate does not
         // re-scan for it.
         // Divide and text-balance are in no such handoff: divide writes only the border width and color of
-        // the one edge it draws on (and nulls that same pair on teardown), text-balance writes only the
+        // the one edge it draws on (and hands that same pair back on teardown), text-balance writes only the
         // element's OWN width, and neither gap nor grid writes a border at all — so the three write sets
         // are disjoint and the position of these two in the sequence is not load-bearing. Grid writes its
         // CHILDREN's widths, which is the one slot text-balance also writes, and the handoff for that is

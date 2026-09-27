@@ -60,97 +60,65 @@ namespace Velvet
             var due = _mask & slots;
             for (var i = 0; due != 0; i++, due >>= 1)
             {
-                if ((due & 1) == 0)
+                if ((due & 1) != 0)
                 {
-                    continue;
-                }
-                switch ((HeldSlot)i)
-                {
-                    case HeldSlot.MarginTop:
-                        style.marginTop = _lengths![i];
-                        break;
-                    case HeldSlot.MarginRight:
-                        style.marginRight = _lengths![i];
-                        break;
-                    case HeldSlot.MarginBottom:
-                        style.marginBottom = _lengths![i];
-                        break;
-                    case HeldSlot.MarginLeft:
-                        style.marginLeft = _lengths![i];
-                        break;
-                    case HeldSlot.Width:
-                        style.width = _lengths![i];
-                        break;
-                    case HeldSlot.BorderTopWidth:
-                        style.borderTopWidth = _floats![i];
-                        break;
-                    case HeldSlot.BorderRightWidth:
-                        style.borderRightWidth = _floats![i];
-                        break;
-                    case HeldSlot.BorderBottomWidth:
-                        style.borderBottomWidth = _floats![i];
-                        break;
-                    case HeldSlot.BorderLeftWidth:
-                        style.borderLeftWidth = _floats![i];
-                        break;
-                    case HeldSlot.BorderTopColor:
-                        style.borderTopColor = _colors![i];
-                        break;
-                    case HeldSlot.BorderRightColor:
-                        style.borderRightColor = _colors![i];
-                        break;
-                    case HeldSlot.BorderBottomColor:
-                        style.borderBottomColor = _colors![i];
-                        break;
-                    case HeldSlot.BorderLeftColor:
-                        style.borderLeftColor = _colors![i];
-                        break;
+                    Write(style, (HeldSlot)i, _lengths?[i] ?? default, _floats?[i] ?? default, _colors?[i] ?? default);
                 }
             }
         }
 
         public static void WriteNull(IStyle style, HeldSlot slot)
+            => Write(style, slot, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null);
+
+        // Writes what the layer winner resolves to into slot alone, whatever else the winner's property fans
+        // out to.
+        public static void WriteLayered(IStyle style, HeldSlot slot, in ArbitraryStyle winner)
+            => Write(style, slot, new StyleLength(new Length(winner.Value, winner.Unit)),
+                new StyleFloat(winner.Value), new StyleColor(winner.Color));
+
+        // Each slot takes the one of the three values its style type carries.
+        private static void Write(IStyle style, HeldSlot slot, StyleLength length, StyleFloat width, StyleColor color)
         {
             switch (slot)
             {
                 case HeldSlot.MarginTop:
-                    style.marginTop = StyleKeyword.Null;
+                    style.marginTop = length;
                     break;
                 case HeldSlot.MarginRight:
-                    style.marginRight = StyleKeyword.Null;
+                    style.marginRight = length;
                     break;
                 case HeldSlot.MarginBottom:
-                    style.marginBottom = StyleKeyword.Null;
+                    style.marginBottom = length;
                     break;
                 case HeldSlot.MarginLeft:
-                    style.marginLeft = StyleKeyword.Null;
+                    style.marginLeft = length;
                     break;
                 case HeldSlot.Width:
-                    style.width = StyleKeyword.Null;
+                    style.width = length;
                     break;
                 case HeldSlot.BorderTopWidth:
-                    style.borderTopWidth = StyleKeyword.Null;
+                    style.borderTopWidth = width;
                     break;
                 case HeldSlot.BorderRightWidth:
-                    style.borderRightWidth = StyleKeyword.Null;
+                    style.borderRightWidth = width;
                     break;
                 case HeldSlot.BorderBottomWidth:
-                    style.borderBottomWidth = StyleKeyword.Null;
+                    style.borderBottomWidth = width;
                     break;
                 case HeldSlot.BorderLeftWidth:
-                    style.borderLeftWidth = StyleKeyword.Null;
+                    style.borderLeftWidth = width;
                     break;
                 case HeldSlot.BorderTopColor:
-                    style.borderTopColor = StyleKeyword.Null;
+                    style.borderTopColor = color;
                     break;
                 case HeldSlot.BorderRightColor:
-                    style.borderRightColor = StyleKeyword.Null;
+                    style.borderRightColor = color;
                     break;
                 case HeldSlot.BorderBottomColor:
-                    style.borderBottomColor = StyleKeyword.Null;
+                    style.borderBottomColor = color;
                     break;
                 case HeldSlot.BorderLeftColor:
-                    style.borderLeftColor = StyleKeyword.Null;
+                    style.borderLeftColor = color;
                     break;
             }
         }
@@ -181,10 +149,7 @@ namespace Velvet
         // The held slots property's layer writes; 0 when it writes none.
         public static int SlotsOf(ArbitraryProperty property) => s_slotsOf[(int)property];
 
-        // Every property whose layer can decide what a hand-back of slot leaves on the element: the ones
-        // writing slot, and, closed over, the ones writing any other longhand those write. Broad before
-        // narrow, so re-resolving them in order leaves a longhand that a narrower property names on that
-        // property's resolution rather than on a shorthand's.
+        // Every property whose layer writes slot, broad before narrow.
         public static ArbitraryProperty[] WritersOf(HeldSlot slot) => s_writersOf[(int)slot];
 
         private static int[] BuildSlotsOf()
@@ -209,28 +174,10 @@ namespace Velvet
             var writersOf = new ArbitraryProperty[SlotCount][];
             for (var slot = 0; slot < SlotCount; slot++)
             {
-                var family = StyleLonghandSet.Of(s_longhands[slot]);
-                while (true)
-                {
-                    var grown = family;
-                    foreach (var property in s_properties)
-                    {
-                        var written = StyleArbitraryLonghands.Of(property);
-                        if (written.Overlaps(family))
-                        {
-                            grown = grown.Union(written);
-                        }
-                    }
-                    if (grown == family)
-                    {
-                        break;
-                    }
-                    family = grown;
-                }
-
+                var bit = 1 << slot;
                 // OrderByDescending is stable, so equally broad properties keep enum order.
                 writersOf[slot] = s_properties
-                    .Where(property => StyleArbitraryLonghands.Of(property).Overlaps(family))
+                    .Where(property => (s_slotsOf[(int)property] & bit) != 0)
                     .OrderByDescending(Breadth)
                     .ToArray();
             }

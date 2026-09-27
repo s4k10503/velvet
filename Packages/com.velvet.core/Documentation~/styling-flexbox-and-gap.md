@@ -162,8 +162,9 @@ element your own code kept a reference to and re-parented after the removal.
 divide write their value straight onto the child, while an arbitrary value — the child's own `ml-[2px]`
 or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a container spaces a
 child its value holds, even when such a layer changes afterwards; where it stops — the gap is dropped,
-the child leaves, an edge is abandoned, or the child is the first and takes no gap — the slot is given
-back and the child shows what its layers say there. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its
+the child leaves, an edge is abandoned, or the child is the first of a gap or divide row and takes no gap
+or divider — the slot is given back and the child shows what its layers say there. A grid holds its
+first column's and first row's zero margins rather than giving them back. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its
 first child `2px` and the rest the gap, and every child `2px` once `gap-x-4` goes; and a child moving
 between a `[&>*]:` row and a `gap-*`, `grid-cols-*` or `divide-*` row keeps what the row it is in gave
 it, whichever of the two re-applies last.
