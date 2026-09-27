@@ -1,6 +1,10 @@
 #nullable enable
 using UnityEngine;
 using UnityEngine.UIElements;
+// Below 6.5 the enum is nested in UIDocument; Test ▸ newest-editor-compile compiles the side above it.
+#if !UNITY_6000_5_OR_NEWER
+using WorldSpaceSizeMode = UnityEngine.UIElements.UIDocument.WorldSpaceSizeMode;
+#endif
 
 namespace Velvet
 {
@@ -104,9 +108,9 @@ namespace Velvet
             // settings are driven after the attach, with the mode round-tripped so the fixed
             // sizing is derived exactly once against the live world-space settings even when the
             // requested size equals the document's own defaults.
-            record.Document.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Dynamic;
+            record.Document.worldSpaceSizeMode = WorldSpaceSizeMode.Dynamic;
             record.Document.worldSpaceSize = node.PanelSize;
-            record.Document.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Fixed;
+            record.Document.worldSpaceSizeMode = WorldSpaceSizeMode.Fixed;
             AttachWorldSpaceCollider(record.Document, node.PanelSize);
             return record;
         }

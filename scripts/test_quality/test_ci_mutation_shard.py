@@ -136,6 +136,39 @@ class LicenceTests(unittest.TestCase):
 
 
 
+# The one job whose editor is not the project's: it exists to compile on a later one.
+NEWEST_EDITOR_JOB = "newest-editor-compile"
+UNITY_VERSION = re.compile(r"unityVersion: (\S+)|unityci/editor:ubuntu-([0-9][^-\s]*)-")
+# A job key, or a key back at column zero, which ends the jobs block.
+BLOCK_START = re.compile(r"^(?:  [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?|[A-Za-z].*)$")
+
+
+def split_job(text, job):
+    """A workflow's text as (the lines outside `job`'s block, the lines of it)."""
+    outside, inside, within = [], [], False
+    for line in text.splitlines(keepends=True):
+        if BLOCK_START.match(line.rstrip("\n")):
+            within = line.startswith("  {}:".format(job))
+        (inside if within else outside).append(line)
+    return "".join(outside), "".join(inside)
+
+
+def named_versions(text):
+    return {version for match in UNITY_VERSION.findall(text) for version in match if version}
+
+
+def project_version():
+    found = re.search(r"^m_EditorVersion: (\S+)$",
+                      (REPO_ROOT / "ProjectSettings/ProjectVersion.txt").read_text(), re.MULTILINE)
+    return found.group(1) if found else None
+
+
+def minor(version):
+    """(major, minor) of an editor version such as 6000.3.23f1, or None for anything else."""
+    found = re.match(r"^([0-9]+)\.([0-9]+)\.", version or "")
+    return (int(found.group(1)), int(found.group(2))) if found else None
+
+
 class EditorVersionTests(unittest.TestCase):
     """The editor a shard runs against the one the project and the unity-tests jobs name.
 
@@ -143,22 +176,58 @@ class EditorVersionTests(unittest.TestCase):
     action's own version reading reaches it.
     """
 
+    # GREEN_ON_BASE(construction): the base's workflows name the project's version alone, so it passes.
+    # What shows the exemption is needed is reading each workflow with `path.read_text()` in place of
+    # `split_job(path.read_text(), NEWEST_EDITOR_JOB)[0]`: measured, this case alone then fails.
     def test_Given_TheWorkflows_When_TheirEditorVersionsAreRead_Then_EachIsTheProjects(self):
         # Arrange
-        project = re.search(r"^m_EditorVersion: (\S+)$",
-                            (REPO_ROOT / "ProjectSettings/ProjectVersion.txt").read_text(), re.MULTILINE)
+        project = project_version()
         sources = sorted((REPO_ROOT / ".github").rglob("*.yml"))
-        texts = [path.read_text() for path in sources]
+        texts = [split_job(path.read_text(), NEWEST_EDITOR_JOB)[0] for path in sources]
 
         # Act
-        named = {version for text in texts
-                 for version in re.findall(r"unityVersion: (\S+)|unityci/editor:ubuntu-([0-9][^-\s]*)-", text)
-                 for version in version if version}
+        named = set().union(*(named_versions(text) for text in texts))
         derived = any('ubuntu-$version-linux-il2cpp-3' in text
                       and "m_EditorVersion" in text for text in texts)
 
         # Assert — the campaign reads its version from the project, so it names none to compare.
-        self.assertEqual((named, derived), ({project.group(1)} if project else None, True))
+        self.assertEqual((named, derived), ({project} if project else None, True))
+
+    def test_Given_TheNewestEditorJob_When_ItsVersionIsRead_Then_ItIsALaterMinorThanTheProjects(self):
+        # Arrange — a version at the project's minor or below says nothing about a later editor, and
+        # the job would pass all the same.
+        _, block = split_job((REPO_ROOT / ".github/workflows/test.yml").read_text(), NEWEST_EDITOR_JOB)
+        project = minor(project_version())
+
+        # Act — the Library cache key carries the version too, so a bump that misses it restores a
+        # Library written by the previous editor.
+        versions = named_versions(block) | set(re.findall(r"Library-newest-([0-9][^-\s]*)-", block))
+        later = {version: project is not None and (minor(version) or (0, 0)) > project
+                 for version in versions}
+
+        # Assert — exactly one version, so a job that names none, or spellings that disagree, fails here too.
+        self.assertEqual((len(later), all(later.values())), (1, True))
+
+
+class SplitJobTests(unittest.TestCase):
+    """What EditorVersionTests exempts: one job's block and nothing past it."""
+
+    # GREEN_ON_BASE(construction): `split_job` is this file's own, so a base run takes its copy.
+    # What shows the case can fail is `within = within or line.startswith(...)`: measured, the block
+    # then runs past the next job key, and this case alone fails.
+    def test_Given_AJobBetweenTwoOthers_When_Split_Then_ItsBlockEndsAtTheNextJobKey(self):
+        # Arrange
+        workflow = ("jobs:\n"
+                    "  before:\n    with:\n      unityVersion: 1.0.0f1\n"
+                    "  newest-editor-compile:  # the job\n    with:\n      unityVersion: 2.0.0f1\n"
+                    "  after:\n    with:\n      unityVersion: 3.0.0f1\n")
+
+        # Act
+        outside, inside = split_job(workflow, NEWEST_EDITOR_JOB)
+
+        # Assert
+        self.assertEqual((named_versions(outside), named_versions(inside)),
+                         ({"1.0.0f1", "3.0.0f1"}, {"2.0.0f1"}))
 
 
 class ShardPlatformTests(unittest.TestCase):
