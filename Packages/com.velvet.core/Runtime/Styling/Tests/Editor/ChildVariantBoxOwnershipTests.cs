@@ -543,6 +543,39 @@ namespace Velvet.Tests
             Assert.That((whileWrapping, Inline(container.style.marginLeft)), Is.EqualTo(("-8", "4")));
         }
 
+        // GREEN_ON_BASE(characterization): the base nulled a gap row's first-child edge unconditionally, which
+        // a hand-back writing nothing where the element keeps no layers would stop.
+        [Test]
+        public void Given_AnElementTheReconcilerRemovedFromAGapRow_When_ItIsReparentedAsAnotherRowsFirstChild_Then_ItsStaleGapIsCleared()
+        {
+            // Arrange — removal drops the element's layer map but leaves its inline gap; code that kept a
+            // reference then puts it first in another gap row.
+            using var scope = new ReconcilerScope();
+            var ctx = ReconcilerContextProbe.Of(scope);
+            var before = new VNode[]
+            {
+                V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a"), V.Div(key: "b") }),
+                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+            var removed = scope.Root[0][1];
+            var after = new VNode[]
+            {
+                V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a") }),
+                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, before, after);
+            var stale = Inline(removed.style.marginLeft);
+            var other = scope.Root[1];
+            other.Insert(0, removed);
+
+            // Act
+            ctx.GapManipulators[other].Apply();
+
+            // Assert — the stale gap rides along, since an element that kept none leaves the same slot.
+            Assert.That((stale, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
+        }
+
         // GREEN_ON_BASE(characterization): a pooled Label keeps nothing of the gap row it left, which a
         // hold outliving the layer map it lives in would break.
         [Test]
