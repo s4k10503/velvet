@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -238,6 +239,56 @@ namespace Velvet.Tests
             // Assert
             var after = Radii(box);
             Assert.That(new[] { fitted, after[0], after[1] }, Is.EqualTo(new[] { 50f, 0f, 60f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnInlineTransitionPropertyOnARoundedFullBox_When_ItsHeightChanges_Then_TheTransitionPropertyIsRestored()
+        {
+            // Arrange — a height change refits the corners with transitions suspended.
+            var box = MountBox($"{WideBox} rounded-full");
+            box.style.transitionProperty = new List<StylePropertyName> { new StylePropertyName("background-color") };
+
+            // Act
+            box.style.height = 40f;
+            ForcePanelUpdate(box.panel);
+
+            // Assert — the refit is carried beside the list, since a box the fit never wrote to keeps it too.
+            var names = string.Join(",", box.style.transitionProperty.value);
+            Assert.That((IsNear(box.resolvedStyle.borderTopLeftRadius, 20f), names),
+                Is.EqualTo((true, "background-color")));
+        }
+
+        [Test]
+        public void Given_AWideBox_When_AnAnimationClassChannelAddsRoundedFull_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — whileHover/Tap/Focus classes, the animation scheduler's classes and drag classes reach the
+            // element through this helper rather than through the class projection.
+            var box = MountBox(WideBox);
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(box, new[] { "rounded-full" });
+            ForcePanelUpdate(box.panel);
+
+            // Assert
+            Assert.That(box.resolvedStyle.borderTopLeftRadius, Is.EqualTo(17f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnInlineCornerWrittenOverAClassRadius_When_TheBoxShrinksAndGrowsBack_Then_ThatCornerKeepsItsValue()
+        {
+            // Arrange — the inline 4px outranks rounded-3xl on its corner, as inline style outranks a class.
+            var box = MountSwitchable("w-[200px] h-[60px] rounded-3xl");
+            box.style.borderTopLeftRadius = 4f;
+            SwitchClass("w-[200px] h-[34px] rounded-3xl");
+            var shortRadii = Radii(box);
+
+            // Act
+            SwitchClass("w-[200px] h-[60px] rounded-3xl");
+
+            // Assert — while short, the other corners are fitted around the inline one: 24 + 24 down a 34px side
+            // scales them by 34/48.
+            Assert.That(new[] { shortRadii[0], shortRadii[1], box.resolvedStyle.borderTopLeftRadius },
+                Is.EqualTo(new[] { 4f, 17f, 4f }).Within(1e-3f));
         }
 
         [Test]

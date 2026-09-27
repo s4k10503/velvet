@@ -80,6 +80,9 @@ namespace Velvet
             // What this last wrote to each corner's inline slot; null where it holds nothing.
             public readonly Length?[] Written = new Length?[CornerCount];
 
+            // Corners whose inline slot holds a value this did not write, as of the current refresh.
+            public readonly bool[] Foreign = new bool[CornerCount];
+
         }
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
@@ -202,10 +205,36 @@ namespace Velvet
         private static void RefreshDeclared(VisualElement element, State state)
             => Refresh(element, state, suspendTransitions: false);
 
-        private static Length? Declared(State state, int corner) => state.Inline[corner] ?? state.Sheet[corner];
+        // A value anyone else wrote into the slot outranks the class the way inline style does, so that corner
+        // counts as undeclared: it is neither fitted nor given back.
+        private static Length? Declared(State state, int corner)
+            => state.Foreign[corner] ? null : state.Inline[corner] ?? state.Sheet[corner];
+
+        private static void FindForeignValues(VisualElement element, State state)
+        {
+            for (var i = 0; i < CornerCount; i++)
+            {
+                var slot = InlineCorner(element.style, i);
+                var foreign = slot.keyword == StyleKeyword.Undefined && slot.value != state.Written[i];
+                state.Foreign[i] = foreign;
+                if (foreign)
+                {
+                    state.Written[i] = null;
+                }
+            }
+        }
+
+        private static StyleLength InlineCorner(IStyle style, int corner) => corner switch
+        {
+            0 => style.borderTopLeftRadius,
+            1 => style.borderTopRightRadius,
+            2 => style.borderBottomRightRadius,
+            _ => style.borderBottomLeftRadius,
+        };
 
         private static void Refresh(VisualElement element, State state, bool suspendTransitions)
         {
+            FindForeignValues(element, state);
             // A corner nothing tracked declares any longer gives back what this wrote first, so the value read
             // for it below is the cascade's own rather than ours.
             for (var i = 0; i < CornerCount; i++)
@@ -230,7 +259,7 @@ namespace Velvet
                 }
                 if (suspendTransitions && !suspended)
                 {
-                    restore = element.style.transitionProperty;
+                    restore = DetachedCopy(element.style.transitionProperty);
                     element.style.transitionProperty = s_noTransitions;
                     suspended = true;
                 }
@@ -241,6 +270,11 @@ namespace Velvet
                 element.style.transitionProperty = restore;
             }
         }
+
+        // Copied before the suspending write, which reuses the slot's list: CornerRadiusFitPanelTests'
+        // inline transition-property case reddens when the restore is read straight from the slot.
+        private static StyleList<StylePropertyName> DetachedCopy(StyleList<StylePropertyName> slot)
+            => slot.value != null ? new StyleList<StylePropertyName>(new List<StylePropertyName>(slot.value)) : slot;
 
         private static Length? TargetFor(State state, int corner, float factor)
         {

@@ -14,11 +14,8 @@ namespace Velvet.Tests
     /// the corner radius a shadow is baked with.
     /// </summary>
     /// <remarks>
-    /// <c>--radius-full</c> is larger than the boxes these cases mount, so each layer that reads it decides for
-    /// itself what a radius the box cannot carry becomes. <c>Documentation~/styling-variants.md</c> states the
-    /// deviation the first two cases pin. <see cref="VelvetStyleUtilities"/> is attached because
-    /// <c>rounded-full</c>, <c>rounded-lg</c> and <c>rounded-3xl</c> are plain USS rules: without the sheet
-    /// the box stays square-cornered, which reddens every case here.
+    /// <see cref="VelvetStyleUtilities"/> is attached because <c>rounded-full</c>, <c>rounded-lg</c> and
+    /// <c>rounded-3xl</c> are plain USS rules.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class RoundedFullSilhouettePlaybackTests

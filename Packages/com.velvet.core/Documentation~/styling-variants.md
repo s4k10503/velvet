@@ -322,9 +322,11 @@ element shrinks by one factor. So `rounded-full` on a 330 × 34 box is a pill wi
 `rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. Velvet holds the fitted radii as inline style,
 and so:
 
-- A radius your own stylesheet sets, or your own code writes to `style`, is not fitted. On an element that
-  also carries a `rounded-*` class, the fit reads the class's radius even on a corner your rule outranks it
-  on, and where that radius does not fit, the fitted class radius replaces yours.
+- A radius your own stylesheet sets is not fitted. On an element that also carries a `rounded-*` class, the
+  fit reads the class's radius even on a corner your rule outranks it on, and where that radius does not
+  fit, the fitted class radius replaces yours.
+- A radius your own code writes to `style` is not fitted either, and it keeps its corner: the other corners
+  are fitted around it, as CSS fits them around an inline radius.
 - A change of size refits at once rather than running a transition, and a change of class under
   `transition-all` animates between the fitted radii rather than the declared ones.
 
