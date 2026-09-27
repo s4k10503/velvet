@@ -903,8 +903,28 @@ written rather than when the version closes. `## [Unreleased]` is what a minor o
 `## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
 behaviour a working application would notice changing.
 
+A change does not write either section in the file. It adds one fragment, a markdown file under
+`Packages/com.velvet.core/Changelog~/unreleased/` for `## [Unreleased]` or under
+`Packages/com.velvet.core/Changelog~/breaking/` for `## [Unreleased — breaking]`, named for its
+branch: pull requests appending to one spot in `CHANGELOG.md` conflict with each other whenever one of
+them merges, and two that write different paths do not. A fragment is one or more `### <kind>`
+headings, each opening with its entries. The kinds are `release_notes.FRAGMENT_KINDS`; Highlights is
+not one of them, since it is written when the version closes. `release_notes.compose` refuses a
+fragment with any other heading, with text above its first heading, or with a subsection that does
+not open with a `- ` entry, and any file under `Packages/com.velvet.core/Changelog~/` outside those
+two directories that is not a dotfile; `test_release_notes.py` composes this repository's fragments.
+`published_check.py`, `breaking_in_flight_check.py` and `test_release_notes.py` read the open
+sections through it, and it files each fragment's entries under its kind after the entries the file
+already holds there — so an entry written into the file itself before fragments existed stays valid,
+and is carried into a version exactly as the fragments beside it are. The `upm` split strips the
+directory.
+
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
-   `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
+   `package.json` to match. Run `scripts/release/compile_changelog.py` first: it writes that
+   composed reading into the file and deletes the fragments, so the sections hold every entry
+   before anything else is done to them, and `published_check.py` refuses a change
+   that closes a version while `## [Unreleased]` still lists an entry, which is what renaming it
+   before compiling leaves. A major moves the breaking entries up into `## [Unreleased]` and leaves
    their heading standing with none. A minor or a patch closes only over a section already empty,
    and `published_check.py` refuses one that is not: a release publishes the tree rather than the
    section, and `main` was found carrying the code an entry described while that entry still
@@ -1068,7 +1088,8 @@ adds and removes and the line has nothing to remove, the merge keeps the additio
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
-attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
+attract it. A fragment the pick carries comes out with it on a line cut before fragments existed, as
+`2.x` was, since nothing in that line's tree reads one. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
 `Bash|Edit|Write` and reads a shell command only for a literal operand naming the file, so a
 cherry-pick does not reach it — and the line does not carry that hook at all.
 

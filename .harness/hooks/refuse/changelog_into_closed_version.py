@@ -250,8 +250,8 @@ def main():
               "A note is rebuilt from the first heading matching its version down to the next "
               "heading, so only one of the two sections is ever published and their order is what "
               "decides which.\n\n"
-              "One heading per version. Put the entry under `## [Unreleased]` or "
-              "`## [Unreleased — breaking]`.", file=sys.stderr)
+              "One heading per version. Put the entry in a fragment, which CONTRIBUTING.md's "
+              "release section describes.", file=sys.stderr)
         return 2
 
     before, after = released(text), released(proposed)
@@ -264,9 +264,8 @@ def main():
               "released section.\n\n"
               "A date on the heading is what says the entries under it shipped, and this check "
               "reads for it: whatever sits under an undated heading is not compared at all.\n\n"
-              "Leave the heading and its date where they are, and put the change under "
-              "`## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a "
-              "major.\n\n"
+              "Leave the heading and its date where they are, and put the change in a fragment, "
+              "which CONTRIBUTING.md's release section describes.\n\n"
               "Undoing a rename that closed a version too early arrives here as well, and nothing "
               "in the file tells that date from a published one. Revert it with git, which this "
               "check never reads.", file=sys.stderr)
@@ -290,8 +289,8 @@ def main():
               "this lets through — an addition to a note already published belongs in the release "
               "that follows it:\n\n"
               f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
-              "Put what this change has to say under `## [Unreleased]`, or "
-              "`## [Unreleased — breaking]` where it has to wait for a major.\n\n"
+              "Put what this change has to say in a fragment, which CONTRIBUTING.md's release "
+              "section describes.\n\n"
               "Undoing a put-back made in the editor arrives here as that deletion, because this "
               "reads the file rather than a base commit. Revert it with git, which this check "
               "never reads.", file=sys.stderr)
@@ -308,8 +307,7 @@ def main():
         "That section is the published release note. An entry there claims a version that shipped",
         "without it, and is missing from the version that will ship with it.",
         "",
-        "Put it under `## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a",
-        "major — opening the one it belongs in above the newest release if there is none.",
+        "Put it in a fragment, which CONTRIBUTING.md's release section describes.",
         "A reword of what that section already says reads the same way here and is refused with it;",
         "it changes a published note, so ask for it rather than making it.",
         "",

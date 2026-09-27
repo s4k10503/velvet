@@ -4,7 +4,11 @@
 Run: python3 scripts/release/test_release_notes.py
 """
 
+import contextlib
+import io
 import json
+import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -491,12 +495,248 @@ class BreakOutsideAMajor(unittest.TestCase):
                                            ["2.0.0", "1.0.0"], set()), [])
 
 
+# An open section with inline entries in two subsections, the state `## [Unreleased]` is in while the
+# pull requests written before fragments existed are still landing.
+INLINE = """# Changelog
+
+## [Unreleased]
+
+### Added
+
+- An inline addition.
+
+### Fixed
+
+- An inline fix.
+
+## [Unreleased — breaking]
+
+## [1.0.0] - 2026-07-05
+
+### Highlights
+
+- The first release.
+
+### Added
+
+- Everything.
+"""
+
+# The file a release leaves: the open section renamed, and no `## [Unreleased]` heading opened again.
+RELEASED = """# Changelog
+
+## [Unreleased — breaking]
+
+## [1.0.0] - 2026-07-05
+
+### Highlights
+
+- The first release.
+
+### Added
+
+- Everything.
+"""
+
+
+def entries_of(text, section):
+    """The entries of one section, each collapsed to one line."""
+    return [release_notes.normalize(entry)
+            for entry in release_notes.split_entries(extract_version_section(text, section))]
+
+
+class ComposeFragments(unittest.TestCase):
+    """Where a fragment's entries land in the composed CHANGELOG."""
+
+    def test_Given_AFragmentOfAKindTheSectionHolds_When_Composed_Then_ItFollowsTheInlineEntries(self):
+        # Arrange
+        fragments = [("unreleased/fix.md", "### Fixed\n\n- A fragment fix.\n")]
+
+        # Act
+        section = extract_version_section(release_notes.compose(INLINE, fragments), OPEN_SECTION)
+
+        # Assert
+        self.assertEqual(section[section.index("### Fixed"):],
+                         ["### Fixed", "", "- An inline fix.", "", "- A fragment fix.", ""])
+
+    def test_Given_AFragmentOfAKindTheSectionLacks_When_Composed_Then_ItOpensThatSubsectionInOrder(self):
+        # Arrange — Changed sits between the two subsections the section holds.
+        fragments = [("unreleased/change.md", "### Changed\n\n- A fragment change.\n")]
+
+        # Act
+        section = extract_version_section(release_notes.compose(INLINE, fragments), OPEN_SECTION)
+
+        # Assert
+        self.assertEqual([line for line in section if line.startswith("### ")],
+                         ["### Added", "### Changed", "### Fixed"])
+
+    def test_Given_ABreakingFragment_When_Composed_Then_ItIsFiledUnderTheBreakingSection(self):
+        # Arrange
+        fragments = [("breaking/api.md", "### Removed\n\n- An API a caller has to edit around.\n")]
+
+        # Act
+        composed = release_notes.compose(INLINE, fragments)
+
+        # Assert
+        self.assertEqual(
+            (entries_of(composed, BREAKING_SECTION), entries_of(composed, OPEN_SECTION)),
+            (["- An API a caller has to edit around."], ["- An inline addition.", "- An inline fix."]))
+
+    def test_Given_AFileWithNoOpenSection_When_Composed_Then_TheSectionOpensAboveTheReleases(self):
+        # Arrange — a release renames `## [Unreleased]`, and a fragment written after it has no
+        # heading to land under.
+        fragments = [("unreleased/fix.md", "### Fixed\n\n- A fragment fix.\n")]
+
+        # Act
+        headings = [line for line in release_notes.compose(RELEASED, fragments).splitlines()
+                    if VERSION_HEADING.match(line)]
+
+        # Assert
+        self.assertEqual(headings, ["## [Unreleased]", "## [Unreleased — breaking]",
+                                    "## [1.0.0] - 2026-07-05"])
+
+    def test_Given_TwoFragments_When_Composed_Then_TheyAreFiledInPathOrder(self):
+        # Arrange — handed over in the other order, so the order read is the one compose imposes.
+        fragments = [("unreleased/b.md", "### Fixed\n\n- Second.\n"),
+                     ("unreleased/a.md", "### Fixed\n\n- First.\n")]
+
+        # Act
+        filed = entries_of(release_notes.compose(RELEASED, fragments), OPEN_SECTION)
+
+        # Assert
+        self.assertEqual(filed, ["- First.", "- Second."])
+
+    def test_Given_OnlyADotfile_When_Composed_Then_TheTextIsUnchanged(self):
+        # Arrange — `.gitkeep` is what keeps an empty fragment directory in the tree.
+        fragments = [("unreleased/.gitkeep", "")]
+
+        # Act / Assert
+        self.assertEqual(release_notes.compose(INLINE, fragments), INLINE)
+
+    def test_Given_AFragmentFilingHighlights_When_Composed_Then_ItIsRefused(self):
+        # Arrange — Highlights summarise a version, which is written when it closes.
+        fragments = [("unreleased/lead.md", "### Highlights\n\n- Something that matters.\n")]
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            release_notes.compose(INLINE, fragments)
+
+    def test_Given_AFragmentInADirectoryNamingNoSection_When_Composed_Then_ItIsRefused(self):
+        # Arrange — passed over, a misspelt directory ships its entry in no note at all.
+        fragments = [("unrelease/fix.md", "### Fixed\n\n- A fragment fix.\n")]
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            release_notes.compose(INLINE, fragments)
+
+    def test_Given_AnEntryAboveTheFirstHeading_When_Composed_Then_ItIsRefused(self):
+        # Arrange
+        fragments = [("unreleased/fix.md", "- A fragment fix.\n")]
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            release_notes.compose(INLINE, fragments)
+
+    def test_Given_ASubsectionOpeningWithProse_When_Composed_Then_ItIsRefused(self):
+        # Arrange — the readers in scripts/release count entries by their `- `, so a paragraph is
+        # none of theirs.
+        fragments = [("unreleased/fix.md", "### Fixed\n\nA paragraph.\n")]
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            release_notes.compose(INLINE, fragments)
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True,
+                          text=True).stdout
+
+
+class FragmentReadings(unittest.TestCase):
+    """The two ways a fragment is read: off the disk, and out of a revision."""
+
+    FRAGMENTS = {"unreleased/fix.md": "### Fixed\n\n- A fragment fix.\n",
+                 "breaking/api.md": "### Changed\n\n- An API a caller has to edit around.\n",
+                 "breaking/.gitkeep": ""}
+
+    def write(self, directory):
+        for relative, text in self.FRAGMENTS.items():
+            path = Path(directory, relative)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    def test_Given_ACommittedFragmentDirectory_When_ReadAtTheRevision_Then_EveryFileIsReturned(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as root:
+            git(root, "init", "--quiet", "--initial-branch=main")
+            git(root, "config", "user.email", "t@example.com")
+            git(root, "config", "user.name", "t")
+            self.write(Path(root, release_notes.FRAGMENT_PATH))
+            git(root, "add", "-A")
+            git(root, "commit", "--quiet", "-m", "fragments")
+
+            # Act
+            found = release_notes.fragments_at(root, "HEAD")
+
+        # Assert
+        self.assertEqual(found, sorted(self.FRAGMENTS.items()))
+
+    def test_Given_AFragmentDirectoryOnDisk_When_Read_Then_EveryFileIsReturned(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as root:
+            self.write(root)
+
+            # Act
+            found = release_notes.fragments_in(root)
+
+        # Assert
+        self.assertEqual(found, sorted(self.FRAGMENTS.items()))
+
+
+class CompileChangelog(unittest.TestCase):
+    """The release step that writes the fragments into the file and deletes them."""
+
+    def test_Given_FragmentsBesideTheChangelog_When_Compiled_Then_TheFileIsTheComposedReading(self):
+        # Arrange -- imported here rather than at the top, so a tree without the script fails this
+        # case alone rather than every case in the module.
+        import compile_changelog
+        with tempfile.TemporaryDirectory() as root:
+            changelog = Path(root, "CHANGELOG.md")
+            changelog.write_text(INLINE, encoding="utf-8")
+            fragments = Path(root, "Changelog~")
+            (fragments / "unreleased").mkdir(parents=True)
+            (fragments / "unreleased" / "fix.md").write_text("### Fixed\n\n- A fragment fix.\n")
+            (fragments / "unreleased" / ".gitkeep").write_text("")
+            expected = release_notes.compose(INLINE, release_notes.fragments_in(fragments))
+
+            # Act
+            with contextlib.redirect_stdout(io.StringIO()):
+                compile_changelog.main(["--changelog", str(changelog), "--fragments", str(fragments)])
+
+            # Assert — the `.gitkeep` stays, since the directory is where the next fragment goes.
+            self.assertEqual((changelog.read_text(encoding="utf-8"), release_notes.fragments_in(fragments)),
+                             (expected, [("unreleased/.gitkeep", "")]))
+
+
+class FragmentsDoNotShip(unittest.TestCase):
+    def test_Given_TheSplitThatPublishesThePackage_When_ItStripsDeveloperFiles_Then_TheFragmentsGo(self):
+        # Arrange — the split is package-at-root, so the path it sees starts below the package.
+        workflow = (REPO_ROOT / ".github" / "workflows" / "upm.yml").read_text(encoding="utf-8")
+        pattern = re.search(r"^\s*REMOVE=.*grep -E '([^']+)'", workflow, re.M).group(1)
+        fragment = release_notes.FRAGMENT_PATH.split("/", 2)[2] + "/unreleased/fix.md"
+
+        # Act / Assert
+        self.assertRegex(fragment, pattern)
+
+
 class ThisRepositorysChangelog(unittest.TestCase):
     """The guards that make a release fail here rather than publish an empty note."""
 
     @classmethod
     def setUpClass(cls):
-        cls.text = Path(DEFAULT_CHANGELOG).read_text(encoding="utf-8")
+        # Composed, so every guard below reads the fragments where a release will file them.
+        cls.text = release_notes.compose(Path(DEFAULT_CHANGELOG).read_text(encoding="utf-8"),
+                                         release_notes.fragments_in())
         cls.headings = [
             (match.group("version"), line)
             for line in cls.text.splitlines()

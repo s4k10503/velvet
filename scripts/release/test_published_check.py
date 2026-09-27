@@ -273,6 +273,38 @@ class DrainDecisionTests(unittest.TestCase):
         self.assertIsNone(reason)
 
 
+class LeftOpenDecisionTests(unittest.TestCase):
+    """What a release may leave in `## [Unreleased]`, where a fragment sits until it is compiled."""
+
+    def test_Given_AVersionClosingOverAnEntryLeftInTheOpenSection_When_Decided_Then_ItIsNamed(self):
+        # Arrange — the rename came before the fragments were compiled, so the one written for this
+        # release is filed under a section opened above it.
+        result = AHEAD.replace("## [2.1.0] - 2026-08-09",
+                               "## [Unreleased]\n\n### Fixed\n\n- A fix nobody compiled.\n\n"
+                               "## [2.1.0] - 2026-08-09")
+
+        # Act
+        reason = published_check.left_open_reason(PUBLISHED, result)
+
+        # Assert
+        self.assertIn("2.1.0 closes and '## [Unreleased]' still lists 1 entry", reason)
+
+    def test_Given_AVersionClosingOverTheWholeOpenSection_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — the control: the rename took everything, which is what a compiled release is.
+        reason = published_check.left_open_reason(PUBLISHED, AHEAD)
+
+        # Assert
+        self.assertIsNone(reason)
+
+    def test_Given_AnOpenSectionHoldingEntriesAndNothingClosing_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — between releases the section is supposed to hold entries.
+        reason = published_check.left_open_reason(PUBLISHED, PUBLISHED.replace(
+            "- Something not yet released.", "- Something not yet released.\n- Another."))
+
+        # Assert
+        self.assertIsNone(reason)
+
+
 class TagListingBound(unittest.TestCase):
     """The bound is the hook's, where a person waits. The workflow raises it and nothing waits there.
 
@@ -492,6 +524,42 @@ class GitReadingTests(unittest.TestCase):
 
         # Act / Assert
         self.assertIn("2.1.3 is not a major", said)
+
+    def closing_over_a_fragment(self, relative, text):
+        """What the command says of a change closing 2.1.0 over a base carrying one fragment that the
+        result keeps."""
+        path = self.repository(changelog=PUBLISHED, package=package_json(version="2.1.0"))
+        fragment = path / "Packages/com.velvet.core/Changelog~" / relative
+        fragment.parent.mkdir(parents=True)
+        fragment.write_text(text)
+        git(path, "add", "-A")
+        git(path, "commit", "--quiet", "-m", "fragment")
+        (path / CHANGELOG_PATH).write_text(AHEAD)
+        git(path, "commit", "--quiet", "-a", "-m", "release")
+        argv = ["published_check.py", "--project", str(path), "--base", "HEAD~1", "--result", "HEAD"]
+        err = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), \
+                contextlib.redirect_stdout(io.StringIO()):
+            published_check.main()
+        return err.getvalue()
+
+    def test_Given_AMinorClosingOverABreakingFragment_When_Read_Then_TheBreakIsNamed(self):
+        # Arrange — the breaking section is empty in the file and holds the fragment's entry, so a
+        # reading of the file alone passes a minor over it.
+        said = self.closing_over_a_fragment(
+            "breaking/api.md", "### Changed\n\n- An API a caller has to edit around.\n")
+
+        # Act / Assert
+        self.assertIn("2.1.0 is not a major and '## [Unreleased — breaking]' still lists 1 entry",
+                      said)
+
+    def test_Given_AReleaseLeavingAFragmentUncompiled_When_Read_Then_TheFragmentIsNamed(self):
+        # Arrange
+        said = self.closing_over_a_fragment("unreleased/fix.md",
+                                            "### Fixed\n\n- A fix nobody compiled.\n")
+
+        # Act / Assert
+        self.assertIn("2.1.0 closes and '## [Unreleased]' still lists 1 entry", said)
 
     def test_Given_ARevisionThatDoesNotExist_When_Read_Then_ItAnswersCleanRatherThanRaising(self):
         # Arrange — a branch that was never fetched is ordinary on a developer's machine, and refusing

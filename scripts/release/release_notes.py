@@ -11,7 +11,9 @@ block, or an empty one exits non-zero rather than emitting a shorter note.
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,6 +31,13 @@ BREAKING_SECTION = "Unreleased — breaking"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CHANGELOG = REPO_ROOT / "Packages" / "com.velvet.core" / "CHANGELOG.md"
 DEFAULT_PACKAGE_JSON = REPO_ROOT / "Packages" / "com.velvet.core" / "package.json"
+
+# One file per change, filed under the open section its directory names, so a change writes a file of
+# its own rather than lines of a shared one. CONTRIBUTING.md's release section owns the layout.
+DEFAULT_FRAGMENTS = REPO_ROOT / "Packages" / "com.velvet.core" / "Changelog~"
+FRAGMENT_PATH = DEFAULT_FRAGMENTS.relative_to(REPO_ROOT).as_posix()
+FRAGMENT_SECTIONS = {"unreleased": OPEN_SECTION, "breaking": BREAKING_SECTION}
+FRAGMENT_KINDS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
 
 
 class ReleaseNotesError(Exception):
@@ -199,6 +208,178 @@ def read_unity_requirement(package_json_path):
         raise ReleaseNotesError(f"{package_json_path} declares no 'unity' version.")
     release = package.get("unityRelease")
     return f"{unity}.{release}" if release else unity
+
+
+def fragment_section(path):
+    """The open section a fragment at `path`, relative to the fragment directory, is filed under, or
+    None for a dotfile.
+
+    A dotfile is `.gitkeep`, which keeps an empty directory in the tree, or something an editor or a
+    file browser left beside the fragments. Any other file outside the layout is refused rather than
+    passed over, since a fragment in a misspelt directory would otherwise ship nowhere.
+    """
+    parts = Path(path).parts
+    if parts[-1].startswith("."):
+        return None
+    if len(parts) != 2 or parts[0] not in FRAGMENT_SECTIONS or not parts[1].endswith(".md"):
+        raise ReleaseNotesError(
+            f"{FRAGMENT_PATH}/{Path(path).as_posix()} is not a fragment: a fragment is a .md file "
+            f"directly under one of {', '.join(f'{FRAGMENT_PATH}/{name}/' for name in FRAGMENT_SECTIONS)}.")
+    return FRAGMENT_SECTIONS[parts[0]]
+
+
+def parse_fragment(path, text):
+    """One fragment's `(kind, lines)` blocks, in the order it writes them."""
+    where = f"{FRAGMENT_PATH}/{Path(path).as_posix()}"
+    blocks = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        heading = SUBSECTION_HEADING.match(line)
+        if heading:
+            if heading.group("title") not in FRAGMENT_KINDS:
+                raise ReleaseNotesError(
+                    f"{where}:{number}: '### {heading.group('title')}' is not a kind a fragment can "
+                    f"file under. Use one of {', '.join(FRAGMENT_KINDS)}; the Highlights a version "
+                    "leads with are written when it closes.")
+            blocks.append((heading.group("title"), []))
+        elif ANY_HEADING.match(line):
+            raise ReleaseNotesError(
+                f"{where}:{number}: a fragment carries '### <kind>' headings and no other.")
+        elif blocks:
+            blocks[-1][1].append(line)
+        elif line.strip():
+            raise ReleaseNotesError(
+                f"{where}:{number}: this sits above the fragment's first '### <kind>' heading, so no "
+                "subsection would carry it.")
+    blocks = [(kind, trim_blank_edges(lines)) for kind, lines in blocks]
+    if not blocks:
+        raise ReleaseNotesError(f"{where} files nothing: open it with a '### <kind>' heading.")
+    for kind, lines in blocks:
+        if not lines or not lines[0].startswith("- "):
+            raise ReleaseNotesError(
+                f"{where}: '### {kind}' does not open with a '- ' entry.")
+    return blocks
+
+
+def subsection_rank(title):
+    """Where a subsection sits among the others of its section: `FRAGMENT_KINDS` order, Highlights
+    ahead of every kind, and a title that is none of them after."""
+    if title == HIGHLIGHTS_TITLE:
+        return -1
+    return FRAGMENT_KINDS.index(title) if title in FRAGMENT_KINDS else len(FRAGMENT_KINDS)
+
+
+def file_under(lines, section, blocks):
+    """`lines` with `blocks`, one per kind, appended to the subsections of `section`, opening that
+    section and any subsection it lacks.
+
+    The inline entries a section already holds keep their place ahead of the fragments' own.
+    """
+    headings = [(index, match.group("version")) for index, line in enumerate(lines)
+                if (match := VERSION_HEADING.match(line))]
+    open_order = list(FRAGMENT_SECTIONS.values())
+    start = next((index for index, version in headings if version == section), None)
+    if start is None:
+        above = open_order[:open_order.index(section)]
+        start = next((index for index, version in headings if version not in above), len(lines))
+        opening = ([""] if start and lines[start - 1].strip() else []) + [f"## [{section}]", ""]
+        lines = lines[:start] + opening + lines[start:]
+        start += len(opening) - 2
+        headings = [(index, match.group("version")) for index, line in enumerate(lines)
+                    if (match := VERSION_HEADING.match(line))]
+    end = next((index for index, _ in headings if index > start), len(lines))
+
+    head, subsections = [], []
+    for line in lines[start + 1:end]:
+        match = SUBSECTION_HEADING.match(line)
+        if match:
+            subsections.append([match.group("title"), []])
+        elif subsections:
+            subsections[-1][1].append(line)
+        else:
+            head.append(line)
+
+    for kind, entries in blocks:
+        existing = next((held for held in subsections if held[0] == kind), None)
+        if existing is not None:
+            existing[1] = trim_blank_edges(existing[1]) + [""] + entries
+            continue
+        at = next((index for index, held in enumerate(subsections)
+                   if subsection_rank(held[0]) > subsection_rank(kind)), len(subsections))
+        subsections.insert(at, [kind, list(entries)])
+
+    body = [""]
+    if trim_blank_edges(head):
+        body += trim_blank_edges(head) + [""]
+    for title, held in subsections:
+        body += [f"### {title}", ""] + trim_blank_edges(held) + [""]
+    return lines[:start + 1] + body + lines[end:]
+
+
+def compose(changelog_text, fragments):
+    """The CHANGELOG with each fragment's entries filed under the open section its directory names.
+
+    `fragments` is `(path relative to the fragment directory, text)` pairs, filed in path order. With
+    none the text comes back as it was: a tree carrying no fragment reads as it always has, and writing
+    the composed text over the CHANGELOG and deleting the fragments leaves this returning what it
+    returned before.
+    """
+    placed = {}
+    for path, text in sorted(fragments):
+        section = fragment_section(path)
+        if section is None:
+            continue
+        kinds = placed.setdefault(section, {})
+        for kind, entries in parse_fragment(path, text):
+            kinds[kind] = kinds[kind] + [""] + entries if kind in kinds else entries
+    if not placed:
+        return changelog_text
+    lines = changelog_text.splitlines()
+    for section in FRAGMENT_SECTIONS.values():
+        if section in placed:
+            lines = file_under(lines, section, list(placed[section].items()))
+    return "\n".join(lines) + "\n"
+
+
+def fragments_in(directory=DEFAULT_FRAGMENTS):
+    """Every file under the fragment directory on disk, as `compose` takes them."""
+    root = Path(directory)
+    found = []
+    for folder, _, names in os.walk(root):
+        for name in names:
+            path = Path(folder, name)
+            found.append((path.relative_to(root).as_posix(), path.read_text(encoding="utf-8")))
+    return sorted(found)
+
+
+def fragments_at(project, rev, timeout=5):
+    """Every file under the fragment directory at a revision, as `compose` takes them.
+
+    Raises what `subprocess.run` raises where git cannot answer, `CalledProcessError` for a revision
+    it has not got among them; a revision with no fragment directory holds none.
+    """
+    def git(args, given=None):
+        return subprocess.run(["git", "-C", str(project), *args], input=given,
+                              capture_output=True, check=True, timeout=timeout).stdout
+
+    blobs = []
+    for record in git(["ls-tree", "--full-tree", "-r", "-z", rev, "--", FRAGMENT_PATH]).split(b"\0"):
+        if not record:
+            continue
+        meta, path = record.split(b"\t", 1)
+        _, kind, oid = meta.split()
+        if kind == b"blob":
+            blobs.append((path.decode("utf-8"), oid))
+    if not blobs:
+        return []
+    batch = git(["cat-file", "--batch"], b"".join(oid + b"\n" for _, oid in blobs))
+    found, cursor = [], 0
+    for path, _ in blobs:
+        header_end = batch.index(b"\n", cursor)
+        size = int(batch[cursor:header_end].split()[2])
+        body = batch[header_end + 1:header_end + 1 + size]
+        cursor = header_end + 1 + size + 1
+        found.append((path[len(FRAGMENT_PATH) + 1:], body.decode("utf-8")))
+    return sorted(found)
 
 
 def compare_link(repo, previous_tag, tag):

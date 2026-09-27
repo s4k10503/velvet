@@ -152,10 +152,11 @@ jobs:
           # DLLs under Runtime/Plugins, so their Roslyn source in Generators~ (a Unity-ignored '~'
           # folder) is needed only to rebuild them; and the Preview example stories are this repo's own
           # verification fixtures — shipping them would inject "Examples/*" entries into every consumer's
-          # Preview window, so they stay in the dev project but not the package. Matches every Tests/
-          # folder (+ sibling Tests.meta), the test-only TestUtilities assembly, Generators~, and
-          # Editor/Preview/Examples (+ sibling Examples.meta).
-          REMOVE=$(git ls-files | grep -E '(^|/)Tests(/|\.meta$)|(^|/)TestUtilities(/|\.meta$)|(^|/)Generators~(/|\.meta$)|(^|/)Preview/Examples(/|\.meta$)' || true)
+          # Preview window, so they stay in the dev project but not the package. The CHANGELOG fragments
+          # under Changelog~ are what the next release folds into CHANGELOG.md, which ships. Matches
+          # every Tests/ folder (+ sibling Tests.meta), the test-only TestUtilities assembly,
+          # Generators~, Changelog~, and Editor/Preview/Examples (+ sibling Examples.meta).
+          REMOVE=$(git ls-files | grep -E '(^|/)Tests(/|\.meta$)|(^|/)TestUtilities(/|\.meta$)|(^|/)Generators~(/|\.meta$)|(^|/)Changelog~(/|\.meta$)|(^|/)Preview/Examples(/|\.meta$)' || true)
           if [ -n "$REMOVE" ]; then
             printf '%s\n' "$REMOVE" | tr '\n' '\0' | xargs -0 git rm --quiet
             git commit --quiet --amend --no-edit

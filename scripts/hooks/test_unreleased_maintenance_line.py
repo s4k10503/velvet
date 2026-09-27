@@ -147,6 +147,47 @@ class LineMainHasNotTaken(unittest.TestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ""))
 
 
+FRAGMENT_DIRECTORY = "Packages/com.velvet.core/Changelog~/unreleased"
+
+
+def commit_fragment(clone, branch, text):
+    """Commit a fragment to `branch` on the clone's origin, which the report fetches when it runs."""
+    origin = clone.parent / "origin"
+    git(origin, "checkout", "--quiet", branch)
+    (origin / FRAGMENT_DIRECTORY).mkdir(parents=True, exist_ok=True)
+    (origin / FRAGMENT_DIRECTORY / "backport.md").write_text(text)
+    git(origin, "add", "-A")
+    git(origin, "commit", "--quiet", "-m", "fragment")
+    git(origin, "checkout", "--quiet", "main")
+
+
+class Fragments(unittest.TestCase):
+    """An entry written as a fragment, which the CHANGELOG file itself never shows."""
+
+    def test_Given_ALineHoldingAnUnreleasedFragment_When_Reported_Then_ItIsNamed(self):
+        # Arrange
+        clone = repository("2.x", EMPTY)
+        commit_fragment(clone, "2.x", "### Fixed\n\n- A backport nobody released.\n")
+
+        # Act
+        done = run(clone)
+
+        # Assert
+        self.assertIn("origin/2.x holds 1 unreleased CHANGELOG entry", done.stdout)
+
+    def test_Given_MainCarryingTheLinesEntryAsAFragment_When_Reported_Then_NothingIsSaidAboutIt(self):
+        # Arrange
+        clone = repository("2.x", WAITING, merged=False)
+        commit_fragment(clone, "main", "### Fixed\n\n- A backport nobody released.\n")
+
+        # Act
+        done = run(clone)
+
+        # Assert — the first reading rides along, for the reason the squash case gives.
+        self.assertEqual(("holds 1 unreleased CHANGELOG entry" in done.stdout,
+                          "main does not" in done.stdout), (True, False))
+
+
 class MaintenanceLineReport(unittest.TestCase):
     def test_Given_ALineHoldingAnUnreleasedEntry_When_Reported_Then_ItIsNamed(self):
         # Arrange
