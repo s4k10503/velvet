@@ -206,7 +206,7 @@ namespace Velvet.Tests
         }
 
         private static VNode HoverHost(string prefix, string clip)
-            => V.Div(name: prefix + "-host", className: "relative shrink-0 w-[400px] h-[300px] items-start",
+            => V.Div(name: prefix + "-host", className: "relative shrink-0 w-[400px] h-[300px]",
                 children: new VNode[]
                 {
                     V.Div(name: prefix + "-card", className: "w-[100px] h-[50px] " + clip, whileHoverClass: "self-end"),
@@ -371,6 +371,20 @@ namespace Velvet.Tests
             Assert.That((Named("clip-card").resolvedStyle.width,
                     string.Join(",", wrapper.style.transitionProperty.value.Select(p => p.ToString()))),
                 Is.EqualTo((120f, "opacity")));
+        }
+
+        [Test]
+        public void Given_AClippedCardWithAnArbitraryDuration_When_TheDurationIsPatched_Then_ItsWrapperTransitionsForAsLongAsItsTwin()
+        {
+            // Arrange
+            Mount("", s => "w-[80px] h-[50px] transition-all " + (s == 0 ? "duration-[400ms]" : "duration-[700ms]"));
+
+            // Act
+            Step(1);
+
+            // Assert
+            Assert.That(string.Join(",", Named("clip-card").parent.resolvedStyle.transitionDuration),
+                Is.EqualTo(string.Join(",", Named("plain-card").resolvedStyle.transitionDuration)));
         }
 
         [Test]

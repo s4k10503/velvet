@@ -166,6 +166,59 @@ namespace Velvet.Tests
             Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(350f, 0f, 50f, 40f))));
         }
 
+        // GREEN_ON_BASE(characterization): the base bakes a patch-time wrap's mask at the wrap itself.
+        // Removing the geometry sync FiberClipPathApplier runs when it builds the wrapper reddens this.
+        [Test]
+        public void Given_ALaidOutCard_When_ClipAddedByPatch_Then_TheMaskIsBakedBeforeTheNextLayoutPass()
+        {
+            // Arrange
+            Mount(s => InFlowBox + (s == 0 ? "" : " " + Triangle));
+
+            // Act: the patch alone, with no layout pass to raise a geometry event.
+            s_setStep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            var wrapper = Named("card").parent;
+            Assert.That((IsClipWrapped(Named("card")), wrapper.style.backgroundImage.value.vectorImage != null),
+                Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base positions and sizes a fresh bake by the shape's bounds.
+        // Removing the ApplyClipPathBackgroundRect call after a fresh bake reddens this.
+        [Test]
+        public void Given_AnInsetClip_When_LaidOut_Then_TheMaskIsPositionedAndSizedByTheInsetBox()
+        {
+            // Arrange: the 100x50 card inset by 10 top, 20 right, 30 bottom and 40 left leaves a 40x10 box at (40, 10).
+            s_hostClass = "items-start";
+            Mount(_ => InFlowBox + " clip-path-[inset(10px_20px_30px_40px)]");
+
+            // Act
+            var ws = Named("card").parent.style;
+
+            // Assert
+            Assert.That((ws.backgroundPositionX.value.offset.value, ws.backgroundPositionY.value.offset.value,
+                    ws.backgroundSize.value.x.value, ws.backgroundSize.value.y.value),
+                Is.EqualTo((40f, 10f, 40f, 10f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rescales an all-percentage shape's bake to a new size.
+        // Removing the ApplyClipPathBackgroundRect call on that rescale reddens this.
+        [Test]
+        public void Given_APercentageClip_When_TheCardIsPatchedWider_Then_TheMaskIsRescaledToTheNewBox()
+        {
+            // Arrange
+            s_hostClass = "items-start";
+            Mount(s => (s == 0 ? "w-[100px]" : "w-[200px]") + " h-[50px] " + Triangle);
+
+            // Act
+            Step(1);
+
+            // Assert
+            var ws = Named("card").parent.style;
+            Assert.That((ws.backgroundSize.value.x.value, ws.backgroundSize.value.y.value), Is.EqualTo((200f, 50f)));
+        }
+
         // GREEN_ON_BASE(characterization): the base already anchors a patch-time wrap's mask at the wrapper origin.
         // Anchoring it at the element's old layout position reddens this.
         [Test]

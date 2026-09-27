@@ -234,6 +234,8 @@ namespace Velvet
         internal static void SyncClasses(VisualElement element)
         {
             var binding = Registered(s_byInner, element);
+            // MUTANT_SURVIVES(equivalent, clause removed): an element leaves its wrapper by an unwrap or a removal,
+            // and both take the wrapper out of the tree, so classes mirrored onto it after that reach nothing.
             if (binding == null || element.parent != binding.Wrapper)
             {
                 return;
