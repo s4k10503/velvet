@@ -10,7 +10,8 @@ namespace Velvet.Tests
     /// Pins what a label change into a zero-duration pose does to the reversal a presence child's exit cancel
     /// leaves running when its key comes back mid-exit: the reversal keeps the classes its cancel was told to
     /// keep, and keeps its transition. Also pins that a re-entry's classic enter that plays nothing leaves the
-    /// pose swap the same render's inherited label change starts to land.
+    /// pose swap the same render's inherited label change starts to run: it tweens, and lands the pose's classes
+    /// and its translate.
     /// </summary>
     [TestFixture]
     internal sealed class PresenceReversalLabelChangeTests : MotionSimulatedPanelTestsBase
@@ -50,6 +51,31 @@ namespace Velvet.Tests
 
         private static readonly StyleTransitionConfig s_tween = new() { DurationSec = 0.35f };
 
+        private static IReadOnlyDictionary<string, MotionVariant> s_followerPoses;
+
+        private static Dictionary<string, MotionVariant> FollowerPoses(string hidden, string visible) => new()
+        {
+            ["hidden"] = new MotionVariant(hidden, s_tween),
+            ["visible"] = new MotionVariant(visible, s_tween),
+        };
+
+        // Mounts the follower at hidden, removes it, then adds it back in the render that moves the parent's label
+        // to visible.
+        private MountedTree MountFollowerAndReAddAtVisible(PresenceStore store,
+            IReadOnlyDictionary<string, MotionVariant> poses)
+        {
+            s_store = store;
+            s_followerPoses = poses;
+            var mounted = V.Mount(Root, V.Component(FollowerHost, key: "root"));
+            Tick();
+            store.SetKeys(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+            store.Set("a", "visible");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            return mounted;
+        }
+
         // A presence child following its parent's label, whose own transition plays nothing: its removal is held
         // by a descendant's timed exit, and its re-entry plays the classic enter on that transition.
         [Component]
@@ -60,11 +86,7 @@ namespace Velvet.Tests
             foreach (var key in state.Keys)
             {
                 children.Add(V.Motion(key: key.ToString(), name: "item", transition: StyleTransitionConfig.None,
-                    variants: new Dictionary<string, MotionVariant>
-                    {
-                        ["hidden"] = new MotionVariant("opacity-0", s_tween),
-                        ["visible"] = new MotionVariant("opacity-50", s_tween),
-                    },
+                    variants: s_followerPoses,
                     children: new VNode[]
                     {
                         V.Motion(name: "inner", variants: new Dictionary<string, MotionVariant>
@@ -166,22 +188,47 @@ namespace Velvet.Tests
         {
             // Arrange
             using var store = new PresenceStore("hidden");
-            s_store = store;
-            using var mounted = V.Mount(Root, V.Component(FollowerHost, key: "root"));
-            Tick();
-            store.SetKeys(string.Empty);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Tick();
 
             // Act
-            store.Set("a", "visible");
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            using var mounted = MountFollowerAndReAddAtVisible(store, FollowerPoses("opacity-0", "opacity-50"));
             AdvancePast(0.35f);
 
             // Assert
             var classes = Root.Q<VisualElement>("item").GetClasses()
                 .Where(c => c.StartsWith("opacity-") || c.StartsWith("anim-"));
             Assert.That(string.Join(" ", classes), Is.EqualTo("opacity-50"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's classic enter that plays nothing cancels no pending swap.
+        // So the swap the follower's label change starts keeps the transition it tweens on.
+        [Test]
+        public void Given_AFollowerHeldByADescendantsExit_When_ItReturnsAsItsInheritedLabelChanges_Then_ItsPoseSwapTweens()
+        {
+            // Arrange
+            using var store = new PresenceStore("hidden");
+
+            // Act
+            using var mounted = MountFollowerAndReAddAtVisible(store, FollowerPoses("opacity-0", "opacity-50"));
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's classic enter that plays nothing cancels no pending swap.
+        // So the swap runs and writes the translate its pose holds back for it.
+        [Test]
+        public void Given_AFollowerHeldByADescendantsExit_When_ItReturnsAsItsInheritedLabelChanges_Then_ItsPoseTranslateIsWritten()
+        {
+            // Arrange
+            using var store = new PresenceStore("hidden");
+
+            // Act
+            using var mounted = MountFollowerAndReAddAtVisible(store,
+                FollowerPoses("translate-x-[0px]", "translate-x-[40px]"));
+            AdvancePast(0.35f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("item").style.translate.value.x.value, Is.EqualTo(40f));
         }
     }
 }

@@ -39,10 +39,6 @@ namespace Velvet
             // The persistent resting set a cancel must restore — a variant exit's from-classes, a variant
             // enter's to-classes; null for preset plays, whose classes are all transient.
             internal string[]? RestingClasses { get; init; }
-            // A variant enter's whole resting class set once it lands — its element's own classes and the pose's
-            // — where the caller knows it; null elsewhere, which leaves a variant enter's to classes standing in
-            // for it (see CancelSwapAhead).
-            internal string[]? AppliedClasses { get; init; }
             internal Action? OnComplete { get; init; }
             internal Action? OnSwap { get; init; }
             internal float DelaySec { get; init; }
@@ -113,7 +109,8 @@ namespace Velvet
         // StyleTransitionConfig, so this unpacks it once here instead of each call site repeating the unpack.
         // onSwap: run at the swap, once the classes have moved. Only a play for which RunsOnSwap holds runs it,
         // and one cancelled before its swap never does.
-        // appliedClasses: the element's whole resting class set once this play lands (see VariantPlay).
+        // appliedClasses: the element's whole resting class set once this play lands — its own classes and the
+        // pose's — where the caller knows it (see CancelSwapAhead); the to classes stand in for it elsewhere.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
             Action? onSwap = null, string[]? appliedClasses = null)
@@ -166,7 +163,6 @@ namespace Velvet
                 FromClasses = fromClasses ?? System.Array.Empty<string>(),
                 ToClasses = resolvedTo,
                 RestingClasses = resolvedTo,
-                AppliedClasses = appliedClasses,
                 OnComplete = onComplete,
                 OnSwap = onSwap,
                 DelaySec = delaySec,
@@ -186,6 +182,10 @@ namespace Velvet
                 return;
             }
 
+            if (!IsPlayableDuration(durationSec))
+            {
+                CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
+            }
             PlayEnterInternal(in play, durationSec, easing, variantMode: true, propertyOverrides);
         }
 
@@ -196,11 +196,6 @@ namespace Velvet
             var fromClasses = play.FromClasses;
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
-
-            if (!IsPlayableDuration(durationSec))
-            {
-                CancelSwapAhead(element, play.RestingClasses, play.AppliedClasses ?? play.RestingClasses);
-            }
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -977,32 +972,26 @@ namespace Velvet
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
 
-        // What a play that does not tween cancels: an earlier tween variant enter whose swap has not run, which
-        // would otherwise put that enter's target classes back beside this play's. A swap that has run, a
+        // What a variant play that does not tween cancels: an earlier tween variant enter whose swap has not run,
+        // which would otherwise put that enter's target classes back beside this play's. A swap that has run, a
         // reversal a cancelled exit parked, and a classic enter, whose classes are transient overlays, are left
-        // running, so a property this play does not name keeps moving on them.
-        // restingTo: a variant play's to classes, null for a classic play. A variant play's cancel puts back those
-        // and the ones of the cancelled enter's to classes, which it stripped as it started, that appliedClasses
-        // still holds: a Motion's own class is among them where the interrupted pose repeats it. A classic
-        // play's to classes are transient, so its cancel puts back the cancelled enter's own resting classes.
-        private void CancelSwapAhead(VisualElement element, string[]? restingTo, string[]? appliedClasses)
+        // running, so a property this play does not name keeps moving on them. A classic play cancels nothing:
+        // it adds no class that a pending swap could land beside. The cancel puts back restingTo, and those of
+        // the cancelled enter's to classes, which it stripped as it started, that appliedClasses still holds: a
+        // Motion's own class is among them where the interrupted pose repeats it.
+        private void CancelSwapAhead(VisualElement element, string[] restingTo, string[] appliedClasses)
         {
             if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
             {
-                string[]? resting = null;
-                if (restingTo != null)
+                var resting = new List<string>(restingTo);
+                foreach (var cls in pending.ToClasses!)
                 {
-                    var classes = new List<string>(restingTo);
-                    foreach (var cls in pending.ToClasses!)
+                    if (Array.IndexOf(appliedClasses, cls) >= 0)
                     {
-                        if (Array.IndexOf(appliedClasses!, cls) >= 0)
-                        {
-                            classes.Add(cls);
-                        }
+                        resting.Add(cls);
                     }
-                    resting = classes.ToArray();
                 }
-                CancelPending(_pendingEnters, element, restingOverride: resting);
+                CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
             }
         }
 
