@@ -402,7 +402,7 @@ namespace Velvet.Tests
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
             s_siblingCFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — the shift loop walks every following sibling, so A's single delta re-bases both B and C
+            // Assert — A's single delta moves every component behind it, so it re-bases both B and C
             Assert.That((bParked, cParked, ThreeSiblingReversedLayout(host, aCount: 4, bCount: 20, cCount: 20)),
                 Is.EqualTo((true, true, true)),
                 "Both B and C park, and A's single delta re-bases both; each resumes its reversed order at its rebased slot");
