@@ -173,13 +173,13 @@ namespace Velvet
             var logicalIndex = 0;
             for (var i = 0; i < count; i++)
             {
-                var child = container[i];
                 // An out-of-flow child is not a layout sibling, so it draws no divider and does not
                 // consume the "first child" slot for whichever in-flow child follows it.
-                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                if (StyleOutOfFlowChild.IsOutOfFlow(container[i]))
                 {
                     continue;
                 }
+                var child = ClipPathLayoutBox.InnerOf(container[i]);
                 // The first child has no divider (the `> * + *` rule starts at the second child).
                 var isDivider = logicalIndex != 0;
                 ApplyToChild(child, edge, isDivider);
@@ -378,7 +378,7 @@ namespace Velvet
             var count = container.childCount;
             for (var i = 0; i < count; i++)
             {
-                var child = container[i];
+                var child = ClipPathLayoutBox.InnerOf(container[i]);
                 DetachDash(child);
                 ResetEdge(child, edge);
             }
@@ -390,7 +390,7 @@ namespace Velvet
             for (var i = _bordered.Count - 1; i >= 0; i--)
             {
                 var child = _bordered[i];
-                if (child.parent != container)
+                if (ClipPathLayoutBox.Of(child).parent != container)
                 {
                     ReleaseBordered(child);
                     _bordered.RemoveAt(i);

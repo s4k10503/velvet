@@ -179,20 +179,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
   elements one component renders, as React scopes it.
 
-- An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
-  declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
-  clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
-  it rather than against the parent: in a column parent the wrapper took the parent's width and no
-  height, so an element offset from all four edges came out with no height and its `inset-0` child
-  with it. The wrapper around an absolute element now leaves the flow, spans the parent and takes the
-  parent's flex-direction, `justify-content` and `align-items`, so an absolute clipped element with no
-  offsets is placed where the parent's alignment puts it rather than centred on the wrapper. The
-  wrapper follows the element into and out of the flow when a render or a variant adds or drops
-  `absolute`, including when that leaves the element's box where it was. Still different from CSS:
-  whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
-  or alignment alone is followed only once the element's own box or its clip next changes, or a later
-  render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
-  centred in its wrapper.
+- An element carrying a `clip-path-*` utility is placed and sized in its parent as the same element
+  without the clip is, apart from the differences stated last, since `clip-path` changes painting only.
+  The wrapper that hosts the clip was laid out in the element's place as a relative flex row centring
+  it, so an in-flow clipped element sat centred across its parent,
+  lost the parent's cross-axis stretch and its own `self-*`, resolved a percentage size or an auto margin
+  against the wrapper, and came out with no size in a `grid-cols-*` cell or a `V.VirtualList` row, whose
+  slot size landed on the wrapper. An absolutely positioned one resolved its edge offsets against the
+  wrapper, so one offset from all four edges of a column parent came out with no height, and an
+  `absolute inset-0` child with it. The wrapper now carries the element's classes and the inline values
+  that place or size it, the element keeps its paint and fills the wrapper, and a parent's `[&>*]:`
+  payload and `divide-*` border are applied to the clipped child rather than to its wrapper. Still
+  different from CSS: a percentage padding on the clipped element resolves against its own width rather
+  than its parent's, and a query by class finds the wrapper before the element.
 
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component

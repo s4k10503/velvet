@@ -145,9 +145,11 @@ namespace Velvet
                 {
                     continue;
                 }
-                ApplyPayloads(child, true);
-                StyleChildOwnership.Claim(_ctx.ChildVariantOwners, child, this);
-                _applied.Add(child);
+                // A clipped child sits in the container as its clip wrapper; the payload is the child's.
+                var target = ClipPathLayoutBox.InnerOf(child);
+                ApplyPayloads(target, true);
+                StyleChildOwnership.Claim(_ctx.ChildVariantOwners, target, this);
+                _applied.Add(target);
             }
 
             _lastSignature = signature;
@@ -177,13 +179,14 @@ namespace Velvet
 
         // Offers every tracked child that has left the container for release, then prunes it. A child the
         // reconciler removed has had its claim dropped by ClearElementSideTables already, so what this
-        // reaches is the reparents: a wrapper inserted between container and child, a z-layer hoist.
+        // reaches is the reparents, such as a z-layer hoist. A clip wrapper inserted between container and child
+        // stands in for the child rather than taking it out of the container.
         private void ResetStaleApplied(VisualElement container)
         {
             for (var i = _applied.Count - 1; i >= 0; i--)
             {
                 var child = _applied[i];
-                if (child.parent != container)
+                if (ClipPathLayoutBox.Of(child).parent != container)
                 {
                     ReleasePayloads(child);
                     _applied.RemoveAt(i);

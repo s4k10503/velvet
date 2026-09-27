@@ -643,5 +643,44 @@ class UndecodablePublicationTests(unittest.TestCase):
         self.assertEqual((code, said), (0, ""))
 
 
+
+class WhereTheEntryGoes(unittest.TestCase):
+    """The refusal's advice, which differs between a tree that reads fragments and a maintenance line
+    cut before they existed."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="closed-version-advice-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        subprocess.run(["git", "-C", str(self.root), "init", "--quiet"],
+                       check=True, capture_output=True)
+        self.changelog = self.root / CHANGELOG_REL
+        self.changelog.parent.mkdir(parents=True)
+        self.changelog.write_text(RELEASED)
+
+    def refusal(self):
+        return judged(self.root, self.changelog, "- A thing that shipped.\n",
+                      "- A thing that shipped.\n- A thing that did not.\n")
+
+    def test_Given_ATreeWithNoFragmentCompiler_When_AnEntryIsRefused_Then_ItIsSentInline(self):
+        # Arrange -- the shape of a worktree on the 2.x line, whose release reads no fragment.
+        code, said = self.refusal()
+
+        # Act / Assert
+        self.assertEqual((code, "this tree has no scripts/release/compile_changelog.py" in said),
+                         (2, True))
+
+    def test_Given_ATreeCarryingTheFragmentCompiler_When_AnEntryIsRefused_Then_ItIsSentToAFragment(self):
+        # Arrange
+        compiler = self.root / "scripts/release/compile_changelog.py"
+        compiler.parent.mkdir(parents=True)
+        compiler.write_text("")
+
+        # Act
+        code, said = self.refusal()
+
+        # Assert
+        self.assertEqual((code, "in a fragment" in said), (2, True))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -344,7 +344,7 @@ namespace Velvet
                 _margined.Add(child);
             }
 
-            HoldMargins(container, negHalf);
+            HoldMargins(ClipPathLayoutBox.Of(container), negHalf);
         }
 
         // Clears every margin this manipulator still owns (invoked on detach / removal / mode flip).
@@ -393,7 +393,7 @@ namespace Velvet
             {
                 HandBackMargins(container[i]);
             }
-            HandBackMargins(container);
+            HandBackMargins(ClipPathLayoutBox.Of(container));
             _applied = Edge.None;
         }
 

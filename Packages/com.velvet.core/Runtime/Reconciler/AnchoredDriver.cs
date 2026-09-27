@@ -29,7 +29,7 @@ namespace Velvet
     /// Drives an Anchored element's screen position: every tick, projects <see cref="AnchoredSettings.Target"/>'s
     /// world position through <see cref="AnchoredSettings.Camera"/> (or <see cref="Camera.main"/> when null) via
     /// <see cref="RuntimePanelUtils.CameraTransformWorldToPanel"/>, converts the result from panel-root space into
-    /// the element's own PARENT-relative space (subtracting <c>element.parent.worldBound.position</c> — UI
+    /// the element's own PARENT-relative space (subtracting the parent's <c>worldBound.position</c> — UI
     /// Toolkit resolves <c>position: absolute</c> <c>left</c>/<c>top</c> against the immediate parent, not the
     /// panel root, unlike CSS's nearest-positioned-ancestor walk), and writes the result as inline
     /// <c>left</c>/<c>top</c> — a screen-space projection (unlike <c>V.WorldSpace</c>, which renders content
@@ -63,8 +63,10 @@ namespace Velvet
             // Forced inline, not through a USS class: dynamic left/top positioning has no other way to work,
             // and writing it here (rather than baking "absolute" into V.Anchored's className, which would grow
             // ParseClassNames' cache by one entry per distinct caller className) mirrors how
-            // GeneralPathReconciler pins a PopLayout ghost out of flow via style.position directly.
-            element.style.position = Position.Absolute;
+            // GeneralPathReconciler pins a PopLayout ghost out of flow via style.position directly. Position,
+            // offsets and display go to the box its parent lays out, which is the clip wrapper of a clipped element
+            // (ClipPathLayoutBox).
+            ClipPathLayoutBox.Of(element).style.position = Position.Absolute;
             binding.Tick = element.schedule.Execute(() => Sync(element, binding)).Every(TickIntervalMs);
             // Also re-sync on the element's own geometry changes (mirrors SceneViewDriver's geometry-driven
             // texture sync): the recurring tick can fire BEFORE the first layout pass has placed the
@@ -101,10 +103,11 @@ namespace Velvet
             // absolute position (or a display:none from having last synced behind the camera) onto
             // whatever it is reused for next — the recurring pool-reuse footgun this codebase's own reset
             // helpers (e.g. FiberElementPoolReset) exist to avoid.
-            element.style.position = StyleKeyword.Null;
-            element.style.left = StyleKeyword.Null;
-            element.style.top = StyleKeyword.Null;
-            element.style.display = StyleKeyword.Null;
+            var box = ClipPathLayoutBox.Of(element).style;
+            box.position = StyleKeyword.Null;
+            box.left = StyleKeyword.Null;
+            box.top = StyleKeyword.Null;
+            box.display = StyleKeyword.Null;
             ClearAppliedScale(element, binding);
         }
 
@@ -125,7 +128,7 @@ namespace Velvet
         // failing never leaves a stale position/scale on screen.
         private static void HideAndClearScale(VisualElement element, AnchoredBinding binding)
         {
-            element.style.display = DisplayStyle.None;
+            ClipPathLayoutBox.Of(element).style.display = DisplayStyle.None;
             ClearAppliedScale(element, binding);
         }
 
@@ -212,7 +215,8 @@ namespace Velvet
             // the "hidden" USS class Props.Visible = false toggles (FiberPropApplier.ApplyVisible), since a
             // non-!important stylesheet rule never beats an inline style. StyleKeyword.Null lets the normal
             // class-driven cascade (including Visible = false) decide instead.
-            element.style.display = StyleKeyword.Null;
+            var box = ClipPathLayoutBox.Of(element);
+            box.style.display = StyleKeyword.Null;
 
             var panelPoint = RuntimePanelUtils.CameraTransformWorldToPanel(panel, target.position, camera);
             // CameraTransformWorldToPanel returns a point in PANEL-ROOT space; position: absolute resolves
@@ -227,9 +231,9 @@ namespace Velvet
             // only when the element sits directly on the panel root (no parent), which already coincides
             // with panel space.
             var localPoint = panelPoint;
-            if (element.parent != null)
+            if (box.parent != null)
             {
-                var parentOrigin = (Vector2)element.parent.worldBound.position;
+                var parentOrigin = (Vector2)box.parent.worldBound.position;
                 // A parent that has never been laid out reports a NaN-sized worldBound whose origin cannot
                 // be trusted yet — skip this write and let the geometry callback registered in Attach re-sync
                 // the moment the first layout pass settles, rather than baking a wrong origin into left/top.
@@ -240,8 +244,8 @@ namespace Velvet
                 localPoint = panelPoint - parentOrigin;
             }
             var offset = binding.Settings.Offset;
-            element.style.left = localPoint.x + offset.x;
-            element.style.top = localPoint.y + offset.y;
+            box.style.left = localPoint.x + offset.x;
+            box.style.top = localPoint.y + offset.y;
 
             var distanceFactor = binding.Settings.DistanceFactor;
             if (distanceFactor.HasValue)
