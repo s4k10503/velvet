@@ -30,6 +30,9 @@ namespace Velvet.Tests
         static readonly FieldInfo ContextField =
             typeof(VelvetMainThread).GetField("_context", BindingFlags.Static | BindingFlags.NonPublic)!;
 
+        static readonly FieldInfo CapturedField =
+            typeof(VelvetMainThread).GetField("_captured", BindingFlags.Static | BindingFlags.NonPublic)!;
+
         static int s_mainThreadId;
         static int s_resumedOffTheMainThread;
         static int s_settled;
@@ -357,7 +360,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheMainThreadNotYetCaptured_When_AnotherThreadAsksFirst_Then_OnlyTheMainThreadIsTakenForIt()
+        public void Given_TheMainThreadNotYetCaptured_When_AThreadWithoutUnitysContextAsksFirst_Then_TheMainThreadIsStillTakenForIt()
         {
             // Arrange
             ThreadIdField.SetValue(null, 0);
@@ -369,6 +372,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((elsewhere, here), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_TheMainThreadNotYetCaptured_When_APoolThreadHoldingUnitysContextAsksFirst_Then_TheMainThreadIsStillTakenForIt()
+        {
+            // Arrange
+            var unityContext = SynchronizationContext.Current;
+            ThreadIdField.SetValue(null, 0);
+            var poolThreadTaken = true;
+            using var asked = new ManualResetEventSlim();
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                SynchronizationContext.SetSynchronizationContext(unityContext);
+                poolThreadTaken = VelvetMainThread.IsCurrent;
+                SynchronizationContext.SetSynchronizationContext(null);
+                asked.Set();
+            });
+            asked.Wait();
+
+            // Act
+            var mainThreadTaken = VelvetMainThread.IsCurrent;
+
+            // Assert
+            Assert.That((poolThreadTaken, mainThreadTaken), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AHandoffPostedAfterAnEarlyCapture_When_TheLoadTimeCaptureRuns_Then_TheHandoffStillRuns()
+        {
+            // Arrange
+            ThreadIdField.SetValue(null, 0);
+            CapturedField.SetValue(null, false);
+            var earlyCapture = VelvetMainThread.IsCurrent;
+            var ran = false;
+            OnAnotherThread(() => VelvetMainThread.Post(_ => ran = true, null));
+
+            // Act
+            CaptureMethod.Invoke(null, null);
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That((earlyCapture, ran), Is.EqualTo((true, true)));
         }
 
         [Test]

@@ -28,14 +28,18 @@ namespace Velvet
         static List<Handoff> _pending = new();
         static int _threadId;
         static SynchronizationContext? _context;
+        static bool _captured;
 
-        // Before Capture runs, a caller is taken for the main thread only when it holds Unity's context,
-        // so that code running ahead of Capture on the main thread is not refused as off it.
+        // Before Capture runs, a caller is taken for the main thread only when it holds Unity's context
+        // and is not a pool thread, so that code running ahead of Capture on the main thread is not
+        // refused as off it.
         internal static bool IsCurrent
         {
             get
             {
-                if (_threadId == 0 && SynchronizationContext.Current?.GetType().FullName == UnityContextTypeName)
+                if (_threadId == 0
+                    && !Thread.CurrentThread.IsThreadPoolThread
+                    && SynchronizationContext.Current?.GetType().FullName == UnityContextTypeName)
                 {
                     CaptureThread();
                 }
@@ -91,13 +95,21 @@ namespace Velvet
 #if UNITY_EDITOR
         [InitializeOnLoadMethod]
 #endif
+        // The first capture in a domain keeps what is pending, since a continuation registered on the
+        // main thread ahead of it may already have been handed off. A later one in the same domain, on
+        // entering Play Mode, drops what was pending before it.
         static void Capture()
         {
-            CaptureThread();
-            lock (Gate)
+            if (_captured)
             {
-                _pending.Clear();
+                lock (Gate)
+                {
+                    _pending.Clear();
+                }
             }
+
+            _captured = true;
+            CaptureThread();
         }
 
         static void CaptureThread()
