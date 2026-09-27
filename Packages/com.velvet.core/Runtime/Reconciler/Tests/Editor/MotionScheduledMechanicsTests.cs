@@ -61,6 +61,7 @@ namespace Velvet.Tests
             s_setMoved = default;
             s_setStop = default;
             s_setStep = default;
+            s_tabs = null;
             s_bump = null;
             s_store = null;
         }
@@ -529,6 +530,175 @@ namespace Velvet.Tests
             // Assert
             var remounted = host.Q<VisualElement>("remount");
             Assert.That((row0.panel, remounted.style.translate.keyword), Is.EqualTo(((IPanel)null, StyleKeyword.Null)));
+        }
+
+        // Step 1 flips the outer Motion's element type and moves it 200px right, and moves the inner one 20px
+        // right inside it: both are recreated in one render, the inner one under a new parent.
+        [Component]
+        private static VNode NestedInTypeFlippedOuterRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "outer",
+                    layoutId: "outer-box",
+                    elementType: step == 0 ? null : typeof(Box),
+                    transition: s_layoutSpring,
+                    className: $"left-[{step * 200}px] top-[0px] w-[300px] h-[300px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: $"left-[{20 + step * 20}px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInsideATypeFlippedOne_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(NestedInTypeFlippedOuterRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the outer one tweens from 200px left and carries the inner one, which tweens only the
+            // 20px it moved inside the outer one.
+            var outer = Root.Q<VisualElement>("outer");
+            var inner = Root.Q<VisualElement>("inner");
+            Assert.That((UnityEngine.Mathf.Abs(outer.style.translate.value.x.value + 200f) < 50f,
+                    UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 10f),
+                Is.EqualTo((true, true)));
+        }
+
+        private readonly record struct TabState(int Index);
+
+        private sealed class TabStore : Store<TabState>
+        {
+            public TabStore(int initial) : base(new TabState(initial)) { }
+            public void Select(int index) => SetState(_ => new TabState(index));
+            protected override void ResetCore() => SetState(_ => new TabState(0));
+        }
+
+        private static TabStore s_tabs;
+
+        // Two tab components 200px apart, each reading the selected index from one store; the selected one
+        // renders the underline. One store update re-renders both.
+        private static VNode TabBody(int index, int selected) => V.Div(
+            className: $"left-[{index * 200}px] top-[0px] w-[100px] h-[50px]",
+            children: selected == index
+                ? new VNode[] { V.Motion(name: "underline", layoutId: "underline", transition: s_layoutSpring, className: "w-[100px] h-[10px]") }
+                : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode FirstTabRender() => TabBody(0, Hooks.UseStore(s_tabs, s => s.Index));
+
+        [Component]
+        private static VNode SecondTabRender() => TabBody(1, Hooks.UseStore(s_tabs, s => s.Index));
+
+        [Component]
+        private static VNode TabsRender() => V.Div(children: new VNode[]
+        {
+            V.Component(FirstTabRender, key: "first"),
+            V.Component(SecondTabRender, key: "second"),
+        });
+
+        private float UnderlineTranslateAfterSelecting(int from, int to)
+        {
+            s_tabs = new TabStore(from);
+            using var mounted = V.Mount(Root, V.Component(TabsRender, key: "root"));
+            Tick();
+            Tick();
+            s_tabs.Select(to);
+            Tick();
+            Tick();
+            var underline = Root.Q<VisualElement>("underline");
+            return underline.style.scale.keyword == StyleKeyword.Null ? underline.style.translate.value.x.value : float.NaN;
+        }
+
+        [Test]
+        public void Given_TwoTabComponentsOnOneStore_When_TheSecondIsSelected_Then_TheUnderlineTweensFromTheFirst()
+        {
+            // Arrange / Act
+            var translate = UnderlineTranslateAfterSelecting(0, 1);
+
+            // Assert — pinned near the first tab, 200px left of the second.
+            Assert.That(UnityEngine.Mathf.Abs(translate + 200f), Is.LessThan(50f));
+        }
+
+        [Test]
+        public void Given_TwoTabComponentsOnOneStore_When_TheFirstIsSelected_Then_TheUnderlineTweensFromTheSecond()
+        {
+            // Arrange / Act
+            var translate = UnderlineTranslateAfterSelecting(1, 0);
+
+            // Assert — pinned near the second tab, 200px right of the first.
+            Assert.That(UnityEngine.Mathf.Abs(translate - 200f), Is.LessThan(50f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps no box for an id whose element left in an earlier render.
+        // A box a batch drain leaves must expire at that drain's end rather than wait for a pass outside one.
+        [Test]
+        public void Given_TwoTabComponentsOnOneStore_When_NoneIsSelectedAndThenTheSecond_Then_TheUnderlineAppearsInPlace()
+        {
+            // Arrange
+            s_tabs = new TabStore(0);
+            using var mounted = V.Mount(Root, V.Component(TabsRender, key: "root"));
+            Tick();
+            Tick();
+            s_tabs.Select(-1);
+            Tick();
+            Tick();
+            var removed = Root.Q<VisualElement>("underline");
+
+            // Act
+            s_tabs.Select(1);
+            Tick();
+            Tick();
+
+            // Assert
+            var underline = Root.Q<VisualElement>("underline");
+            Assert.That((removed, underline?.style.translate.keyword),
+                Is.EqualTo(((VisualElement)null, (StyleKeyword?)StyleKeyword.Null)));
+        }
+
+        // Step 1 moves the box out of a parent drawn at half scale into an unscaled one above it.
+        [Component]
+        private static VNode ScaledParentBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "first", className: "w-[400px] h-[200px]", children: step == 1 ? new[] { SharedBox(200) } : Array.Empty<VNode>()),
+                V.Div(key: "second", className: "w-[400px] h-[200px] scale-[0.5]",
+                    children: step == 1 ? Array.Empty<VNode>() : new[] { SharedBox(200) }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInAHalfScaleParent_When_ItMovesToAnUnscaledOne_Then_ItTweensFromHalfItsSize()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(ScaledParentBoxRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a new element, starting at the half size the old one was drawn at.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement),
+                    UnityEngine.Mathf.Abs(replacement.style.scale.value.value.x - 0.5f) < 0.1f),
+                Is.EqualTo((false, true)));
         }
 
         private static StateUpdater<int> s_setStop;

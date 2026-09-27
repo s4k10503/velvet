@@ -701,10 +701,10 @@ namespace Velvet
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
         public HashSet<string> LayoutIdSnapshots { get; } = new();
 
-        // The GeometryChangedEvent callback a layoutId patch waits on for its new rect. A registered
-        // callback, so it is removed explicitly at teardown like LayoutIdTicks below rather than through
-        // _pureElementSideTables.
-        public Dictionary<VisualElement, EventCallback<GeometryChangedEvent>> LayoutIdPendingSettles { get; } = new();
+        // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
+        // tweens from, which a descendant's settle reads too. A registered callback, so it is removed
+        // explicitly at teardown like LayoutIdTicks below rather than through _pureElementSideTables.
+        public Dictionary<VisualElement, LayoutIdPendingSettle> LayoutIdPendingSettles { get; } = new();
 
         // The recurring physics tick for an in-flight layoutId FLIP tween, keyed by the animating
         // element. Owns a real scheduled resource (unlike ElementToLayoutId above), so it is deliberately

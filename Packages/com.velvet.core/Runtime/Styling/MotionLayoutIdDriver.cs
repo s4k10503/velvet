@@ -13,11 +13,15 @@ namespace Velvet
     // panel-independent physics channels (translate x/y, uniform scale) — the same machinery every other
     // spring-driven Motion transition already shares — rather than building a second driver.
     //
-    // A box is a layout rect together with the parent it is relative to and its position in panel space.
-    // Two boxes under one parent compare their layout rects; under different parents, their panel-space
-    // positions. Panel space throughout was rejected: a nested layoutId Motion that moves inside a moving
-    // one then no longer tweens by its own move inside it
+    // A box is a layout rect together with the parent it is relative to and the rect it covers in panel
+    // space. Two boxes under one parent compare their layout rects; under different parents, their panel
+    // rects, taken into the new parent less the inverse translate every ancestor still waiting on its own
+    // layoutId settle is about to apply. Panel space throughout was rejected: a nested layoutId Motion that
+    // moves inside a moving one then no longer tweens by its own move inside it
     // (Given_ALayoutIdMotionInsideAnother_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
+    // The ancestors' translate is subtracted rather than read off their transform: an inner Motion settles
+    // before the outer one has applied it
+    // (Given_ALayoutIdMotionInsideATypeFlippedOne_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
     //
     // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v),
     // so a non-uniform rect change (width and height scale by different factors) averages the two axis
@@ -52,16 +56,11 @@ namespace Velvet
             CancelPendingSettle(element, ctx);
             if (oldBox is not { } fromBox) return;
 
-            EventCallback<GeometryChangedEvent>? onSettled = null;
-            onSettled = _ =>
+            var pending = new LayoutIdPendingSettle(fromBox);
+            pending.Callback = _ =>
             {
                 CancelPendingSettle(element, ctx);
-                var parent = element.hierarchy.parent;
-                var from = ReferenceEquals(fromBox.Parent, parent)
-                    ? fromBox.Local
-                    : new Rect(parent.WorldToLocal(fromBox.PanelPosition), fromBox.Local.size);
-
-                var plan = ComputeDeltaPlan(from, element.layout);
+                var plan = ComputeDeltaPlan(FromRect(element, fromBox, ctx), element.layout);
                 if (plan.IsEmpty) return;
 
                 var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
@@ -75,8 +74,33 @@ namespace Velvet
                 MotionSpringDriver.ApplyCurrentValues(element, state);
                 StartTick(element, state, ctx);
             };
-            element.RegisterCallback(onSettled);
-            ctx.LayoutIdPendingSettles[element] = onSettled;
+            element.RegisterCallback(pending.Callback);
+            ctx.LayoutIdPendingSettles[element] = pending;
+        }
+
+        // The old box in the frame of the element's current parent.
+        private static Rect FromRect(VisualElement element, LayoutIdBox fromBox, ReconcilerContext ctx)
+        {
+            var parent = element.hierarchy.parent;
+            if (ReferenceEquals(fromBox.Parent, parent)) return fromBox.Local;
+            var panel = fromBox.Panel;
+            panel.position -= PendingPanelShift(parent, ctx);
+            return parent.WorldToLocal(panel);
+        }
+
+        // How far, in panel space, the inverse translates the ancestors' pending settles will apply move this
+        // element. Only translate: an ancestor's inverse scale is not accounted for.
+        private static Vector2 PendingPanelShift(VisualElement? ancestor, ReconcilerContext ctx)
+        {
+            var shift = Vector2.zero;
+            for (; ancestor?.hierarchy.parent is { } parent; ancestor = parent)
+            {
+                if (!ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)) continue;
+                var layout = ancestor.layout;
+                var from = FromRect(ancestor, pending.From, ctx);
+                shift += parent.LocalToWorld(from.position) - parent.LocalToWorld(layout.position);
+            }
+            return shift;
         }
 
         private static bool TryReadBox(VisualElement element, out LayoutIdBox box)
@@ -84,7 +108,7 @@ namespace Velvet
             box = default;
             var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
-            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout.position));
+            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout));
             return true;
         }
 
@@ -92,7 +116,7 @@ namespace Velvet
         {
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
-                element.UnregisterCallback(pending);
+                element.UnregisterCallback(pending.Callback);
             }
         }
 
@@ -150,7 +174,8 @@ namespace Velvet
             }
         }
 
-        // Called at the top-level pass boundary.
+        // Called where a render ends: the end of a batch drain, whose passes are one render, and the
+        // boundary of a top-level pass outside a drain.
         internal static void ExpireSnapshots(ReconcilerContext ctx)
         {
             foreach (var layoutId in ctx.LayoutIdSnapshots)
@@ -199,15 +224,23 @@ namespace Velvet
 
     internal readonly struct LayoutIdBox
     {
-        public LayoutIdBox(VisualElement parent, Rect local, Vector2 panelPosition)
+        public LayoutIdBox(VisualElement parent, Rect local, Rect panel)
         {
             Parent = parent;
             Local = local;
-            PanelPosition = panelPosition;
+            Panel = panel;
         }
 
         public VisualElement Parent { get; }
         public Rect Local { get; }
-        public Vector2 PanelPosition { get; }
+        public Rect Panel { get; }
+    }
+
+    internal sealed class LayoutIdPendingSettle
+    {
+        public LayoutIdPendingSettle(LayoutIdBox from) => From = from;
+
+        public LayoutIdBox From { get; }
+        public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
     }
 }

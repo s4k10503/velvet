@@ -12,7 +12,12 @@
 
 - A `layoutId` move between two parents compares the old and new boxes in panel space. It compared them
   relative to each element's own parent, so a move between parents placed apart jump-cut wherever the box
-  sat at the same place inside each.
+  sat at the same place inside each, and a move out of a scaled parent started at the element's unscaled
+  size rather than the size it was drawn at.
+
+- A `layoutId` handed from one component to another by one state or store update tweens whichever of the
+  two re-renders first. When the component losing it re-rendered first, its element's teardown dropped the
+  id before the other component's Motion registered, and the move jump-cut.
 
 - A `layoutId` Motion of an element type the pool reuses, such as `Button` or `Label`, removed while its
   move was waiting for layout no longer plays that move's tween on the element the pool hands out next.
