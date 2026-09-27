@@ -1929,7 +1929,8 @@ namespace Velvet
             }
         }
 
-        // Lands the descendant's hold on the anchor's terms (DispatchPresenceExits).
+        // Lands the descendant's hold, and writes its exit pose's inline values at the swap, on the anchor's terms
+        // (DispatchPresenceExits).
         private void PlayDescendantExit(ReconcilerContext.PresenceDescendantExit exit,
             ReconcilerContext.PresenceExitWait wait, float staggerSec)
         {
@@ -1939,8 +1940,13 @@ namespace Velvet
             {
                 _patcher.LandInlineHold(element);
             }
+            var onExitSwap = exit.RestoresResting
+                ? _patcher.PlanInlineExit(element, _ctx.MotionNodes.GetValueOrDefault(element)?.ClassNames,
+                    exit.Config.ExitToClasses)
+                : null;
             _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => wait.CompleteDescendant(element),
-                restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec);
+                restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec,
+                onSwap: onExitSwap);
             if (!landsBeforeExit)
             {
                 _patcher.LandInlineHold(element);
@@ -2057,30 +2063,33 @@ namespace Velvet
                 FiberTreeReturn.NormalizeToArray(ghostNode), boundaryFiber);
         }
 
-        // A re-entry's half of the descendant exits StartPresenceExit started: an exit still playing is
-        // cancelled, which returns a variant exit to its resting pose, and one that completed has that pose put
-        // back by hand, since nothing is left to cancel. A descendant that left the tree is not touched.
+        // A re-entry's half of the descendant exits StartPresenceExit started. A variant exit returns to the
+        // resting pose the re-added child's reconcile recorded, as CancelInterruptedPresenceExit's does for the
+        // anchor: one still playing through its cancel, one that completed by hand, since nothing is left to
+        // cancel. Either way the exit's inline values are written back. A descendant that left the tree is not
+        // touched.
         private void ReleaseDescendantExits(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             if (!state.ExitWaits.Remove(key, out var wait)) return;
             for (var i = 0; i < wait.Descendants.Count; i++)
             {
                 var exit = wait.Descendants[i];
-                switch (wait.StatusOf(i))
+                var status = wait.StatusOf(i);
+                if (status == ReconcilerContext.PresenceExitWait.DescendantStatus.Gone) continue;
+                _ctx.PresenceDescendantExitWaits.Remove(exit.Element);
+                var baseClasses = _ctx.MotionNodes.GetValueOrDefault(exit.Element)?.ClassNames;
+                var resting = _patcher.RestingClassSet(exit.Element, baseClasses);
+                if (status == ReconcilerContext.PresenceExitWait.DescendantStatus.Playing)
                 {
-                    case ReconcilerContext.PresenceExitWait.DescendantStatus.Gone:
-                        break;
-                    case ReconcilerContext.PresenceExitWait.DescendantStatus.Playing:
-                        _ctx.PresenceDescendantExitWaits.Remove(exit.Element);
-                        _ctx.StyleAnimationScheduler.CancelExit(exit.Element);
-                        break;
-                    default:
-                        _ctx.PresenceDescendantExitWaits.Remove(exit.Element);
-                        StyleAnimationClassUtils.RemoveClasses(exit.Element, exit.Config.ExitToClasses);
-                        StyleAnimationClassUtils.AddClasses(exit.Element,
-                            exit.RestoresResting ? exit.Config.ExitFromClasses : Array.Empty<string>());
-                        break;
+                    _ctx.StyleAnimationScheduler.CancelExit(exit.Element, resting.VariantClasses, resting.Merged);
                 }
+                else
+                {
+                    StyleAnimationClassUtils.RemoveClasses(exit.Element, exit.Config.ExitToClasses);
+                    StyleAnimationClassUtils.AddClasses(exit.Element,
+                        exit.RestoresResting ? resting.VariantClasses : Array.Empty<string>());
+                }
+                _patcher.RestoreInlineAfterExit(exit.Element, baseClasses);
             }
         }
 
