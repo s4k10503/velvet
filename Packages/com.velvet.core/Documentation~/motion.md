@@ -310,12 +310,16 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 ```
 
 - Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
-  layout rect (position and/or size) different from the rect the SAME id last settled at, it
-  tweens from the old rect to the new one — FLIP: the old rect is captured, layout settles at the
+  layout box (position and/or size) different from the box the SAME id stood at, it
+  tweens from the old box to the new one — FLIP: the old box is captured, layout settles at the
   new one, an inverse inline transform is applied immediately, then it springs back to zero —
-  instead of jump-cutting.
+  instead of jump-cutting. A move between two parents compares positions in panel space, so parents
+  placed apart tween across the distance between them; within one parent, the rect relative to it is
+  compared, so a Motion nested in a moving one tweens only its own move inside it.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
-  the id, not the physical element, is what's tracked. Two Motions in the same tree must never
+  the id, not the physical element, is what's tracked. The handover happens within one render: once
+  an element has left the tree, its id hands nothing to a Motion that mounts under it in a later
+  render, which appears in place. Two Motions in the same tree must never
   share a live `layoutId` simultaneously — the second one to patch silently steals the
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off

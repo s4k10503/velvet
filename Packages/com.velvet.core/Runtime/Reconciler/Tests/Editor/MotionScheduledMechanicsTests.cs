@@ -60,6 +60,7 @@ namespace Velvet.Tests
             base.SetUp();
             s_setMoved = default;
             s_setStop = default;
+            s_setStep = default;
             s_bump = null;
             s_store = null;
         }
@@ -187,6 +188,246 @@ namespace Velvet.Tests
                     UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value + 200f) < 50f,
                     replacement.style.scale.keyword),
                 Is.EqualTo((false, true, StyleKeyword.Null)));
+        }
+
+        private static StateUpdater<int> s_setStep;
+
+        private static readonly StyleTransitionConfig s_layoutSpring =
+            new() { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
+
+        private static VNode SharedBox(int left, Type elementType = null) => V.Motion(
+            name: "shared",
+            layoutId: "shared-box",
+            elementType: elementType,
+            transition: s_layoutSpring,
+            className: $"left-[{left}px] top-[0px] w-[100px] h-[100px]");
+
+        // Step 1 is a same-key type flip: the element type changes, so the reconciler tears the mounted
+        // element down before it creates the replacement.
+        [Component]
+        private static VNode TypeFlipBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[] { step == 0 ? SharedBox(200) : SharedBox(400, typeof(Box)) });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotion_When_ASameKeyTypeFlipReplacesItElsewhere_Then_TheReplacementTweensFromTheOldBoxAtFullSize()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(TypeFlipBoxRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near the old element's box, 200px left of its own, at its own size.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement),
+                    UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value + 200f) < 50f,
+                    replacement.style.scale.keyword),
+                Is.EqualTo((false, true, StyleKeyword.Null)));
+        }
+
+        // Step 1 removes the Motion and step 2 mounts another under the same id: two renders, with no
+        // frame between them.
+        [Component]
+        private static VNode RemoveThenRemountBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: step switch
+            {
+                0 => new[] { SharedBox(200) },
+                1 => Array.Empty<VNode>(),
+                _ => new[] { SharedBox(400) },
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps no box for an id whose element left in an earlier render.
+        // The box a teardown now leaves for a same-key type flip must expire with its render.
+        [Test]
+        public void Given_ALayoutIdMotionRemovedInOneRender_When_ALaterRenderMountsAnotherUnderTheSameId_Then_ItCarriesNoInversePose()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(RemoveThenRemountBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            var removed = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            var remounted = Root.Q<VisualElement>("shared");
+            Assert.That((removed, remounted?.style.translate.keyword),
+                Is.EqualTo(((VisualElement)null, (StyleKeyword?)StyleKeyword.Null)));
+        }
+
+        // Two 150px-tall parents, one below the other: the box stands at the same place inside either, and
+        // 150px apart on screen.
+        [Component]
+        private static VNode OffsetParentsBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "first", className: "h-[150px]", children: step == 1 ? new[] { SharedBox(200) } : Array.Empty<VNode>()),
+                V.Div(key: "second", className: "h-[150px]", children: step == 1 ? Array.Empty<VNode>() : new[] { SharedBox(200) }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotion_When_ItMovesToAParentAboveAtTheSameLocalBox_Then_TheReplacementTweensFromTheOldScreenPosition()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(OffsetParentsBoxRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near the old element's box, 150px below its own.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement),
+                    UnityEngine.Mathf.Abs(replacement.style.translate.value.y.value - 150f) < 50f,
+                    replacement.style.scale.keyword),
+                Is.EqualTo((false, true, StyleKeyword.Null)));
+        }
+
+        // A pooled Label-typed layoutId Motion moves (step 1) and is removed (step 2) before any layout
+        // settles the move; step 3 rents a Label for an unrelated Motion that carries no layoutId.
+        [Component]
+        private static VNode PooledMotionReuseRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: step switch
+            {
+                0 => new[] { SharedBox(0, typeof(Label)) },
+                1 => new[] { SharedBox(200, typeof(Label)) },
+                2 => Array.Empty<VNode>(),
+                _ => new VNode[]
+                {
+                    V.Motion(name: "reused", elementType: typeof(Label), transition: s_layoutSpring,
+                        className: "left-[300px] top-[0px] w-[50px] h-[50px]"),
+                },
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRemovedBeforeItsMoveSettled_When_ThePoolHandsItsElementToAnotherMotion_Then_TheOtherMotionCarriesNoInversePose()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PooledMotionReuseRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            var reused = Root.Q<VisualElement>("reused");
+            Assert.That((ReferenceEquals(original, reused), reused.style.translate.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        // Three parents; each step moves the box to the parent before the one holding it, so every
+        // replacement is created while the element it replaces is still mounted.
+        [Component]
+        private static VNode ThreeParentsBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode[] At(int parent, int left) => step == 2 - parent ? new[] { SharedBox(left) } : Array.Empty<VNode>();
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "first", children: At(0, 400)),
+                V.Div(key: "second", children: At(1, 200)),
+                V.Div(key: "third", children: At(2, 0)),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionReplacedTwiceBeforeALayout_When_TheLastReplacementSettles_Then_ItTweensFromTheBoxOnScreenBeforeBoth()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(ThreeParentsBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near the first element's box, 400px left of its own, at its own size.
+            var last = Root.Q<VisualElement>("shared");
+            Assert.That((UnityEngine.Mathf.Abs(last.style.translate.value.x.value + 400f) < 50f, last.style.scale.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        // A layoutId Motion inside another: step 1 moves the outer one 200px right, and the inner one 20px
+        // right inside it.
+        [Component]
+        private static VNode NestedLayoutIdRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "outer",
+                    layoutId: "outer-box",
+                    transition: s_layoutSpring,
+                    className: $"left-[{step * 200}px] top-[0px] w-[300px] h-[300px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: $"left-[{20 + step * 20}px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base tweens a nested layoutId Motion by its own move inside its parent.
+        // Comparing the two boxes in panel space instead is what reddens this.
+        [Test]
+        public void Given_ALayoutIdMotionInsideAnother_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(NestedLayoutIdRender, key: "root"));
+            Tick();
+            var outer = Root.Q<VisualElement>("outer");
+            var inner = Root.Q<VisualElement>("inner");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the outer one tweens from its old place and carries the inner one, which tweens only
+            // the 20px it moved inside the outer one.
+            Assert.That((outer.style.translate.value.x.value < -150f,
+                    UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 10f),
+                Is.EqualTo((true, true)));
         }
 
         private static StateUpdater<int> s_setStop;

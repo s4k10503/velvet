@@ -5,14 +5,19 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Shared-element layout animation via FLIP (First-Last-Invert-Play). When a V.Motion(layoutId:)
-    // patches at a resolved layout rect different from the rect the SAME id last settled at —
-    // including across a DIFFERENT physical element entirely, e.g. after a same-key type flip or a
-    // move to a different parent — it tweens from the old rect to the new one instead of jump-cutting:
-    // capture the OLD rect, let this frame's layout settle at the NEW one, compute the delta, apply it
-    // as an inline inverse transform (Invert), then spring that inverse back to zero (Play). Reuses
-    // MotionSpringDriver's existing panel-independent physics channels (translate x/y, uniform scale)
-    // — the same machinery every other spring-driven Motion transition already shares — rather than
-    // building a second driver.
+    // patches at a box different from the one the SAME id stood at — including across a DIFFERENT
+    // physical element entirely, e.g. after a same-key type flip or a move to a different parent — it
+    // tweens from the old box to the new one instead of jump-cutting: capture the OLD box, let this
+    // frame's layout settle at the NEW one, compute the delta, apply it as an inline inverse transform
+    // (Invert), then spring that inverse back to zero (Play). Reuses MotionSpringDriver's existing
+    // panel-independent physics channels (translate x/y, uniform scale) — the same machinery every other
+    // spring-driven Motion transition already shares — rather than building a second driver.
+    //
+    // A box is a layout rect together with the parent it is relative to and its position in panel space.
+    // Two boxes under one parent compare their layout rects; under different parents, their panel-space
+    // positions. Panel space throughout was rejected: a nested layoutId Motion that moves inside a moving
+    // one then no longer tweens by its own move inside it
+    // (Given_ALayoutIdMotionInsideAnother_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
     //
     // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v),
     // so a non-uniform rect change (width and height scale by different factors) averages the two axis
@@ -29,32 +34,38 @@ namespace Velvet
         // is captured on this element's own first post-patch GeometryChangedEvent instead.
         internal static void OnPatched(VisualElement element, string layoutId, float stiffness, float damping, float mass, ReconcilerContext ctx)
         {
-            // The old rect is read off whichever element the id is registered to — this one, or the one it
+            // The old box is read off whichever element the id is registered to — this one, or the one it
             // replaces, which teardown has not reached yet — rather than stored at registration: a freshly
-            // created element registers before its first layout, with no rect to store, and a stored zero
-            // rect reads as a real box at the parent's origin.
-            var hadPrevious = ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous);
-            var oldRect = hadPrevious ? previous.layout : default;
-
-            ctx.ElementToLayoutId[element] = layoutId;
-            ctx.LayoutIdRegistry[layoutId] = element;
-
-            if (!hadPrevious || !IsFiniteRect(oldRect))
+            // created element registers before its first layout, with no box to store, and a stored zero
+            // rect reads as a real box at the parent's origin. The box an entry carries is the fallback for
+            // an element not laid out yet, and the whole entry once teardown has taken its element.
+            LayoutIdBox? oldBox = null;
+            if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous))
             {
-                // First-ever registration for this id, or the captured rect is not a real resolved
-                // layout (NaN — an EditMode pass with no forced layout) — nothing to tween from.
-                return;
+                oldBox = previous.Element != null && TryReadBox(previous.Element, out var live) ? live : previous.Box;
             }
 
-            element.RegisterCallback<GeometryChangedEvent>(OnGeometrySettled);
+            ctx.ElementToLayoutId[element] = layoutId;
+            ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
 
-            void OnGeometrySettled(GeometryChangedEvent evt)
+            // A second patch before a layout settles the first replaces its wait rather than adding one.
+            CancelPendingSettle(element, ctx);
+            if (oldBox is not { } fromBox) return;
+
+            EventCallback<GeometryChangedEvent>? onSettled = null;
+            onSettled = _ =>
             {
-                element.UnregisterCallback<GeometryChangedEvent>(OnGeometrySettled);
+                CancelPendingSettle(element, ctx);
                 var newRect = element.layout;
-                if (!IsFiniteRect(newRect)) return;
+                var parent = element.hierarchy.parent;
+                if (parent == null || !IsFiniteRect(newRect)) return;
 
-                var plan = ComputeDeltaPlan(oldRect, newRect);
+                var from = ReferenceEquals(fromBox.Parent, parent)
+                    ? fromBox.Local
+                    : new Rect(parent.WorldToLocal(fromBox.PanelPosition), fromBox.Local.size);
+                if (!IsFiniteRect(from)) return;
+
+                var plan = ComputeDeltaPlan(from, newRect);
                 if (plan.IsEmpty) return;
 
                 var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
@@ -67,6 +78,28 @@ namespace Velvet
                 StopTick(element, ctx);
                 MotionSpringDriver.ApplyCurrentValues(element, state);
                 StartTick(element, state, ctx);
+            };
+            element.RegisterCallback(onSettled);
+            ctx.LayoutIdPendingSettles[element] = onSettled;
+        }
+
+        private static bool TryReadBox(VisualElement element, out LayoutIdBox box)
+        {
+            box = default;
+            var layout = element.layout;
+            var parent = element.hierarchy.parent;
+            if (element.panel == null || parent == null || !IsFiniteRect(layout)) return false;
+            var panelPosition = parent.LocalToWorld(layout.position);
+            if (!float.IsFinite(panelPosition.x) || !float.IsFinite(panelPosition.y)) return false;
+            box = new LayoutIdBox(parent, layout, panelPosition);
+            return true;
+        }
+
+        private static void CancelPendingSettle(VisualElement element, ReconcilerContext ctx)
+        {
+            if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
+            {
+                element.UnregisterCallback(pending);
             }
         }
 
@@ -96,21 +129,47 @@ namespace Velvet
             }
         }
 
-        // Cancels any in-flight tick and drops the registry entries for a departing element — called
-        // from FiberElementCleaner before an element is pooled/disposed, so a layoutId tween never keeps
-        // ticking against (or leaves a stale rect behind for) a torn-down element.
+        // Called from FiberElementCleaner before an element is pooled or disposed. The pending settle goes
+        // too: a pooled element keeps its callbacks, so whatever the pool hands it to next would otherwise
+        // play this element's tween. Torn down inside a pass, the element leaves its box for a replacement
+        // later in that pass — a same-key type flip creates it after this teardown — and the pass boundary
+        // drops what nobody claimed (ExpireSnapshots).
         internal static void CancelForTeardown(VisualElement element, ReconcilerContext ctx)
         {
             if (ctx.LayoutIdTicks.Remove(element, out var running))
             {
                 running.Tick.Pause();
             }
+            CancelPendingSettle(element, ctx);
             if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)
-                && ReferenceEquals(current, element))
+                && ReferenceEquals(current.Element, element))
             {
-                ctx.LayoutIdRegistry.Remove(layoutId);
+                var box = TryReadBox(element, out var live) ? live : current.Box;
+                if (ctx.CurrentPass != null && box != null)
+                {
+                    ctx.LayoutIdRegistry[layoutId] = (null, box);
+                    ctx.LayoutIdSnapshots.Add(layoutId);
+                }
+                else
+                {
+                    ctx.LayoutIdRegistry.Remove(layoutId);
+                }
             }
+        }
+
+        // Called at the top-level pass boundary.
+        internal static void ExpireSnapshots(ReconcilerContext ctx)
+        {
+            if (ctx.LayoutIdSnapshots.Count == 0) return;
+            foreach (var layoutId in ctx.LayoutIdSnapshots)
+            {
+                if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry) && entry.Element == null)
+                {
+                    ctx.LayoutIdRegistry.Remove(layoutId);
+                }
+            }
+            ctx.LayoutIdSnapshots.Clear();
         }
 
         // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
@@ -140,5 +199,19 @@ namespace Velvet
 
         private static bool IsFiniteRect(Rect r) =>
             float.IsFinite(r.x) && float.IsFinite(r.y) && float.IsFinite(r.width) && float.IsFinite(r.height);
+    }
+
+    internal readonly struct LayoutIdBox
+    {
+        public LayoutIdBox(VisualElement parent, Rect local, Vector2 panelPosition)
+        {
+            Parent = parent;
+            Local = local;
+            PanelPosition = panelPosition;
+        }
+
+        public VisualElement Parent { get; }
+        public Rect Local { get; }
+        public Vector2 PanelPosition { get; }
     }
 }

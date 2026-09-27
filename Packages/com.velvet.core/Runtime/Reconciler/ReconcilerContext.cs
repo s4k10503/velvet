@@ -689,15 +689,22 @@ namespace Velvet
         // its teardown tells the wait.
         public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
 
-        // The element a V.Motion(layoutId:) id is registered to, whose layout MotionLayoutIdDriver
-        // reads as the rect a FLIP tween starts from. Keyed by the id string, not an element, so it
+        // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
+        // back to when that element gives none. A null element marks a torn-down element's box, listed in
+        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it at the pass boundary. Keyed by the id string, not an element, so it
         // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
         // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
         // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
-        // its id here, and only then remove the LayoutIdRegistry entry IF it still points at this exact
+        // its id here, and only then touch the LayoutIdRegistry entry IF it still points at this exact
         // element (a replacement created before the old element's teardown has already taken it over).
-        public Dictionary<string, VisualElement> LayoutIdRegistry { get; } = new();
+        public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
+        public HashSet<string> LayoutIdSnapshots { get; } = new();
+
+        // The GeometryChangedEvent callback a layoutId patch waits on for its new rect. A registered
+        // callback, so it is removed explicitly at teardown like LayoutIdTicks below rather than through
+        // _pureElementSideTables.
+        public Dictionary<VisualElement, EventCallback<GeometryChangedEvent>> LayoutIdPendingSettles { get; } = new();
 
         // The recurring physics tick for an in-flight layoutId FLIP tween, keyed by the animating
         // element. Owns a real scheduled resource (unlike ElementToLayoutId above), so it is deliberately

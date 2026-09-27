@@ -240,6 +240,8 @@ namespace Velvet
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
+                // After the portal drain, whose reconciles can create the element that claims one.
+                MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
