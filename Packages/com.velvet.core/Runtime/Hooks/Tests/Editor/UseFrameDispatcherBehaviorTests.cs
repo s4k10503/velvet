@@ -281,7 +281,7 @@ namespace Velvet.Tests
             // ticking before the throw is armed (ruling out "Victim was never live to begin with" as an
             // alternate explanation for it never appearing in the log later).
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
-            _mounted = V.Mount(_host.Root, V.Component(Boundary, key: "root"));
+            _mounted = V.Mount(_host.Root, V.Component(Boundary, key: "root"), CaughtErrors.Unlogged);
             _mounted.FlushEffectsForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel); // absorbs the zero-delta arm-time firing
             s_log.Clear();

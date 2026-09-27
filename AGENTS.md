@@ -20,7 +20,7 @@ Unity test runs require the editor to be **closed** (it holds the project lock).
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
 mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/run.XXXXXX") && echo "$R"   # a directory per run: Conventions says why
-"$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
+"$UNITY" -runTests -batchmode -debugCodeOptimization -projectPath "$PWD" -testPlatform EditMode \
   -testResults "$R/results.xml" -logFile "$R/run.log"
 python3 scripts/test_quality/assert_results_from_this_tree.py "$R" --log "$R/run.log"
 python3 scripts/test_quality/assert_no_inconclusive.py "$R"
@@ -30,6 +30,7 @@ python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 - **PlayMode:** `-testPlatform PlayMode`.
 - **Seeding `Library` from another checkout** is what makes a `git worktree` run practical, and it is what puts another checkout's compiled test assemblies under `Library/ScriptAssemblies`. Seed from inside the worktree with `python3 scripts/unity/seed_library.py <other>/Library`: it clones every other entry copy-on-write and leaves that directory behind, so nothing another checkout compiled is sitting there to be reported, and the seed shares the other checkout's blocks until one side writes rather than costing a second copy of them. Where the filesystem cannot clone it copies nothing and prints the byte copy to run instead, which `library_seed_without_room.py` refuses when the disk has no room for it.
 - **Do NOT pass `-nographics`.** Everything that needs a real panel (an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` / firing pointer/focus events) goes through `TestGraphics.IgnoreIfHeadless`, so the flag does not fail those tests — it **skips** them, and the run reports green having exercised none of the panel behavior. Graphics-free tests all pass with graphics on, so the flag buys nothing and costs the half of the suite that is hardest to get right.
+- **Pass `-debugCodeOptimization`.** `game-ci/unity-test-runner`, which runs the suites in CI, passes it on every editor launch, so a local run without it is not launched the way CI's are. `mutation_check.py`, `neuter_check.py` and `base_red_check.py` pass it on each test run they start.
 - Results land in the JUnit-style XML (`grep -o 'passed="[0-9]*"\|failed="[0-9]*"'`); compile errors appear only in the `-logFile`, and `grep ": error "` rather than `error CS` — an analyzer under `Generators~` raises its own at error severity, which fails the compile with no `CS` code in the log to find it by. A run that will not compile writes no XML at all, so what is left at that path is whatever last wrote there — measured, a filter nobody posed reporting a fixture the tree does not hold. And neither the exit code nor any reporter treats an inconclusive case as a failure. `assert_results_from_this_tree.py` refuses the first, `assert_no_inconclusive.py` the second, and each Unity job in CI runs both.
 - Interactively, the same suites run from **Window ▸ General ▸ Test Runner**.
 

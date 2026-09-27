@@ -949,6 +949,8 @@ namespace Velvet
         // app author notices and refocuses something manually.
         internal VisualElement? MainPanelRoot { get; set; }
 
+        internal System.Action<System.Exception, ErrorInfo> OnCaughtError { get; set; } = FiberErrorBoundary.LogCaughtError;
+
         // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
         // the first drain that needs the layer and shared by every portal on it. NOT a pure
         // side-table: each record owns a live GameObject plus runtime-created panel assets, torn

@@ -347,9 +347,14 @@ namespace Velvet
         // (general path) or collects it into the flat structural result (old-side / fast-path expansion),
         // recording beside it that key and the fiber the walk had reached. One method writes all three, so
         // neither KeysOut nor OwnersOut can fall behind Result.
+        //
+        // An unkeyed leaf's sibling index counts from where the output of the fiber the walk has reached began
+        // (InlineWalk.FiberLeafBase), not from the container's first leaf. With the owner the key carries, that
+        // matches a component's elements within its own output, so a component matched by key finds them again
+        // wherever its siblings moved it.
         private void Emit(InlineWalk walk, VNode? node, WalkPosition position, int nodeIndex)
         {
-            var siblingIndex = walk.Commit?.NewIndex ?? walk.Result!.Count;
+            var siblingIndex = (walk.Commit?.NewIndex ?? walk.Result!.Count) - walk.FiberLeafBase;
             var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, siblingIndex);
             if (walk.Commit != null) CommitLeaf(node, walk.Commit, key);
             else if (node != null)
@@ -588,6 +593,8 @@ namespace Velvet
             public List<ComponentFiber?>? OwnersOut;
             // The key each leaf was emitted under, index-aligned with Result, on the same terms as OwnersOut.
             public List<ChildKey>? KeysOut;
+            // How many leaves the walk had emitted when the output of the fiber it has reached began.
+            public int FiberLeafBase;
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -609,6 +616,7 @@ namespace Velvet
                 NewFibers = null!;
                 OwnersOut = null;
                 KeysOut = null;
+                FiberLeafBase = 0;
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
@@ -1017,6 +1025,8 @@ namespace Velvet
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
             _ctx.CurrentFiberTree = fiber.PreviousTree;
+            var enclosingLeafBase = walk.FiberLeafBase;
+            walk.FiberLeafBase = walk.Commit?.NewIndex ?? walk.Result!.Count;
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -1024,6 +1034,7 @@ namespace Velvet
             }
             finally
             {
+                walk.FiberLeafBase = enclosingLeafBase;
                 _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }
