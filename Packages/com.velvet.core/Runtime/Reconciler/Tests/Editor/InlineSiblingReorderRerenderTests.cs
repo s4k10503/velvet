@@ -10,14 +10,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins slot-bound resolution for an inline fiber that a keyed reorder displaced. The fiber
-    /// sibling chain is creation order and a reorder does not resync it, so the chain-next sibling
-    /// can sit visually BEFORE the fiber; bounding the fiber's own reconcile by that sibling's slot
-    /// start produced slotLimit &lt; slotStart, every slot in the fiber's range looked missing, and an
-    /// independent re-render (its own setState — not a parent-driven render) inserted a brand-new
-    /// element while the stale one stayed: a permanent duplicate no future reconcile removes. The
-    /// bound must come from the nearest co-located slot start beyond the fiber's own, regardless of
-    /// chain position.
+    /// A reordered inline fiber's own update stays within its range, bounded by the nearest
+    /// co-located sibling start beyond its own.
     /// </summary>
     [TestFixture]
     internal sealed class InlineSiblingReorderRerenderTests
