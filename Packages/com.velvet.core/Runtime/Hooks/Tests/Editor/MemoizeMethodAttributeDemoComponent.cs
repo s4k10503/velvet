@@ -31,10 +31,9 @@ namespace Velvet.Tests
             return V.Label(text: $"{title}:{count}:{visible}");
         }
 
-        // Six rather than the eight [MemoizeMethod] supports: seven and eight are unreachable inside an
-        // assembly that opts into the code-shape rules, which every assembly of this package does. The
-        // generator's arity-8 emission stays pinned by its own snapshot test, and V.Memoized<T1..T8> by
-        // VMemoTests.
+        // Six: a seventh required parameter is VEL502 inside an assembly that opts into the code-shape rules,
+        // which every assembly of this package does. Wider emission is pinned by the generator's own snapshot
+        // tests, and V.Memoized<T1..T8> by VMemoTests.
         public VNode BuildArity6_Impl(int a, int b, int c, int d, int e, int f)
         {
             Arity6ImplCallCount++;

@@ -21,9 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VelvetTask` awaited on the main thread resumes there whichever thread completes it — the
   continuation is handed to Unity's main-thread synchronization context rather than run on the
   completing thread — so a route loader that returns after awaiting `ConfigureAwait(false)` hands its
-  result back on the main thread. `VelvetTask.Yield()` called off the main thread throws
-  `InvalidOperationException` naming the switch. The async guide says what code resumed off the main
-  thread may call.
+  result back on the main thread. `VelvetTask.Yield()` called off the main thread resumes where
+  `Task.Yield()` does. The async guide says what code resumed off the main thread may call.
 
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
@@ -122,9 +121,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such a key throws `ArgumentException` naming `key` where it used to build a node. A factory that
   takes from a pool before building its node refuses ahead of that rent, so a refusal strands nothing
   that factory rented; `V.List`, whose selector key is not known until an item is mapped, gives the
-  child array it rented back instead. A `V.VirtualList` `keySelector` returning such a key is answered
-  without a throw: that item is left out of the rendered range and a warning names the key, the
-  selector being read from a range update rather than from the `V.VirtualList(...)` call.
+  child array it rented back instead. A `V.VirtualList` `keySelector`'s key is compared only with the
+  list's other keys and never becomes a `VNode.Key`, so an item whose key holds the delimiter renders like
+  any other.
 
 ### Fixed
 
@@ -153,11 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lost, and the elements already on the Portal's target were left there beside the remounted ones. A
   keyed `V.Fragment` returned as a component's whole output did not count; `[Unreleased — breaking]`
   states what keeping its key changes. A reordered `V.List` of components rebuilt the element of each
-  row whose index changed, the same way. An unkeyed element is now matched by its position counted from
-  where the output of the component that renders it begins. This still differs from React, which counts
-  a position in the parent's own child array, where a nested component, a Fragment or a `null` takes one
-  slot: Velvet counts the elements emitted ahead of it, so a change in how many elements an earlier
-  component in the same output renders still shifts it.
+  row whose index changed, the same way. An unkeyed element is now matched within the output of the
+  component that renders it; `[Unreleased — breaking]` states how it is matched there.
 
 - A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
   behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns, when the
@@ -281,8 +277,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   effects survive. The controller looked a row up in a `Dictionary` keyed by string, whose lookup refuses
   a null key even against an empty dictionary, so the range update threw from inside the item loop — and
   the buffers it abandoned there were the live ones, since a window whose size has not changed reuses
-  them in place. A selector returning a key holding a NUL is unchanged: that item is still left out of the
-  range under a warning.
+  them in place.
 
 - A `V.VirtualList` range update that throws — from the item renderer, or from creating or patching the
   row it describes, as a `V.Custom<T>` element whose constructor throws does — no longer leaves the list
@@ -1273,10 +1268,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both; a fragment gaining a child handed the newcomer the following sibling's instance and remounted
   that sibling; and a component inside a `V.Suspense`'s children collided with the one at the same
   index of the body around it, which the duplicate-key guard answered by warning and dropping one of
-  the two. What still does not follow React is a conditional wrapped in an element of its own —
-  `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div` — where the element diff patches
-  the surviving wrapper onto the leaving one's element and the component inside it re-binds along with
-  it. A `key:` on those wrappers matches each with itself; the migration guide says so.
+  the two.
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the
