@@ -243,6 +243,24 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/home"));
         }
 
+        // GREEN_ON_BASE(characterization): the base appends a first navigation's Replace entry this way too.
+        // The branch rewrites the line that appends it, from a cached entry to the bare path.
+        [Test]
+        public void Given_AReplaceAsTheFirstNavigation_When_APushFollowsAndGoesBack_Then_ItLandsOnTheReplacedEntry()
+        {
+            // Arrange
+            var router = new Router(_routes);
+            router.NavigateAsync("/home", NavigationMode.Replace).GetAwaiter().GetResult();
+            router.NavigateSync("/about");
+
+            // Act
+            var result = router.GoBackSync();
+
+            // Assert
+            Assert.That($"result={result} path={router.CurrentLocation?.Path}",
+                Is.EqualTo("result=Success path=/home"));
+        }
+
         [Test]
         public void Given_GoneBack_When_OnEarlierEntry_Then_CanGoForward()
         {
@@ -1068,10 +1086,13 @@ namespace Velvet.Tests
             var whileLastLoads = $"{router.Status} {router.PendingLocation?.Path ?? "none"}";
             lastLoader.TrySetResult("last-data");
             await VelvetTask.Yield();
+            var landed = $"{router.CurrentLocation?.Path} forward={router.CanGoForward}";
+            await router.GoBack();
+            var behind = $"{router.CurrentLocation?.Path} back={router.CanGoBack}";
 
             // Assert
-            Assert.That($"takeover={takeover} while={whileLastLoads} history={RouterHistoryProbe.PathsOf(router)}",
-                Is.EqualTo("takeover=Cancelled while=Loading /last history=/home,/last"),
+            Assert.That($"takeover={takeover} while={whileLastLoads} landed={landed} behind={behind}",
+                Is.EqualTo("takeover=Cancelled while=Loading /last landed=/last forward=False behind=/home back=False"),
                 "A navigation started from inside a takeover supersedes the navigation taking over");
         });
 

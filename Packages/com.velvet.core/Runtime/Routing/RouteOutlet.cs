@@ -75,8 +75,6 @@ namespace Velvet
                     return true;
                 }
 
-                // MUTANT_SURVIVES(equivalent): the depth == boundaryDepth arm above returns.
-                // This is therefore reached only where the two depths differ.
                 if (depth > boundaryDepth)
                 {
                     // Below the boundary: the ErrorElement subtree replaced everything here, so render nothing.
