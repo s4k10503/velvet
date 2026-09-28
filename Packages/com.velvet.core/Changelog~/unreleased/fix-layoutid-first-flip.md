@@ -21,3 +21,7 @@
 
 - A `layoutId` Motion of an element type the pool reuses, such as `Button` or `Label`, removed while its
   move was waiting for layout no longer plays that move's tween on the element the pool hands out next.
+
+- A `layoutId` tween that resizes the element starts over the old box. Its translate was the difference
+  between the two boxes' top-left corners while the scale held the element's centre still, so the first
+  frame sat off the old box by half the change in size; it now starts the transform origin where it stood.

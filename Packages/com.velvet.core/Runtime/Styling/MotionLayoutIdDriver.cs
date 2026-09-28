@@ -13,15 +13,19 @@ namespace Velvet
     // panel-independent physics channels (translate x/y, uniform scale) — the same machinery every other
     // spring-driven Motion transition already shares — rather than building a second driver.
     //
-    // A box is a layout rect together with the parent it is relative to and the rect it covers in panel
-    // space. Two boxes under one parent compare their layout rects; under different parents, their panel
-    // rects, taken into the new parent less the inverse translate every ancestor still waiting on its own
-    // layoutId settle is about to apply. Panel space throughout was rejected: an inner layoutId Motion that
-    // moves inside an outer one still tweening then no longer tweens by its own move inside it
+    // A box is a layout rect together with the parent it was read under, and its centre and size in panel
+    // space. A box read under this same parent compares layout rects; any other is taken into the new parent
+    // less the inverse translate every ancestor still waiting on its own layoutId settle is about to apply.
+    // Panel space throughout was rejected: an inner layoutId Motion that moves inside an outer one still
+    // tweening then no longer tweens by its own move inside it
     // (Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove).
     // The ancestors' translate is subtracted rather than read off their transform: an inner Motion settles
     // before the outer one has applied it
     // (Given_ALayoutIdMotionInsideATypeFlippedOne_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
+    // The centre is mapped as a point and the size through each parent's scale factors rather than as a
+    // rect: a rect's panel mapping is the bounding box of its transformed corners, which a rotated ancestor
+    // inflates
+    // (Given_ALayoutIdMotionInARotatedBoard_When_ItMovesToTheOtherColumn_Then_ItTweensFromItsOldPlaceAtItsOwnSize).
     //
     // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v),
     // so a non-uniform rect change (width and height scale by different factors) averages the two axis
@@ -50,7 +54,7 @@ namespace Velvet
             }
 
             ctx.ElementToLayoutId[element] = layoutId;
-            ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
+            ctx.LayoutIdRegistry[layoutId] = (element, oldBox?.Detached());
 
             // A second patch before a layout settles the first replaces its wait rather than adding one.
             CancelPendingSettle(element, ctx);
@@ -60,7 +64,7 @@ namespace Velvet
             pending.Callback = _ =>
             {
                 CancelPendingSettle(element, ctx);
-                var plan = ComputeDeltaPlan(FromRect(element, fromBox, ctx), element.layout);
+                var plan = ComputeDeltaPlan(FromRect(element, fromBox, ctx), element.layout, TransformOrigin(element));
                 if (plan.IsEmpty) return;
 
                 var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
@@ -83,10 +87,20 @@ namespace Velvet
         {
             var parent = element.hierarchy.parent;
             if (ReferenceEquals(fromBox.Parent, parent)) return fromBox.Local;
-            var panel = fromBox.Panel;
-            panel.position -= PendingPanelShift(parent, ctx);
-            return parent.WorldToLocal(panel);
+            var centre = parent.WorldToLocal(fromBox.PanelCentre - PendingPanelShift(parent, ctx));
+            var size = fromBox.PanelSize / PanelScale(parent);
+            return new Rect(centre - size / 2f, size);
         }
+
+        // How long a unit step along each local axis is in panel space.
+        private static Vector2 PanelScale(VisualElement element)
+        {
+            var origin = element.LocalToWorld(Vector2.zero);
+            return new Vector2((element.LocalToWorld(Vector2.right) - origin).magnitude,
+                (element.LocalToWorld(Vector2.up) - origin).magnitude);
+        }
+
+        private static Vector2 TransformOrigin(VisualElement element) => element.resolvedStyle.transformOrigin;
 
         // How far, in panel space, the inverse translates the ancestors' pending settles will apply move this
         // element. Only translate: an ancestor's inverse scale is not accounted for.
@@ -97,8 +111,9 @@ namespace Velvet
             {
                 if (!ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)) continue;
                 var layout = ancestor.layout;
-                var from = FromRect(ancestor, pending.From, ctx);
-                shift += parent.LocalToWorld(from.position) - parent.LocalToWorld(layout.position);
+                var plan = ComputeDeltaPlan(FromRect(ancestor, pending.From, ctx), layout, TransformOrigin(ancestor));
+                var translate = new Vector2(plan.TranslateX?.from ?? 0f, plan.TranslateY?.from ?? 0f);
+                shift += parent.LocalToWorld(layout.position + translate) - parent.LocalToWorld(layout.position);
             }
             return shift;
         }
@@ -108,7 +123,7 @@ namespace Velvet
             box = default;
             var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
-            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout));
+            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout.center), layout.size * PanelScale(parent));
             return true;
         }
 
@@ -164,7 +179,7 @@ namespace Velvet
             {
                 if (ctx.CurrentPass != null)
                 {
-                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, out var live) ? live : current.Box);
+                    ctx.LayoutIdRegistry[layoutId] = (null, (TryReadBox(element, out var live) ? live : current.Box)?.Detached());
                     ctx.LayoutIdSnapshots.Add(layoutId);
                 }
                 else
@@ -190,30 +205,34 @@ namespace Velvet
             ctx.LayoutIdSnapshots.Clear();
         }
 
+        private const float PixelTolerance = 0.01f;
+
         // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
-        // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose
-        // TranslateX/Y channels animate the position delta back to zero and whose Scale channel
-        // animates the (averaged, uniform) size ratio back to 1 — empty (IsEmpty) when the rects are
-        // equal within Mathf.Approximately's tolerance, so the caller can skip building spring state
-        // for a patch that didn't actually move/resize anything, and when either rect is not a resolved
-        // layout (NaN).
-        internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect)
+        // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose Scale
+        // channel animates the (averaged, uniform) size ratio back to 1 and whose TranslateX/Y channels
+        // animate back to zero the offset between the two rects' points at the transform origin — origin is
+        // in the new rect's own pixels, and the scale holds that point still, so aligning it is what starts
+        // the tween over the old rect. Empty (IsEmpty) when the rects differ by no more than PixelTolerance,
+        // so the caller can skip building spring state for a patch that didn't actually move/resize
+        // anything, and when either rect is not a resolved layout (NaN).
+        internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect, Vector2 origin)
         {
             if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return default;
 
-            var dx = oldRect.x - newRect.x;
-            var dy = oldRect.y - newRect.y;
             var scaleX = newRect.width > 0.01f ? oldRect.width / newRect.width : 1f;
             var scaleY = newRect.height > 0.01f ? oldRect.height / newRect.height : 1f;
             var scale = (scaleX + scaleY) / 2f;
+            var oldOrigin = oldRect.position + new Vector2(origin.x * scaleX, origin.y * scaleY);
+            var delta = oldOrigin - (newRect.position + origin);
 
-            var translateChanged = !Mathf.Approximately(dx, 0f) || !Mathf.Approximately(dy, 0f);
-            var scaleChanged = !Mathf.Approximately(scale, 1f);
+            // In pixels, not float equality: a box mapped through a rotated parent carries float noise.
+            var translateChanged = Mathf.Abs(delta.x) > PixelTolerance || Mathf.Abs(delta.y) > PixelTolerance;
+            var scaleChanged = Mathf.Abs(scale - 1f) * Mathf.Max(newRect.width, newRect.height) > PixelTolerance;
 
             return new MotionSpringClassParser.SpringPlan
             {
-                TranslateX = translateChanged ? (dx, 0f) : null,
-                TranslateY = translateChanged ? (dy, 0f) : null,
+                TranslateX = translateChanged ? (delta.x, 0f) : null,
+                TranslateY = translateChanged ? (delta.y, 0f) : null,
                 Scale = scaleChanged ? (scale, 1f) : null,
             };
         }
@@ -224,16 +243,23 @@ namespace Velvet
 
     internal readonly struct LayoutIdBox
     {
-        public LayoutIdBox(VisualElement parent, Rect local, Rect panel)
+        public LayoutIdBox(VisualElement? parent, Rect local, Vector2 panelCentre, Vector2 panelSize)
         {
             Parent = parent;
             Local = local;
-            Panel = panel;
+            PanelCentre = panelCentre;
+            PanelSize = panelSize;
         }
 
-        public VisualElement Parent { get; }
+        public VisualElement? Parent { get; }
         public Rect Local { get; }
-        public Rect Panel { get; }
+        public Vector2 PanelCentre { get; }
+        public Vector2 PanelSize { get; }
+
+        // A box kept past the read that took it: its parent can be torn down and handed by the pool to
+        // another Motion's element meanwhile, which would then pass for the parent the box was read under
+        // (Given_TwoListComponentsHoldingTheCardInAPooledButton_When_TheSecondIsSelected_Then_TheCardTweensFromTheFirst).
+        public LayoutIdBox Detached() => new(null, Local, PanelCentre, PanelSize);
     }
 
     internal sealed class LayoutIdPendingSettle

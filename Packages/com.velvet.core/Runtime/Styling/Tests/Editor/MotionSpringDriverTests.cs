@@ -376,7 +376,7 @@ namespace Velvet.Tests
             var rect = new Rect(10f, 20f, 100f, 50f);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(rect, rect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(rect, rect, new Vector2(50f, 25f));
 
             // Assert
             Assert.That(plan.IsEmpty, Is.True);
@@ -390,7 +390,7 @@ namespace Velvet.Tests
             var newRect = new Rect(110f, 220f, 100f, 50f);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(50f, 25f));
 
             // Assert
             Assert.That(plan.IsEmpty, Is.True);
@@ -404,7 +404,7 @@ namespace Velvet.Tests
             var newRect = new Rect(0f, 0f, float.NaN, float.NaN);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, Vector2.zero);
 
             // Assert
             Assert.That(plan.IsEmpty, Is.True);
@@ -418,7 +418,7 @@ namespace Velvet.Tests
             var newRect = new Rect(110f, 220f, 100f, 50f);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(50f, 25f));
             (float, float)? expectedX = (-100f, 0f);
             (float, float)? expectedY = (-200f, 0f);
             (float, float)? expectedScale = null;
@@ -429,19 +429,51 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARectResizedWithoutMoving_When_DeltaComputed_Then_OnlyTheScaleChannelIsSet()
+        public void Given_ARectResizedAboutItsCentre_When_DeltaComputedWithACentreOrigin_Then_OnlyTheScaleChannelIsSet()
         {
-            // Arrange — grew from 100x100 to 200x200 (uniform 2x), position unchanged.
-            var oldRect = new Rect(0f, 0f, 100f, 100f);
+            // Arrange — grew from 100x100 to 200x200 (uniform 2x) about the same centre (100,100).
+            var oldRect = new Rect(50f, 50f, 100f, 100f);
             var newRect = new Rect(0f, 0f, 200f, 200f);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(100f, 100f));
             (float, float)? expectedTranslateX = null;
             (float, float)? expectedScale = (0.5f, 1f);
 
             // Assert — Scale's "from" is oldSize/newSize (0.5: the inverse pose to start from, since the
             // element is now visually twice as big and must start scaled down to 0.5 before springing to 1).
+            Assert.That((plan.TranslateX, plan.Scale), Is.EqualTo((expectedTranslateX, expectedScale)));
+        }
+
+        [Test]
+        public void Given_ARectResizedWithItsCornerFixed_When_DeltaComputedWithACentreOrigin_Then_TheTranslateHoldsTheOldCentre()
+        {
+            // Arrange — grew from 100x100 to 200x200 with the top-left corner at (0,0) throughout.
+            var oldRect = new Rect(0f, 0f, 100f, 100f);
+            var newRect = new Rect(0f, 0f, 200f, 200f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(100f, 100f));
+            (float, float)? expectedTranslateX = (-50f, 0f);
+            (float, float)? expectedTranslateY = (-50f, 0f);
+
+            // Assert — the old centre (50,50) less the new one (100,100).
+            Assert.That((plan.TranslateX, plan.TranslateY), Is.EqualTo((expectedTranslateX, expectedTranslateY)));
+        }
+
+        [Test]
+        public void Given_ARectResizedWithItsCornerFixed_When_DeltaComputedWithThatCornerAsOrigin_Then_OnlyTheScaleChannelIsSet()
+        {
+            // Arrange — the same growth, scaled about the fixed corner.
+            var oldRect = new Rect(0f, 0f, 100f, 100f);
+            var newRect = new Rect(0f, 0f, 200f, 200f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, Vector2.zero);
+            (float, float)? expectedTranslateX = null;
+            (float, float)? expectedScale = (0.5f, 1f);
+
+            // Assert
             Assert.That((plan.TranslateX, plan.Scale), Is.EqualTo((expectedTranslateX, expectedScale)));
         }
 
@@ -453,7 +485,7 @@ namespace Velvet.Tests
             var newRect = new Rect(0f, 0f, 100f, 200f);
 
             // Act
-            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect);
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(50f, 100f));
             (float, float)? expectedScale = (0.75f, 1f);
 
             // Assert

@@ -62,6 +62,7 @@ namespace Velvet.Tests
             s_setStop = default;
             s_setStep = default;
             s_tabs = null;
+            s_lists = null;
             s_bump = null;
             s_store = null;
         }
@@ -745,6 +746,173 @@ namespace Velvet.Tests
             Assert.That((outer.style.translate.value.x.value < -50f,
                     UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 5f),
                 Is.EqualTo((true, true)));
+        }
+
+        // A board rotated 45 degrees holding two 200px-tall columns; step 1 moves the box from the second
+        // column to the first, 200px up the board.
+        [Component]
+        private static VNode RotatedBoardBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(className: "left-[200px] top-[200px] w-[400px] h-[400px] rotate-[45deg]", children: new VNode[]
+            {
+                V.Div(key: "first", className: "w-[400px] h-[200px]", children: step == 1 ? new[] { SharedBox(200) } : Array.Empty<VNode>()),
+                V.Div(key: "second", className: "w-[400px] h-[200px]", children: step == 1 ? Array.Empty<VNode>() : new[] { SharedBox(200) }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInARotatedBoard_When_ItMovesToTheOtherColumn_Then_ItTweensFromItsOldPlaceAtItsOwnSize()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(RotatedBoardBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned 200px down the board from its new place, and not scaled.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value) < 5f,
+                    UnityEngine.Mathf.Abs(replacement.style.translate.value.y.value - 200f) < 5f,
+                    replacement.style.scale.keyword),
+                Is.EqualTo((true, true, StyleKeyword.Null)));
+        }
+
+        private static TabStore s_lists;
+
+        // Two list components 300px apart on one store; the selected one renders a Button holding the card.
+        // The Button is a pooled element type.
+        private static VNode ListBody(int index, int selected) => V.Div(
+            className: $"left-[{index * 300}px] top-[0px] w-[200px] h-[100px]",
+            children: selected == index
+                ? new VNode[]
+                {
+                    V.Button(children: new VNode[]
+                    {
+                        V.Motion(name: "card", layoutId: "card", transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
+                    }),
+                }
+                : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode FirstListRender() => ListBody(0, Hooks.UseStore(s_lists, s => s.Index));
+
+        [Component]
+        private static VNode SecondListRender() => ListBody(1, Hooks.UseStore(s_lists, s => s.Index));
+
+        [Component]
+        private static VNode ListsRender() => V.Div(children: new VNode[]
+        {
+            V.Component(FirstListRender, key: "first"),
+            V.Component(SecondListRender, key: "second"),
+        });
+
+        [Test]
+        public void Given_TwoListComponentsHoldingTheCardInAPooledButton_When_TheSecondIsSelected_Then_TheCardTweensFromTheFirst()
+        {
+            // Arrange
+            s_lists = new TabStore(0);
+            using var mounted = V.Mount(Root, V.Component(ListsRender, key: "root"));
+            Tick();
+            Tick();
+
+            // Act
+            s_lists.Select(1);
+            Tick();
+            Tick();
+
+            // Assert — pinned near the first list, 300px left of the second, and not scaled.
+            var card = Root.Q<VisualElement>("card");
+            Assert.That((UnityEngine.Mathf.Abs(card.style.translate.value.x.value + 300f) < 50f, card.style.scale.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        private static string s_resizeOrigin;
+
+        // Step 1 doubles the box in place, its top-left corner fixed; s_resizeOrigin is its transform origin.
+        [Component]
+        private static VNode ResizingBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var size = step == 0 ? 100 : 200;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] {s_resizeOrigin}"),
+            });
+        }
+
+        private VisualElement ResizeBoxWithOrigin(string origin)
+        {
+            s_resizeOrigin = origin;
+            var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            return Root.Q<VisualElement>("shared");
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionScaledAboutItsCentre_When_ItDoublesWithItsCornerFixed_Then_TheTweenStartsOverTheOldBox()
+        {
+            // Arrange / Act
+            var element = ResizeBoxWithOrigin("");
+
+            // Assert — half size, shifted up-left by a quarter of the new size so the old corner stays put.
+            Assert.That((UnityEngine.Mathf.Abs(element.style.scale.value.value.x - 0.5f) < 0.01f,
+                    UnityEngine.Mathf.Abs(element.style.translate.value.x.value + 50f) < 1f,
+                    UnityEngine.Mathf.Abs(element.style.translate.value.y.value + 50f) < 1f),
+                Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts a corner-origin resize at the old corner with no translate.
+        // Compensating the translate for a centre origin that the element does not have would move it.
+        [Test]
+        public void Given_ALayoutIdMotionScaledAboutItsCorner_When_ItDoublesWithThatCornerFixed_Then_TheTweenStartsWithNoTranslate()
+        {
+            // Arrange / Act
+            var element = ResizeBoxWithOrigin("origin-[0%_0%]");
+
+            // Assert — half size about the fixed corner.
+            Assert.That((UnityEngine.Mathf.Abs(element.style.scale.value.value.x - 0.5f) < 0.01f, element.style.translate.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        // Step 1 moves the box out of an unscaled parent into one below it drawn at half scale.
+        [Component]
+        private static VNode IntoScaledParentBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "first", className: "w-[400px] h-[200px]", children: step == 1 ? Array.Empty<VNode>() : new[] { SharedBox(200) }),
+                V.Div(key: "second", className: "w-[400px] h-[200px] scale-[0.5]",
+                    children: step == 1 ? new[] { SharedBox(200) } : Array.Empty<VNode>()),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInAnUnscaledParent_When_ItMovesToAHalfScaleOne_Then_ItTweensFromTwiceItsSize()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(IntoScaledParentBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — twice its size in the half-scale parent is the size it was drawn at before.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That(UnityEngine.Mathf.Abs(replacement.style.scale.value.value.x - 2f), Is.LessThan(0.1f));
         }
 
         private static StateUpdater<int> s_setStop;
