@@ -141,7 +141,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHolderTheProjectPreloadedAndALockedFile_When_ABuildRuns_Then_ItDoesNotRefuse()
+        public void Given_AHolderTheProjectPreloadedAndALockedFile_When_ABuildWouldInjectNothing_Then_ItDoesNotRefuse()
         {
             // Arrange — the project's own entry, so the build has nothing to add and nothing to write.
             var owned = PlayerSettings.GetPreloadedAssets();
@@ -173,7 +173,7 @@ namespace Velvet.Tests
         // What changed is that a build with nothing to write no longer refuses; a leftover record is still
         // something to undo.
         [Test]
-        public void Given_ALeftoverRecordAndALockedFile_When_ABuildRuns_Then_ItRefusesEvenWithTheHolderPreloaded()
+        public void Given_ALeftoverInjectionAndALockedFile_When_ABuildWouldInjectNothing_Then_ItStillRefuses()
         {
             // Arrange — the entry present, so only the record says the build has something to undo.
             var owned = PlayerSettings.GetPreloadedAssets();

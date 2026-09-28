@@ -179,7 +179,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_EveryShaderListedByTheProjectAndALockedFile_When_ABuildRuns_Then_ItDoesNotRefuse()
+        public void Given_EveryShaderListedByTheProjectAndALockedFile_When_ABuildWouldInjectNothing_Then_ItDoesNotRefuse()
         {
             // Arrange — the project's own entries, so the build has nothing to add and nothing to write.
             foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
@@ -234,7 +234,7 @@ namespace Velvet.Tests
         // What changed is that a build with nothing to write no longer refuses; a leftover record is still
         // something to undo.
         [Test]
-        public void Given_ALeftoverRecordAndALockedFile_When_ABuildRuns_Then_ItRefusesEvenWithEveryShaderListed()
+        public void Given_ALeftoverInjectionAndALockedFile_When_ABuildWouldInjectNothing_Then_ItStillRefuses()
         {
             // Arrange — every entry present, so only the record says the build has something to undo.
             foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
