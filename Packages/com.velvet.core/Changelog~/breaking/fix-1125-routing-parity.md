@@ -40,3 +40,7 @@
   and a blocked attempt no longer cancels the navigation already in flight. A block stands until a
   navigation commits rather than until the next attempt reaches the Blocker, and disposing a Blocker's
   registration returns its state to `Idle`. The ResetAllBlocked method of `RouteBlockerManager` is gone.
+
+- Stepping `GoBack` or `GoForward` runs the destination route's loaders as a push to it does, since React
+  Router keeps no loader data per history entry. It used to serve the data and errors the entry's
+  loaders had produced when it was last shown, without running them.

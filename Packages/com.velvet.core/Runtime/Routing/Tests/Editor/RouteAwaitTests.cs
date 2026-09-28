@@ -288,6 +288,46 @@ namespace Velvet.Tests
             Assert.That((router.CurrentLocation.Path, HasLabel(_root, "loading")), Is.EqualTo(("/dashboard", true)));
         }
 
+        [Component]
+        private static VNode DashboardWithErrorElement()
+        {
+            var data = Hooks.UseLoaderData<DashboardData>();
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[]
+                {
+                    V.Await(data!.Reviews, reviews => V.Label(text: "value-" + reviews),
+                        V.Label(text: "reviews-failed")),
+                });
+        }
+
+        [Test]
+        public void Given_ADeferredValueCancelledWhenItsRouteWasLeft_When_SteppingBackOntoTheRoute_Then_ANewLoaderRunIsAwaited()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"),
+                Route("dashboard", element: V.Component(DashboardWithErrorElement, key: "dashboard"),
+                    loader: (_, ct) =>
+                    {
+                        var reviews = new VelvetTaskCompletionSource<string>();
+                        ct.Register(() => reviews.TrySetCanceled());
+                        return VelvetTask.FromResult<object>(new DashboardData(new Deferred<string>(reviews.Task)));
+                    }));
+            using var mounted = V.Mount(_root, V.RouterProvider(router));
+            mounted.FlushEffectsForTest();
+            router.NavigateSync("/dashboard");
+            mounted.FlushStateForTest();
+            router.NavigateSync("/home");
+            mounted.FlushStateForTest();
+
+            // Act
+            router.GoBackSync();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((router.CurrentLocation.Path, HasLabel(_root, "loading")), Is.EqualTo(("/dashboard", true)));
+        }
+
         #endregion
     }
 }

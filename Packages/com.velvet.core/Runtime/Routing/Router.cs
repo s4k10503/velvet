@@ -14,7 +14,7 @@ namespace Velvet
     {
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
-        private readonly List<HistoryEntry> _history = new();
+        private readonly List<string> _history = new();
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
@@ -110,7 +110,6 @@ namespace Velvet
                 // Suspend-mode loader failed: record the error keyed by RouteId and re-emit so the nearest
                 // ErrorElement renders, mirroring the synchronous Await-mode error commit.
                 _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [routeId] = ex };
-                SyncCurrentHistorySnapshot();
                 RepublishCurrentLocation(routeId);
             };
             _loaderRunner.OnSuspendLoaderCompleted += (routeId, result) =>
@@ -120,7 +119,6 @@ namespace Velvet
                 // re-emits OnLocationChanged with a fresh identity to force that re-render.
                 var updated = new Dictionary<string?, object>(_loaderData) { [routeId] = result };
                 _loaderData = updated;
-                SyncCurrentHistorySnapshot();
                 RepublishCurrentLocation(routeId);
             };
             _scopeFactory = scopeFactory;
@@ -176,9 +174,7 @@ namespace Velvet
 
         // Refusing the step before the navigation starts, rather than partway through it, is what makes
         // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
-        // cancelled out from under its caller, and no Status transition left to put back. It is also where
-        // the Back/Forward branch of the loader phase, which indexes the history directly, gets its
-        // assurance that the slot it reads existed when the attempt started.
+        // cancelled out from under its caller, and no Status transition left to put back.
         // The discard is what carries a mode outside the enum through to the commit, whose own switch
         // answers it with ArgumentOutOfRangeException — the router's one report of such a cast, and the
         // one RouterUnfinishedNavigationTests reaches the commit's unwind through. Naming these four arms
@@ -448,15 +444,15 @@ namespace Velvet
                 }
 
                 // An attempt a newer navigation took over from — one a Guard started, say — or whose caller
-                // cancelled it unwinds here rather than in the loader phase: a Back/Forward cache hit commits
-                // without reaching that phase's own cancellation check.
+                // cancelled it unwinds here rather than starting a loader round: beginning one retires the
+                // round current before it, which can be the round of the navigation that took over.
                 if (cancellationToken.IsCancellationRequested)
                 {
                     ReleaseClaim(pending, RouterStatus.Idle);
                     return NavigationResult.Cancelled;
                 }
 
-                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, mode, pending, cancellationToken);
+                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, pending, cancellationToken);
                 if (loaderResult.HasValue)
                 {
                     return loaderResult.Value;
@@ -464,7 +460,7 @@ namespace Velvet
                 round = loaderRound;
                 // Inside the try: the commit throws on a navigation mode outside the enum, and leaving that
                 // to escape past the handlers is what left Status mid-flight before.
-                CommitHistoryEntry(path, matches, mode, pending, round);
+                CommitHistoryEntry(path, mode, pending);
             }
             catch (OperationCanceledException)
             {
@@ -486,10 +482,10 @@ namespace Velvet
 
             CurrentLocation = location;
             PendingLocation = null;
-            // Only now may the round's late results reach the live state: the write-back they trigger reads
-            // CurrentLocation and _historyIndex, and both describe this round's location from here on. This
-            // is also where the round it replaces ends — up to this line that round's loaders were streaming
-            // into the route the user was still looking at.
+            // Only now may the round's late results reach the live state: the republish they trigger reads
+            // CurrentLocation, which describes this round's location from here on. This is also where the
+            // round it replaces ends — up to this line that round's loaders were streaming into the route the
+            // user was still looking at.
             _loaderRunner.Promote(round);
             Status = RouterStatus.Ready;
             // Before the notification, so a handler reading a Blocker off it sees one that has started over
@@ -503,10 +499,10 @@ namespace Velvet
         #region Per-attempt navigation state
 
         // Where one navigation attempt will land, and the sequence deciding whether it still owns Status.
-        // The destination stays here until the attempt commits, because the loader phase awaits application
-        // code and a navigation starting in that window resolves its own destination from the shared index:
-        // a parked Back that had already moved it puts a Push's forward truncation one entry too low, taking
-        // the entry the user is looking at with it.
+        // The destination stays here until the attempt commits, because the Guard and loader phases await
+        // application code and a navigation starting in that window resolves its own destination from the
+        // shared index: a parked Back that had already moved it puts a Push's forward truncation one entry
+        // too low, taking the entry the user is looking at with it.
         private readonly struct PendingNavigation
         {
             internal readonly int Sequence;
@@ -661,34 +657,15 @@ namespace Velvet
 
         #region Loading
 
-        // Returns a null outcome on a normal completion (cached or fresh), leaving _loaderData/_loaderErrors
-        // set for CommitHistoryEntry along with the round that produced them; returns Cancelled only when a
-        // fresh (non-cached) loader run observes cancellation.
+        // Returns a null outcome on a normal completion, leaving _loaderData/_loaderErrors set for the commit
+        // along with the round that produced them; returns Cancelled when the run observes cancellation.
+        // A Back or Forward step runs the loaders as a Push does: React Router keeps no loader data per
+        // history entry, and a Deferred kept in one would have been cancelled when its round was retired.
         private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
-            NavigationMode mode,
             PendingNavigation pending,
             CancellationToken cancellationToken)
         {
-            // Only a settled entry may be served; see HistoryEntry.LoadersSettled for what an unsettled one
-            // holds.
-            var restoring = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
-                && _history[pending.CommitIndex].LoadersSettled;
-
-            if (restoring)
-            {
-                var entry = _history[pending.CommitIndex];
-                _loaderData = entry.LoaderData;
-                // Restore the cached errors too: a Back/Forward cache hit must re-present a route that errored
-                // on its first load (UseRouteError / ErrorElement), symmetrically with the loader data.
-                _loaderErrors = new Dictionary<string?, Exception>(entry.LoaderErrors);
-                Status = RouterStatus.Loading; // for status-transition consistency
-                // A restored entry ran no loaders of its own, so what the commit promotes is an empty round
-                // rather than the one it is leaving; RouteLoaderRunner.EmptyRound states what promoting that
-                // one instead would cost.
-                return (null, _loaderRunner.EmptyRound());
-            }
-
             Status = RouterStatus.Loading;
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
             // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
@@ -720,36 +697,6 @@ namespace Velvet
 
         #region History management
 
-        private readonly struct HistoryEntry
-        {
-            internal readonly string Path;
-            internal readonly IReadOnlyList<RouteMatch> Matches;
-            internal readonly Dictionary<string?, object> LoaderData;
-            internal readonly Dictionary<string?, Exception> LoaderErrors;
-            // An entry committed while a Suspend loader is still running holds whatever its loader round had
-            // produced by then, and nothing in the contents distinguishes that from what the route's loaders
-            // would finally have returned — so the Back/Forward cache reads this flag rather than the data.
-            internal readonly bool LoadersSettled;
-
-            internal HistoryEntry(string path, IReadOnlyList<RouteMatch> matches,
-                Dictionary<string?, object> loaderData, Dictionary<string?, Exception> loaderErrors,
-                bool loadersSettled)
-            {
-                Path = path;
-                Matches = matches;
-                LoaderData = loaderData;
-                LoaderErrors = loaderErrors;
-                LoadersSettled = loadersSettled;
-            }
-        }
-
-        private HistoryEntry NewEntry(string path, IReadOnlyList<RouteMatch> matches,
-            RouteLoaderRunner.LoaderRound round) =>
-            new(path, matches,
-                new Dictionary<string?, object>(_loaderData),
-                new Dictionary<string?, Exception>(_loaderErrors),
-                round.Settled);
-
         private static RouterLocation BuildLocation(string path, IReadOnlyList<RouteMatch> matches)
         {
             var allParams = new Dictionary<string, string>();
@@ -769,38 +716,28 @@ namespace Velvet
             };
         }
 
-        private void CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode,
-            PendingNavigation pending, RouteLoaderRunner.LoaderRound round)
+        private void CommitHistoryEntry(string path, NavigationMode mode, PendingNavigation pending)
         {
             switch (mode)
             {
                 case NavigationMode.Push:
-                    PushHistoryEntry(NewEntry(path, matches, round));
+                    PushHistoryEntry(path);
                     break;
                 case NavigationMode.Replace:
                     if (pending.CommitIndex >= 0)
                     {
-                        _history[pending.CommitIndex] = NewEntry(path, matches, round);
+                        _history[pending.CommitIndex] = path;
                         _historyIndex = pending.CommitIndex;
                     }
                     else
                     {
-                        _history.Add(NewEntry(path, matches, round));
+                        _history.Add(path);
                         _historyIndex = 0;
                     }
                     break;
                 case NavigationMode.Back:
                 case NavigationMode.Forward:
                     _historyIndex = pending.CommitIndex;
-                    // A round still running has nothing worth recording, and the write-back it triggers on
-                    // settling is what makes the entry servable. A round already settled by here has no such
-                    // write-back coming: it settled before this navigation had a location for its results to
-                    // be written under, which is where the runner's live-round guard refused them. Without
-                    // this the entry would stay unservable and re-run its loaders on every step onto it.
-                    if (round.Settled)
-                    {
-                        _history[_historyIndex] = NewEntry(path, matches, round);
-                    }
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
@@ -853,49 +790,14 @@ namespace Velvet
             OnLocationChanged?.Invoke(CurrentLocation);
         }
 
-        /// <summary>
-        /// Writes the live loader data/errors back into the current history entry so a later
-        /// Back/Forward cache hit restores the post-resolution state. Suspend-mode loaders resolve
-        /// asynchronously after the navigation commit, while the history snapshot is frozen at commit
-        /// time; without this write-back the entry would keep the pre-resolution snapshot.
-        /// </summary>
-        private void SyncCurrentHistorySnapshot()
-        {
-            // Guard against a not-yet-committed router (no current location / no history entry / no round
-            // whose loaders the entry could be holding open).
-            var round = _loaderRunner.LiveRound;
-            // MUTANT_SURVIVES(unreachable): no caller gets here with a clause of this true.
-            // The two loader-runner handlers this constructor subscribes are its only callers, and the
-            // runner announces from the round `Promote` made live and no other. This router calls
-            // `Promote` at the commit and nowhere else, below both `CommitHistoryEntry` and the
-            // `CurrentLocation` write, so an announcement finds a live round, a committed location, and
-            // an index inside the history.
-            if (round == null || _historyIndex < 0 || _historyIndex >= _history.Count || CurrentLocation == null)
-            {
-                return;
-            }
-
-            var entry = _history[_historyIndex];
-
-            // Only sync when the current entry is the location whose loaders just resolved. If the user
-            // navigated away before the Suspend loader completed, _historyIndex points at a different
-            // entry and the live state belongs to that other location, not this one.
-            if (entry.Path != CurrentLocation.Path)
-            {
-                return;
-            }
-
-            _history[_historyIndex] = NewEntry(entry.Path, entry.Matches, round);
-        }
-
-        private void PushHistoryEntry(HistoryEntry entry)
+        private void PushHistoryEntry(string path)
         {
             if (CanGoForward)
             {
                 _history.RemoveRange(_historyIndex + 1, _history.Count - (_historyIndex + 1));
             }
 
-            _history.Add(entry);
+            _history.Add(path);
             _historyIndex = _history.Count - 1;
         }
 
@@ -911,7 +813,7 @@ namespace Velvet
                 return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
-            return NavigateAsync(_history[_historyIndex - 1].Path, NavigationMode.Back, cancellationToken);
+            return NavigateAsync(_history[_historyIndex - 1], NavigationMode.Back, cancellationToken);
         }
 
         /// <summary>
@@ -926,7 +828,7 @@ namespace Velvet
                 return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
-            return NavigateAsync(_history[_historyIndex + 1].Path, NavigationMode.Forward, cancellationToken);
+            return NavigateAsync(_history[_historyIndex + 1], NavigationMode.Forward, cancellationToken);
         }
 
         /// <summary>

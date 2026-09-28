@@ -77,6 +77,9 @@ navigation is sequenced against it.
 that never commits. Loaders of one navigation all start before any of them is awaited, so the matched
 chain's loaders — a parent layout's and its child's — run concurrently rather than one after the next.
 
+Stepping `GoBack` / `GoForward` runs the destination route's loaders as a push to it does: React Router
+keeps no loader data per history entry either.
+
 A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
 belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
 `Hooks.UseLoaderData`. The commit that leaves the route is what cancels it.
@@ -152,9 +155,6 @@ public static class Product
 `Hooks.UseAsyncValue`. Its `errorElement` renders when the deferred value's task fails or rendering the
 value throws, and `Hooks.UseAsyncError` returns the exception beneath it; without one the exception
 propagates to the nearest error boundary. Any number of `V.Await` may read one `Deferred<T>`.
-
-Stepping `GoBack` / `GoForward` onto an entry whose loaders had finished serves that entry's data and
-errors from the history cache instead of re-running the loaders.
 
 ## Pending UI
 

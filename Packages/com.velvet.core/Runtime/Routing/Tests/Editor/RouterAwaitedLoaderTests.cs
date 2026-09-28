@@ -423,50 +423,6 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ASuspendLoaderSettlingUnderAnUnsettledNewerRound_When_SteppingBackOntoItsEntry_Then_TheCacheServesIt()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // The write-back a resolution triggers records whether the entry on screen finished its loaders,
-            // and the round that answers that is the one the entry belongs to rather than whichever is newest:
-            // the newer round here is itself unsettled, so reading it would mark a finished entry unfinished
-            // and the Back onto it would load again. The runs are read on both sides of the Back because an
-            // after-only reading of one run cannot tell a Back that ran none from a Back that ran the only one.
-            // Arrange
-            var feedLoaded = new VelvetTaskCompletionSource<object>();
-            var profileStreaming = new VelvetTaskCompletionSource<object>();
-            var detailAwaited = new VelvetTaskCompletionSource<object>();
-            var feedRuns = 0;
-            var router = new Router(new[]
-            {
-                Route("/", children: new[]
-                {
-                    Route("feed", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
-                    {
-                        feedRuns++;
-                        return feedLoaded.Task;
-                    }),
-                    Route("profile", loaderMode: LoaderMode.Suspend,
-                        loader: (ctx, ct) => profileStreaming.Task,
-                        children: new[] { Route("detail", loader: (ctx, ct) => detailAwaited.Task) }),
-                }),
-            });
-            router.NavigateSync("/feed");
-            var navigation = router.NavigateAsync("/profile/detail");
-            feedLoaded.TrySetResult("feed-data");
-            await VelvetTask.Yield();
-            var runsBeforeBack = feedRuns;
-            detailAwaited.TrySetResult("detail-data");
-            await navigation;
-
-            // Act
-            router.GoBackSync();
-
-            // Assert
-            Assert.That($"beforeBack={runsBeforeBack} afterBack={feedRuns}", Is.EqualTo("beforeBack=1 afterBack=1"),
-                "An entry whose own loaders settled is one the Back cache serves, so its loader does not run again");
-        });
-
-        [UnityTest]
         public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheHeldNavigationStillCommits()
             => VelvetTask.ToCoroutine(async () =>
         {
