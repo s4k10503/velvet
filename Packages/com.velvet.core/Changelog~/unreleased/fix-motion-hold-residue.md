@@ -21,6 +21,6 @@
   timed pose that follows. The next pose's swap cancelled the play, and the cancel put back the classes the play
   had been started toward.
 
-- A `V.Motion` whose label changes while it is exiting, or into a pose whose transition has zero duration, no
-  longer gets the earlier pose's arbitrary values, such as `translate-x-[40px]`, back when a later spring or
-  bezier pose that does not name them settles.
+- A presence child `V.Motion` brought back mid-exit at a new label, or a `V.Motion` whose label changes into a
+  pose whose transition has zero duration, no longer gets the earlier pose's arbitrary values, such as
+  `translate-x-[40px]`, back when a later spring or bezier pose that does not name them settles.
