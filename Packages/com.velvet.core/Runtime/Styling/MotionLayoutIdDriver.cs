@@ -33,8 +33,8 @@ namespace Velvet
     // inflates
     // (Given_ALayoutIdMotionInARotatedBoard_When_ItMovesToTheOtherColumn_Then_ItTweensFromItsOldPlaceAtItsOwnSize).
     //
-    // Several live Motions can hold one id, as members of Framer's NodeStack do: the newest to mount leads it
-    // and the others follow it (Follow), and a lead leaving hands the id to the newest member left (Leave).
+    // Several live Motions can hold one id, as members of Framer's NodeStack do: the newest to take it leads
+    // and the others follow (Follow), and a lead leaving hands the id to the newest member left (Leave).
     internal static class MotionLayoutIdDriver
     {
         // An edge this close to its layout, in pixels, and moving this slowly ends a projection's spring.
@@ -57,7 +57,7 @@ namespace Velvet
             ctx.LayoutIdTimings[element] = timing;
             var joins = !ctx.ElementToLayoutId.TryGetValue(element, out var registeredId) || registeredId != layoutId;
             if (joins && registeredId != null) Leave(element, registeredId, ctx);
-            // The newest Motion to mount under an id leads it, as the newest member of Framer's NodeStack does;
+            // The newest Motion to take an id leads it, as the newest member of Framer's NodeStack does;
             // the others follow it, and a follower's own patch takes nothing from the lead
             // (Given_TwoLiveMotionsSharingALayoutId_When_TheLeadMovesInARenderThatAlsoPatchesTheFollower_Then_TheLeadTweensFromItsOwnBox).
             ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous);
@@ -459,9 +459,9 @@ namespace Velvet
             if (!remaining && ctx.LayoutIdFrames.Remove(host, out var frame)) frame.Pause();
         }
 
-        // A lead promoted by its predecessor's teardown starts once a layout pass has run since, unless its
-        // own GeometryChangedEvent started it first; it stays hidden until then, since it has not taken the
-        // predecessor's box yet.
+        // A lead promoted by its predecessor's teardown starts two frames after its promotion unless its own
+        // GeometryChangedEvent started it first, and stays hidden until then, having not yet taken the box
+        // it was handed.
         private static void StartPromotions(VisualElement host, ReconcilerContext ctx)
         {
             foreach (var entry in ctx.LayoutIdPromotions)

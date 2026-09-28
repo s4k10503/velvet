@@ -316,8 +316,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
   compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
-  inside one that grows or shrinks keeps its own size and its offset from the outer one's drawn corner on
-  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. A move that
+  inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
+  by its own class inside an outer one stretching by different factors on its two axes is not kept
+  exactly: no scale and translate undo a stretch at an angle to the element's axes. A move that
   lands while a tween is still running starts from where the element is drawn, not from its last layout.
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.
@@ -327,14 +329,15 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
-  discrete event flushes, however many components they re-render: once an element has left the tree,
-  its id hands nothing to a Motion that mounts under it in a later batch, which appears in place — as in
+  discrete event flushes, however many components they re-render: once the last element holding an id
+  has left the tree, the id hands nothing to a Motion that mounts under it in a later batch, which appears
+  in place — as in
   Framer, which drops a removed element's snapshot once the frame it left in has rendered.
-- Two live Motions can share a `layoutId`, as in Framer's shared layout. The newest to mount leads the
-  id and tweens from the one before it, which follows: it is drawn over the lead's box and fades out
-  while the lead moves, the lead fading in over the first half of its move, and then stays hidden and
-  ignores the pointer. A follower's own patches move nothing. When the lead leaves the tree, the newest
-  follower left takes the id back and tweens from the box the lead left.
+- Two live Motions can share a `layoutId`, as in Framer's shared layout. The newest to take the id
+  leads it and tweens from the one before it, which follows: it is drawn over the lead's box and fades
+  out while the lead moves, the lead fading in over the first half of its move, and then stays hidden
+  and ignores the pointer. A follower's own patches move nothing. When the lead leaves the tree, the
+  newest follower left takes the id back and moves from the box the lead left on its own transition.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a

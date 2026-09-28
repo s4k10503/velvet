@@ -1044,7 +1044,7 @@ namespace Velvet.Tests
 
         // A point of an element's own box carried up to Root through each element's layout offset and its
         // inline translate and scale about its transform origin: where it is drawn while a layoutId tween owns
-        // those slots, which the resolved transform reports only a frame later.
+        // those slots.
         private Vector2 DrawnPoint(VisualElement element, Vector2 point)
         {
             for (var e = element; e != Root; e = e.hierarchy.parent)
