@@ -4,9 +4,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that consulting a registered Blocker that lets the attempt through costs nothing beyond
-    /// what a pass over no registration costs, so an application registering one does not pay for it on every
-    /// navigation.
+    /// Specifies that the manager's pass over a registered Blocker that lets the attempt through costs nothing
+    /// beyond what its pass over no registration costs.
     /// </summary>
     [TestFixture]
     [Category("Performance")]

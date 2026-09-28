@@ -477,8 +477,8 @@ namespace MyApp.Pages
         public void Reports_When_UseBlocker_Predicate_Captures_Local_Missing_From_Deps()
         {
             // Arrange
-            // UseBlocker's predicate receives the blocker function's argument, so it is the one deps-comparing
-            // factory whose lambda is not parameterless.
+            // UseBlocker's predicate receives the blocker function's argument, so its factory lambda takes one
+            // parameter.
             const string source = @"
 namespace MyApp.Pages
 {

@@ -6,9 +6,9 @@ using System.Threading;
 namespace Velvet
 {
     /// <summary>
-    /// Navigation controller: consults its blocker, matches paths against a route tree, runs guards and loaders, and
-    /// maintains a history stack with Back/Forward. <c>V.RouterProvider</c> publishes one to the routing
-    /// hooks beneath it.
+    /// Navigation controller: consults its blocker, matches paths against a route tree, runs guards and
+    /// loaders, and maintains a history stack with Back/Forward. <c>V.RouterProvider</c> publishes one to the
+    /// routing hooks beneath it.
     /// </summary>
     public sealed class Router : IDisposable
     {
@@ -468,10 +468,10 @@ namespace Velvet
             }
             catch (OperationCanceledException)
             {
-                // A Guard redirect or a Loader that honors its token unwinds by exception, skipping the
-                // in-line rollback the loader phase's cancellation check uses. Status was set before both, so
-                // an aborted attempt would otherwise leave UseNavigation reporting a navigation that is no
-                // longer in flight.
+                // A Guard throwing OperationCanceledException, this attempt's or a redirect's, unwinds by
+                // exception, skipping the in-line rollback the cancellation checks use. Status was set before
+                // the Guards run, so an aborted attempt would otherwise leave UseNavigation reporting a
+                // navigation that is no longer in flight.
                 ReleaseClaim(pending, RouterStatus.Idle);
                 throw;
             }

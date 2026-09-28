@@ -481,7 +481,7 @@ namespace Velvet
         private static readonly Func<BlockerFunctionArgs, bool> s_neverBlock = _ => false;
 
         /// <summary>
-        /// Conditionally blocks navigation departures, re-registering the predicate on every render so it
+        /// Conditionally blocks navigation departures, handing the Blocker the predicate of every render so it
         /// answers with the state the latest render captured. The component re-renders whenever the returned
         /// Blocker's state changes. Must be used inside Render() only.
         /// </summary>
@@ -500,12 +500,12 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Conditionally blocks navigation departures, re-registering the predicate only when a dependency
-        /// changes. The component re-renders whenever the returned Blocker's state changes.
+        /// Conditionally blocks navigation departures, handing the Blocker a render's predicate only when a
+        /// dependency changes. The component re-renders whenever the returned Blocker's state changes.
         /// Must be used inside Render() only.
         /// </summary>
         /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
-        /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
+        /// <param name="deps">Dependency array. When null, every render's predicate is handed over.</param>
         /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
         /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
         /// caller.</exception>
@@ -629,8 +629,8 @@ namespace Velvet
         /// <summary>
         /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
         /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller is matching or loading
-        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the router's status
-        /// transitions.
+        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as
+        /// the router's status transitions.
         /// </summary>
         /// <remarks>
         /// A <c>submitting</c> state is intentionally not modelled because Velvet has no route action /

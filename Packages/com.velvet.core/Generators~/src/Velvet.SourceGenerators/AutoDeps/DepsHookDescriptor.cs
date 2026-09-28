@@ -106,8 +106,8 @@ namespace Velvet.SourceGenerators.AutoDeps
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 1, depsArgIndex: 2, depsAreParams: true);
                     return true;
                 case VelvetWellKnownNames.UseBlockerMethodName:
-                    // The blocker predicate receives the blocker function's argument, so unlike every other
-                    // entry its factory lambda is not parameterless.
+                    // The blocker predicate receives the blocker function's argument, so its factory lambda
+                    // takes one parameter.
                     descriptor = new DepsHookDescriptor(
                         VelvetWellKnownNames.HooksTypeFullName,
                         factoryArgIndex: 0,

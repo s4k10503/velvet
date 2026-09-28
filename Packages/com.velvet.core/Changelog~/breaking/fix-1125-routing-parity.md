@@ -19,8 +19,8 @@
 - `Hooks.UseLocation`, `Hooks.UseNavigate`, `Hooks.UseMatch`, `Hooks.UseSearchParams`,
   `Hooks.UseNavigation`, `Hooks.UseBlocker`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` throw
   `InvalidOperationException` beneath no `V.RouterProvider`, as React Router's refuse to run outside a
-  router, and so do `V.Link`, `V.NavLink` and `V.Navigate`. They used to answer with a null location,
-  empty data or a navigation that did nothing. `V.Outlet`, `Hooks.UseParams` and
+  router, and so do `V.Link`, `V.NavLink` and `V.Navigate`. They used to answer with a null location or
+  empty data, and to navigate the most recently constructed router, if any. `V.Outlet`, `Hooks.UseParams` and
   `Hooks.UseOutletContext` still answer there, as React Router's do. A tree that publishes the routing
   contexts by hand publishes `RouterContext.Router`, which is new, beside them.
 

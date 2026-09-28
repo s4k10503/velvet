@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// Specifies where a Blocker's behaviour follows React Router's <c>useBlocker</c> and the data router
     /// behind it.
     /// <list type="bullet">
-    /// <item>The router consults only the Blocker registered last, and warns while more than one is
-    /// registered.</item>
+    /// <item>The router consults only the Blocker registered last, and warns each time it does so with more
+    /// than one registered.</item>
     /// <item>The Blocker is consulted before the path is matched, so a path no route matches is put to it and
     /// a Guard is not asked about a path the Blocker stopped; nothing of the attempt is published while it is
     /// consulted, and a blocked attempt leaves the navigation already in flight alone.</item>
@@ -126,8 +126,8 @@ namespace Velvet.Tests
             // Act
             var result = router.NavigateSync("/admin");
 
-            // Assert — the result rides along because an attempt the Blocker let through asks no Guard only if
-            // the route has none.
+            // Assert — the result rides along, because an attempt that never reached the router asks no Guard
+            // either.
             Assert.That($"result={result} guards={guardCalls}", Is.EqualTo("result=Blocked guards=0"));
         }
 

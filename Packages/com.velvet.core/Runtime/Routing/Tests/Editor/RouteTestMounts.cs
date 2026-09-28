@@ -5,7 +5,7 @@ namespace Velvet.Tests
     /// route element.
     /// </summary>
     /// <remarks>
-    /// Kept apart from <see cref="RouteTestStubs"/>, which every routing fixture imports, so that a fixture
+    /// Kept apart from <see cref="RouteTestStubs"/>, which most routing fixtures import, so that a fixture
     /// publishing no router by hand does not depend on <see cref="RouterContext.Router"/>.
     /// </remarks>
     internal static class RouteTestMounts
