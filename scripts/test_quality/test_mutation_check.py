@@ -3745,8 +3745,12 @@ class ProjectLockTests(unittest.TestCase):
             time.sleep(60)
             """).format(HOLD_LOCK)
         with scripted_editor(body) as (editor, project, root, _):
-            # Act
+            # Act — the lock is read until it comes free or ten seconds pass, since what the kill
+            # leaves behind is a process that is gone or one that is not, not how soon it goes.
             run_scripted(editor, project, root, timeout=1)
+            deadline = time.time() + 10
+            while lock_state(str(project)) == "held" and time.time() < deadline:
+                time.sleep(0.2)
             state = ((project / "taken").exists(), lock_state(str(project)))
 
         # Assert
@@ -3788,6 +3792,123 @@ class ProjectLockTests(unittest.TestCase):
         self.assertEqual(last, getattr(mutation_check, "LOCK_REFUSED_LINE", None))
 
 
+    def test_Given_AnEditorRefusedTheLockThatOutlivesItsBoundEachTime_When_ItIsRun_Then_ItIsNotReadAsHung(self):
+        # Arrange — a refusal followed by an editor that does not exit, so each launch ends at the
+        # bound rather than at the refusal.
+        body = textwrap.dedent("""\
+            open(log, "w").write("editor log\\n")
+            sys.stdout.write({!r})
+            sys.stdout.flush()
+            time.sleep(60)
+            """).format(REFUSAL)
+        with scripted_editor(body) as (editor, project, root, _):
+            # Act
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", 1)
+            last = (root / "run.log").read_text().rstrip().splitlines()[-1]
+
+        # Assert
+        self.assertEqual((reading[1], last), (False, getattr(mutation_check, "LOCK_REFUSED_LINE", None)))
+
+
+HARNESS = textwrap.dedent("""\
+    import importlib.util, os, signal, subprocess, sys
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("mutation_check", sys.argv[1])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    editor, project, root, mode = sys.argv[2:6]
+    holder = module.Holder(Path(root) / "sentinel.json")
+    holder.guard()
+    if mode == "signal-while-starting":
+        # A leader that only runs the editor, so what ends it here is the handler and not the watchdog.
+        module.WATCHDOG = "import subprocess, sys\\nsys.exit(subprocess.call(sys.argv[2:]))\\n"
+        real = subprocess.Popen
+
+        def starting(*arguments, **options):
+            process = real(*arguments, **options)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return process
+
+        subprocess.Popen = starting
+    module.run_suite(editor, project, "EditMode", [], Path(root) / "results.xml", Path(root) / "run.log",
+                     120, holder)
+    """)
+
+
+class EditorOutlivingItsHarnessTests(unittest.TestCase):
+    """An editor left running after its campaign has gone measures a tree nobody is holding."""
+
+    EDITOR = textwrap.dedent("""\
+        print("the editor was here", flush=True)
+        open(os.path.join(holders, "editor"), "w").write(str(os.getpid()))
+        time.sleep(600)
+        """)
+
+    def left_running(self, mode, stop):
+        """Whether the editor was still up ten seconds after `stop` was done to a harness in `mode`."""
+        with scripted_editor(self.EDITOR) as (editor, project, root, holders):
+            harness = subprocess.Popen([sys.executable, "-c", HARNESS, str(Path(mutation_check.__file__)),
+                                        editor, str(project), str(root), mode],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            record = holders / "editor"
+            deadline = time.time() + 30
+            while not record.exists() and harness.poll() is None and time.time() < deadline:
+                time.sleep(0.1)
+            stop(harness)
+            harness.wait(timeout=60)
+            # An editor started just before its harness died can still be on its way to the record.
+            deadline = time.time() + 5
+            while not (record.exists() and record.read_text()) and time.time() < deadline:
+                time.sleep(0.1)
+            pid = int(record.read_text()) if record.exists() and record.read_text() else None
+            deadline = time.time() + 10
+            while pid is not None and time.time() < deadline:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    return False
+                time.sleep(0.2)
+            return pid is not None
+
+    # GREEN_ON_BASE(characterization): the editor's output reaches the job log while it runs.
+    # On the base the editor wrote there itself. What reddens this on the branch is `relay` holding
+    # a line back until the launch ends.
+    def test_Given_AHarnessStoppedWhileItsEditorRuns_When_ItsOutputIsRead_Then_WhatTheEditorPrintedIsThere(self):
+        # Arrange
+        with scripted_editor(self.EDITOR) as (editor, project, root, holders):
+            harness = subprocess.Popen([sys.executable, "-c", HARNESS, str(Path(mutation_check.__file__)),
+                                        editor, str(project), str(root), "plain"],
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            record = holders / "editor"
+            deadline = time.time() + 30
+            while not record.exists() and time.time() < deadline:
+                time.sleep(0.1)
+            time.sleep(0.5)
+
+            # Act
+            harness.terminate()
+            printed, _ = harness.communicate(timeout=60)
+
+        # Assert
+        self.assertIn("the editor was here", printed)
+
+    def test_Given_AHarnessKilledWithSigkill_When_ItsEditorIsRunning_Then_TheEditorGoesWithIt(self):
+        # Act
+        running = self.left_running("plain", lambda harness: harness.kill())
+
+        # Assert
+        self.assertFalse(running)
+
+    def test_Given_ASignalArrivingWhileTheEditorStarts_When_TheHarnessDiesOfIt_Then_TheEditorGoesWithIt(self):
+        # Act — the harness sends itself the signal inside the call that starts the editor.
+        running = self.left_running("signal-while-starting", lambda harness: None)
+
+        # Assert
+        self.assertFalse(running)
+
+
 class LockRefusedCampaign(StubbedCampaign):
     """A campaign whose mutant launch leaves no result and a log `run_suite` ended as it ends one
     whose every launch the editor refused for the lock."""
@@ -3812,6 +3933,26 @@ class LockVerdictTests(unittest.TestCase):
         # Assert
         record = json.loads((campaign.project / "out" / "mutant-001.json").read_text())
         self.assertEqual(record.get("verdict"), getattr(mutation_check, "LOCKED", None))
+
+    def test_Given_AShardThatRecordedAVerdictNoDecisionKnows_When_Collected_Then_TheCampaignFails(self):
+        # Arrange — as the case below, with a verdict no version of this script writes.
+        campaign = ParityKilledCampaign(ParityKilledCampaign.BODY.replace(
+            "        internal static bool Other",
+            "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+            "        internal static bool Other"))
+        campaign.shard("0/2", "out0")
+        campaign.shard("1/2", "out1")
+        record = campaign.project / "out0" / "mutant-001.json"
+        held = json.loads(record.read_text())
+        held["verdict"] = "killed-ish"
+        record.write_text(json.dumps(held))
+
+        # Act
+        code = campaign.run_over_diff("--collect", str(campaign.project / "out0"),
+                                      str(campaign.project / "out1"))
+
+        # Assert
+        self.assertEqual(code, 1)
 
     def test_Given_AShardThatRecordedTheLockVerdict_When_Collected_Then_TheCampaignFails(self):
         # Arrange — every other mutant is killed or declared, so the lock verdict is the only thing
@@ -4579,16 +4720,17 @@ class NarrowedAttemptTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
 
-    def test_Given_ANarrowedRunKilledAtItsBound_When_ItLeftAFailure_Then_TheWholeSuiteDecides(self):
-        # Arrange
-        campaign = AreaCampaign()
-        campaign.narrowed_times_out = True
+    def test_Given_ANarrowedRunKilledAtItsBound_When_ItsCompleteResultHoldsAFailure_Then_ThatKillStands(self):
+        # Arrange — the whole suite would have let it survive, so the kill can only be the area's.
+        campaign = KilledAtItsBoundCampaign("mutant-001-narrowed.xml",
+                                            complete_results(("Velvet.Tests.ProbeTests.Given_X",)))
 
         # Act
         campaign.run_over_diff()
 
         # Assert
-        self.assertEqual(campaign.launches[-2:], ["mutant-001-narrowed.xml", "mutant-001.xml"])
+        self.assertEqual((campaign.launches[-1], campaign.verdict().get("verdict")),
+                         ("mutant-001-narrowed.xml", mutation_check.KILLED))
 
     # GREEN_ON_BASE(characterization): the base launches no narrowed run, so its verdict is the whole
     # suite's alone and the mutant survives there too. What reddens this on the branch is carrying
@@ -4653,6 +4795,180 @@ class NarrowedAttemptTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.launches, ["baseline.xml", "mutant-001.xml"])
+
+
+def complete_results(failing=(), cases=2, **changes):
+    """A results file as the runner closes one: `cases` cases, `failing` of them failing, with `changes`
+    replacing attributes of its root and a change to None taking one away."""
+    root = {"testcasecount": cases, "result": "Failed(Child)" if failing else "Passed", "total": cases,
+            "passed": cases - len(failing), "failed": len(failing), "inconclusive": 0, "skipped": 0}
+    root.update(changes)
+    attributes = " ".join('{}="{}"'.format(key, value) for key, value in root.items() if value is not None)
+    failures = "".join('<test-case fullname="{}" result="Failed" />'.format(name) for name in failing)
+    return "<test-run {}>{}</test-run>".format(attributes, failures)
+
+
+class KilledAtItsBoundCampaign(AreaCampaign):
+    """An `AreaCampaign` whose launch writing `killed` leaves `text` as its results and is then killed
+    at its bound, the file dated `age` seconds back where one is given.
+
+    Both baselines report two cases, so two is what a complete reading of either launch holds.
+    """
+
+    def __init__(self, killed, text, age=None):
+        super().__init__()
+        self.killed, self.text, self.age = killed, text, age
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        wall, timed_out, peak = super().run_suite(unity, project, platform, scope, results, log, timeout,
+                                                  holder)
+        if Path(results).name != self.killed:
+            return wall, timed_out, peak
+        Path(results).write_text(self.text)
+        if self.age is not None:
+            then = time.time() - self.age
+            os.utime(str(results), (then, then))
+        return wall, True, peak
+
+
+FAILING = ("Velvet.Tests.ProbeTests.Given_X",)
+NARROWED = "mutant-001-narrowed.xml"
+WHOLE = "mutant-001.xml"
+FELL_BACK = [NARROWED, WHOLE]
+
+
+class CompleteAtItsBoundTests(unittest.TestCase):
+    """A launch killed at its bound after writing a complete reading is read as that reading; one short
+    of complete is read as the bound ending it, as every killed launch was before."""
+
+    @staticmethod
+    def narrowed(text, age=None):
+        campaign = KilledAtItsBoundCampaign(NARROWED, text, age)
+        campaign.run_over_diff()
+        return campaign
+
+    @staticmethod
+    def whole(text, age=None):
+        campaign = KilledAtItsBoundCampaign(WHOLE, text, age)
+        campaign.narrowed_fails = ()
+        campaign.run_over_diff()
+        return campaign
+
+    # GREEN_ON_BASE(characterization): a narrowed pass hands the mutant to the whole suite, as before.
+    # What reddens this on the branch is `narrowed_kill` taking a complete pass as a verdict.
+    def test_Given_ANarrowedRunKilledAfterACompletePass_When_Read_Then_TheWholeSuiteStillDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results())
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
+
+    def test_Given_AWholeSuiteRunKilledAfterACompleteFailure_When_Read_Then_TheMutantIsKilled(self):
+        # Act
+        record = self.whole(complete_results(FAILING)).verdict()
+
+        # Assert
+        self.assertEqual((record.get("verdict"), record.get("killers")), (mutation_check.KILLED, list(FAILING)))
+
+    def test_Given_AWholeSuiteRunKilledAfterACompletePass_When_Read_Then_TheMutantSurvives(self):
+        # Act
+        record = self.whole(complete_results()).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.SURVIVED)
+
+    # GREEN_ON_BASE(characterization): a whole-suite reading one case short is not measured, as before.
+    # What reddens this on the branch is the whole-suite launch's `expected` not being the baseline's.
+    def test_Given_AWholeSuiteRunKilledWithFewerCasesThanItsBaseline_When_Read_Then_ItTimedOut(self):
+        # Act
+        record = self.whole(complete_results(FAILING, cases=1)).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+
+    # GREEN_ON_BASE(characterization): a whole-suite reading older than its launch is not measured.
+    # What reddens this on the branch is the whole-suite launch's `since` not being its own.
+    def test_Given_AWholeSuiteRunKilledOverAnOlderFile_When_Read_Then_ItTimedOut(self):
+        # Act
+        record = self.whole(complete_results(FAILING), age=3600).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+
+    # GREEN_ON_BASE(characterization): a whole-suite launch killed mid-file hung, as before. What
+    # reddens this on the branch is `complete_result` reading a file that does not parse. Asked of
+    # the whole suite, since a narrowed launch's own reading refuses such a file a second time.
+    def test_Given_AWholeSuiteRunKilledMidFile_When_Read_Then_ItHung(self):
+        # Act
+        record = self.whole(complete_results(FAILING)[:-20]).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.HUNG)
+
+    # GREEN_ON_BASE(characterization): a whole-suite root without a count is not measured, as before.
+    # What reddens this on the branch is `complete_result` defaulting a count it could not read: the
+    # failed count of a pass, where a default of zero is the right number and nothing else disagrees.
+    def test_Given_AWholeSuiteRunKilledWithoutItsFailedCount_When_Read_Then_ItTimedOut(self):
+        # Act
+        record = self.whole(complete_results(failed=None)).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+
+    # GREEN_ON_BASE(characterization): a root without its result falls back, as before. What reddens
+    # this on the branch is `complete_result` no longer asking for the result attribute.
+    def test_Given_ANarrowedRunKilledWithoutItsResult_When_Read_Then_TheWholeSuiteDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results(FAILING, result=None))
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
+
+    # GREEN_ON_BASE(characterization): a whole-suite root that is not a test run hung, as before. What
+    # reddens this on the branch is `complete_result` no longer asking for a `test-run` root, which
+    # the narrowed launch's own reading asks a second time.
+    def test_Given_AWholeSuiteRunKilledOverAnotherRoot_When_Read_Then_ItHung(self):
+        # Act
+        record = self.whole(complete_results(FAILING).replace("test-run", "test-suite")).verdict()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), mutation_check.HUNG)
+
+    # GREEN_ON_BASE(characterization): a file older than its launch falls back, as before. What
+    # reddens this on the branch is the narrowed launch's `since` not being its own.
+    def test_Given_ANarrowedRunKilledOverAnOlderFile_When_Read_Then_TheWholeSuiteDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results(FAILING), age=3600)
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
+
+    # GREEN_ON_BASE(characterization): a reading short of its area's cases falls back, as before.
+    # What reddens this on the branch is the narrowed launch's `expected` not being its area's.
+    def test_Given_ANarrowedRunKilledWithFewerCasesThanItsArea_When_Read_Then_TheWholeSuiteDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results(FAILING, cases=1))
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
+
+    # GREEN_ON_BASE(characterization): a run holding a case it never reported falls back, as before.
+    # What reddens this on the branch is `complete_result` not comparing the two counts.
+    def test_Given_ANarrowedRunKilledBeforeReportingEveryCaseItHeld_When_Read_Then_TheWholeSuiteDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results(FAILING, testcasecount=3))
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
+
+    # GREEN_ON_BASE(characterization): a reading with an inconclusive case falls back, as before.
+    # What reddens this on the branch is `complete_result` not asking that each case passed or failed.
+    def test_Given_ANarrowedRunKilledWithAnInconclusiveCase_When_Read_Then_TheWholeSuiteDecides(self):
+        # Act
+        campaign = self.narrowed(complete_results(FAILING, passed=0, inconclusive=1))
+
+        # Assert
+        self.assertEqual(campaign.launches[-2:], FELL_BACK)
 
 
 class NarrowableAreaTests(unittest.TestCase):

@@ -48,7 +48,7 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
+import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -82,8 +82,10 @@ UNRECORDED = "not measured (no shard recorded it)"
 LOCKED = "not measured (the project lock was held)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
+# The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
+# however it is spelled, fails the decision as one nothing measured.
+DECIDED = (KILLED, HUNG, INAPPLICABLE)
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
-UNMEASURED = (NOT_BUILT, TIMED_OUT, UNCOMPILABLE, UNRECORDED, LOCKED)
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
@@ -1519,6 +1521,17 @@ class Holder:
     def __init__(self, sentinel):
         self.sentinel = Path(sentinel)
         self.child = None
+        # While an editor is being started it exists before `child` names it, so a signal arriving
+        # then is held until it does rather than leaving that editor running over a restored tree.
+        self.starting = False
+        self.pending = None
+
+    def started(self):
+        """Ends the start `launch` marked, delivering a signal that arrived during it."""
+        self.starting = False
+        if self.pending is not None:
+            number, self.pending = self.pending, None
+            signal.raise_signal(number)
 
     def hold(self, source, original, mutated, description):
         # Refusing rather than overwriting: two campaigns started close enough together both reach
@@ -1567,6 +1580,9 @@ class Holder:
     def guard(self):
         """Restores on the signals that end a campaign, then dies of the signal rather than of this."""
         def handler(number, _frame):
+            if self.starting:
+                self.pending = number
+                return
             if self.child is not None and self.child.poll() is None:
                 kill_group(self.child)
             self.release()
@@ -1636,68 +1652,87 @@ def wait_for_release(project, seconds):
 
 
 def kill_group(child):
-    """Kills the editor and every process still in the group it leads."""
+    """Kills the watchdog `launch` starts and every process still in the group it leads."""
     try:
         os.killpg(child.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
 
 
-def reap(child, seconds=LOCK_WAIT):
-    """Kills the editor's group and waits, up to `seconds`, until no process of it is left."""
+def reap(child):
     kill_group(child)
     child.wait()
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        try:
-            os.killpg(child.pid, 0)
-        except ProcessLookupError:
-            return
-        except PermissionError:
-            # What macOS answered in 7 of 30 measured kills, for the moment before the group read as
-            # gone, so it is waited through rather than taken as an answer.
-            pass
-        time.sleep(0.2)
+
+
+# Leads the editor's group: runs the editor, exits with it, and kills the group once the process that
+# started it has gone, which no handler here can do for a SIGKILL.
+WATCHDOG = """\
+import os, signal, subprocess, sys
+parent = int(sys.argv[1])
+editor = subprocess.Popen(sys.argv[2:])
+while True:
+    try:
+        sys.exit(editor.wait(timeout=1))
+    except subprocess.TimeoutExpired:
+        if os.getppid() != parent:
+            os.killpg(0, signal.SIGKILL)
+"""
+
+
+def relay(stream, said):
+    """Passes what the editor prints on to this job's log as it arrives, keeping a copy in `said`."""
+    for line in iter(stream.readline, b""):
+        text = line.decode("utf-8", "replace")
+        said.append(text)
+        sys.stdout.write(text)
+        sys.stdout.flush()
 
 
 def launch(command, timeout, holder):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
     once, and what it printed."""
     start = time.time()
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as said:
-        # Its own group, so a kill reaches whatever the editor started and left in it.
-        child = subprocess.Popen(command, stdout=said, stderr=subprocess.STDOUT, start_new_session=True)
+    said = []
+    if holder is not None:
+        holder.starting = True
+    try:
+        # A group of its own, so a kill reaches whatever the editor started and left in it.
+        child = subprocess.Popen([sys.executable, "-c", WATCHDOG, str(os.getpid()), *command],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
         if holder is not None:
             holder.child = child
-        # Sampled for the run's whole life, not once before it. The campaign waits before every
-        # mutant, and a neighbour arriving ten seconds in is invisible for the rest of that mutant --
-        # where it can redden a timing-sensitive case, and the mutant is then recorded killed. A
-        # mutant that actually survived, which is a hole in the tests, reported as covered.
-        peak = 0
-        timed_out = False
-        try:
-            while True:
-                try:
-                    child.wait(timeout=3)
+    finally:
+        if holder is not None:
+            holder.started()
+    reader = threading.Thread(target=relay, args=(child.stdout, said), daemon=True)
+    reader.start()
+    # Sampled for the run's whole life, not once before it. The campaign waits before every mutant,
+    # and a neighbour arriving ten seconds in is invisible for the rest of that mutant -- where it can
+    # redden a timing-sensitive case, and the mutant is then recorded killed. A mutant that actually
+    # survived, which is a hole in the tests, reported as covered.
+    peak = 0
+    timed_out = False
+    try:
+        while True:
+            try:
+                child.wait(timeout=3)
+                break
+            except subprocess.TimeoutExpired:
+                if time.time() - start > timeout:
+                    reap(child)
+                    timed_out = True
                     break
-                except subprocess.TimeoutExpired:
-                    if time.time() - start > timeout:
-                        reap(child)
-                        timed_out = True
-                        break
-                    peak = max(peak, max(0, unity_busy() - 1))
-        finally:
-            if child.poll() is None:
-                reap(child)
-            if holder is not None:
-                holder.child = None
-        wall = time.time() - start
-        said.seek(0)
-        printed = said.read()
-    # Passed on, so the job's log still carries what the editor printed.
-    sys.stdout.write(printed)
-    sys.stdout.flush()
-    return wall, timed_out, peak, printed
+                peak = max(peak, max(0, unity_busy() - 1))
+    finally:
+        if child.poll() is None:
+            reap(child)
+        if holder is not None:
+            holder.child = None
+    wall = time.time() - start
+    # Bounded, since a process that left the group can still hold the pipe open.
+    reader.join(timeout=5)
+    return wall, timed_out, peak, "".join(said)
 
 
 def lock_refused(log):
@@ -1736,7 +1771,9 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
             return wall, timed_out, peak
     with open(str(log), "a") as written:
         written.write("\n{}\n".format(LOCK_REFUSED_LINE))
-    return wall, timed_out, peak
+    # Not timed out, whatever the last launch did after refusing: a caller reads a timeout with no
+    # result as a hang, which is a kill.
+    return wall, False, peak
 
 
 # Anchored on a source path and a position, so an assertion message quoting the words "error CS" is
@@ -1892,6 +1929,31 @@ def narrowable(results, areas):
         if names and sum(seconds[name] for name in names) * NARROW_SHARE <= total:
             found[area] = names
     return found
+
+
+def complete_result(results, since, expected):
+    """Whether `results` is a whole reading of a launch started at `since` and asked for `expected`
+    cases, so that it stands even though the editor was then killed at its bound.
+
+    Written since the launch started; a `test-run` root carrying its result; its counts readable; as
+    many cases reported as the run held and the matching baseline ran; and every one of them passed or
+    failed, none inconclusive or skipped. Anything short of all of that is read as a launch the bound
+    ended.
+    """
+    try:
+        if os.path.getmtime(str(results)) < since:
+            return False
+        root = ET.parse(str(results)).getroot()
+    except (OSError, ET.ParseError):
+        return False
+    if root.tag != "test-run" or not root.get("result"):
+        return False
+    try:
+        total, held, passed, failed = (int(root.get(key)) for key in (
+            "total", "testcasecount", "passed", "failed"))
+    except (TypeError, ValueError):
+        return False
+    return total == held == expected and passed + failed == total
 
 
 def narrowed_kill(results, log, timed_out, dll, baseline_hashes, text_readers):
@@ -2258,7 +2320,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             bound = min(ceiling, area_wall * NARROW_MARGIN)
             print("{} alone passed in {:.0f}s, so each of its mutants is given {:.0f}s there".format(
                 ", ".join(names), area_wall, bound))
-            attempts[area] = (attempt, names, bound)
+            attempts[area] = (attempt, names, bound, counts["total"])
 
     originals = {path: path.read_text() for path in targets}
     started = time.time()
@@ -2291,23 +2353,31 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            attempt, narrowed_to, narrow_bound = attempts.get(area_of(mutant.path, project),
-                                                              (None, (), 0))
-            early, wall, neighbours = [], 0.0, 0
+            attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
+                area_of(mutant.path, project), (None, (), 0, 0))
+            early, wall, neighbours, late = [], 0.0, 0, False
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
                 narrowed_log = output / "mutant-{:03d}-narrowed.log".format(index)
                 if narrowed.exists():
                     narrowed.unlink()
+                since = time.time()
                 wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, attempt,
                                                         narrowed, narrowed_log, narrow_bound, holder)
+                if timed_out and complete_result(narrowed, since, area_cases):
+                    timed_out, late = False, True
                 early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
                                       text_readers)
+                # A complete narrowed pass is no verdict, so the whole suite still runs.
+                late = late and bool(early)
             timed_out = False
             if not early:
+                since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
+                if timed_out and complete_result(results, since, baseline["total"]):
+                    timed_out, late = False, True
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
                 # next mutation over this one and end by restoring the wrong text.
@@ -2325,7 +2395,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     len(behavioural), ", ".join(narrowed_to),
                     ", ".join(name.split(".")[-1] for name in behavioural[:3]))
             # Only where no result could be read: a readable one is the suite's own reading, and a
-            # kill taken from the wall clock would override it. That one is left to TIMED_OUT.
+            # kill taken from the wall clock would override it. One short of complete is left to
+            # TIMED_OUT.
             elif timed_out and counts is None and baseline_wall * HANG_MARGIN <= args.timeout:
                 mutant.verdict = HUNG
                 mutant.detail = ("the suite ran past --timeout {}s and left no readable result, where "
@@ -2379,6 +2450,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
             else:
                 mutant.verdict = SURVIVED
+            if late:
+                mutant.detail = "{}; read from a complete result the editor wrote before its bound " \
+                                "killed it".format(mutant.detail or "-")
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
@@ -2738,7 +2812,7 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict in UNMEASURED]
+    unmeasured = [m for m in mutants if m.verdict not in DECIDED + SURVIVING]
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:
