@@ -1231,6 +1231,27 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(9f).Within(0.5f));
         }
 
+        // GREEN_ON_BASE(characterization): the engine shortens a reversed value change, which the padding must leave alone.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AChangedBlurIsRevertedMidFade_Then_TheReversalIsShortened()
+        {
+            // Arrange — a blur at 12 and at rest, changed to 4, and half way there. The inline filter holds the 4.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+            ApplyBlur(element, 4f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act — back to 12, one list of the same length as the painted one, and a quarter of the full duration
+            // passes.
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.075);
+
+            // Assert — half way from 8 back to 12 over the half duration the engine gives a reversal. Restarted
+            // over the full duration, it would be a quarter of the way, at 9.
+            Assert.That(PaintedFloat(element), Is.EqualTo(10f).Within(0.3f));
+        }
+
         #endregion
     }
 }
