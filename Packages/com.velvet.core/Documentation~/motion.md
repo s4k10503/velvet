@@ -337,11 +337,11 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   active pose's — a rect delta is not a swap into a pose — and fall back to
   `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
   Motion declares no `Transition`.
-- **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
-  averages the two axis scale factors rather than distorting the element on two independent axes
-  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y. The scale holds the
-  element's transform origin still (its centre unless an `origin-*` class or style moves it), and the translate
-  places the element so that it starts over the old box.
+- **Each axis scales by its own factor.** A box whose width and height change by different factors
+  starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
+  the stretch as for any change of size. The scale holds the element's transform origin still (its
+  centre unless an `origin-*` class or style moves it), and the translate places the element so that it
+  starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
