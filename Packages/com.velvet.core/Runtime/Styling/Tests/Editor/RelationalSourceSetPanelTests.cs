@@ -180,6 +180,8 @@ namespace Velvet.Tests
                     V.Label(name: "child", className: "group-hover:bg-on"),
                 }),
             }));
+            // A registry of its own, so the simulated event below reaches an outer element nothing hooked.
+            Q<VisualElement>("outer").RegisterCallback<PointerOverEvent>(_ => { });
 
             // Act
             using (var evt = PointerOverEvent.GetPooled())
