@@ -127,8 +127,9 @@ namespace Velvet
         /// <summary>
         /// The transition a <c>layoutId</c> move takes in place of this one — Framer's <c>transition.layout</c>.
         /// When null, the move takes this transition itself; its <see cref="Type"/> decides the curve as it does
-        /// for a variant swap. A <c>layoutId</c> Motion with no transition at all moves on Framer's default
-        /// layout transition, a 0.45 s tween eased by <c>cubic-bezier(0.4, 0, 0.1, 1)</c>.
+        /// for a variant swap. A <c>layoutId</c> Motion whose caller gives <c>V.Motion</c> no transition, duration,
+        /// easing or delay moves on Framer's default layout transition, a 0.45 s tween eased by
+        /// <c>cubic-bezier(0.4, 0, 0.1, 1)</c>.
         /// </summary>
         public StyleTransitionConfig? Layout { get; init; }
 

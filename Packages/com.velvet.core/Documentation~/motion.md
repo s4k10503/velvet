@@ -312,7 +312,7 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
   layout box (position and/or size) different from the box the SAME id stood at, it
   tweens from the old box to the new one — FLIP: the old box is captured, layout settles at the
-  new one, an inverse inline transform is applied immediately, then it springs back to zero —
+  new one, an inverse inline transform is applied immediately, then its transition carries it back to zero —
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
   compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
@@ -337,8 +337,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
   (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
   `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing`, a bezier by its control points,
-  each after `DelaySec`, and a zero duration lands the move at once. A Motion with no `Transition`
-  moves on Framer's default layout transition, a 0.45 s tween eased by `cubic-bezier(0.4, 0, 0.1, 1)`.
+  each after `DelaySec`, and a zero duration lands the move at once. A Motion whose caller names no
+  `transition`, `duration`, `easing` or `delay` moves on Framer's default layout transition, a 0.45 s
+  tween eased by `cubic-bezier(0.4, 0, 0.1, 1)`.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
   the stretch as for any change of size. The scale holds the element's transform origin still (its

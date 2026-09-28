@@ -122,6 +122,9 @@ namespace Velvet
             var host = element.panel?.visualTree;
             var parent = element.hierarchy.parent;
             var layout = element.layout;
+            // MUTANT_SURVIVES(unreachable): a settling element is in a panel, under a parent, and laid out.
+            // A settle runs from the element's own GeometryChangedEvent or from a descendant's, which settles
+            // only an ancestor laid out.
             if (host == null || parent == null || !IsFiniteRect(layout)) return;
 
             var parentScale = AncestorScale(parent, ctx);
