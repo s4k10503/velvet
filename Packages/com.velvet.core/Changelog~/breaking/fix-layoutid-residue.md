@@ -7,8 +7,9 @@
   for its variants — `StyleTransitionConfig`'s default `Type` — sprang on the default knobs. Set a
   spring as the transition, or as its `Layout`, to keep the spring.
 
-- A `layoutId` Motion with no `transition` moves on Framer's default layout transition, a 0.45 s tween
-  eased by `cubic-bezier(0.4, 0, 0.1, 1)`, instead of a spring with stiffness 100, damping 10 and mass 1.
+- A `layoutId` Motion whose caller gives `V.Motion` no `transition`, `duration`, `easing` or `delay` moves
+  on Framer's default layout transition, a 0.45 s tween eased by `cubic-bezier(0.4, 0, 0.1, 1)`, instead
+  of a spring with stiffness 100, damping 10 and mass 1.
 
 - A `V.Motion` that mounts under a `layoutId` another live Motion holds leads it, as in Framer's shared
   layout: the older one follows, drawn over the lead's box and fading out while the lead moves, then
