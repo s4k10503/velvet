@@ -145,10 +145,12 @@ namespace Velvet
         // Folded in ahead of a key so an explicit key of "3" and a node index of 3 cannot compose alike.
         private const ulong KeyedContributionMarker = 0x9E3779B97F4A7C15UL;
 
+        // The SlotPath of a child array no wrapper encloses.
+        internal const long RootSlotPath = unchecked((long)PathSeed);
+
         // The position an outer walk starts from. Scope-less (nothing has established a keyed boundary yet)
         // with both path accumulators at their seed.
-        internal static WalkPosition WalkRoot
-            => new(null, unchecked((long)PathSeed), unchecked((long)PathSeed));
+        internal static WalkPosition WalkRoot => new(null, RootSlotPath, RootSlotPath);
 
         // One level's contribution to the structural path. An explicit key replaces the positional index —
         // mirroring the Scope rule — so a keyed node keeps this ONE level's contribution when its siblings
@@ -197,7 +199,7 @@ namespace Velvet
         internal static WalkPosition ComponentChild(WalkPosition parent, string? componentKey, int nodeIndex)
             => new(ComponentChildScope(parent.Scope, componentKey, nodeIndex),
                 ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex),
-                unchecked((long)PathSeed));
+                RootSlotPath);
 
         // The position a MemoNode opens for its resolved inner. A keyed memo's key replaces its index in both
         // paths, as for a keyed Fragment, so what it renders keeps its registry position when it moves among

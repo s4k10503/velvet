@@ -297,24 +297,19 @@ namespace Velvet
 
                     var itemIndex = newFirst + i;
                     var item = _node.Items[itemIndex];
+                    // The selector's key is compared as a whole string and never becomes a VNode.Key or a
+                    // scope segment, so it is not held to the delimiter rule VNode.Key enforces.
                     var key = _node.KeySelector(item);
-
-                    // Taken out of the range here rather than left to VNode.Key's refusal below, which
-                    // would end the pass and blank the list over one item's key.
-                    if (VNode.KeyHoldsDelimiter(key))
-                    {
-                        FiberLogger.LogWarning("FiberVirtualListController", $"Key holding a NUL (U+0000) detected: \"{key}\". Skipping the item; NUL is reserved as the internal scope delimiter.");
-                        continue;
-                    }
 
                     // A null key is no key, the answer V.List gives the same selector: the row renders and
                     // reconciles by position, which here is its item index, and never through the two
                     // string-keyed collections below. VirtualListKeyCollectionContractTests holds those
-                    // two to what each does with one.
+                    // two to what each does with one. A key an earlier item of this pass already claimed is
+                    // treated the same way, so the repeated item still renders.
                     if (key != null && !_reusedKeys.Add(key))
                     {
-                        FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected: \"{key}\". Skipping duplicate item to prevent tracking inconsistency.");
-                        continue;
+                        FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected: \"{key}\". The repeated item is matched by its item index as an unkeyed one is; give each item a unique key.");
+                        key = null;
                     }
 
                     var vnode = _node.Renderer(item);

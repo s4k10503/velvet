@@ -21,9 +21,8 @@ namespace Velvet.Tests
     /// <item>The visible range is firstVisible..lastVisible derived from scroll offset, viewport height, and
     /// itemHeight, widened by overscan on both sides and clamped to the collection bounds.</item>
     /// <item>An empty collection renders no visible items and tolerates range updates without throwing.</item>
-    /// <item>An item whose <c>keySelector</c> returns a key holding the reconciler's scope delimiter is left
-    /// out of the rendered range under a warning naming it, the rest of the range rendering as it would
-    /// without it, and a key the renderer set on its own node does not put that item back in.</item>
+    /// <item>An item whose <c>keySelector</c> returns a key holding the reconciler's scope delimiter renders
+    /// with the rest of the range.</item>
     /// <item>A row still inside the range after a range change keeps the state on its fiber, and a key
     /// the renderer set on that row's own node does not change that: the selector's key is the identity
     /// the range diff runs on.</item>
@@ -37,7 +36,8 @@ namespace Velvet.Tests
     /// in range reuses it by its item index so its fiber survives, one that scrolls it out runs its
     /// cleanup, and one scrolled away and back returns as a remount rather than as the element that was
     /// disposed.</item>
-    /// <item>Of two items sharing a key, the second renders when the first renders nothing.</item>
+    /// <item>Of two items sharing a key, both render, and the second keeps its state across a range change
+    /// that keeps it in range; where the first renders nothing, the second takes the key with no warning.</item>
     /// <item>A throw from the item renderer, or from an element's constructor while its row is created or
     /// patched, reaches the caller, and the range update it ends releases the rows it had placed and,
     /// separately, the prior rows it had not — the one whose create or patch threw among them — empties
@@ -214,86 +214,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AKeySelectorReturningTheDelimiter_When_TheRangeIsRendered_Then_TheOtherItemsStillRender()
+        public void Given_AKeySelectorReturningTheDelimiter_When_TheRangeIsRendered_Then_EveryItemRenders()
         {
-            // Arrange — item 1's key holds the delimiter; the renderer sets no key of its own, so the
-            // selector's is the one that would go on the node.
+            // Arrange — item 1's key holds the character VNode.Key refuses.
             var node = V.VirtualList(
                 items: CreateItems(3),
                 keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
-                itemHeight: 50f,
-                renderer: item => V.Label(text: item.Name),
-                overscan: 0);
-            var scrollView = new ScrollView(ScrollViewMode.Vertical);
-            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            var visibleContainer = scrollView.contentContainer.ElementAt(1);
-
-            // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
-
-            // Assert
-            Assert.That(
-                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
-                Is.EqualTo("Item 0,Item 2"));
-        }
-
-        [Test]
-        public void Given_ARendererKeyingItsOwnNode_When_TheSelectorReturnsTheDelimiter_Then_TheItemIsStillLeftOut()
-        {
-            // Arrange — the same, with the renderer keying its own node, which is what decides whether the
-            // selector's key would ever reach VNode.Key.
-            var node = V.VirtualList(
-                items: CreateItems(3),
-                keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
-                itemHeight: 50f,
-                renderer: item => V.Label(text: item.Name, key: item.Id),
-                overscan: 0);
-            var scrollView = new ScrollView(ScrollViewMode.Vertical);
-            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            var visibleContainer = scrollView.contentContainer.ElementAt(1);
-
-            // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
-
-            // Assert
-            Assert.That(
-                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
-                Is.EqualTo("Item 0,Item 2"));
-        }
-
-        [Test]
-        public void Given_AKeySelectorReturningTheDelimiter_When_TheRangeIsRendered_Then_TheSkippedItemIsReported()
-        {
-            // Arrange
-            var node = V.VirtualList(
-                items: CreateItems(3),
-                keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
-                itemHeight: 50f,
-                renderer: item => V.Label(text: item.Name),
-                overscan: 0);
-            var scrollView = new ScrollView(ScrollViewMode.Vertical);
-            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
-                new System.Text.RegularExpressions.Regex("FiberVirtualListController.*NUL"));
-
-            // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
-
-            // Assert — LogAssert.Expect verifies the item that left the range is named rather than
-            // dropped in silence
-        }
-
-        // GREEN_ON_BASE(characterization): the base renders all three of these items. No key of
-        // theirs holds a delimiter, and it is the control for the cases above that read an item's
-        // absence from the range: a range rendering two items whatever their keys would satisfy
-        // them, and this is their arrangement with the delimiter taken out of the one key holding it.
-        [Test]
-        public void Given_NoKeyHoldingTheDelimiter_When_TheRangeIsRendered_Then_EveryItemRenders()
-        {
-            // Arrange — the two cases above, minus the delimiter.
-            var node = V.VirtualList(
-                items: CreateItems(3),
-                keySelector: item => item.Id,
                 itemHeight: 50f,
                 renderer: item => V.Label(text: item.Name),
                 overscan: 0);
@@ -516,8 +442,7 @@ namespace Velvet.Tests
             // Act
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
 
-            // Assert — the texts in window order rather than a count, so a row dropped the way the NUL
-            // path drops one names itself.
+            // Assert — the texts in window order rather than a count, so a dropped row names itself.
             Assert.That(
                 string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
                 Is.EqualTo("Item 0,Item 1,Item 2,Item 3,Item 4"));
@@ -642,10 +567,8 @@ namespace Velvet.Tests
                 Is.EqualTo("[typed] typed, [] shown on return"));
         }
 
-        // GREEN_ON_BASE(characterization): a key whose first item renders nothing is free for the next.
-        // The pass claims a key before the renderer runs and gives it back when the renderer returns
-        // null, and this is the one thing that giving-back still decides now that the scrolled-out sweep
-        // no longer reads the claim.
+        // GREEN_ON_BASE(characterization): the second of two items sharing a key renders where the first
+        // renders nothing.
         [Test]
         public void Given_TwoItemsSharingAKeyWhoseFirstRendersNothing_When_TheRangeIsRendered_Then_TheSecondRenders()
         {
@@ -667,6 +590,90 @@ namespace Velvet.Tests
             Assert.That(
                 string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
                 Is.EqualTo("Item 0,Item 2,Item 3,Item 4"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives a key back when its item renders nothing too.
+        // Drop `_reusedKeys.Remove(key)` from the controller and the second item reports its key as a
+        // duplicate, which is what reddens this.
+        [Test]
+        public void Given_TwoItemsSharingAKeyWhoseFirstRendersNothing_When_TheRangeIsRendered_Then_NoDuplicateIsReported()
+        {
+            // Arrange — the case above.
+            var node = V.VirtualList(
+                items: CreateItems(5),
+                keySelector: item => item.Id == "item-2" ? "item-1" : item.Id,
+                itemHeight: 50f,
+                renderer: item => item.Id == "item-1" ? null : V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_TheRangeIsRendered_Then_BothRender()
+        {
+            // Arrange — item-2 takes item-1's key, and both render something.
+            var node = V.VirtualList(
+                items: CreateItems(5),
+                keySelector: item => item.Id == "item-2" ? "item-1" : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
+                new System.Text.RegularExpressions.Regex("Duplicate key detected: \"item-1\""));
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 1,Item 2,Item 3,Item 4"));
+        }
+
+        [Component]
+        private static VNode SharedKeyRowsHostRender()
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id == "item-2" ? "sel-item-1" : "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedRowRender, item.Id),
+                overscan: 0);
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_ARangeChangeKeepsTheRepeatedOneInRange_Then_ItKeepsItsState()
+        {
+            // Arrange — the null-key case's arrangement, with item-2's key repeating item-1's rather than null.
+            // Items 0..4 render, and item-2 is inside the window the Act moves to as well.
+            s_keptRowMark = default;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SharedKeyRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var markSetterCaptured = !s_keptRowMark.Equals(default(StateUpdater<string>));
+            s_keptRowMark.Invoke("b");
+            mounted.FlushStateForTest();
+
+            // Act — the window becomes items 1..5.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert — the three terms for the reason the row-identity cases give.
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text
+                    + " under " + visibleContainer.Q<Label>()?.name
+                    + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
+                Is.EqualTo("b under row-item-1 via a captured setter"));
         }
 
         // The refCallback delegate is held per item across renders rather than rebuilt inside the
