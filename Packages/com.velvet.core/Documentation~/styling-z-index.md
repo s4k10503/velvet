@@ -27,8 +27,9 @@ class, or `V.Anchored` (which forces `position: absolute` itself). On an in-flow
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
 
 The named scale is fixed — `z-15` is not a thing, `z-[15]` is, mirroring real Tailwind. Each form
-also accepts the important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`), but the modifier is a
-no-op here: z-index is a physical relocation, not a style-cascade layer `!important` arbitrates.
+also accepts the important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`): an important `z-*` wins
+over every plain one on the same element wherever it sits in the class list, and within either group
+the later class wins.
 
 ## How it works
 
@@ -86,12 +87,8 @@ physically reorders the declaring children list. Instead:
   `FocusController.focusedElement` the instant an element leaves its panel's visual tree, even for
   an immediate same-panel reattachment — so the relocation rescues and restores focus when the
   moving element (or a descendant of it) holds it.
-- **`group-`/`peer-` mostly cross the layer boundary, with one gap.** A z-managed element's
-  physical parent is its layer container, one hop different from its logical parent.
-  `group-*:` ancestor lookups are unaffected (the container is a transparent hop on the way up).
-  A `peer-*:` **consumer** that is itself z-managed still resolves an ordinary preceding `peer`
-  source correctly (the search walks from the consumer's declared position, not its physical one).
-  The reverse does not: a `peer-*:` **source** that is itself z-managed is not found by an
-  ordinary consumer, because the source's placeholder — the only thing physically sitting among
-  the consumer's preceding siblings — carries none of the source's marker classes. Give a z-managed
-  peer source an ordinary (non-`peer`) wrapper if a consumer needs to react to it.
+- **`group-`/`peer-` cross the layer boundary.** A z-managed element's physical parent is its layer
+  container, one hop different from its logical parent. `group-*:` ancestor lookups are unaffected
+  (the container is a transparent hop on the way up). A `peer-*:` search walks declared siblings: a
+  z-managed consumer searches from its declared position, and a z-managed `peer` source is found
+  through the placeholder at its declared slot.

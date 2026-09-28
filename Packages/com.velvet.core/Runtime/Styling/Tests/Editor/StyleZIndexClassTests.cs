@@ -165,6 +165,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadingImportantZClassBeforeALaterPlainOne_When_Extracted_Then_TheImportantOneWins()
+        {
+            // Arrange
+            var classes = new[] { "!z-10", "z-40" };
+
+            // Act
+            StyleZIndexClass.TryExtract(classes, out var z);
+
+            // Assert
+            Assert.That(z, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void Given_ATrailingImportantArbitraryZClassBeforeALaterPlainOne_When_Extracted_Then_TheImportantOneWins()
+        {
+            // Arrange
+            var classes = new[] { "z-[5]!", "z-40" };
+
+            // Act
+            StyleZIndexClass.TryExtract(classes, out var z);
+
+            // Assert
+            Assert.That(z, Is.EqualTo(5));
+        }
+
+        [Test]
         public void Given_OnlyAnUnparseableZLookingToken_When_Extracted_Then_NoZValueIsFound()
         {
             // Arrange — every z-looking token in the list fails to parse.
@@ -193,7 +219,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALeadingImportantBangOnANamedLevel_When_Parsed_Then_ItResolvesTheSameLevel()
         {
-            // Arrange / Act — the bang is a no-op for this non-cascade utility; it must not block parsing.
+            // Arrange / Act
             StyleZIndexClass.TryParse("!z-10", out var z);
 
             // Assert
