@@ -140,8 +140,14 @@ Under `transition-filter`, Velvet's tween interpolates every native filter type 
 `grayscale`, `hue-rotate`, `invert`, `sepia`) and the two first-party built-in customs
 (`brightness`, `saturate`), so `transition-filter duration-300` tweens `blur-0` → `blur-md` (or
 `brightness-100` → `brightness-150`) smoothly. Under a whole-property value the engine interpolates
-the inline filter list itself instead, on its own terms — which are not always Velvet's. An added or
-removed `contrast-*` fades from CSS's identity of `1` under either. Reach for
+the inline filter list itself instead, on its own terms — which are not always Velvet's. `contrast`
+is the visible case: Velvet fades an added or removed `contrast-*` from CSS's identity of `1`, while
+the engine pads it from the `0` its own declaration states, so the same class change ramps from
+neutral under `transition-filter` and from fully flat under `transition-all`
+(`FilterTransitionPanelTests` pins the engine's `0`). Velvet cannot hand the engine a list that avoids
+the padding: the engine animates from the value it is painting, which a write made just before cannot
+change, and a `contrast(1)` left in place of a removed contrast would have to be dropped later under
+the same transition, which pads again. Reach for
 `transition-filter` when you need the behavior Velvet's tween defines:
 
 - **User custom filters interpolate** when both sides are the *same registered definition* with the

@@ -1427,10 +1427,6 @@ namespace Velvet
                 ArbitraryProperty.FilterSepia => FilterFunctionType.Sepia,
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, "not a built-in filter"),
             };
-            if (type == FilterFunctionType.Contrast)
-            {
-                BuiltInFilterDefinitions.PadEngineContrastFromIdentity();
-            }
             // Only the single-arg ctor + AddParameter are public (the (type,value) ctors are internal).
             var fn = new FilterFunction(type);
             fn.AddParameter(new FilterParameter(value));

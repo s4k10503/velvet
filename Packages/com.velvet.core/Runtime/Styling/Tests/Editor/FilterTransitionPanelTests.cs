@@ -806,8 +806,10 @@ namespace Velvet.Tests
         private static void ApplyContrast(VisualElement element, float amount)
             => StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterContrast, amount, LengthUnit.Pixel));
 
+        // GREEN_ON_BASE(characterization): pins the engine padding an added contrast from 0, not CSS's 1.
+        // Velvet's own tween pads from 1; styling-filters.md names this case for the difference.
         [Test]
-        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsAdded_Then_TheEngineFadesItInFromOne()
+        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsAdded_Then_TheEngineFadesItInFromZero()
         {
             // Arrange
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
@@ -816,30 +818,8 @@ namespace Velvet.Tests
             ApplyContrast(element, 2f);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — half way from contrast's identity 1 to 2; padded from 0 it would read 1.
-            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
-        }
-
-        [Test]
-        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsRemoved_Then_TheEngineFadesItOutToOne()
-        {
-            // Arrange — the contrast lands before any transition is resolved, so it is painted outright.
-            var element = MountResolved("w-[100px] h-[40px]");
-            ApplyContrast(element, 2f);
-            ForcePanelUpdate(element.panel);
-            element.style.transitionProperty = new StyleList<StylePropertyName>(
-                new List<StylePropertyName> { new StylePropertyName("all") });
-            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
-            element.style.transitionTimingFunction = new StyleList<EasingFunction>(
-                new List<EasingFunction> { new EasingFunction(EasingMode.Linear) });
-            ForcePanelUpdate(element.panel);
-
-            // Act
-            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterContrast);
-            AdvanceAndPaint(element.panel, 0.15);
-
-            // Assert — half way from 2 to contrast's identity 1; padded to 0 it would read 1.
-            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+            // Assert — half way from the engine's 0 to 2; CSS's identity 1 would put it at 1.5.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1f).Within(1e-3f));
         }
 
         [Test]

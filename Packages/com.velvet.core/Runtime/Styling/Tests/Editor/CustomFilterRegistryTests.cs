@@ -425,6 +425,8 @@ namespace Velvet.Tests
             Assert.That(isVariant, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): drops a list clear the pool scrub no longer performs.
+        // A Null assignment already leaves no inline filter list to clear.
         [Test]
         public void Given_AScrubbedElement_When_ReappliedFromItsClassList_Then_TheCustomFilterIsRestored()
         {
@@ -433,7 +435,6 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
             StyleArbitraryValueResolver.ClearAll(el);
             el.style.filter = StyleKeyword.Null;
-            el.style.filter.value?.Clear();
 
             // Act — the class-diff reapply path rebuilds inline values from the surviving class list.
             FiberNodePatcher.ReapplyArbitraryValues(el, new[] { "filter-[fade:1]", "w-[10px]" });
