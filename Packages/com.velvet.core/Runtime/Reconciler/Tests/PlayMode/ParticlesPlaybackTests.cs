@@ -363,6 +363,108 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.ParticlesBindings[element].RepaintTick, Is.Not.Null);
         }
 
+        // A root that emits nothing over the given children, in the order given.
+        private ParticleSystem CreateSilentRootOver(params ParticleSystem[] children)
+        {
+            var root = new GameObject("fx-root").AddComponent<ParticleSystem>();
+            var rootEmission = root.emission;
+            rootEmission.enabled = false;
+            foreach (var child in children)
+            {
+                child.transform.SetParent(root.transform, false);
+            }
+            _effectGo = root.gameObject;
+            return root;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AChildThatDestroysItselfWhenDone_When_FramesAdvance_Then_TheOtherChildKeepsRendering()
+        {
+            // Arrange — the first child's one short burst ends and its stop action destroys it while
+            // the red child after it keeps emitting.
+            var finishing = new GameObject("fx-finishing").AddComponent<ParticleSystem>();
+            var finishingMain = finishing.main;
+            finishingMain.loop = false;
+            finishingMain.duration = 0.1f;
+            finishingMain.startLifetime = 0.1f;
+            finishingMain.stopAction = ParticleSystemStopAction.Destroy;
+            var red = CreateEmitter();
+            var root = CreateSilentRootOver(finishing, red);
+
+            // Act
+            MountPanel(root, PlayTrigger.Mount);
+            yield return WaitRealtimeDraining(1.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountParticlePixels(), Is.GreaterThan(20));
+        }
+
+        // GREEN_ON_BASE(characterization): a child set to render nothing draws nothing, as the scene would show.
+        [UnityTest]
+        public IEnumerator Given_AChildRenderingInModeNone_When_FramesAdvance_Then_NothingRenders()
+        {
+            // Arrange — an emitting child whose renderer is on but renders no particles.
+            var child = CreateEmitter();
+            child.GetComponent<ParticleSystemRenderer>().renderMode = ParticleSystemRenderMode.None;
+            var root = CreateSilentRootOver(child);
+
+            // Act
+            MountPanel(root, PlayTrigger.Mount);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Assert
+            Assert.That(CountParticlePixels(), Is.EqualTo(0));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALocalSpaceChildAtAnOffset_When_FramesAdvance_Then_ItsParticlesRenderAtTheOffset()
+        {
+            // Arrange — 1.2 units right of the root is 120px right of the element's center. Drawn at the
+            // center instead, no particle reaches the 50px strip at the element's right edge.
+            var child = CreateEmitter();
+            var root = CreateSilentRootOver(child);
+            child.transform.localPosition = new Vector3(1.2f, 0f, 0f);
+
+            // Act
+            MountPanel(root, PlayTrigger.Mount);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Assert
+            var red = 0;
+            foreach (var p in RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(250, 100, 50, 100)))
+            {
+                if (RenderTexturePixelReader.IsRedPixel(p)) red++;
+            }
+            Assert.That(red, Is.GreaterThan(20));
+        }
+
+        // GREEN_ON_BASE(characterization): a finished root over a child that never emits parks the tick, as it did.
+        [UnityTest]
+        public IEnumerator Given_AFinishedRootWithAnEmptyLoopingChild_When_FramesAdvance_Then_TheRepaintTickParks()
+        {
+            // Arrange — the child loops with its emission disabled: playing, and never holding a particle.
+            var child = new GameObject("fx-empty-child").AddComponent<ParticleSystem>();
+            var childEmission = child.emission;
+            childEmission.enabled = false;
+            var root = new GameObject("fx-root").AddComponent<ParticleSystem>();
+            var rootMain = root.main;
+            rootMain.loop = false;
+            rootMain.duration = 0.05f;
+            rootMain.startLifetime = 0.05f;
+            rootMain.playOnAwake = false;
+            child.transform.SetParent(root.transform, false);
+            _effectGo = root.gameObject;
+            MountPanel(root, PlayTrigger.Mount);
+            var element = _host.Root.Q<ParticlesElement>();
+            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
+
+            // Act
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ParticlesBindings[element].RepaintTick, Is.Null);
+        }
+
         [UnityTest]
         public IEnumerator Given_MoreParticlesThanOneAllocationHolds_When_Drawn_Then_EveryParticleRenders()
         {

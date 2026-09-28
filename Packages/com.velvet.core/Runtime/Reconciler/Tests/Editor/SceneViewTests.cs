@@ -683,6 +683,28 @@ namespace Velvet.Tests
             Assert.That(renders, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on each tick, as it did.
+        [Test]
+        public void Given_ALiveSceneViewOnAnEditorPanel_When_TheTickFires_Then_TheElementRepaints()
+        {
+            // Arrange — an editor panel regenerates only what is marked dirty, and nothing but the tick
+            // marks this element once its texture is in place.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
+            var element = _host.Root.Q<VisualElement>("sv");
+            var repaints = 0;
+            element.generateVisualContent += _ => repaints++;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            repaints = 0;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(repaints, Is.GreaterThan(0));
+        }
+
         // GREEN_ON_BASE(characterization): the tick leaves a disabled camera's texture holding what it held before.
         [Test]
         public void Given_ADisabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRender()

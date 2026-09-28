@@ -40,8 +40,8 @@ System is the right tool for UI-scale effects:
 - ✅ Emission, lifetime, velocity, size/color/rotation over lifetime, bursts, gravity —
   everything the simulation computes — for every particle alive.
 - ✅ Child systems, sub-emitters among them: every active system under the effect draws with
-  its own renderer's texture, and a system whose renderer is disabled draws nothing, as in the
-  scene.
+  its own renderer's texture, and a system whose renderer is disabled or set to render mode
+  `None` draws nothing, as in the scene.
 - ❌ Renderer-module features: trails, mesh particles, texture-sheet animation, stretched
   billboards. One texture per system.
 

@@ -307,23 +307,19 @@ namespace Velvet
             }
         }
 
-        // Outside Play Mode the tick renders the camera. A camera user code borrowed renders where that
-        // code decides, and a disabled one is the caller's way of saying its output is unnecessary. The
-        // tick runs only while a texture is live, so the target comparison never matches a camera
-        // that targets nothing — which would render it to the screen.
-        // The tick is also the staleness probe: a pixel-density change (a monitor-DPI move, a runtime
-        // panel-scale tweak) alters the derived pixel size with NO geometry event — points are
-        // unchanged — so no other signal would ever re-derive the texture. The closing dirty is for an
-        // Editor-context panel, which repaints only when something marks it dirty (nothing in UI
-        // Toolkit knows the sampled texture's CONTENTS changed).
+        // The tick is the staleness probe: a pixel-density change (a monitor-DPI move, a runtime
+        // panel-scale tweak) alters the derived pixel size without moving the element's geometry, so
+        // no geometry event re-derives the texture.
+        // Outside Play Mode the tick then renders the camera — after the probe, so a texture it just
+        // re-derived is rendered into before it is shown. A camera user code borrowed renders where
+        // that code decides, and a disabled one is the caller's way of saying its output is
+        // unnecessary. The probe releases the texture only for a camera that is gone, so the target
+        // comparison never matches a camera that targets nothing — which would render it to the
+        // screen.
+        // An Editor-context panel repaints only when something marks it dirty (nothing in UI Toolkit
+        // knows the sampled texture's CONTENTS changed); a runtime panel draws every frame.
         private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
         {
-            var camera = binding.Settings.Camera;
-            if (!Application.isPlaying && camera != null && camera.isActiveAndEnabled
-                && camera.targetTexture == binding.Texture)
-            {
-                camera.Render();
-            }
             // This is a staleness PROBE, not a commit: only checks whether the derived size still
             // matches the live texture. The basis-axis choice this call computes is discarded — if a
             // resync turns out to be needed, SyncTexture below re-derives (and, on that path, commits)
@@ -334,7 +330,16 @@ namespace Velvet
             {
                 SyncTexture(element, binding);
             }
-            element.MarkDirtyRepaint();
+            var camera = binding.Settings.Camera;
+            if (!Application.isPlaying && camera != null && camera.isActiveAndEnabled
+                && camera.targetTexture == binding.Texture)
+            {
+                camera.Render();
+            }
+            if (element.panel?.contextType == ContextType.Editor)
+            {
+                element.MarkDirtyRepaint();
+            }
         }
 
         private static void StopRepaintTick(SceneViewBinding binding)

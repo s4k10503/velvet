@@ -155,5 +155,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(renders, Is.LessThanOrEqualTo(Time.frameCount - firstFrame + 1));
         }
+
+        // GREEN_ON_BASE(characterization): a runtime panel's SceneView is not regenerated frame after frame, as before.
+        [UnityTest]
+        public IEnumerator Given_ALiveSceneViewOnARuntimePanel_When_FramesAdvance_Then_TheElementIsNotRegenerated()
+        {
+            // Arrange — a runtime panel draws the sampled texture every frame with no regeneration, so
+            // one marked dirty on every tick would regenerate dozens of times over half a second.
+            var cam = CreateSolidColorCamera(Color.red);
+            var root = MountPanelWithSceneView(cam);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            var repaints = 0;
+            root.Q<VisualElement>("sv").generateVisualContent += _ => repaints++;
+
+            // Act
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert
+            Assert.That(repaints, Is.LessThanOrEqualTo(2));
+        }
     }
 }

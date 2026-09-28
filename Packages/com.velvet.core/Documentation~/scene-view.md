@@ -17,8 +17,8 @@ There is no RenderTexture in the API — the framework owns it:
   `camera.targetTexture`; the element shows it as its background image.
 - A geometry change (the element resizes) recreates the texture at the new size and re-targets
   the camera. A zero-sized or unattached element holds no texture. A pixel-density change (a
-  monitor DPI move, a panel-scale change) fires no geometry event; the element's recurring tick
-  re-derives the texture on every panel type.
+  monitor DPI move, a panel-scale change) can leave the element's geometry where it was; the
+  element's recurring tick re-derives the texture then, on every panel type.
 - Swapping the `camera:` prop releases the old camera and targets the new one; passing `null`
   releases everything and leaves an inert box.
 - Unmounting (including a conditional `cond ? V.SceneView(...) : null` removal and whole-tree
@@ -50,8 +50,8 @@ The element samples the camera's RenderTexture at draw time — camera motion an
 appear without any Velvet re-render. A `UseState`/store update is only needed when the
 *element* changes (size, camera identity), never per frame.
 
-A bound SceneView drives a small recurring tick while its texture is live. It marks the element
-dirty, which an **editor-hosted panel** needs since it repaints only when dirty, and **outside
+A bound SceneView drives a small recurring tick while its texture is live. On an
+**editor-hosted panel**, which repaints only when dirty, it marks the element dirty, and **outside
 Play Mode** it calls `camera.Render()`, so a tool previewing a scene shows it live without
 entering Play Mode. The tick renders only a camera that is enabled and still targets the
 element's texture.
