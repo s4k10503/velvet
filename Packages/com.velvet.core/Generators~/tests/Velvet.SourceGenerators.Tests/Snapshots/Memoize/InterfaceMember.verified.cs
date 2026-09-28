@@ -3,9 +3,9 @@
 
 namespace MyApp.Pages
 {
-    partial class StaticHost
+    partial interface IPage
     {
-        public static partial global::Velvet.VNode Build(int x)
+        public partial global::Velvet.VNode Build(int x)
             => global::Velvet.V.Memoized(() => Build_Impl(x), new object?[] { x });
     }
 }
