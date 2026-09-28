@@ -26,7 +26,8 @@ namespace Velvet.SourceGenerators.Tests
             DiagnosticAnalyzer analyzer,
             CodeFixProvider codeFixProvider,
             string codeActionTitle,
-            string expectedDiagnosticId)
+            string expectedDiagnosticId,
+            bool formatDocument = true)
         {
             var (workspace, userDocId, actions) = await RegisterAsync(
                 userSource, analyzer, codeFixProvider, expectedDiagnosticId).ConfigureAwait(false);
@@ -42,7 +43,9 @@ namespace Velvet.SourceGenerators.Tests
             }
 
             var updatedDoc = workspace.CurrentSolution.GetDocument(userDocId)!;
-            var formatted = await Formatter.FormatAsync(updatedDoc, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            var formatted = formatDocument
+                ? await Formatter.FormatAsync(updatedDoc, cancellationToken: CancellationToken.None).ConfigureAwait(false)
+                : updatedDoc;
             var text = await formatted.GetTextAsync(CancellationToken.None).ConfigureAwait(false);
             return text.ToString();
         }

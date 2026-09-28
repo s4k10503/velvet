@@ -71,11 +71,12 @@ namespace MyApp.Pages
         }
 
         [Fact]
-        public async Task Given_LooseParamsDeps_When_FixesAreRequested_Then_NoneIsRegistered()
+        public async Task Given_LooseParamsDepsLeadingWithAnArray_When_FixesAreRequested_Then_NoneIsRegistered()
         {
-            // Arrange
+            // Arrange — the array is one loose dependency among two, so growing it would not add the local
+            // to the dependency list.
             var source = Render(@"            var c = 3;
-            global::Velvet.Hooks.UseMemo(() => a + b + c, a, c);");
+            global::Velvet.Hooks.UseMemo(() => a + b + c, new object[] { a }, c);");
 
             // Act
             var titles = await CodeFixTestHelper.RegisteredTitlesAsync(
