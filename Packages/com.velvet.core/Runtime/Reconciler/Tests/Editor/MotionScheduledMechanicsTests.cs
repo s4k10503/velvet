@@ -1866,7 +1866,7 @@ namespace Velvet.Tests
             using var mounted = PlaySharedLiveId(1, -1);
             var follower = Root.Q<VisualElement>("a");
 
-            // Act — the teardown promotes "a", which starts once a layout pass has run.
+            // Act — the teardown promotes "a", which starts on a later frame.
             s_setStep.Invoke(3);
             mounted.FlushStateForTest();
             for (var i = 0; i < 4; i++) Tick();

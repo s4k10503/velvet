@@ -41,7 +41,6 @@ namespace Velvet
         internal const float RestPixels = 0.1f;
 
         private static int s_pass;
-        private static int s_frames;
         private static readonly List<VisualElement> s_ended = new();
 
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
@@ -429,7 +428,6 @@ namespace Velvet
 
         private static void Frame(VisualElement host, float dt, ReconcilerContext ctx)
         {
-            s_frames++;
             StartPromotions(host, ctx);
             foreach (var entry in ctx.LayoutIdProjections)
             {
@@ -459,15 +457,14 @@ namespace Velvet
             if (!remaining && ctx.LayoutIdFrames.Remove(host, out var frame)) frame.Pause();
         }
 
-        // A lead promoted by its predecessor's teardown starts two frames after its promotion unless its own
+        // A lead promoted by its predecessor's teardown starts on the next frame unless its own
         // GeometryChangedEvent started it first, and stays hidden until then, having not yet taken the box
         // it was handed.
         private static void StartPromotions(VisualElement host, ReconcilerContext ctx)
         {
-            foreach (var entry in ctx.LayoutIdPromotions)
+            foreach (var element in ctx.LayoutIdPromotions)
             {
-                if (entry.Key.panel?.visualTree != host || s_frames < entry.Value + 2) continue;
-                s_ended.Add(entry.Key);
+                if (element.panel?.visualTree == host) s_ended.Add(element);
             }
             foreach (var element in s_ended)
             {
@@ -485,7 +482,6 @@ namespace Velvet
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             if (projection.WritesOpacity) element.style.opacity = projection.OwnInlineOpacity;
-            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             MotionNativeTransitionGuard.Release(element, projection);
         }
 
@@ -578,7 +574,7 @@ namespace Velvet
             Hide(next, ctx);
             var timing = ctx.LayoutIdTimings.TryGetValue(next, out var own) ? own : LayoutIdTiming.Default;
             Wait(next, new LayoutIdPendingSettle(from, next.layout, timing, promoted: true, handover: true), ctx);
-            ctx.LayoutIdPromotions[next] = s_frames;
+            ctx.LayoutIdPromotions.Add(next);
             EnsureFrame(host, ctx);
         }
 
