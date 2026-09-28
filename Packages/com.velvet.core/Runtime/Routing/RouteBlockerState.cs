@@ -42,7 +42,7 @@ namespace Velvet
         public Action? Reset { get; private set; }
 
         // Raised after every change, so UseBlocker can re-render the component reading this state.
-        internal Action? Changed;
+        internal Action? StateChanged;
 
         internal void Block(RouterLocation location, Action resume)
         {
@@ -71,7 +71,7 @@ namespace Velvet
             Location = location;
             Proceed = proceed;
             Reset = reset;
-            Changed?.Invoke();
+            StateChanged?.Invoke();
         }
     }
 }

@@ -231,7 +231,7 @@ namespace Velvet.Tests
             manager.Check(Attempt(), NoResume);
             var laterRegistration = manager.Register(_ => true, later);
             manager.Check(Attempt(), NoResume);
-            later.Changed = () =>
+            later.StateChanged = () =>
             {
                 earlierRegistration.Dispose();
                 laterRegistration.Dispose();

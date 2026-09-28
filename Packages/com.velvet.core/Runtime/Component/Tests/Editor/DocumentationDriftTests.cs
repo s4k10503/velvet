@@ -54,7 +54,7 @@ namespace Velvet.Tests
         // and the corpus strips a string for the reason StripProse gives.
         //
         // The seventh is the CHANGELOG's own headings and entry labels — Unreleased, Highlights, Added,
-        // Breaking — and the date placeholder in its version heading. A document naming one is
+        // Changed, Breaking — and the date placeholder in its version heading. A document naming one is
         // telling an author what to type, not referring to code. Highlights is the one the release-note
         // builder parses, and scripts/release/test_release_notes.py builds a note for every version in the
         // shipped CHANGELOG, so it fails when that heading stops matching.
@@ -71,7 +71,7 @@ namespace Velvet.Tests
             "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
-            "Unreleased", "Highlights", "Added", "Breaking", "YYYY", "MM", "DD"
+            "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
         // Paths the tree is right not to hold: each is written at run time inside a git-ignored

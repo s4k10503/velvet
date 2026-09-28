@@ -24,7 +24,7 @@ namespace Velvet
         {
             // Detached first: the disposal returns the state to Idle, and a fiber being torn down has no render
             // left to run for it.
-            State.Changed = null;
+            State.StateChanged = null;
             Registration?.Dispose();
             Registration = null;
         }

@@ -543,7 +543,7 @@ namespace Velvet
             // New (mounting) slot: the public State is created now so it can be returned, and registered at the
             // settle with the settled attempt's predicate closure.
             var state = new RouteBlockerState();
-            state.Changed = () =>
+            state.StateChanged = () =>
             {
                 if (!fiber.IsDisposed)
                 {
