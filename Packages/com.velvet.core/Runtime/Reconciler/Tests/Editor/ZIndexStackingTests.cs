@@ -543,12 +543,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZManagedPeerSourceAndAnOrdinaryConsumer_When_ResolvingThePeerSearch_Then_TheRelocatedSourceIsNotFound()
+        public void Given_AZManagedPeerSourceAndAnOrdinaryConsumer_When_ResolvingThePeerSearch_Then_ItFindsTheRelocatedSource()
         {
-            // Arrange — parent: [source(z-managed, "peer"), consumer(ordinary)]. Documented gap: a relocated
-            // SOURCE's placeholder carries none of its marker classes, and the search only ever inspects
-            // physical siblings, so it does not resolve here (real CSS would; Velvet does not, for this
-            // specific relocated-source shape).
+            // Arrange — parent: [source(z-managed, "peer"), consumer(ordinary)]. Only the source's placeholder
+            // sits among the consumer's preceding siblings.
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
             {
@@ -562,9 +560,9 @@ namespace Velvet.Tests
             var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(
                 root.Q<VisualElement>("consumer"), "peer", ctx);
 
-            // Assert — the source's relocation is a term: an out-of-flow source that was never relocated is
-            // skipped by the search for its own unrelated reason, giving the identical null.
-            Assert.That((IsZManaged(ctx, source), found == null), Is.EqualTo((true, true)));
+            // Assert — the source's relocation is a term: left at its ordinary slot it is the consumer's own
+            // physical preceding sibling, and the search finds it without ever reading a placeholder.
+            Assert.That((IsZManaged(ctx, source), ReferenceEquals(found, source)), Is.EqualTo((true, true)));
         }
 
         #endregion

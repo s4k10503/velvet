@@ -542,6 +542,28 @@ namespace Velvet.Tests
             Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base's zero-duration swaps never wrote a classic enter's transition list.
+        // So a presence child's classic fade-in keeps its preset's when two inherited label changes land before it swaps.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TwoZeroDurationPosesFollow_Then_ItsTransitionPropertyIsLeftToItsPreset()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set("visible");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("tagged");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("item").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending mount enter to complete.
         // So the enter's completion still runs once when a zero-duration label change lands before its swap.
         [Test]

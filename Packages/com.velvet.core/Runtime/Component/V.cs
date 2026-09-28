@@ -2120,6 +2120,14 @@ namespace Velvet
             };
         }
 
+        /// <summary>
+        /// Shorthand overload: variadic <c>children</c> and no key, the counterpart of JSX's
+        /// <c>&lt;&gt;…&lt;/&gt;</c>. For a keyed Fragment, use the overload taking <c>key</c>.
+        /// </summary>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="FragmentNode"/>.</returns>
+        public static FragmentNode Fragment(params VNode?[] children) => Fragment(children, key: null);
+
         #endregion
 
         #region Motion
@@ -2339,12 +2347,13 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key, held to
-        /// <see cref="VNode.Key"/>'s rule on what a key may contain. Must not be null. An item whose key
-        /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
-        /// range update rather than from this call, which has no item's key to refuse yet. A null key is
-        /// no key, the answer <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/>
-        /// gives the same selector: the row renders, and a range change reuses it by its item index.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key. Must not be null. The key
+        /// is compared only with the other keys of this list, so it is not held to <see cref="VNode.Key"/>'s
+        /// rule on what a key may contain. A null key is no key, the answer
+        /// <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/> gives the same selector:
+        /// the row renders, and a range change reuses it by its item index. Items sharing a key all render
+        /// and are told apart by their item index, each keeping the row rendered at its own index while it
+        /// stays in the range; two of them rendered in one range log a warning naming the key.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
         /// A key it sets on the node it returns plays no part in which row a range change reuses —
