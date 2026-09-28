@@ -373,7 +373,7 @@ namespace Velvet.Tests
         public void Given_ABlockerRegisteredFirst_When_ItsDepsChange_Then_TheOneRegisteredAfterItIsStillTheOneConsulted()
         {
             // Arrange — the second form mounts in a later render than the first, so it is registered after
-            // it; the first then re-registers for its changed deps.
+            // it; the first's deps then change.
             s_showSecondForm = default;
             s_reviseFirstForm = default;
             var router = BuildRouter("/home",

@@ -755,8 +755,8 @@ namespace Velvet.Tests
             Assert.That(
                 (beforeChange, afterChange),
                 Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
-                "Omitting deps re-registers the predicate every render, so the blocker answers with the "
-                + "state of the render that registered it rather than the mount render's");
+                "Omitting deps hands each committed render's predicate to the registration, so the blocker "
+                + "answers with the state of the render that committed last rather than the mount render's");
         }
 
         #endregion
