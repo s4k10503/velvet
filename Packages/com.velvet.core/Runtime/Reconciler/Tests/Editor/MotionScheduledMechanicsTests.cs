@@ -1653,6 +1653,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALayoutIdMotionWithABezierTransitionTheValidatorRejects_When_ItMoves_Then_ItLandsAtOnce()
+        {
+            // Arrange / Act — a playable duration, and a control point that is not a number.
+            var element = MoveOn(new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.32f, BezierX1 = float.NaN, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            });
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_ALayoutIdMotionWithNoTransition_When_FramersDefaultDurationHasPassed_Then_TheTweenHasEnded()
         {
             // Arrange
