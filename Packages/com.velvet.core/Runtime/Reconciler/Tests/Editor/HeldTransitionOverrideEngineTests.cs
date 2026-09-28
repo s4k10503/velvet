@@ -6,10 +6,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins two UI Toolkit behaviours, each ruling out a simpler way StyleAnimationScheduler.LandOnHeldTransition
-    /// could land one property of a running `all` tween: a zero-duration entry after `all` does not stop `all`
-    /// timing that property, and leaving the property out of the list rests it at the running tween's old
-    /// target. If either stops holding, the 1ms entry that method appends may no longer be needed.
+    /// Pins two UI Toolkit behaviours StyleAnimationScheduler.LandOnHeldTransition is built on when it lands one
+    /// property of a running `all` tween: a zero-duration entry after `all` does not stop `all` timing that
+    /// property, which is why a changed value gets a 1ms entry instead; and leaving the property out of the list
+    /// rests it at the running tween's old target, which is how a value the pose repeats from that target lands.
     /// </summary>
     [TestFixture]
     internal sealed class HeldTransitionOverrideEngineTests : MotionSimulatedPanelTestsBase

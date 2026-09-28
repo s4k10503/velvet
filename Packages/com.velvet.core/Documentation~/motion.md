@@ -474,7 +474,9 @@ Three consequences worth knowing:
   exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
   the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
   duration, while an earlier swap is still moving the Motion lands the properties that pose names
-  within two frames, and leaves the rest moving.
+  within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
+  tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as
+  `opacity-100` against `opacity-[1]` — finishes that tween.
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured

@@ -863,7 +863,6 @@ namespace Velvet
                 RingCoFadeCoordinator.EndRingCoFade(pending);
                 MotionSpringDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.SettleDrops);
                 state.OnSettled?.Invoke();
             }).Every(StyleAnimateDriver.TickMs);
         }
@@ -912,7 +911,6 @@ namespace Velvet
                 RingCoFadeCoordinator.EndRingCoFade(pending);
                 BezierTweenDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.SettleDrops);
                 state.OnSettled?.Invoke();
             }).Every(StyleAnimateDriver.TickMs);
         }
@@ -1029,21 +1027,10 @@ namespace Velvet
             return resting.ToArray();
         }
 
-        // Takes an earlier pose's inline-resolved classes off the class list, which the class sync never does
-        // (FiberNodePatcher.RemoveStaleInlineTokens). A spring or bezier enter still running on the element keeps
-        // them until it settles: its settle re-applying them is what ends a property the new pose leaves unnamed
-        // at the play's target (MotionZeroDurationLandingTests).
-        internal void DropStaleTokens(VisualElement element, string[] stale)
-        {
-            if (_pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null))
-            {
-                var drops = new List<string>(enter.SettleDrops ?? Array.Empty<string>());
-                drops.AddRange(stale);
-                enter.SettleDrops = drops.ToArray();
-                return;
-            }
-            StyleAnimationClassUtils.RemoveClasses(element, stale);
-        }
+        // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
+        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens).
+        internal bool IsDriving(VisualElement element)
+            => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
 
         // A zero-duration pose lands the properties it names: the enter or reversal still running on the element
         // stops animating them and keeps animating the rest. The caller runs this before it writes the pose, so
@@ -1078,16 +1065,12 @@ namespace Velvet
         }
 
         // The play's settle re-applies the inline values the element's class list names, so the inline-resolved
-        // classes writing what the pose now owns leave that list. This scheduler put them there, as a variant
-        // enter's to-classes or as the resting classes an exit's cancel restored before handing this play its
-        // reversal, and no class diff takes them off.
+        // resting classes writing what the pose now owns leave that list. An exit's cancel restored them before
+        // handing this play its reversal, and no class diff takes them off. The play's own to-classes leave it
+        // with the rest of the old pose's (FiberNodePatcher.RemoveStaleInlineTokens).
         private static void RemoveOwnedInlineTokens(VisualElement element, PendingAnimation pending,
             StyleLonghandSet named)
         {
-            foreach (var cls in pending.ToClasses!)
-            {
-                RemoveIfOwned(element, cls, named);
-            }
             foreach (var cls in pending.RestingClasses ?? Array.Empty<string>())
             {
                 RemoveIfOwned(element, cls, named);
@@ -1110,59 +1093,37 @@ namespace Velvet
 
         // Lands each named longhand of a variant tween within two frames while the entries before it keep timing
         // the rest of what they timed (MotionZeroDurationLandingTests). One whose value the pose changes gets a 1ms
-        // entry appended. One whose value the pose repeats from the play's target leaves the list instead, which
-        // rests it at that target (HeldTransitionOverrideEngineTests); an `all` entry is then spelled out as every
-        // other longhand the style table names, so a class outside the pose keeps its timing
-        // (MotionZeroDurationLandingTests). A classic enter's or a preset exit's transition-property is its USS
-        // one, which is why only a play with resting classes reaches here. Rejected: a zero duration, under which
-        // an earlier `all` still times the longhand.
+        // entry appended; `filter`'s is spelled `background-size`, the entry the inline-filter setter animates by,
+        // because a list naming filter hands the write to StyleFilterTransitionDriver. One whose value the pose
+        // repeats from the play's target leaves the list, which rests it at that target
+        // (HeldTransitionOverrideEngineTests), through the rewrite MotionNativeTransitionGuard uses for the slots
+        // a driver owns. A classic enter's or a preset exit's transition-property is its USS one, which is why
+        // only a play with resting classes reaches here. Rejected: a zero duration, under which an earlier `all`
+        // still times the longhand.
         private static void LandOnHeldTransition(VisualElement element, PendingAnimation pending,
             string[] poseClasses, StyleLonghandSet named)
         {
             var repeated = RepeatedLonghands(pending.RestingClasses!, poseClasses, named);
-            var held = element.style.transitionProperty.value ?? new List<StylePropertyName>();
-            var heldDurations = Wrapped(element.style.transitionDuration.value, held.Count, new TimeValue(0f));
-            var heldEasings = Wrapped(element.style.transitionTimingFunction.value, held.Count,
-                new EasingFunction(EasingMode.Ease));
+            if (!repeated.IsEmpty)
+            {
+                MotionNativeTransitionGuard.ExcludeFromHeldList(element, repeated);
+            }
+            var names = new List<StylePropertyName>(element.style.transitionProperty.value ?? s_noNames);
+            var count = names.Count;
+            var durations = Wrapped(element.style.transitionDuration.value ?? s_zeroDurations, count);
+            var easings = Wrapped(element.style.transitionTimingFunction.value ?? s_easeEasings, count);
             // Written only where the play wrote one (ApplyTransitionStyles), so a USS delay keeps applying.
             var delayList = element.style.transitionDelay.value;
-            var heldDelays = delayList != null ? Wrapped(delayList, held.Count, new TimeValue(0f)) : null;
-            var names = new List<StylePropertyName>();
-            var durations = new List<TimeValue>();
-            var easings = new List<EasingFunction>();
-            var delays = heldDelays != null ? new List<TimeValue>() : null;
-            void Add(string name, TimeValue duration, EasingFunction easing, TimeValue delay)
-            {
-                names.Add(new StylePropertyName(name));
-                durations.Add(duration);
-                easings.Add(easing);
-                delays?.Add(delay);
-            }
-            for (var i = 0; i < held.Count; i++)
-            {
-                var name = held[i].ToString();
-                var delay = heldDelays?[i] ?? default;
-                if (repeated.IsEmpty || !IsRepeated(name, repeated) && name != "all")
-                {
-                    Add(name, heldDurations[i], heldEasings[i], delay);
-                }
-                else if (name == "all")
-                {
-                    foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
-                    {
-                        if (!named.Contains(longhand))
-                        {
-                            Add(StyleUtilityProperties.UssName(longhand), heldDurations[i], heldEasings[i], delay);
-                        }
-                    }
-                }
-            }
+            var delays = delayList != null ? Wrapped(delayList, count) : null;
             foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
             {
                 if (named.Contains(longhand) && !repeated.Contains(longhand))
                 {
-                    Add(StyleUtilityProperties.UssName(longhand), new TimeValue(1f, TimeUnit.Millisecond),
-                        new EasingFunction(EasingMode.Linear), new TimeValue(0f, TimeUnit.Millisecond));
+                    names.Add(new StylePropertyName(StyleUtilityProperties.UssName(
+                        longhand == StyleLonghand.Filter ? StyleLonghand.BackgroundSize : longhand)));
+                    durations.Add(new TimeValue(1f, TimeUnit.Millisecond));
+                    easings.Add(new EasingFunction(EasingMode.Linear));
+                    delays?.Add(new TimeValue(0f, TimeUnit.Millisecond));
                 }
             }
             element.style.transitionProperty = names;
@@ -1174,14 +1135,18 @@ namespace Velvet
             }
         }
 
-        // The named longhands the target classes and the pose write with the same classes.
+        private static readonly List<StylePropertyName> s_noNames = new();
+        private static readonly List<TimeValue> s_zeroDurations = new() { new TimeValue(0f) };
+        private static readonly List<EasingFunction> s_easeEasings = new() { new EasingFunction(EasingMode.Ease) };
+
+        // The named longhands the pose writes with the values the target classes give them.
         private static StyleLonghandSet RepeatedLonghands(string[] target, string[] poseClasses, StyleLonghandSet named)
         {
             var repeated = StyleLonghandSet.Empty;
             foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
             {
                 var one = StyleLonghandSet.Of(longhand);
-                if (named.Overlaps(one) && SameClasses(Writing(target, one), Writing(poseClasses, one)))
+                if (named.Overlaps(one) && SameValues(Writing(target, one), Writing(poseClasses, one)))
                 {
                     repeated = repeated.Union(one);
                 }
@@ -1189,19 +1154,20 @@ namespace Velvet
             return repeated;
         }
 
-        private static bool IsRepeated(string name, StyleLonghandSet repeated)
-            => Array.Exists((StyleLonghand[])Enum.GetValues(typeof(StyleLonghand)),
-                longhand => repeated.Contains(longhand) && StyleUtilityProperties.UssName(longhand) == name);
+        private static bool SameValues(string[] a, string[] b)
+        {
+            var keysA = Array.ConvertAll(a, FiberNodePatcher.ValueKey);
+            var keysB = Array.ConvertAll(b, FiberNodePatcher.ValueKey);
+            return Array.TrueForAll(keysA, key => Array.IndexOf(keysB, key) >= 0)
+                && Array.TrueForAll(keysB, key => Array.IndexOf(keysA, key) >= 0);
+        }
 
-        private static bool SameClasses(string[] a, string[] b)
-            => Array.TrueForAll(a, cls => Array.IndexOf(b, cls) >= 0) && Array.TrueForAll(b, cls => Array.IndexOf(a, cls) >= 0);
-
-        private static List<T> Wrapped<T>(List<T>? list, int count, T fallback)
+        private static List<T> Wrapped<T>(List<T> list, int count)
         {
             var wrapped = new List<T>();
             for (var i = 0; i < count; i++)
             {
-                wrapped.Add(list != null ? list[i % list.Count] : fallback);
+                wrapped.Add(list[i % list.Count]);
             }
             return wrapped;
         }
@@ -1730,9 +1696,6 @@ namespace Velvet
             public Action? OnComplete;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
-            // Inline-resolved classes a spring or bezier enter's settle takes off the class list once it has
-            // re-applied what the list names (DropStaleTokens).
-            public string[]? SettleDrops;
 
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.

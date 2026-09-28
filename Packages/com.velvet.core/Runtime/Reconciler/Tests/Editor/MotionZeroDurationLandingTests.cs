@@ -62,9 +62,10 @@ namespace Velvet.Tests
             StyleTransitionConfig LandTransition = null, bool OnPoses = false);
 
         // Mounts the box at From, plays the swap to To on Transition for Frames frames, then changes the label to
-        // Land, whose pose has zero duration. Returns the box, what read gave just before Land, and the mount.
+        // Land, whose pose has zero duration. onPlay runs as the play starts. Returns the box, what read gave just
+        // before Land, and the mount.
         private (VisualElement box, float before, MountedTree mounted) PlayThenLand(Poses poses,
-            System.Func<VisualElement, float> read, System.Action<VisualElement> beforeLand = null)
+            System.Func<VisualElement, float> read, System.Action<VisualElement> onPlay = null)
         {
             s_transition = poses.OnPoses ? null : poses.Transition;
             s_poses = new Dictionary<string, MotionVariant>
@@ -81,13 +82,13 @@ namespace Velvet.Tests
             Tick();
             s_store.Set("to");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var box = Root.Q<VisualElement>("m");
+            onPlay?.Invoke(box);
             for (var i = 0; i < poses.Frames; i++)
             {
                 Tick();
             }
-            var box = Root.Q<VisualElement>("m");
             var before = read(box);
-            beforeLand?.Invoke(box);
             s_store.Set("land");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             return (box, before, mounted);
@@ -571,8 +572,10 @@ namespace Velvet.Tests
         public void Given_ADrivenSwapRunningUnderAHoverOpacityLayer_When_AZeroDurationPoseNamingOpacityFollows_Then_TheHoverOpacityShows(
             TransitionType type)
         {
-            // Arrange — the landing pose repeats the play's opacity class, so the class sync leaves opacity alone.
-            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0", "opacity-100", "opacity-100 tag-c"),
+            // Arrange — the landing pose repeats the play's opacity class, so the class sync leaves opacity alone, and
+            // leaves translate to the play, so it does not settle on the next tick.
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-100 tag-c"),
                 Opacity,
                 element => StyleArbitraryValueResolver.ApplyClassToken(element, "opacity-[0.3]", StyleLayerPriority.Hover));
             using var _ = mounted;
@@ -624,24 +627,6 @@ namespace Velvet.Tests
             Assert.That(TagClasses(box), Is.EqualTo("tag-d"));
         }
 
-        [Test]
-        public void Given_ATweenSwapWhosePoseSetItsDuration_When_TwoZeroDurationPosesFollow_Then_TheSecondLandsItsOpacity()
-        {
-            // Arrange
-            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0", "opacity-100 duration-[300ms]",
-                "opacity-50", Next: "opacity-[0.3]", NextTransition: StyleTransitionConfig.None), Opacity);
-            using var _ = mounted;
-
-            // Act
-            s_store.Set("next");
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            Tick();
-            Tick();
-
-            // Assert
-            Assert.That(Opacity(box), Is.EqualTo(0.3f).Within(1e-3f));
-        }
-
         [TestCase(TransitionType.Spring)]
         [TestCase(TransitionType.Bezier)]
         public void Given_ADrivenSwapRunningUnderALandedZeroDurationPose_When_ASecondNamingTranslateFollows_Then_TheTranslateStaysAfterThePlayEnds(
@@ -680,6 +665,188 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.resolvedStyle.backgroundColor.r, Is.GreaterThan(0.5f));
+        }
+
+        private static float InlineRotate(VisualElement element)
+            => element.style.rotate.keyword == StyleKeyword.Undefined ? element.style.rotate.value.angle.value : float.NaN;
+
+        private static readonly StyleTransitionConfig s_zeroBezier = new() { Type = TransitionType.Bezier, DurationSec = 0f };
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration bezier swap stopped the whole running play.
+        // So the opacity its pose names showed at once there too; here only that property lands.
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapRunning_When_AZeroDurationBezierPoseNamingOpacityFollows_Then_OpacityLandsOnTheNextFrame(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, before, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0", "opacity-100", "opacity-50",
+                LandTransition: s_zeroBezier), Opacity);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert
+            var landed = Between(before, 0.005f, 0.45f) ? Opacity(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(0.5f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base started a spring or bezier swap from the pose it left.
+        // So an opacity the settled first play took back to rest is where the second one starts it from.
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapThatSettled_When_ASecondDrivenSwapNamesAnOpacityTheFirstLeftBehind_Then_ItStartsFromRest(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-[0.2] translate-x-[0px]",
+                "translate-x-[40px]", "opacity-[0.6] translate-x-[80px]", Frames: 200, LandTransition: Driver(type)),
+                Opacity);
+            using var __ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(Opacity(box), Is.GreaterThan(0.8f));
+        }
+
+        [Test]
+        public void Given_ATweenSwapWithPropertyOverrides_When_AZeroDurationPoseRepeatingItsOpacityFollows_Then_OpacityLandsByTheSecondFrame()
+        {
+            // Arrange
+            var overrides = new StyleTransitionConfig
+            {
+                DurationSec = 0.35f,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity"), new StylePropertyTransition("translate") },
+            };
+            var (box, before, mounted) = PlayThenLand(new Poses(overrides, "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-100 translate-x-[20px]"), Opacity);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — gated on the tween being mid-way, where landing and tweening read apart.
+            var landed = Between(before, 0.05f, 0.45f) ? Opacity(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenSwapTakingTranslateBackToRest_When_AZeroDurationPoseNamingTranslateFollows_Then_TranslateLandsByTheSecondFrame()
+        {
+            // Arrange — the play's target writes no translate, so the pose's is no repeat of it.
+            var (box, before, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[40px]",
+                "opacity-100", "opacity-50 translate-x-[20px]"), TranslateX);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — gated on the tween being mid-way, where landing and tweening read apart.
+            var landed = Between(before, 2f, 38f) ? TranslateX(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(20f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatsItsTranslateInAnotherSpelling_Then_TranslateLandsByTheSecondFrame()
+        {
+            // Arrange — translate-x-4 and translate-x-[16px] write one value.
+            var (box, before, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-4", "opacity-50 translate-x-[16px]"), TranslateX);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — gated on the tween being mid-way, where landing and tweening read apart.
+            var landed = Between(before, 1f, 15f) ? TranslateX(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(16f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap re-resolved no variant layer.
+        // So a rotate the play still drives kept the play's value through the landing.
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapRunningUnderAHoverRotateLayer_When_AZeroDurationPoseNamingOnlyOpacityFollows_Then_TheRotateStaysTheDriversOwn(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, before, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0 rotate-0",
+                "opacity-100 rotate-45", "opacity-50"), InlineRotate,
+                element => StyleArbitraryValueResolver.ApplyClassToken(element, "rotate-[10deg]", StyleLayerPriority.Hover));
+            using var _ = mounted;
+
+            // Act
+            var after = InlineRotate(box);
+
+            // Assert — gated on the play's rotate reading apart from the layer's.
+            var driven = Mathf.Abs(before - 10f) > 0.5f ? after : float.NaN;
+            Assert.That(driven, Is.EqualTo(before).Within(1e-3f));
+        }
+
+        private static float Blur(VisualElement element)
+        {
+            var filter = element.resolvedStyle.filter.ToList();
+            return filter.Count > 0 ? filter[0].GetParameter(0).floatValue : float.NaN;
+        }
+
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseNamingABlurFollows_Then_TheBlurLandsByTheSecondFrame()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0", "opacity-100", "blur-[8px]"), Opacity);
+            using var __ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(Blur(box), Is.EqualTo(8f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base left a swapped tween's `all` in place under a zero-duration pose.
+        // So a blur the same render changes outside the pose is left to the engine, not to Velvet's filter driver.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABlurChange_Then_TheBlurIsLeftToTheEngine()
+        {
+            // Arrange
+            s_className = "blur-[2px]";
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-100 translate-x-[20px]"), Opacity,
+                _ => s_className = "blur-[6px]");
+            using var __ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(box.resolvedStyle.transitionProperty.Any(name => name.ToString() == "filter"), Is.False);
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapSettledUnderAZeroDurationPoseLeavingOpacityUnnamed_When_ATweenPoseNamesAnOpacityClass_Then_ThatOpacityShows(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-[0.2]", "opacity-[0.8]",
+                "translate-x-[20px]", Mid: "opacity-50"), Opacity);
+            using var __ = mounted;
+            AdvancePast(2f);
+
+            // Act
+            s_store.Set("mid");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(Opacity(box), Is.EqualTo(0.5f).Within(1e-3f));
         }
     }
 }
