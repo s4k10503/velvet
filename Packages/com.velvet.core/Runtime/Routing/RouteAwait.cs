@@ -17,7 +17,7 @@ namespace Velvet
         [Component]
         public static VNode Render(Props p)
         {
-            var outcome = Hooks.Use(p.Resolve.OutcomeTask, p.Resolve);
+            var outcome = Hooks.Use<DeferredOutcome>(p.Resolve.OutcomeTask, p.Resolve);
             if (outcome.Error != null)
             {
                 if (p.ErrorElement == null)
