@@ -632,6 +632,8 @@ namespace Velvet.Tests
             Assert.That(UnityEngine.Mathf.Abs(translate + 200f), Is.LessThan(50f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already tweens the underline in this direction.
+        // Making the other direction tween must leave this one as it was.
         [Test]
         public void Given_TwoTabComponentsOnOneStore_When_TheFirstIsSelected_Then_TheUnderlineTweensFromTheSecond()
         {
