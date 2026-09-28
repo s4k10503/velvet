@@ -549,8 +549,12 @@ def csharp_cases(text, path="?"):
 
         if CSHARP_ATTRIBUTE.match(line):
             block = index
-            while index < len(lines) and (CSHARP_ATTRIBUTE.match(code[index])
+            # A line inside an open bracket is attribute, whatever it opens with, so an argument list
+            # wrapped onto the next line neither ends the block nor stands in for the signature.
+            depth = 0
+            while index < len(lines) and (depth > 0 or CSHARP_ATTRIBUTE.match(code[index])
                                           or not code[index].strip()):
+                depth += code[index].count("[") - code[index].count("]")
                 index += 1
             attributes = "\n".join(code[block:index])
             signature = code[index] if index < len(lines) else ""
@@ -1818,9 +1822,26 @@ def python_canaries(base_tree, carry, wanted=3):
     return found
 
 
+ARGUMENT_GROUP = re.compile(r"\([^()]*\)|<[^<>]*>")
+
+
+def fixture_of(name):
+    """The fixture a reported case name belongs to, spelled as `Case.fixture` spells it.
+
+    Argument lists and type-argument lists come out, the fixture's as well as the method's. A
+    fixture the runner names `Foo(1)` or `Foo<Int32>` is one `csharp_cases` names `Foo`, and reading
+    it as some other fixture leaves its cases in one the base built none of -- which fails nothing,
+    where a case of a fixture that ran and answered to no name of it does.
+    """
+    previous = None
+    while previous != name:
+        previous, name = name, ARGUMENT_GROUP.sub("", name)
+    return name.split("(")[0].rsplit(".", 1)[0]
+
+
 def fixtures_that_ran(reported):
     """The fixtures the base run named at least one case of."""
-    return {name.split("(")[0].rsplit(".", 1)[0] for name in reported}
+    return {fixture_of(name) for name in reported}
 
 
 def unsound_platforms(canaries, reported):
@@ -1835,8 +1856,7 @@ def unsound_platforms(canaries, reported):
         if not fixtures:
             broken[platform] = "no base-tree canary was available there"
             continue
-        ran = [result for name, result in reported.items()
-               if name.split("(")[0].rsplit(".", 1)[0] in fixtures]
+        ran = [result for name, result in reported.items() if fixture_of(name) in fixtures]
         if not any(result == "Passed" for result in ran):
             broken[platform] = "none of {} passed there".format(
                 ", ".join(re.split(r"[.:]", fixture)[-1] for fixture in fixtures))

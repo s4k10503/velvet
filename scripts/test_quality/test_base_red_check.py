@@ -313,6 +313,55 @@ class CSharpReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(names, ["N.Outer.Inner.Given_X_When_Y_Then_Z"])
 
+    @staticmethod
+    def attributed(*attributes):
+        """`N.C` holding one method under `attributes`, each written as the lines given."""
+        return ("namespace N\n{\n    class C\n    {\n" +
+                "".join("        {}\n".format(line) for attribute in attributes for line in attribute) +
+                "        public void Given_A_When_B_Then_C(int a, int b) => Assert.Pass();\n    }\n}\n")
+
+    def test_Given_AMethodWhoseOnlyAttributeWraps_When_ItIsRead_Then_ItIsACase(self):
+        # Arrange
+        text = self.attributed(["[TestCase(1,", "    2)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_ARowAboveAWrappedOne_When_ItChanges_Then_TheMethodIsTouched(self):
+        # Arrange -- the row on line 5 sits above a row wrapped over lines 6 and 7.
+        text = self.attributed(["[TestCase(1, 2)]"], ["[TestCase(3,", "    4)]"], ["[TestCase(5, 6)]"])
+        cases = base_red_check.csharp_cases(text)
+
+        # Act
+        touched = base_red_check.touched(cases, {5})
+
+        # Assert
+        self.assertEqual([case.name for case in touched], ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_AttributesListedInOneBracketAcrossLines_When_Read_Then_TheMethodIsTheCase(self):
+        # Arrange -- the second line opens with an attribute's own name rather than a bracket, and
+        # the parentheses on each line close there.
+        text = self.attributed(["[TestCase(1, 2),", "    TestCase(3, 4)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_AWrappedAttributeWithABracketInAString_When_Read_Then_TheMethodIsTheCase(self):
+        # Arrange -- the string's bracket closes nothing, so the attribute is still open after it.
+        text = self.attributed(['[TestCase("w-120px]",', "    2)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
     def test_Given_AStringLiteralHoldingTheWordClass_When_ItIsRead_Then_ItOwnsNoCaseBelowIt(self):
         # Arrange -- this repository writes "the enter-from class is applied" into assertion messages,
         # and a scan of the raw line reads a type named `is` out of it. Every case below is then
@@ -1203,6 +1252,55 @@ class FixtureRollupTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(base_red_check.fixtures_that_ran(reported), {"N.C"})
+
+    @staticmethod
+    def verdict(name):
+        """`N.Foo.Given_A_When_B_Then_C`'s verdict over a run that reported `name` alone, failed."""
+        case = base_red_check.Case("N.Foo.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/Foo.cs", 1, 2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report([case], [], {name: "Failed"}, {}, True)
+        return case.verdict
+
+    def test_Given_AFixtureTheRunnerNamesWithItsArguments_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- read as a fixture the base built none of, the case would fail nothing.
+        name = "N.Foo(1).Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_AFixtureTheRunnerNamesWithTypeArguments_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange
+        name = "N.Foo<Int32>.Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_AFixtureWhoseTypeArgumentsNest_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange
+        name = "N.Foo<List<Int32>>.Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_ACanaryTheRunnerNamesWithItsArguments_When_ItPassed_Then_ThePlatformIsVouchedFor(self):
+        # Arrange
+        reported = {"N.CanaryTests(1).Given_A_When_B_Then_C": "Passed"}
+
+        # Act
+        broken = base_red_check.unsound_platforms({"EditMode": ["N.CanaryTests"]}, reported)
+
+        # Assert
+        self.assertEqual(broken, {})
 
 
 class CanaryTests(unittest.TestCase):
