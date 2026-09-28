@@ -781,12 +781,28 @@ namespace Velvet.Tests
                 V.Component(RefallingBoundaryRender, key: "boundary"),
             });
 
-        // Each fallback it shows is a fresh mount, whose layout effect throws back into it.
+        // Each fallback it shows is a fresh mount whose layout effect throws back into it, for a chain long enough
+        // to reach the follow-up bound twice over and short enough to settle where no bound stops it.
         [Component(IsErrorBoundary = true)]
         private static VNode RefallingBoundaryRender()
         {
-            Hooks.UseFallback(_ => V.Component(ThrowInLayoutEffectRender, key: "fallback-" + s_fallbackMounts++));
+            Hooks.UseFallback(_ =>
+            {
+                var mount = s_fallbackMounts++;
+                return V.Component(RefallingFallbackRender, mount, key: "fallback-" + mount);
+            });
             return V.Component(ThrowInPassiveEffectRender, key: "child");
+        }
+
+        private const int RefallingChainLength = 300;
+
+        [Component]
+        private static VNode RefallingFallbackRender(int mount)
+        {
+            Hooks.UseLayoutEffect(
+                (Func<Action>)(() => mount < RefallingChainLength ? throw new InvalidOperationException("boom") : (Action)null),
+                new object[] { mount });
+            return V.Label(text: "fallback");
         }
 
         [Component]
