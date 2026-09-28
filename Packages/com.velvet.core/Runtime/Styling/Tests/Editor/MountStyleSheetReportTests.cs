@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -349,6 +350,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("elsewhere"));
+        }
+
+        [Test]
+        public void Given_APortalTargetInsideALayerHostWhoseSheetIsDue_When_TheHostPanelTicksFirst_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange — the sheet reaches the declaring panel after the layer portal mounted, so the host gets it at
+            // the declaring panel's tick at the earliest, and the host panel is the one ticked first here.
+            var declaring = PanelRoot();
+            Mount(declaring, V.Portal(UILayer.Overlay, new VNode[] { V.Div(name: "slot") }));
+            declaring.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            var slot = Resources.FindObjectsOfTypeAll<UIDocument>()
+                .Select(document => document.rootVisualElement?.Q<VisualElement>("slot"))
+                .First(element => element != null);
+            Mount(declaring, V.Portal(slot, new VNode[] { V.Div() }));
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(slot.panel);
+            MountBare();
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
         // GREEN_ON_BASE(characterization): the base looks at no portal target at all.

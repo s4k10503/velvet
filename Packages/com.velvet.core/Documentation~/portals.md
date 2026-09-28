@@ -145,10 +145,14 @@ theme swap, a scale flip) re-copies on the next pass that touches the portal. A 
 without resolvable settings (an editor-hosted or headless root) gets an empty runtime theme
 instead — native-control default visuals come from a theme, so declare layers from a themed
 panel when those matter. Where the portal's position on the declaring panel reaches Velvet's utility
-stylesheet ([setup.md](setup.md)) and the host does not already, the host's root gets the sheet the way
-`VelvetStyleUtilities.AttachTo` gives it, dark-theme binding included. That is looked at when a portal
-mounts into the host and again at the declaring panel's next update, so a sheet attached there right after
-the mount still reaches the host. The host object itself is hidden from the Hierarchy:
+stylesheet ([setup.md](setup.md)) and the host does not reach it some other way, the host's root gets the
+sheet, and it comes off again once the host does reach it another way, such as a copied theme that imports
+it. The host root also takes the `dark` class that position resolves: it follows `VelvetTheme.IsDark` when
+the position sits under a root `VelvetStyleUtilities.BindThemeTo` bound (`AttachTo` binds one), and
+otherwise copies whether the position or an ancestor carries the class. Both are looked at when a portal
+mounts into the host, at the declaring panel's next update, and whenever the portal is patched, so a sheet
+attached on the declaring side later reaches the host at the portal's next render. The host object itself is
+hidden from the Hierarchy:
 
 | Layer | Sits | Typical use |
 |---|---|---|

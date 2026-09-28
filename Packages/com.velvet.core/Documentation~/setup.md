@@ -107,8 +107,9 @@ scene route does not bring with it is the theme binding `AttachTo` performs — 
 Editor-time preview stories get the utilities from the preview window, so a story needs no call of its
 own — see [preview-tooling.md](preview-tooling.md).
 
-The panel Velvet creates for a `V.Portal(layer:)` or a `V.WorldSpace` gets the sheet when the panel the
-portal is declared on reaches it — see [portals.md](portals.md#screen-space-layers-vportallayer).
+The panel Velvet creates for a `V.Portal(layer:)` or a `V.WorldSpace` gets the sheet when the portal's
+position on its declaring panel reaches it, from the portal's mount or its next render after that — see
+[portals.md](portals.md#screen-space-layers-vportallayer).
 
 ## Starter App document lifetime
 

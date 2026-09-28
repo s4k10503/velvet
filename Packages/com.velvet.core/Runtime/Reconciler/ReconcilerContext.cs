@@ -1023,7 +1023,8 @@ namespace Velvet
         public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
 
         // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
-        // deferred-mount drain and FiberNodePatcher's retarget.
+        // deferred-mount drain and FiberNodePatcher's retarget or heal of a portal mounted before its id was
+        // registered.
         internal void BindPortalTarget(VisualElement target)
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;

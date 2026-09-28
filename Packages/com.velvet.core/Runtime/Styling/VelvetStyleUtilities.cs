@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -13,7 +14,8 @@ namespace Velvet
     /// player alike. Every utility the sheet declares resolves to nothing on a panel that does not carry
     /// it, while arbitrary values and the many families Velvet resolves itself rather than declaring are
     /// unaffected — so <see cref="V.Mount(VisualElement, VNode)"/> and a portal into an element the app owns
-    /// warn, once per run, when their target's panel updates without the sheet.
+    /// warn, once per run, when the sheet is missing at their target panel's next update, or at the next
+    /// update after the target is added to a panel.
     /// <para>
     /// <c>Documentation~/setup.md</c> owns when to call this, which utilities sit on which side of that
     /// split (with the command that answers it for any one class), and the alternative of referencing the
@@ -165,27 +167,87 @@ namespace Velvet
         // any other on the same target running.
         internal static IDisposable WatchForMissingSheet(VisualElement target) => new MissingSheetWatch(target);
 
-        /// <summary>Attaches the sheet to a panel host Velvet creates for a portal, where the panel the portal
-        /// was declared on reaches it at <paramref name="declaredAt"/>, so the portal's children resolve the
-        /// utilities their declaring panel does.</summary>
+        /// <summary>Brings a panel host Velvet creates for a portal in line with the position the portal was
+        /// declared at: the host root gets the sheet where <paramref name="declaredAt"/> reaches it, and the
+        /// <see cref="DarkThemeClass"/> class <paramref name="declaredAt"/> resolves.</summary>
         internal static void CarryToHost(VisualElement declaredAt, VisualElement hostRoot)
         {
-            CarryToHostNow(declaredAt, hostRoot);
+            s_hostDeclarations.Remove(hostRoot);
+            s_hostDeclarations.Add(hostRoot, declaredAt);
+            SyncHost(declaredAt, hostRoot);
             // Asked again at the declaring panel's next tick, for the reason WatchForMissingSheet waits for one.
-            declaredAt.schedule.Execute(() => CarryToHostNow(declaredAt, hostRoot));
+            declaredAt.schedule.Execute(() => SyncHost(declaredAt, hostRoot));
         }
 
-        private static void CarryToHostNow(VisualElement declaredAt, VisualElement hostRoot)
+        // The position each host was last carried from, so a check on a target inside a host can bring the host
+        // up to date first rather than depend on which of the two panels ticks first.
+        private static readonly ConditionalWeakTable<VisualElement, VisualElement> s_hostDeclarations = new();
+
+        internal static void SyncHost(VisualElement declaredAt, VisualElement hostRoot)
         {
+            if (IsBoundAtOrAbove(declaredAt)) BindThemeTo(hostRoot);
+            else hostRoot.EnableInClassList(DarkThemeClass, IsDarkAtOrAbove(declaredAt));
+
             var sheet = TryResolve();
-            if (sheet == null || ReachesSheet(hostRoot, sheet) || !ReachesSheet(declaredAt, sheet)) return;
-            AttachTo(hostRoot);
+            if (sheet == null)
+            {
+                return;
+            }
+
+            // Left on a host that reaches the utilities some other way, such as a copied theme importing them, the
+            // sheet would outrank that theme's own overrides of them.
+            if (ReachesSheetBesides(hostRoot, sheet)) hostRoot.styleSheets.Remove(sheet);
+            else if (ReachesSheet(declaredAt, sheet)) hostRoot.styleSheets.Add(sheet);
+        }
+
+        private static void SyncHostAbove(VisualElement target)
+        {
+            for (var element = target; element != null; element = element.hierarchy.parent)
+            {
+                if (s_hostDeclarations.TryGetValue(element, out var declaredAt))
+                {
+                    SyncHost(declaredAt, element);
+                    return;
+                }
+            }
+        }
+
+        private static bool IsBound(VisualElement element)
+        {
+            foreach (var bound in s_themeRoots)
+            {
+                bound.TryGetTarget(out var root);
+                if (root == element) return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsBoundAtOrAbove(VisualElement from)
+        {
+            for (var element = from; element != null; element = element.hierarchy.parent)
+            {
+                if (IsBound(element)) return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsDarkAtOrAbove(VisualElement from)
+        {
+            for (var element = from; element != null; element = element.hierarchy.parent)
+            {
+                if (element.ClassListContains(DarkThemeClass)) return true;
+            }
+
+            return false;
         }
 
         private static void ReportIfMissingAbove(VisualElement target)
         {
             if (s_missingReported) return;
 
+            SyncHostAbove(target);
             var sheet = TryResolve();
             // A player that cannot resolve the sheet through its holder has nothing to compare against, and a
             // project that excluded the holder may still reach the sheet from a scene reference.
@@ -202,7 +264,18 @@ namespace Velvet
                 + "Reported once per run.");
         }
 
-        private static bool ReachesSheet(VisualElement from, StyleSheet sheet)
+        private static bool ReachesSheetBesides(VisualElement hostRoot, StyleSheet sheet)
+        {
+            for (var i = 0; i < hostRoot.styleSheets.count; i++)
+            {
+                var own = hostRoot.styleSheets[i];
+                if (own != sheet && Reaches(own, sheet)) return true;
+            }
+
+            return ReachesSheet(hostRoot.hierarchy.parent, sheet);
+        }
+
+        private static bool ReachesSheet(VisualElement? from, StyleSheet sheet)
         {
             for (var element = from; element != null; element = element.hierarchy.parent)
             {
@@ -231,7 +304,12 @@ namespace Velvet
 
         // The name and the imports' names rather than the reference, because an asset bundle carries its own copy
         // of the sheet, and of each partial, beside the ones the holder resolves.
-        private static string Signature(StyleSheet sheet)
+        private static string Signature(StyleSheet sheet) => s_signatures.GetValue(sheet, ComputeSignature);
+
+        // Cached because a portal patch asks again, and every ask walks the same sheets.
+        private static readonly ConditionalWeakTable<StyleSheet, string> s_signatures = new();
+
+        private static string ComputeSignature(StyleSheet sheet)
             => sheet.name + ":" + string.Join(",", Imports(sheet).Select(imported => imported.name));
 
         private static IEnumerable<StyleSheet> Imports(StyleSheet sheet)
