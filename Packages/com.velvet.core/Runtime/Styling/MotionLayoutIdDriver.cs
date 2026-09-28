@@ -17,8 +17,8 @@ namespace Velvet
     // A box is a layout rect together with the parent it was read under, and its centre and size in panel
     // space. A box read under this same parent compares layout rects; any other is taken into the new parent
     // less the inverse translate every ancestor still waiting on its own layoutId settle is about to apply.
-    // A box forgets its parent when the pool takes that parent back (ForgetParent), since the pool can hand
-    // it to another Motion's element before the box is claimed.
+    // A box in LayoutIdRegistry forgets its parent when the pool takes that parent back (ForgetParent), since
+    // the pool can hand it to another Motion's element before the box is claimed.
     // Panel space throughout was rejected: an inner layoutId Motion that moves inside an outer one still
     // tweening then no longer tweens by its own move inside it
     // (Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove).
