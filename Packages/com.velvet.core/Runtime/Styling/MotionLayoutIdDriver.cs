@@ -325,7 +325,6 @@ namespace Velvet
             AdoptForeignWrites(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
-            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             MotionNativeTransitionGuard.Release(element, projection);
         }
 

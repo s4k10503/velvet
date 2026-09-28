@@ -316,8 +316,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
   compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
-  inside one that grows or shrinks keeps its own size and its offset from the outer one's drawn corner on
-  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. A move that
+  inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
+  by its own class inside an outer one stretching by different factors on its two axes is not kept
+  exactly: no scale and translate undo a stretch at an angle to the element's axes. A move that
   lands while a tween is still running starts from where the element is drawn, not from its last layout.
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.

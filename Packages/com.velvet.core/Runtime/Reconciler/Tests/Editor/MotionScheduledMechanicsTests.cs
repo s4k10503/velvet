@@ -69,6 +69,14 @@ namespace Velvet.Tests
             s_store = null;
         }
 
+        [TearDown]
+        public override void TearDown()
+        {
+            _moveMount?.Dispose();
+            _moveMount = null;
+            base.TearDown();
+        }
+
         [Component]
         private static VNode SharedBoxRender()
         {
@@ -170,6 +178,24 @@ namespace Velvet.Tests
             var replacement = Root.Q<VisualElement>("shared");
             Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword, replacement.style.scale.keyword),
                 Is.EqualTo((false, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_NoProjectionRunsOnTheReplacement()
+        {
+            // Arrange
+            s_movedLeft = 200;
+            using var mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(replacement), Is.False);
         }
 
         [Test]
@@ -752,6 +778,29 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a tweening outer Motion alone when only an inner one moves.
+        // Settling a moved ancestor first must not restart one that did not move.
+        [Test]
+        public void Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheOuterTweenCarriesOn()
+        {
+            // Arrange — the outer one's tween is a few frames in and still closing on its box.
+            using var mounted = V.Mount(Root, V.Component(OuterThenInnerMoveRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var outer = Root.Q<VisualElement>("outer");
+            var before = TranslateX(outer);
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a frame further on; restarted from where it was drawn at the patch, it would stand still.
+            Assert.That(before - TranslateX(outer), Is.LessThan(-5f));
+        }
+
         // A board rotated 45 degrees holding two 200px-tall columns; step 1 moves the box from the second
         // column to the first, 200px up the board.
         [Component]
@@ -1016,7 +1065,7 @@ namespace Velvet.Tests
 
         // A point of an element's own box carried up to Root through each element's layout offset and its
         // inline translate and scale about its transform origin: where it is drawn while a layoutId tween owns
-        // those slots, which the resolved transform reports only a frame later.
+        // those slots.
         private Vector2 DrawnPoint(VisualElement element, Vector2 point)
         {
             for (var e = element; e != Root; e = e.hierarchy.parent)
@@ -1485,8 +1534,11 @@ namespace Velvet.Tests
         }
 
         private static StyleTransitionConfig s_moveTransition;
+        private static float? s_moveDuration;
+        private static EasingMode? s_moveEasing;
+        private static float? s_moveDelay;
 
-        // Step 1 moves the box 200px right on s_moveTransition.
+        // Step 1 moves the box 200px right on s_moveTransition and V.Motion's timing parameters.
         [Component]
         private static VNode TimedMoveBoxRender()
         {
@@ -1495,24 +1547,47 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_moveTransition,
+                    duration: s_moveDuration, easing: s_moveEasing, delay: s_moveDelay,
                     className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]"),
             });
         }
 
-        // Mounts TimedMoveBoxRender on the given transition and plays step 1 up to the frame its layout settles on.
-        private VisualElement MoveOn(StyleTransitionConfig transition)
+        private MountedTree _moveMount;
+
+        // Mounts TimedMoveBoxRender on the given timing and plays step 1 up to the frame its layout settles on.
+        private VisualElement MoveOn(StyleTransitionConfig transition, float? duration = null, EasingMode? easing = null, float? delay = null)
         {
             s_moveTransition = transition;
-            var mounted = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
+            s_moveDuration = duration;
+            s_moveEasing = easing;
+            s_moveDelay = delay;
+            _moveMount = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
-            mounted.FlushStateForTest();
+            _moveMount.FlushStateForTest();
             Tick();
             return Root.Q<VisualElement>("shared");
         }
 
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItMovesAgainOnAZeroDurationTransition_Then_ItLandsAtOnce()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — the second move 200px further, on no duration at all.
+            s_moveTransition = StyleTransitionConfig.None;
+            s_setStep.Invoke(2);
+            _moveMount.FlushStateForTest();
+            Tick();
+
+            // Assert — at its new box, the running tween no longer drawing it back.
+            Assert.That(TranslateX(element), Is.EqualTo(0f).Within(0.01f));
+        }
 
         [Test]
         public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
@@ -1589,6 +1664,45 @@ namespace Velvet.Tests
 
             // Assert — pinned at first, done by now; a spring on StyleTransitionConfig's defaults is still moving.
             Assert.That((start < -150f, element.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyADuration_When_ThatDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange — V.Motion's duration parameter without a transition times the Fade preset it defaults to.
+            var element = MoveOn(null, duration: 0.1f);
+
+            // Act — about 0.19s, inside Framer's 0.45s default.
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyAnEasing_When_ThePresetsDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange
+            var element = MoveOn(null, easing: EasingMode.Linear);
+
+            // Act — about 0.24s: past the Fade preset's 0.2s, inside Framer's 0.45s default.
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyADelay_When_LessThanTheDelayHasPassed_Then_ItHoldsTheOldBox()
+        {
+            // Arrange
+            var element = MoveOn(null, delay: 0.3f);
+
+            // Act
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(-200f).Within(0.01f));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +
