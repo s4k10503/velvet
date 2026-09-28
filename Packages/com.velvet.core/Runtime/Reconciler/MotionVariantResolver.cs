@@ -81,8 +81,7 @@ namespace Velvet
         // inherited ambientLabel (so the nearest-ancestor label keeps flowing down).
         public static string LabelForChildren(MotionNode node, string ambientLabel) => node.Animate ?? ambientLabel;
 
-        // Framer Motion's variant child: a Motion with variants whose animate label is inherited. Each one under
-        // an orchestrating Motion takes a stagger slot, whether or not the label changes its own pose.
+        // Framer Motion's variant child: a Motion with variants whose animate label is inherited.
         public static bool IsVariantChild(MotionNode node) => node.Animate == null && node.Variants != null;
 
         // The label a Motion's mount enter starts from, which is also the one its descendants inherit: its own

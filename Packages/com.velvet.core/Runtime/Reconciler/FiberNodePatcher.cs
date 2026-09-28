@@ -923,9 +923,9 @@ namespace Velvet
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
         //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
-        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay THIS
-        //   node itself claimed a moment ago in PatchMotion when it is, itself, an inheriting descendant of a
-        //   FURTHER-OUT orchestration. Folding extraDelaySec in regardless of When matters because this node's
+        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
+        //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
+        //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
         //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
         //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
         //   letting a grandchild start animating before its own parent does.
