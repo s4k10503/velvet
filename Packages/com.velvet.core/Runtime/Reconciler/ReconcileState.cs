@@ -180,8 +180,10 @@ namespace Velvet
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
+        // The slot path is hashed with the index: siblings written under separate unkeyed wrappers share
+        // their index, and a table hashing the index alone chains every one of them into one bucket.
         public override int GetHashCode()
-            => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
+            => (_isPositional ? unchecked(_index * 397) ^ _slotPath.GetHashCode() : (_key?.GetHashCode() ?? 0))
                 // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
                 // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
                 // reads the owner.
@@ -189,7 +191,7 @@ namespace Velvet
 
         public override string ToString()
             => _isPositional
-                ? $"position {_index.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                ? $"position {_index.ToString(System.Globalization.CultureInfo.InvariantCulture)} under slot path {_slotPath.ToString("X16", System.Globalization.CultureInfo.InvariantCulture)}"
                 : $"\"{_key}\"";
     }
 }

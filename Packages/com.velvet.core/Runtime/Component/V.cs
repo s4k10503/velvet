@@ -2351,8 +2351,9 @@ namespace Velvet
         /// is compared only with the other keys of this list, so it is not held to <see cref="VNode.Key"/>'s
         /// rule on what a key may contain. A null key is no key, the answer
         /// <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/> gives the same selector:
-        /// the row renders, and a range change reuses it by its item index. An item whose key an earlier
-        /// item of the rendered range returned renders the same way, under a warning naming the key.</param>
+        /// the row renders, and a range change reuses it by its item index. Items sharing a key all render
+        /// and are told apart by their item index, each keeping the row rendered at its own index while it
+        /// stays in the range; two of them rendered in one range log a warning naming the key.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
         /// A key it sets on the node it returns plays no part in which row a range change reuses —

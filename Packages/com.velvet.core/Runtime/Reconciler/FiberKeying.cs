@@ -39,9 +39,9 @@ namespace Velvet
     // one factory deriving all of them together, so a keying rule is changed for all of them in one place.
     //
     // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
-    // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
-    // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.ScopedKey
-    // depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
+    // contributes nothing while no enclosing keyed boundary has established a scope, which is what lets a
+    // keyed leaf under unkeyed wrappers be matched by its own key alone; an unkeyed one is placed by SlotPath
+    // instead. ReconcileKeying.ScopedKey depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
     // afresh at WalkRoot on the component's own render, so it can spell one node two ways across those two
     // entry points: nothing recorded in one walk and read back in another may be placed by it.
     //
@@ -66,10 +66,11 @@ namespace Velvet
     // predates position pairing (see GeneralPathReconciler.ProviderPairTable).
     //
     // SlotPath is the same fold over the same contributions as Path, restarting at every ComponentNode
-    // boundary where Path does not. An inline Component's registry position is derived from it, and that position
-    // has to name the same fiber from two entry points: an outer walk, which reaches a component's body
-    // through its ancestors, and that component's own isolated re-render, which starts the walk at WalkRoot.
-    // Path carries the levels above the fiber and so differs between the two.
+    // boundary where Path does not. An unkeyed leaf's ChildKey is derived from it. So is an inline
+    // Component's registry position, which has to name the same fiber from two entry points: an outer walk,
+    // which reaches a component's body through its ancestors, and that component's own isolated re-render,
+    // which starts the walk at WalkRoot. Path carries the levels above the fiber and so differs between the
+    // two.
     internal readonly struct WalkPosition
     {
         internal readonly string? Scope;
@@ -147,6 +148,17 @@ namespace Velvet
 
         // The SlotPath of a child array no wrapper encloses.
         internal const long RootSlotPath = unchecked((long)PathSeed);
+
+        // A child array holding one unkeyed Fragment and nothing else is reconciled as that Fragment's
+        // children, one level deep, as React unwraps an unkeyed top-level Fragment under any parent. A
+        // component's output takes that unwrap in FiberTreeReturn.NormalizeToArray instead, so this is
+        // applied where IReconcilerHost.ReconcileChildren or a Portal mount reconciles children, and by
+        // FiberContextSpine wherever it walks those same children: a walk unwrapping where the other does not
+        // places the components under the Fragment at two different positions.
+        internal static VNode?[] UnwrapLoneFragment(VNode?[] children)
+            => children is { Length: 1 } && children[0] is FragmentNode { Key: null } lone
+                ? lone.Children ?? System.Array.Empty<VNode?>()
+                : children;
 
         // The position an outer walk starts from. Scope-less (nothing has established a keyed boundary yet)
         // with both path accumulators at their seed.

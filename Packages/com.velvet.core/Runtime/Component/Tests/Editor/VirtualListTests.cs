@@ -37,7 +37,11 @@ namespace Velvet.Tests
     /// cleanup, and one scrolled away and back returns as a remount rather than as the element that was
     /// disposed.</item>
     /// <item>Of two items sharing a key, both render, and the second keeps its state across a range change
-    /// that keeps it in range; where the first renders nothing, the second takes the key with no warning.</item>
+    /// that keeps it in range, one that takes the first out of the range, and one that brings the first
+    /// back, the first then rendering afresh; each one's cleanup runs when both leave the range; and where
+    /// the first renders nothing, the second takes the key with no warning.</item>
+    /// <item>An update that reorders and shrinks the list leaves each keyed row still in range with its
+    /// state, wherever its item moved.</item>
     /// <item>A throw from the item renderer, or from an element's constructor while its row is created or
     /// patched, reaches the caller, and the range update it ends releases the rows it had placed and,
     /// separately, the prior rows it had not — the one whose create or patch threw among them — empties
@@ -674,6 +678,154 @@ namespace Velvet.Tests
                     + " under " + visibleContainer.Q<Label>()?.name
                     + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
                 Is.EqualTo("b under row-item-1 via a captured setter"));
+        }
+
+        private static readonly Dictionary<string, StateUpdater<string>> s_marksById = new();
+
+        // MarkedRowRender for every row, with each row's setter kept by its id.
+        [Component]
+        private static VNode MarkedByIdRender(string id)
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            s_marksById[id] = setMark;
+            return V.Label(name: "row-" + id, text: mark);
+        }
+
+        [Component]
+        private static VNode SharedKeyMarkedByIdHostRender()
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id == "item-2" ? "sel-item-1" : "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedByIdRender, item.Id),
+                overscan: 0);
+
+        // Mounts the list over items 0..4 and marks item-1 "x" and item-2 "b", so a row one of them takes from
+        // the other shows the other's mark. Returns whether both setters were captured.
+        private static bool MountAndMarkBothHolders(
+            VisualElement root, out MountedTree mounted, out ScrollView scrollView,
+            out FiberVirtualListController controller)
+        {
+            s_marksById.Clear();
+            mounted = V.Mount(root, V.Component(SharedKeyMarkedByIdHostRender, key: "host"));
+            scrollView = root.Q<ScrollView>();
+            controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var captured = s_marksById.TryGetValue("item-1", out var first)
+                & s_marksById.TryGetValue("item-2", out var second);
+            if (captured)
+            {
+                first.Invoke("x");
+                second.Invoke("b");
+                mounted.FlushStateForTest();
+            }
+            return captured;
+        }
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_ARangeChangeTakesTheFirstOut_Then_TheSecondKeepsItsOwnState()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var captured = MountAndMarkBothHolders(root, out var mounted, out var scrollView, out var controller);
+            using var _ = mounted;
+
+            // Act — the window becomes items 2..6, leaving item-1 out.
+            controller.UpdateVisibleRange(scrollY: 100f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text + " via " + (captured ? "captured" : "missing") + " setters",
+                Is.EqualTo("b via captured setters"));
+        }
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_ARangeChangeBringsTheFirstBack_Then_EachShowsItsOwnState()
+        {
+            // Arrange — the case above, with item-1 already out of the range.
+            var root = new VisualElement();
+            var captured = MountAndMarkBothHolders(root, out var mounted, out var scrollView, out var controller);
+            using var _ = mounted;
+            controller.UpdateVisibleRange(scrollY: 100f, viewportHeight: 200f);
+
+            // Act — the window becomes items 0..4 again.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — item-1 left the range, so it mounts afresh at "a"; item-2 kept its row throughout.
+            Assert.That(
+                scrollView.Q<Label>("row-item-1")?.text + "," + scrollView.Q<Label>("row-item-2")?.text
+                    + " via " + (captured ? "captured" : "missing") + " setters",
+                Is.EqualTo("a,b via captured setters"));
+        }
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_ARangeChangeScrollsBothOut_Then_EachOnesCleanupRuns()
+        {
+            // Arrange
+            var cleaned = new List<string>();
+            var node = V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => item.Id == "item-2" ? "item-1" : item.Id,
+                itemHeight: 50f,
+                renderer: CleanupRecordingRenderer(cleaned, RecordedLabel),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — the window becomes items 10..14, sharing no item with items 0..4.
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
+                Is.EqualTo("item-0,item-1,item-2,item-3,item-4"));
+        }
+
+        private static VirtualListNode MarkedByIdList(IReadOnlyList<TestItem> items)
+            => V.VirtualList(
+                items: items,
+                keySelector: item => "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedByIdRender, item.Id),
+                overscan: 0);
+
+        [Component]
+        private static VNode FourMarkedRowsHostRender() => MarkedByIdList(CreateItems(4));
+
+        // GREEN_ON_BASE(characterization): the base follows a key to whatever index its item moved to. Two
+        // perturbations of `StillReturnsKey` redden it: `<=` for `<` reads item-3's old index past the list
+        // the update shrank, and dropping its key comparison leaves item-2's row with item-0, which the
+        // update moved onto item-2's old index.
+        [Test]
+        public void Given_KeyedRowsInRange_When_AnUpdateReordersAndShrinksTheList_Then_EachMovedRowKeepsItsState()
+        {
+            // Arrange — items 0..3 render; item-2 is marked "b" and item-3 "d".
+            s_marksById.Clear();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(FourMarkedRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var captured = s_marksById.TryGetValue("item-2", out var second)
+                & s_marksById.TryGetValue("item-3", out var third);
+            if (captured)
+            {
+                second.Invoke("b");
+                third.Invoke("d");
+                mounted.FlushStateForTest();
+            }
+            var items = CreateItems(4);
+
+            // Act — the list becomes item-3, item-2, item-0; the range is re-supplied as the update-over-
+            // the-same-window case does.
+            controller.Update(MarkedByIdList(new[] { items[3], items[2], items[0] }));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                scrollView.Q<Label>("row-item-3")?.text + "," + scrollView.Q<Label>("row-item-2")?.text
+                    + " via " + (captured ? "captured" : "missing") + " setters",
+                Is.EqualTo("d,b via captured setters"));
         }
 
         // The refCallback delegate is held per item across renders rather than rebuilt inside the

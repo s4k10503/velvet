@@ -40,9 +40,12 @@ an item.
   `VNode.Key` refuses is accepted here.
 - **A `null` key is no key**, the answer `V.List` gives the same selector: the row renders, and a range
   change finds it again by its item index.
-- **A key an earlier item of the rendered range already returned** logs a warning naming it, and the
-  repeated item renders the way an item with a `null` key does. Where the earlier item's renderer
-  returned `null`, the key is free and the later item takes it with no warning.
+- **Items sharing a key all render, told apart by their item index**: each keeps the row rendered at its
+  own index while it stays in the range, including across a range change that takes the other out of the
+  range or brings it back. A row follows its key to another index only once the item at its old index
+  returns a different key, or the list no longer reaches that index.
+  Two of them rendered in one range log a warning naming the key; where the earlier one's renderer
+  returned `null`, the later one takes the key with no warning.
 
 A row that leaves the range is unmounted: its effects clean up, and scrolling it back into the range
 mounts it afresh, so state held in the row — hook state, or text typed into a field — does not survive

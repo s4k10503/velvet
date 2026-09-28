@@ -432,7 +432,8 @@ namespace Velvet
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 try
                 {
-                    Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
+                    Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
+                        slotStart: slotStart);
                 }
                 finally
                 {
