@@ -56,7 +56,7 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 | VEL009 | partial method already has a body |
 | VEL010 | ref struct or pointer parameter |
 
-For a complete list including the `ReactiveScopeAnalyzer` and `PurityAnalyzer` diagnostics, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
+For every diagnostic the package's analyzers report, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
 
 ## See also
 
