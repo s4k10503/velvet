@@ -885,7 +885,16 @@ namespace Velvet
                 {
                     back = FocusScopeDriver.FindFirstFocusableInSubtree(containRoot);
                 }
-                back?.Focus();
+                if (back == null)
+                {
+                    return;
+                }
+                // A panel that gained focus refocuses its last focused element on its next tick, which can run
+                // after this one in the same frame and take the landing back for a frame. Blurring the landing
+                // first leaves it nothing to refocus; FocusCrossPanelContainmentTests' portal-outside case
+                // counts the landings that would otherwise repeat.
+                elsewhere?.Blur();
+                back.Focus();
             });
         }
 

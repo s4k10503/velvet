@@ -111,8 +111,15 @@ namespace Velvet.Tests
 
         // Reads what `panel` holds focused on two consecutive frames once the pull-back tick has had its
         // frame. A reading at a frame boundary cannot see a fight whose two sides both land within one frame,
-        // as two panels' pull-back ticks do; the two-trees case counts landings for that. readings[0] is left
-        // to the arrangement's own reading.
+        // as two panels' pull-back ticks do, so each case also counts the landings on the side that should
+        // lose. readings[0] is left to the arrangement's own reading.
+        private static int[] CountLandings(VisualElement element)
+        {
+            var landings = new int[1];
+            element.RegisterCallback<FocusInEvent>(_ => landings[0]++);
+            return landings;
+        }
+
         private static IEnumerator ReadTwoSettledFrames(VisualElement onPanel, Focusable[] readings)
         {
             yield return null;
@@ -152,6 +159,7 @@ namespace Velvet.Tests
             var inner = HostElement("inner");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(m1);
+            var landingsOnTheModal = CountLandings(m1);
 
             // Act
             m1.Blur();
@@ -159,7 +167,9 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(inner, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, inner, inner }));
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheModal[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)inner, (Focusable)inner, 0)));
         }
 
         [UnityTest]
@@ -170,14 +180,55 @@ namespace Velvet.Tests
             var m1 = Main("m1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(m1);
+            var outer = HostElement("outer");
+            var landingsOutside = CountLandings(outer);
 
             // Act
             m1.Blur();
-            HostElement("outer").Focus();
+            outer.Focus();
             yield return ReadTwoSettledFrames(m1, readings);
 
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
+        }
+
+        [Component]
+        private static VNode ModalWithOneButtonBesideALayerButton() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+            }),
+            V.Portal(UILayer.Overlay, key: "outer", children: new VNode[]
+            {
+                V.Button(name: "outer"),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // This case pins that a pull-back with nothing to focus leaves the landing where it is.
+        [UnityTest]
+        public IEnumerator Given_AContainedScopeLeftWithNothingToFocus_When_FocusMovesToAnotherPanel_Then_TheLandingKeepsIt()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalWithOneButtonBesideALayerButton, key: "root"));
+            var m1 = Main("m1");
+            var outer = HostElement("outer");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.SetEnabled(false);
+            var landingsOutside = CountLandings(outer);
+
+            // Act
+            outer.Focus();
+            yield return ReadTwoSettledFrames(outer, readings);
+
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, m1, m1 }));
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)outer, (Focusable)outer, 1)));
         }
 
         // The dialog's scope is created when the portal drains, after the modal's.
@@ -208,6 +259,7 @@ namespace Velvet.Tests
             var d1 = HostElement("d1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(m1);
+            var landingsOnTheModal = CountLandings(m1);
 
             // Act
             m1.Blur();
@@ -215,7 +267,9 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, d1, d1 }));
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheModal[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)d1, (Focusable)d1, 0)));
         }
 
         [UnityTest]
@@ -226,14 +280,18 @@ namespace Velvet.Tests
             var d1 = HostElement("d1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(d1);
+            var m1 = Main("m1");
+            var landingsOnTheModal = CountLandings(m1);
 
             // Act
             d1.Blur();
-            Main("m1").Focus();
+            m1.Focus();
             yield return ReadTwoSettledFrames(d1, readings);
 
-            // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1, d1 }));
+            // Assert — the one landing on the modal is the move itself.
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheModal[0]),
+                Is.EqualTo(((Focusable)d1, (Focusable)d1, (Focusable)d1, 1)));
         }
 
         [Component]
@@ -257,14 +315,18 @@ namespace Velvet.Tests
             var d1 = HostElement("d1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(d1);
+            var outside = Main("outside");
+            var landingsOutside = CountLandings(outside);
 
             // Act
             d1.Blur();
-            Main("outside").Focus();
+            outside.Focus();
             yield return ReadTwoSettledFrames(d1, readings);
 
-            // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1, d1 }));
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo(((Focusable)d1, (Focusable)d1, (Focusable)d1, 1)));
         }
 
         [Component]
@@ -292,6 +354,7 @@ namespace Velvet.Tests
             var zp = HostElement("zp");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(m1);
+            var landingsOnTheModal = CountLandings(m1);
 
             // Act
             m1.Blur();
@@ -299,7 +362,9 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(zp, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, zp, zp }));
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheModal[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)zp, (Focusable)zp, 0)));
         }
 
         [Component]
@@ -326,6 +391,7 @@ namespace Velvet.Tests
             var p1 = OtherRoot.Q<VisualElement>("p1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(m1);
+            var landingsOnTheModal = CountLandings(m1);
 
             // Act
             m1.Blur();
@@ -333,7 +399,9 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(p1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, p1, p1 }));
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheModal[0]),
+                Is.EqualTo(((Focusable)m1, (Focusable)p1, (Focusable)p1, 0)));
         }
 
         [Component]
