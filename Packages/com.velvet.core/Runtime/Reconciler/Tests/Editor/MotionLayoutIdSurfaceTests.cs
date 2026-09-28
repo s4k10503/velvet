@@ -44,7 +44,7 @@ namespace Velvet.Tests
         }
 
         // Mounts MovingBoxRender and plays step 1 up to the frame its layout settles on.
-        private VisualElement Move(StyleTransitionConfig transition, float? duration = null)
+        private VisualElement MoveBox(StyleTransitionConfig transition, float? duration = null)
         {
             s_transition = transition;
             s_duration = duration;
@@ -63,7 +63,7 @@ namespace Velvet.Tests
         public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
         {
             // Arrange / Act — the Motion's own transition has no duration; its Layout is a spring.
-            var element = Move(new StyleTransitionConfig { Layout = s_spring });
+            var element = MoveBox(new StyleTransitionConfig { Layout = s_spring });
 
             // Assert
             Assert.That(TranslateX(element), Is.LessThan(-50f));
@@ -73,7 +73,7 @@ namespace Velvet.Tests
         public void Given_ALayoutIdMotionWithALayoutTransition_When_VMotionIsGivenADuration_Then_ItStillTweensOnItsLayout()
         {
             // Arrange / Act — the duration parameter rebuilds the transition through With().
-            var element = Move(new StyleTransitionConfig { Layout = s_spring }, duration: 0f);
+            var element = MoveBox(new StyleTransitionConfig { Layout = s_spring }, duration: 0f);
 
             // Assert
             Assert.That(TranslateX(element), Is.LessThan(-50f));
@@ -83,7 +83,7 @@ namespace Velvet.Tests
         public void Given_ALayoutIdTween_When_ItHasSettled_Then_ItsPanelRunsNoFrameForIt()
         {
             // Arrange
-            Move(s_spring);
+            MoveBox(s_spring);
 
             // Act
             AdvancePast(3f);
