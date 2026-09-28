@@ -1104,10 +1104,10 @@ namespace Velvet
 
         // Lands each named longhand of a variant tween within two frames while the entries before it keep timing
         // the rest of what they timed (MotionZeroDurationLandingTests). One whose value the pose changes gets a 1ms
-        // entry appended; `filter`'s is spelled `background-size`, the entry the inline-filter setter times its
-        // write by (StyleFilterTransitionDriver's note). One whose value the pose repeats from the play's target
-        // leaves the list, which rests it at that target (HeldTransitionOverrideEngineTests), through the rewrite
-        // MotionNativeTransitionGuard uses for the slots a driver owns. A classic enter's or a preset exit's transition-property is its USS one, which is why
+        // entry appended; `filter`'s is spelled `background-size`, under which a pose's blur lands. One whose value
+        // the pose repeats from the play's target leaves the list, which rests it at that target
+        // (HeldTransitionOverrideEngineTests), through the rewrite MotionNativeTransitionGuard uses for the slots
+        // a driver owns. A classic enter's or a preset exit's transition-property is its USS one, which is why
         // only a play with resting classes reaches here. Rejected: a zero duration, under which an earlier `all`
         // still times the longhand.
         private static void LandOnHeldTransition(VisualElement element, PendingAnimation pending,

@@ -131,6 +131,26 @@ namespace Velvet.Tests
             Assert.That(landed, Is.EqualTo(0.5f).Within(1e-3f));
         }
 
+        // The tween's target writes no opacity, so the pose's opacity is a change the landing has to time rather than a
+        // value it repeats: left out of the list, opacity would rest at the tween's old target
+        // (HeldTransitionOverrideEngineTests).
+        [Test]
+        public void Given_ATweenSwapWhoseTargetLeavesOpacityUnnamed_When_AZeroDurationPoseNamingOpacityFollows_Then_OpacityLandsByTheSecondFrame()
+        {
+            // Arrange
+            var (box, before, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[0px]",
+                "translate-x-[40px]", "opacity-50"), Opacity);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — gated on the tween being mid-way, where landing and resting at the old target read apart.
+            var landed = Between(before, 0.05f, 0.45f) ? Opacity(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(0.5f).Within(1e-3f));
+        }
+
         // A tween with a delay writes a transition-delay list, which the landing extends beside the others.
         [Test]
         public void Given_ADelayedTweenSwapThatHasSwapped_When_AZeroDurationPoseNamingOpacityFollows_Then_OpacityLandsByTheSecondFrame()
@@ -508,6 +528,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base carried no class from a landing to the next label change.
+        // Read at the spring's first frame rather than at its settle, where the case above reads.
+        [Test]
+        public void Given_ATweenSwapLandedUnderAZeroDurationPoseLeavingTranslateUnnamed_When_ASpringPoseFollows_Then_TheSpringStartsNoTranslate()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "translate-x-[0px]", "translate-x-[40px]",
+                "opacity-50", Next: "opacity-0", NextTransition: s_spring), Opacity);
+            using var __ = mounted;
+            AdvancePast(1f);
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+
+            // Assert
+            Assert.That(TranslateX(box), Is.EqualTo(0f).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): the base took no token off the class list at a label change.
