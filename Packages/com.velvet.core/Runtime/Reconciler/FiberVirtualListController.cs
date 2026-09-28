@@ -586,14 +586,17 @@ namespace Velvet
             var inView = size > viewport
                 ? current >= start && current <= minOffset
                 : current >= minOffset && current <= start;
-            if (align == VirtualListAlign.Smart) align = inView ? VirtualListAlign.Auto : VirtualListAlign.Center;
+            var center = Math.Max(0, Math.Min(total - viewport, start + size / 2 - viewport / 2));
             var target = align switch
             {
                 VirtualListAlign.Start => maxOffset,
                 VirtualListAlign.End => minOffset,
-                VirtualListAlign.Center => Math.Max(0, Math.Min(total - viewport, start + size / 2 - viewport / 2)),
-                // MUTANT_SURVIVES(equivalent, boundary): current == minOffset is in view in either arm above.
-                _ => inView ? current : current < minOffset ? minOffset : maxOffset,
+                VirtualListAlign.Center => center,
+                // Smart is Auto for an item in view, where Auto stays put.
+                VirtualListAlign.Smart => inView ? current : center,
+                // MUTANT_SURVIVES(equivalent, boundary): current == minOffset is in view in either arm of inView.
+                VirtualListAlign.Auto => inView ? current : current < minOffset ? minOffset : maxOffset,
+                _ => throw new ArgumentOutOfRangeException(nameof(align), align, "not a VirtualListAlign member"),
             };
             var value = (float)target;
             _scrollView.verticalScroller.value = value;
