@@ -128,7 +128,7 @@ namespace Velvet
         internal bool IsSwapPending(VisualElement element, Action onSwap)
             // MUTANT_SURVIVES(unreachable): a registered hold's swap is always the element's pending enter.
             // Each call that ends or replaces that enter releases, lands or replaces the hold before it returns:
-            // the swap's onSwap, ResolveInlineHold, an exit, a presence enter that plays, and a teardown.
+            // the swap's onSwap, ResolveInlineHold, an exit, a presence enter that cancels it, and a teardown.
             => _pendingEnters.TryGetValue(element, out var enter) && ReferenceEquals(enter.OnSwap, onSwap);
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the

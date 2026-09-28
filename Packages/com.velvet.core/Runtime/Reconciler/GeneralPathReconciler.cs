@@ -2262,8 +2262,8 @@ namespace Velvet
             {
                 // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
                 // resting state).
-                // An enter that plays cancels the pose swap a label change started in this render, and with it
-                // the onSwap that would write the swap's held inline values, so they land first.
+                // The enter cancels the pose swap a label change started in this render, whatever its transition,
+                // and with it the onSwap that would write the swap's held inline values, so they land first.
                 _patcher.LandInlineHold(motionElement!);
                 var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
                     enterTransition);
@@ -2277,7 +2277,7 @@ namespace Velvet
             }
             else
             {
-                // As for the variant enter above; of the classic enters, only a timed tween plays.
+                // As for the variant enter above; of the classic enters, only a timed tween cancels it.
                 if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
                 {
                     _patcher.LandInlineHold(anchor);

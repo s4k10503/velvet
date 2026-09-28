@@ -347,7 +347,8 @@ namespace Velvet.Tests
         }
 
         // One case per kind of channel a spring or bezier drives, each moving that property beside a translate or
-        // an opacity the landing pose does name.
+        // an opacity the landing pose does name. No property's unstyled value lies between its from and to values,
+        // so neither jumping to the play's target nor falling back to that value reads as still moving.
         private static IEnumerable<Channel> UnnamedChannels()
         {
             foreach (var type in new[] { TransitionType.Spring, TransitionType.Bezier })
@@ -364,14 +365,14 @@ namespace Velvet.Tests
                 };
                 yield return new Channel
                 {
-                    Type = type, From = "scale-[0.5] translate-x-[0px]", To = "scale-[1] translate-x-[40px]",
-                    Land = "translate-x-[20px]", Property = "scale", FromValue = 0.5f, ToValue = 1f,
+                    Type = type, From = "scale-[1.5] translate-x-[0px]", To = "scale-[2] translate-x-[40px]",
+                    Land = "translate-x-[20px]", Property = "scale", FromValue = 1.5f, ToValue = 2f,
                 };
                 // active-scale-95 writes scale only while the element is pressed, so it names no scale here.
                 yield return new Channel
                 {
-                    Type = type, From = "scale-[0.5] translate-x-[0px]", To = "scale-[1] translate-x-[40px]",
-                    Land = "translate-x-[20px] active-scale-95", Property = "scale", FromValue = 0.5f, ToValue = 1f,
+                    Type = type, From = "scale-[1.5] translate-x-[0px]", To = "scale-[2] translate-x-[40px]",
+                    Land = "translate-x-[20px] active-scale-95", Property = "scale", FromValue = 1.5f, ToValue = 2f,
                 };
                 yield return new Channel
                 {
@@ -404,8 +405,8 @@ namespace Velvet.Tests
 
             // Assert — gated on the play having moved the property off both ends.
             var moving = before - channel.FromValue > span * 0.005f && channel.ToValue - before > span * 0.05f;
-            var gained = moving ? Read(box, channel.Property) - before : float.NaN;
-            Assert.That(gained, Is.GreaterThan(span * 1e-4f));
+            var after = moving ? Read(box, channel.Property) : float.NaN;
+            Assert.That(after, Is.InRange(before + span * 1e-4f, channel.ToValue - span * 0.01f));
         }
 
         public readonly record struct Undriven
