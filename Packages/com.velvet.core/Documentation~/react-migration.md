@@ -87,7 +87,9 @@ public static VNode UserCard()
 - For **page-scoped view state** (a store, theme, navigation context, …), prefer a typed context
   published with `V.Provider` and read with `UseContext` over resolving services ad hoc
   (separation of responsibilities)
-- `UseService<T>()` cannot be called **from within a Store's async lifecycle methods** (hook discipline). A Store obtains its UseCase via constructor injection
+- `UseService<T>()` is a hook, so React's rules of hooks apply: it runs only during a component's render, and
+  a call from anywhere else — a Store's async lifecycle method included — throws, as a hook called outside
+  a React render does. A Store obtains its UseCase via constructor injection
 
 ### 1-2a. Async mutations — `Hooks.UseMutation`
 
@@ -186,8 +188,8 @@ included — it changes nothing: `Object.is` already gives the same answer as th
 ### 1-4. What a dependency list means
 
 The Velvet APIs that take a dependency list — the effect hooks, `UseCallback`, `UseMemo`,
-`UseImperativeHandle`, `UseBlocker`, and the node-level `V.Memoized` / `V.MemoizedWithKey` — read it the
-same way:
+`UseImperativeHandle`, `UseBlocker`, `UseAnimationSequence`, and the node-level `V.Memoized` /
+`V.MemoizedWithKey` — read it the same way:
 
 | Spelling | Meaning | React equivalent |
 |----------|---------|------------------|
@@ -209,10 +211,6 @@ Three consequences worth knowing before writing one:
 - `V.Memoized` / `V.MemoizedWithKey` build a fresh node per call, so a call site in a render body gets a
   rebuild every render. A node instance hoisted out of the render body and handed back unchanged is the
   same node, and keeps the subtree it already built.
-
-`Hooks.UseAnimationSequence` defaults its list to empty rather than to null, so that a step array rebuilt
-in the component body does not restart the sequence every render; [motion.md](motion.md) owns that
-deviation.
 
 ---
 
@@ -303,7 +301,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time, a loader that has to wait never delivers, and the Editor logs a warning naming `resourceKey` — the counterpart of the error React logs when a component suspends on a promise created during render |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. The helper suits a use directly under Mount; the functional pattern suits cases where you want fallback/children values to update dynamically on parent re-render |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect. What every caught error goes to is the root's `OnCaughtError`, in the next row |
 | `createRoot(container, { onCaughtError })` | `V.Mount(target, tree, new MountOptions(OnCaughtError: (ex, info) => ...))` | Called when a boundary in the tree catches an error, as its fallback is reconciled; React calls it once the fallback commits. `info` carries the `ComponentStack` and `ErrorBoundary`, the name of the boundary that caught it. Without a handler, the error is logged with `Debug.LogException`: the entry reads as the caught exception itself, and its stack trace goes on to name the boundary and the component stack. An exception the handler throws is logged |
