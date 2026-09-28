@@ -48,18 +48,22 @@ namespace Velvet.Tests
 
             // Act
             var task = source.Task.AsTask();
-            OperationCanceledException? thrown = null;
-            try
+            var status = task.Status;
+            var carriesTheToken = false;
+            if (status == TaskStatus.Canceled)
             {
-                task.GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException exception)
-            {
-                thrown = exception;
+                try
+                {
+                    task.GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException exception)
+                {
+                    carriesTheToken = exception.CancellationToken == cancellation.Token;
+                }
             }
 
             // Assert
-            Assert.That((task.IsCanceled, thrown?.CancellationToken == cancellation.Token), Is.EqualTo((true, true)));
+            Assert.That((status, carriesTheToken), Is.EqualTo((TaskStatus.Canceled, true)));
         }
     }
 }
