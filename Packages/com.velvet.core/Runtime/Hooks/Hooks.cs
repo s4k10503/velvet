@@ -544,13 +544,7 @@ namespace Velvet
         private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[]? deps)
         {
             var fiber = Resolve("UseBlocker");
-
-            var router = Router.Current;
-            if (router == null)
-            {
-                FiberLogger.LogWarning("Hooks",
-                    $"{ComponentName(fiber)}: UseBlocker - Router.Current is null. Blocker is not registered.");
-            }
+            var router = UseRouterOrThrow("UseBlocker");
 
             fiber.BlockerSlots ??= new List<HookBlockerSlot>();
             var index = fiber.Indices.BlockerHookIndex++;
@@ -563,12 +557,13 @@ namespace Velvet
                 // Compare against the committed deps. The (Dispose -> re-register) side effect is staged and run
                 // at the render-phase settle, so a discarded attempt cannot register a throwaway predicate closure
                 // against Router.RouteBlockerManager (or leave the committed blocker pointing at it).
-                var unchanged = deps != null && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
+                var unchanged = deps != null
+                    && ReferenceEquals(existing.LastRouter, router)
+                    && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
                 existing.NextDeps = deps;
+                existing.NextRouter = router;
                 existing.NextNeedsReregister = !unchanged;
-                existing.NextRegister = (!unchanged && router != null)
-                    ? () => registerFn(router, existing.State)
-                    : null;
+                existing.NextRegister = !unchanged ? () => registerFn(router, existing.State) : null;
                 return existing.State;
             }
 
@@ -579,8 +574,9 @@ namespace Velvet
             {
                 State = state,
                 NextDeps = deps,
+                NextRouter = router,
                 NextNeedsReregister = true,
-                NextRegister = router != null ? () => registerFn(router, state) : null,
+                NextRegister = () => registerFn(router, state),
             };
             fiber.BlockerSlots.Add(slot);
             return state;
@@ -592,12 +588,15 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current router location.
-        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted, and until a
-        /// mounted router publishes its first location.
+        /// Reads <see cref="RouterContext.Location"/>; returns null until the router publishes its first
+        /// location.
         /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
         public static RouterLocation? UseLocation()
         {
             _ = Resolve("UseLocation");
+            _ = UseRouterOrThrow("UseLocation");
             return UseContext(RouterContext.Location);
         }
 
@@ -619,26 +618,29 @@ namespace Velvet
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. Navigation is driven by <see cref="Router.Current"/>.
+        /// root before the first location. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// publishes above the caller.
         /// </summary>
         /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
         public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
         {
             _ = Resolve("UseNavigate");
+            var router = UseRouterOrThrow("UseNavigate");
             var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
             var baseRouteIndex = UseBaseRouteIndex();
             return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
-                to =>
-                {
-                    var router = Router.Current;
-                    if (router == null)
-                    {
-                        return VelvetTask.FromResult(NavigationResult.Cancelled);
-                    }
-                    return router.NavigateAsync(to, mode, baseRouteIndex);
-                },
-                mode, baseRouteIndex);
+                to => router.NavigateAsync(to, mode, baseRouteIndex),
+                router, mode, baseRouteIndex);
         }
+
+        // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,
+        // UseOutletContext and V.Outlet answer there instead, as theirs do, so they do not call it.
+        private static Router UseRouterOrThrow(string hookName)
+            => UseContext(RouterContext.Router)
+               ?? throw new InvalidOperationException(
+                   $"{hookName} may be used only beneath a V.RouterProvider.");
 
         /// <summary>
         /// The matched-route level a relative target resolves against for the calling component: a component
@@ -648,8 +650,8 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
-        /// the active <see cref="Router"/> is matching or loading the next location, and
-        /// <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the router's status
+        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller is matching or loading
+        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the router's status
         /// transitions.
         /// </summary>
         /// <remarks>
@@ -659,16 +661,11 @@ namespace Velvet
         public static NavigationState UseNavigation()
         {
             _ = Resolve("UseNavigation");
-            var (state, setState) = UseState(ReadNavigationState(Router.Current));
+            var router = UseRouterOrThrow("UseNavigation");
+            var (state, setState) = UseState(ReadNavigationState(router));
 
             UseEffect(() =>
             {
-                var router = Router.Current;
-                if (router == null)
-                {
-                    return (Action)(() => { });
-                }
-
                 void Sync() => setState.Invoke(ReadNavigationState(router));
                 void OnStatus(RouterStatus _) => Sync();
                 void OnLocation(RouterLocation _) => Sync();
@@ -682,18 +679,13 @@ namespace Velvet
                     router.OnStatusChanged -= OnStatus;
                     router.OnLocationChanged -= OnLocation;
                 };
-            }, Array.Empty<object>());
+            }, new object[] { router });
 
             return state;
         }
 
-        private static NavigationState ReadNavigationState(Router? router)
+        private static NavigationState ReadNavigationState(Router router)
         {
-            if (router == null)
-            {
-                return new NavigationState { State = NavigationLifecycle.Idle, Location = null };
-            }
-
             var lifecycle = router.Status is RouterStatus.Matching or RouterStatus.Loading
                 ? NavigationLifecycle.Loading
                 : NavigationLifecycle.Idle;
@@ -714,13 +706,11 @@ namespace Velvet
         public static (ISearchParams searchParams, SearchParamsSetter setSearchParams) UseSearchParams()
         {
             _ = Resolve("UseSearchParams");
+            var router = UseRouterOrThrow("UseSearchParams");
             var location = UseContext(RouterContext.Location);
             var path = location?.Path ?? string.Empty;
             var parsed = RouteQuery.ParseQuery(path);
-
-            // The setter is stateless (it reads Router.Current live), so one shared instance serves every
-            // component and every render rather than a per-render allocation.
-            return (parsed, SearchParamsSetter.Shared);
+            return (parsed, router.SearchParamsSetter);
         }
 
         // Cache pattern -> single-route matcher so UseMatch does not allocate a RouteTree on every render.
@@ -740,6 +730,7 @@ namespace Velvet
         {
             if (pattern == null) throw new ArgumentNullException(nameof(pattern));
             _ = Resolve("UseMatch");
+            _ = UseRouterOrThrow("UseMatch");
             var location = UseContext(RouterContext.Location);
             var path = RouteQuery.StripQuery(location?.Path);
             if (path == null)
@@ -779,6 +770,7 @@ namespace Velvet
         public static T? UseLoaderData<T>()
         {
             _ = Resolve("UseLoaderData");
+            _ = UseRouterOrThrow("UseLoaderData");
             var routeId = CurrentRouteId();
             if (routeId == null)
             {
@@ -795,6 +787,7 @@ namespace Velvet
         public static Exception? UseRouteError()
         {
             _ = Resolve("UseRouteError");
+            _ = UseRouterOrThrow("UseRouteError");
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
             var errors = UseContext(RouterContext.Errors);

@@ -15,7 +15,8 @@ namespace Velvet
 
         // Called from the Outlet's render for the route it is about to render. Reaching a route the held
         // scope was not built for is what replaces it.
-        internal static void SyncRenderingOutletScope(RouteDefinition? route, object routeIdentity)
+        internal static void SyncRenderingOutletScope(RouteDefinition? route, object routeIdentity,
+            IRouteScopeFactory? scopeFactory)
         {
             var fiber = FiberAmbientStack.Current;
             var ctx = fiber?.Reconciler?.Context;
@@ -36,7 +37,7 @@ namespace Velvet
                 Release(ctx, fiber, held);
             }
 
-            var scope = CreateOutletScope(ctx, route);
+            var scope = CreateOutletScope(ctx, route, scopeFactory);
             if (scope != null)
             {
                 ctx.OutletScopes[fiber] = new Entry { RouteIdentity = routeIdentity, Scope = scope };
@@ -86,9 +87,9 @@ namespace Velvet
         // ContainUserCallbackFailure reaches the nearest error boundary, so an application that wants a
         // scope-less route refused still gets to refuse it. A drop-and-log -- what Release above does with
         // the departing scope's Dispose -- would have decided that for it.
-        private static IRouteScope? CreateOutletScope(ReconcilerContext ctx, RouteDefinition? route)
+        private static IRouteScope? CreateOutletScope(ReconcilerContext ctx, RouteDefinition? route,
+            IRouteScopeFactory? scopeFactory)
         {
-            var scopeFactory = Router.Current?.ScopeFactory;
             if (scopeFactory == null)
             {
                 return null;

@@ -133,6 +133,7 @@ namespace Velvet
                     released?.Dispose();
                 }
                 slot.LastDeps = slot.NextDeps;
+                slot.LastRouter = slot.NextRouter;
                 slot.NextRegister = null;
             }
         }

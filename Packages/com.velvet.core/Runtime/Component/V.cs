@@ -2404,18 +2404,15 @@ namespace Velvet
         #region Routing DSL
 
         /// <summary>
-        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes its location, loader
-        /// data and loader errors to the routing hooks that read a router, then renders the matched route
-        /// through an <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes it, with its location,
+        /// loader data and loader errors, to the routing hooks, then renders the matched route through an
+        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates.
         /// </summary>
         /// <remarks>
         /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is
         /// the route table's own elements. A value for <c>UseOutletContext</c> comes from an
         /// <see cref="Outlet"/> written in a layout route, which is where React Router's
         /// <c>&lt;Outlet context&gt;</c> lives too.
-        /// <para/>
-        /// The hooks that act on a router rather than read from it go to <see cref="Router.Current"/>, not to
-        /// <paramref name="router"/>; the routing guide lists which hooks fall on which side.
         /// </remarks>
         /// <param name="router">The router to publish. Navigation may start before or after this mounts.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2532,7 +2529,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// No element participates in layout while the active <see cref="Router"/> handles the target.
+        /// No element participates in layout while the <see cref="Router"/> the nearest
+        /// <see cref="RouterProvider"/> publishes handles the target.
         /// </summary>
         /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
         /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate(bool)"/>.</param>

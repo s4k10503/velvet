@@ -192,6 +192,7 @@
 [Velvet] field Velvet.RouterContext.LoaderData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]
 [Velvet] field Velvet.RouterContext.Location: Velvet.ComponentContext`1[Velvet.RouterLocation]
 [Velvet] field Velvet.RouterContext.OutletContext: Velvet.ComponentContext`1[System.Object]
+[Velvet] field Velvet.RouterContext.Router: Velvet.ComponentContext`1[Velvet.Router]
 [Velvet] field Velvet.RouterStatus.Error: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.Idle: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.Loading: Velvet.RouterStatus

@@ -38,28 +38,27 @@ public static class App
 ## The root
 
 `V.RouterProvider(router)` is `<RouterProvider router={router}/>`: it subscribes to the router and
-publishes the location, the loader data and the loader errors that `Hooks.UseLocation`,
+publishes it, with the location, the loader data and the loader errors that `Hooks.UseLocation`,
 `Hooks.UseParams`, `Hooks.UseSearchParams`, `Hooks.UseMatch`, `Hooks.UseLoaderData` and
 `Hooks.UseRouteError` read. It renders the matched route through a `V.Outlet` of its own, so it takes
 no children — what appears beneath it is the route table's own elements.
 
 Those six hooks read what it publishes, and so does every `V.Outlet`: the location picks the route to
 render and the errors pick the boundary that replaces it. The hooks that **act** on a router rather
-than read from it — `Hooks.UseNavigate` (and so every `V.Link` and `V.NavLink`), `Hooks.UseNavigation`,
-`Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — go to `Router.Current` instead
-of to the provider's router. With one router live those are the same object. With two, a subtree under
-`V.RouterProvider(a)` reads `a` and navigates `b`, so keep one router live at a time — constructing a
-second logs a warning telling you to dispose the first.
+than read from it — `Hooks.UseNavigate` (and so every `V.Link`, `V.NavLink` and `V.Navigate`),
+`Hooks.UseNavigation`, `Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — act on
+the router the nearest `V.RouterProvider` publishes, so two routers can each drive a tree of their own.
 
 Mount it above everything that navigates. Either order works against the first `NavigateAsync`: mounted
 first, the opening route arrives through the subscription that carries every later one; mounted after a
 navigation has already committed, it reads `Router.CurrentLocation` at its first render.
 
-Nothing else in the package publishes those three contexts. A tree that renders `V.Outlet` with no
-location published above it renders nothing, and one that publishes only `RouterContext.Location` by
-hand renders routes while leaving `Hooks.UseLoaderData` empty and every `errorElement` unreachable —
-both silently. `RouterContext` exposes the five contexts themselves, which a test can publish
-directly; an application uses the component.
+Nothing else in the package publishes those contexts. Beneath no `V.RouterProvider`, `V.Outlet` renders
+nothing, `Hooks.UseParams` returns an empty dictionary and `Hooks.UseOutletContext` returns `default`, as
+React Router's `<Outlet>`, `useParams` and `useOutletContext` answer outside a router. Every other hook
+named above throws an `InvalidOperationException` whose message names the hook, and so do the three
+components through the hooks they call, as React Router's counterparts refuse to run outside one. `RouterContext` exposes the contexts themselves, `RouterContext.Router`
+among them, which a test can publish directly; an application uses the component.
 
 A value for `Hooks.UseOutletContext` comes from a layout route's own `V.Outlet(context: …)`, which is
 where React Router's `<Outlet context>` lives too. The root Outlet takes none.

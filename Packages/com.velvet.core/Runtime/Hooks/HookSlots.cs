@@ -13,6 +13,10 @@ namespace Velvet
         public RouteBlockerState State { get; init; } = null!;
         public object?[]? LastDeps { get; set; }
         public object?[]? NextDeps { get; set; }
+        // The router the registration is held against: a render under a different router re-registers
+        // whatever the deps say.
+        public Router? LastRouter { get; set; }
+        public Router? NextRouter { get; set; }
         public Func<IDisposable>? NextRegister { get; set; }
         public bool NextNeedsReregister { get; set; }
 

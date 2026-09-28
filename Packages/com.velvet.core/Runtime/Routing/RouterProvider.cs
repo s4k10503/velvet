@@ -29,18 +29,22 @@ namespace Velvet
             // own: what re-renders this component is the location above, and
             // Router.RepublishCurrentLocation is what gives a loader resolving after the commit a location
             // identity to re-render on.
-            return V.Provider(RouterContext.Location, location,
+            return V.Provider(RouterContext.Router, router,
                 children: new VNode[]
                 {
-                    V.Provider(
-                        RouterContext.LoaderData,
-                        (IReadOnlyDictionary<string, object>)router.CurrentLoaderData,
+                    V.Provider(RouterContext.Location, location,
                         children: new VNode[]
                         {
                             V.Provider(
-                                RouterContext.Errors,
-                                (IReadOnlyDictionary<string, Exception>)router.CurrentLoaderErrors,
-                                children: new VNode[] { V.Outlet() }),
+                                RouterContext.LoaderData,
+                                (IReadOnlyDictionary<string, object>)router.CurrentLoaderData,
+                                children: new VNode[]
+                                {
+                                    V.Provider(
+                                        RouterContext.Errors,
+                                        (IReadOnlyDictionary<string, Exception>)router.CurrentLoaderErrors,
+                                        children: new VNode[] { V.Outlet() }),
+                                }),
                         }),
                 });
         }

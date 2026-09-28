@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
 using Velvet.TestUtilities;
+using static Velvet.Tests.RouteTestMounts;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -542,13 +543,15 @@ namespace Velvet.Tests
             return V.Label(text: dep);
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_MountedUseBlocker_When_Navigate_Then_CommittedPredicateBlocks()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
-            using var mounted = V.Mount(new VisualElement(), V.Component(RenderPhaseBlockerRender, key: "blk"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(RenderPhaseBlockerRender, key: "blk")));
 
             // Act
             var result = router.NavigateSync("/other");
@@ -557,13 +560,15 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(NavigationResult.Blocked));
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_RenderPhaseReRun_When_SettingOddPhase_Then_NormalizesToNextEvenInOneReRun()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
-            using var mounted = V.Mount(new VisualElement(), V.Component(RenderPhaseBlockerRender, key: "blk"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(RenderPhaseBlockerRender, key: "blk")));
             Assume.That(s_blockerRenderCount, Is.EqualTo(1), "Precondition: the initial mount rendered once");
 
             // Act
@@ -574,13 +579,15 @@ namespace Velvet.Tests
             Assert.That(s_blockerRenderCount, Is.EqualTo(3));
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_RenderPhaseReRun_When_NavigatingAfterSettle_Then_CommittedBlockerStaysRegistered()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
-            using var mounted = V.Mount(new VisualElement(), V.Component(RenderPhaseBlockerRender, key: "blk"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(RenderPhaseBlockerRender, key: "blk")));
             router.RouteBlockerManager.ResetAllBlocked();
             s_blockerObservedDep = null;
             s_blockerSetPhase.Invoke(1);
@@ -593,13 +600,15 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(NavigationResult.Blocked));
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_RenderPhaseReRun_When_NavigatingAfterSettle_Then_SettledPredicateIsObserved()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
-            using var mounted = V.Mount(new VisualElement(), V.Component(RenderPhaseBlockerRender, key: "blk"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(RenderPhaseBlockerRender, key: "blk")));
             router.RouteBlockerManager.ResetAllBlocked();
             s_blockerObservedDep = null;
             s_blockerSetPhase.Invoke(1);
@@ -627,13 +636,15 @@ namespace Velvet.Tests
             return V.Label(text: isDirty ? "dirty" : "clean");
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_UseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             s_omittedDepsSetDirty = default;
-            using var mounted = V.Mount(new VisualElement(), V.Component(OmittedDepsBlockerRender, key: "blk"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(OmittedDepsBlockerRender, key: "blk")));
 
             // Act — the first departure reads the mount render's false, the second the re-render's true.
             var beforeChange = router.NavigateSync("/other");
@@ -660,6 +671,8 @@ namespace Velvet.Tests
             return V.Label(text: isDirty ? "dirty" : "clean");
         }
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_AsyncUseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
         {
@@ -667,7 +680,7 @@ namespace Velvet.Tests
             var router = BuildRouter("/home", Route("home"), Route("other"));
             s_omittedDepsAsyncSetDirty = default;
             using var mounted = V.Mount(
-                new VisualElement(), V.Component(OmittedDepsAsyncBlockerRender, key: "blk-async"));
+                new VisualElement(), WithRouter(router, V.Component(OmittedDepsAsyncBlockerRender, key: "blk-async")));
 
             // Act — the first departure reads the mount render's false, the second the re-render's true.
             var beforeChange = router.NavigateSync("/other");
@@ -714,6 +727,8 @@ namespace Velvet.Tests
                 V.Component(AnsweredFormRender, key: "answered"),
                 V.Component(HoldingFormRender, key: "holding"));
 
+        // GREEN_ON_BASE(refactor): the mount now publishes the router the hook registers against, which it
+        // used to find through Router.Current; what the case reads is unchanged.
         [Test]
         public void Given_ABlockerReRegisteringWhileAnotherProceeds_When_ItProceedsToo_Then_TheDepartureLands()
         {
@@ -723,7 +738,7 @@ namespace Velvet.Tests
             s_answeredFormBlocker = null;
             s_holdingFormBlocker = null;
             s_holdingFormRevise = default;
-            using var mounted = V.Mount(new VisualElement(), V.Component(TwoBlockingFormsRender, key: "forms"));
+            using var mounted = V.Mount(new VisualElement(), WithRouter(router, V.Component(TwoBlockingFormsRender, key: "forms")));
             var blockedResult = router.NavigateSync("/other");
             s_answeredFormBlocker.Proceed();
             s_holdingFormRevise.Invoke(1);

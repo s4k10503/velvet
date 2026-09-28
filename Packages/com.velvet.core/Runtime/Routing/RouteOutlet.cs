@@ -13,6 +13,7 @@ namespace Velvet
             var location = Hooks.UseContext(RouterContext.Location);
             var depth = Hooks.UseContext(RouterContext.Depth);
             var errors = Hooks.UseContext(RouterContext.Errors);
+            var router = Hooks.UseContext(RouterContext.Router);
 
             if (!TryResolveMatch(location, depth, errors, out var routeElement, out var routeDepth, out var match))
             {
@@ -20,7 +21,8 @@ namespace Velvet
                 return V.Fragment(Array.Empty<VNode>());
             }
 
-            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement!.ResolvedIdentity);
+            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement!.ResolvedIdentity,
+                router?.ScopeFactory);
 
             // Depth+1 so a nested Outlet in the route's subtree resolves the following match, and the
             // Outlet's own context value so the route can read it back through Hooks.UseOutletContext.

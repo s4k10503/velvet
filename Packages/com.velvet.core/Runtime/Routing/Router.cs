@@ -7,7 +7,8 @@ namespace Velvet
 {
     /// <summary>
     /// Navigation controller: matches paths against a route tree, runs guards / blockers / loaders, and
-    /// maintains a history stack with Back/Forward. The active instance is exposed as <see cref="Current"/>.
+    /// maintains a history stack with Back/Forward. <c>V.RouterProvider</c> publishes one to the routing
+    /// hooks beneath it.
     /// </summary>
     public sealed class Router : IDisposable
     {
@@ -32,8 +33,8 @@ namespace Velvet
         private int _navigationSequence;
 
         /// <summary>
-        /// The currently active <see cref="Router"/> instance, or null when none is mounted. Set when a
-        /// router is constructed and cleared on <see cref="Dispose"/>.
+        /// The most recently constructed router that has not been disposed, or null. The routing hooks do not
+        /// read it: they act on the router <c>V.RouterProvider</c> publishes above them.
         /// </summary>
         public static Router? Current { get; private set; }
 
@@ -72,6 +73,10 @@ namespace Velvet
         public RouteBlockerManager RouteBlockerManager => _blockerManager;
         internal int HistoryIndex => _historyIndex;
         internal IRouteScopeFactory? ScopeFactory => _scopeFactory;
+        // One per router, so the setter UseSearchParams hands back keeps its identity across renders. Built
+        // on first use, which leaves a router nobody reads search params from without one.
+        private SearchParamsSetter? _searchParamsSetter;
+        internal SearchParamsSetter SearchParamsSetter => _searchParamsSetter ??= new SearchParamsSetter(this);
 
         /// <summary>
         /// Raised after each successful navigation with the new location. Also re-emitted (with a fresh
@@ -91,7 +96,7 @@ namespace Velvet
         private readonly IRouteScopeFactory? _scopeFactory;
 
         /// <summary>
-        /// Builds a router over the given <paramref name="routes"/> and sets it as <see cref="Current"/>.
+        /// Builds a router over the given <paramref name="routes"/>.
         /// </summary>
         /// <param name="routes">Root route definitions (may contain nested <see cref="RouteDefinition.Children"/>).</param>
         /// <param name="scopeFactory">Optional factory for per-route DI scopes; null disables route scoping.</param>
@@ -119,12 +124,6 @@ namespace Velvet
                 RepublishCurrentLocation(routeId);
             };
             _scopeFactory = scopeFactory;
-            if (Current != null && Current != this)
-            {
-                UnityEngine.Debug.LogWarning(
-                    "[Router] Router.Current is being overwritten. Dispose the previous router first.");
-            }
-
             Current = this;
         }
 
