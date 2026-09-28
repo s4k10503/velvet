@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Velvet.SourceGenerators.Diagnostics;
@@ -28,8 +29,6 @@ namespace Velvet.SourceGenerators
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
         private const string ImplSuffix = "_Impl";
-        internal const int MinArity = 0;
-        internal const int MaxArity = 8;
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -71,28 +70,10 @@ namespace Velvet.SourceGenerators
             var containingType = method.ContainingType;
 
             var declarationValid = ValidateDeclaration(decl, method, containingType, diagnostics, cancellationToken);
-
-            // Between the two halves rather than after both, because the warning is suppressed on a declaration
-            // already rejected — it would be a second complaint about a body the user has not been told to write
-            // yet — while a rejected signature says nothing about whether the _Impl is pure.
-            if (declarationValid && method.Parameters.Length == 0)
-            {
-                ReportUnprovablePurity(ctx, decl, method, containingType, diagnostics, cancellationToken);
-            }
-
-            var signatureValid = ValidateSignature(decl, method, diagnostics);
+            var signatureValid = ValidateSignature(ctx.SemanticModel.Compilation, decl, method, diagnostics);
             var isValid = declarationValid && signatureValid;
 
-            MethodInfo? info = isValid
-                ? new MethodInfo(
-                    name: method.Name,
-                    accessibility: RenderAccessibility(method.DeclaredAccessibility),
-                    isStatic: method.IsStatic,
-                    returnTypeDisplay: method.ReturnType.ToDisplayString(FullyQualifiedFormat),
-                    parameters: method.Parameters
-                        .Select(p => new ParameterInfo(p.Name, p.Type.ToDisplayString(FullyQualifiedFormat)))
-                        .ToImmutableArray())
-                : (MethodInfo?)null;
+            MethodInfo? info = isValid ? BuildMethodInfo(decl, method) : (MethodInfo?)null;
 
             if (containingType is null)
             {
@@ -162,30 +143,12 @@ namespace Velvet.SourceGenerators
         /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual.
         /// </summary>
         private static bool ValidateSignature(
+            Compilation compilation,
             MethodDeclarationSyntax decl,
             IMethodSymbol method,
             ImmutableArray<DiagnosticInfo>.Builder diagnostics)
         {
             var isValid = true;
-
-            if (method.Parameters.Length > MaxArity)
-            {
-                diagnostics.Add(new DiagnosticInfo(
-                    MemoizeDiagnostics.Vel002ArityExceedsLimit,
-                    decl.Identifier.GetLocation(),
-                    method.Name,
-                    method.Parameters.Length.ToString(CultureInfo.InvariantCulture)));
-                isValid = false;
-            }
-
-            if (method.TypeParameters.Length > 0)
-            {
-                diagnostics.Add(new DiagnosticInfo(
-                    MemoizeDiagnostics.Vel003GenericMethodNotSupported,
-                    decl.Identifier.GetLocation(),
-                    method.Name));
-                isValid = false;
-            }
 
             var isAsyncOrTaskLike = method.IsAsync || IsTaskLikeReturnType(method.ReturnType);
             if (isAsyncOrTaskLike)
@@ -197,8 +160,10 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            if (method.Parameters.Any(p =>
-                    p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly or RefKind.In))
+            // An in parameter is read-only, so the wrapper copies it and memoizes on the copy. A ref or out
+            // parameter cannot be captured by the factory (CS1628), which runs later, during reconcile, after the
+            // wrapper has returned to its caller, so no write through one could reach the caller in time.
+            if (method.Parameters.Any(p => p.RefKind is RefKind.Ref or RefKind.Out))
             {
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel005RefOutParameterNotSupported,
@@ -207,42 +172,51 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
+            // Every argument is also a dependency, stored in the object?[] V.Memoized compares, and read by the
+            // factory lambda. A ref struct can be neither (CS9108), a pointer cannot be stored, and a type holding
+            // one needs an unsafe context the generated part does not open (CS0214).
+            var unboxable = method.Parameters.FirstOrDefault(p => p.Type.IsRefLikeType || HoldsPointer(p.Type));
+            if (unboxable is not null)
+            {
+                diagnostics.Add(new DiagnosticInfo(
+                    MemoizeDiagnostics.Vel010UnboxableParameterNotSupported,
+                    decl.Identifier.GetLocation(),
+                    method.Name,
+                    unboxable.Name,
+                    unboxable.Type.ToDisplayString()));
+                isValid = false;
+            }
+
             // For async / Task-like cases, VEL004 already conveys the cause clearly, so suppress VEL008
             // (Task<VNode> is not a VNode-derived type, but it is clearer to surface VEL004 first).
-            if (!isAsyncOrTaskLike && !IsVNodeOrDerived(method.ReturnType))
+            if (!isAsyncOrTaskLike &&
+                (method.ReturnsByRef || method.ReturnsByRefReadonly ||
+                 !IsMemoNodeAssignableTo(compilation, method.ReturnType)))
             {
+                var byRef = method.ReturnsByRefReadonly ? "ref readonly " : method.ReturnsByRef ? "ref " : string.Empty;
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel008NonVNodeReturnType,
                     decl.Identifier.GetLocation(),
                     method.Name,
-                    method.ReturnType.ToDisplayString()));
+                    byRef + method.ReturnType.ToDisplayString()));
+                isValid = false;
+            }
+
+            // The factory runs on a copy of the receiver, because a lambda in a struct cannot capture this
+            // (CS1673); a write _Impl makes to that copy never reaches the struct. A ref struct's receiver
+            // cannot be copied into anything a lambda may capture at all (CS8175).
+            if (!method.IsStatic && method.ContainingType is { IsValueType: true } receiverType &&
+                (receiverType.IsRefLikeType || !method.IsReadOnly))
+            {
+                diagnostics.Add(new DiagnosticInfo(
+                    MemoizeDiagnostics.Vel011StructReceiverNotSupported,
+                    decl.Identifier.GetLocation(),
+                    method.Name,
+                    receiverType.ToDisplayString()));
                 isValid = false;
             }
 
             return isValid;
-        }
-
-        /// <summary>
-        /// Generation proceeds either way. The arity-0 V.Memoized cache returns the same VNode forever, so an
-        /// impure factory leaks stale state with nothing else in the compile objecting.
-        /// </summary>
-        private static void ReportUnprovablePurity(
-            GeneratorAttributeSyntaxContext ctx,
-            MethodDeclarationSyntax decl,
-            IMethodSymbol method,
-            INamedTypeSymbol? containingType,
-            ImmutableArray<DiagnosticInfo>.Builder diagnostics,
-            CancellationToken cancellationToken)
-        {
-            if (IsImplMethodPure(ctx.SemanticModel.Compilation, containingType, method.Name, cancellationToken))
-            {
-                return;
-            }
-
-            diagnostics.Add(new DiagnosticInfo(
-                MemoizeDiagnostics.Vel001ArityZeroCannotProvePurity,
-                decl.Identifier.GetLocation(),
-                method.Name));
         }
 
         private static void Emit(SourceProductionContext spc, ImmutableArray<MemoizeCandidate> candidates)
@@ -321,59 +295,203 @@ namespace Velvet.SourceGenerators
             }
         }
 
-        private static void AppendMethod(SourceBuilder sb, MethodInfo info)
+        private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax decl, IMethodSymbol method)
         {
-            var paramList = string.Join(", ", info.Parameters.Select(p => $"{p.TypeDisplay} {p.Name}"));
-            var nameList = string.Join(", ", info.Parameters.Select(p => p.Name));
-            var staticModifier = info.IsStatic ? "static " : string.Empty;
-            sb.AppendLine($"{info.Accessibility} {staticModifier}partial {info.ReturnTypeDisplay} {info.Name}({paramList})");
-            if (info.Parameters.Length == 0)
+            var taken = new HashSet<string>(
+                method.Parameters.Select(p => p.Name).Concat(method.TypeParameters.Select(tp => tp.Name)),
+                StringComparer.Ordinal);
+            var typeArguments = method.TypeParameters.IsEmpty
+                ? string.Empty
+                : $"<{string.Join(", ", method.TypeParameters.Select(tp => EscapeKeyword(tp.Name)))}>";
+
+            var lines = new List<string>
+            {
+                new StringBuilder()
+                    .Append(RenderAccessibility(method.DeclaredAccessibility)).Append(' ')
+                    .Append(method.IsStatic ? "static " : string.Empty)
+                    .Append(MatchingModifiers(decl))
+                    .Append("partial ")
+                    .Append(method.ReturnType.ToDisplayString(FullyQualifiedFormat)).Append(' ')
+                    .Append(EscapeKeyword(method.Name)).Append(typeArguments)
+                    .Append('(')
+                    .Append(string.Join(", ", method.Parameters.Select(p =>
+                        $"{ParameterModifier(method, p)}{p.Type.ToDisplayString(FullyQualifiedFormat)} {EscapeKeyword(p.Name)}")))
+                    .Append(')')
+                    .ToString(),
+            };
+            lines.AddRange(ConstraintClauses(decl, method).Select(clause => "    " + clause));
+
+            var statements = new List<string>();
+
+            // A readonly struct member reaches here (VEL011 rejects the rest); a lambda in a struct cannot
+            // capture this (CS1673), so the factory calls _Impl on a copy.
+            var target = string.Empty;
+            if (!method.IsStatic && method.ContainingType is { IsValueType: true })
+            {
+                var receiver = UniqueName("self", taken);
+                statements.Add($"var {receiver} = this;");
+                target = receiver + ".";
+            }
+
+            // A lambda cannot capture an in parameter either, so each one is read into a local the factory
+            // captures and the memo keys on.
+            var arguments = new List<string>();
+            foreach (var parameter in method.Parameters)
+            {
+                var name = EscapeKeyword(parameter.Name);
+                if (parameter.RefKind == RefKind.In)
+                {
+                    var copy = UniqueName(parameter.Name + "Value", taken);
+                    statements.Add($"var {copy} = {name};");
+                    name = copy;
+                }
+                arguments.Add(name);
+            }
+
+            // The dependency array is always built here rather than left to overload resolution: with one
+            // array-typed argument, V.Memoized's params object?[] would take that array as the whole list,
+            // compared element by element, or a null one as no list at all. A method's type arguments are
+            // part of the key, since the same position can call it with different ones.
+            var keys = method.Parameters.Where(p => !p.IsParams).Select(p => arguments[p.Ordinal])
+                .Concat(method.TypeParameters.Select(tp => $"typeof({EscapeKeyword(tp.Name)})"))
+                .ToList();
+            string deps;
+            var paramsParameter = method.Parameters.FirstOrDefault(p => p.IsParams);
+            if (paramsParameter is not null)
+            {
+                // The compiler builds a params array afresh at every call, so its elements are the keys rather
+                // than the array, behind its length, which also tells an empty array from a null one.
+                var array = arguments[paramsParameter.Ordinal];
+                deps = UniqueName("deps", taken);
+                keys.Add($"{array}?.Length");
+                statements.Add($"var {deps} = new object?[{keys.Count} + ({array}?.Length ?? 0)];");
+                for (var i = 0; i < keys.Count; i++)
+                {
+                    statements.Add($"{deps}[{i}] = {keys[i]};");
+                }
+                statements.Add($"if ({array} != null) global::System.Array.Copy({array}, 0, {deps}, {keys.Count}, {array}.Length);");
+            }
+            else
             {
                 // arity 0: there are no parameters to key on, and the whole point of the attribute is that the
                 // result is computed once. Omitting the argument would instead ask V.Memoized for no dependency
                 // array at all, which rebuilds every render; the empty array is what says "no dependencies".
-                sb.AppendLine(
-                    $"    => global::Velvet.V.Memoized(() => {info.Name}{ImplSuffix}(), global::System.Array.Empty<object>());");
+                deps = keys.Count == 0
+                    ? "global::System.Array.Empty<object>()"
+                    : $"new object?[] {{ {string.Join(", ", keys)} }}";
+            }
+
+            var memoCall =
+                $"global::Velvet.V.Memoized(() => {target}{EscapeKeyword(method.Name + ImplSuffix)}{typeArguments}({string.Join(", ", arguments)}), {deps})";
+            if (statements.Count == 0)
+            {
+                lines.Add($"    => {memoCall};");
             }
             else
             {
-                sb.AppendLine($"    => global::Velvet.V.Memoized(() => {info.Name}{ImplSuffix}({nameList}), {nameList});");
+                lines.Add("{");
+                lines.AddRange(statements.Select(statement => "    " + statement));
+                lines.Add($"    return {memoCall};");
+                lines.Add("}");
             }
+
+            return new MethodInfo(method.Name, string.Join("\n", lines));
         }
 
-        /// <summary>
-        /// Returns true when the &lt;methodName&gt;_Impl member exists on <paramref name="containingType"/> and
-        /// <see cref="PurityAnalysis.PurityAnalyzer"/> classifies it as Pure. Unknown / Impure / missing yields false
-        /// (caller treats this as "cannot relax the arity 0 restriction").
-        /// </summary>
-        private static bool IsImplMethodPure(
-            Compilation compilation,
-            INamedTypeSymbol? containingType,
-            string methodName,
-            CancellationToken cancellationToken)
+        private static void AppendMethod(SourceBuilder sb, MethodInfo info)
         {
-            if (containingType is null)
+            foreach (var line in info.Text.Split('\n'))
             {
-                return false;
+                sb.AppendLine(line);
             }
-
-            var implName = methodName + ImplSuffix;
-            foreach (var member in containingType.GetMembers(implName))
-            {
-                if (member is not IMethodSymbol implMethod || implMethod.Parameters.Length != 0)
-                {
-                    continue;
-                }
-
-                var purity = PurityAnalysis.PurityAnalyzer.Analyze(implMethod, compilation, cancellationToken);
-                if (purity.Purity == PurityAnalysis.Purity.Pure)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
+
+        private static string UniqueName(string candidate, HashSet<string> taken)
+        {
+            while (!taken.Add(candidate))
+            {
+                candidate += "_";
+            }
+            return candidate;
+        }
+
+        // CS0755 and CS0758 require the implementing declaration to repeat `this` and `params`.
+        private static string ParameterModifier(IMethodSymbol method, IParameterSymbol parameter) =>
+            (parameter.Ordinal == 0 && method.IsExtensionMethod ? "this " : string.Empty) +
+            (parameter.IsParams ? "params " : string.Empty) +
+            (parameter.RefKind == RefKind.In ? "in " : string.Empty);
+
+        // CS8800, CS8663 and CS0764 require the implementing declaration to repeat these.
+        private static string MatchingModifiers(MethodDeclarationSyntax decl)
+        {
+            var modifiers = new StringBuilder();
+            foreach (var modifier in decl.Modifiers)
+            {
+                if (modifier.IsKind(SyntaxKind.NewKeyword) ||
+                    modifier.IsKind(SyntaxKind.VirtualKeyword) ||
+                    modifier.IsKind(SyntaxKind.OverrideKeyword) ||
+                    modifier.IsKind(SyntaxKind.SealedKeyword) ||
+                    modifier.IsKind(SyntaxKind.ReadOnlyKeyword) ||
+                    modifier.IsKind(SyntaxKind.UnsafeKeyword))
+                {
+                    modifiers.Append(modifier.Text).Append(' ');
+                }
+            }
+            return modifiers.ToString();
+        }
+
+        // CS0761 requires the implementing declaration to repeat each constraint. An override or an explicit
+        // implementation may state only `class`, `struct` or `default` (CS0460), and needs the one its
+        // declaration states where `T?` must mean a nullable reference rather than Nullable<T>, so its clauses
+        // are copied as written; they name no type that could resolve differently in the generated file.
+        private static ImmutableArray<string> ConstraintClauses(MethodDeclarationSyntax decl, IMethodSymbol method)
+        {
+            if (method.IsOverride || !method.ExplicitInterfaceImplementations.IsEmpty)
+            {
+                return decl.ConstraintClauses.Select(c => c.NormalizeWhitespace().ToFullString()).ToImmutableArray();
+            }
+
+            var clauses = ImmutableArray.CreateBuilder<string>();
+            foreach (var typeParameter in method.TypeParameters)
+            {
+                var constraints = new List<string>();
+                if (typeParameter.HasReferenceTypeConstraint)
+                {
+                    constraints.Add(
+                        typeParameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated
+                            ? "class?"
+                            : "class");
+                }
+                else if (typeParameter.HasUnmanagedTypeConstraint)
+                {
+                    constraints.Add("unmanaged");
+                }
+                else if (typeParameter.HasValueTypeConstraint)
+                {
+                    constraints.Add("struct");
+                }
+                else if (typeParameter.HasNotNullConstraint)
+                {
+                    constraints.Add("notnull");
+                }
+
+                constraints.AddRange(typeParameter.ConstraintTypes.Select(t => t.ToDisplayString(FullyQualifiedFormat)));
+
+                if (typeParameter.HasConstructorConstraint)
+                {
+                    constraints.Add("new()");
+                }
+
+                if (constraints.Count > 0)
+                {
+                    clauses.Add($"where {EscapeKeyword(typeParameter.Name)} : {string.Join(", ", constraints)}");
+                }
+            }
+            return clauses.ToImmutable();
+        }
+
+        private static string EscapeKeyword(string identifier) =>
+            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None ? identifier : "@" + identifier;
 
         private static string RenderAccessibility(Accessibility accessibility) => accessibility switch
         {
@@ -390,7 +508,16 @@ namespace Velvet.SourceGenerators
             globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
             typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
             genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
-            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes |
+                                  SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier |
+                                  SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+
+        private static bool HoldsPointer(ITypeSymbol type) => type switch
+        {
+            IPointerTypeSymbol or IFunctionPointerTypeSymbol => true,
+            IArrayTypeSymbol array => HoldsPointer(array.ElementType),
+            _ => false,
+        };
 
         private static bool IsAllContainingTypesPartial(INamedTypeSymbol type, CancellationToken cancellationToken)
         {
@@ -421,8 +548,29 @@ namespace Velvet.SourceGenerators
                 return false;
             }
             var unbound = named.IsGenericType ? named.ConstructedFrom : named;
-            return unbound is { Name: "Task" or "ValueTask" } &&
-                   IsNamespace(unbound.ContainingNamespace, "System.Threading.Tasks");
+            return (unbound is { Name: "Task" or "ValueTask" } &&
+                    IsNamespace(unbound.ContainingNamespace, "System.Threading.Tasks")) ||
+                   (unbound is { Name: "VelvetTask" } && IsNamespace(unbound.ContainingNamespace, "Velvet"));
+        }
+
+        // The wrapper returns the MemoNode V.Memoized builds, so the declared type has to be one MemoNode
+        // converts to; another VNode subtype is CS0029 in the emitted body.
+        private static bool IsMemoNodeAssignableTo(Compilation compilation, ITypeSymbol returnType)
+        {
+            if (!IsVNodeOrDerived(returnType))
+            {
+                return false;
+            }
+            for (ITypeSymbol? current = compilation.GetTypeByMetadataName("Velvet.MemoNode");
+                 current is not null;
+                 current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, returnType))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static bool IsVNodeOrDerived(ITypeSymbol type)
@@ -459,9 +607,12 @@ namespace Velvet.SourceGenerators
 
         private static TypeKey BuildTypeKey(INamedTypeSymbol type)
         {
-            var namespaceName = type.ContainingNamespace is { IsGlobalNamespace: false } ns
-                ? ns.ToDisplayString()
-                : string.Empty;
+            var namespaceParts = new List<string>();
+            for (var ns = type.ContainingNamespace; ns is { IsGlobalNamespace: false }; ns = ns.ContainingNamespace)
+            {
+                namespaceParts.Insert(0, EscapeKeyword(ns.Name));
+            }
+            var namespaceName = string.Join(".", namespaceParts);
 
             var chain = ImmutableArray.CreateBuilder<TypeKey.TypeSegment>();
             for (var current = type; current is not null; current = current.ContainingType)
@@ -484,17 +635,17 @@ namespace Velvet.SourceGenerators
             {
                 return "record";
             }
-            return "class";
+            return type.TypeKind == TypeKind.Interface ? "interface" : "class";
         }
 
         private static string BuildTypeDeclaration(INamedTypeSymbol type)
         {
             if (type.TypeParameters.Length == 0)
             {
-                return type.Name;
+                return EscapeKeyword(type.Name);
             }
-            var parameters = string.Join(", ", type.TypeParameters.Select(tp => tp.Name));
-            return $"{type.Name}<{parameters}>";
+            var parameters = string.Join(", ", type.TypeParameters.Select(tp => EscapeKeyword(tp.Name)));
+            return $"{EscapeKeyword(type.Name)}<{parameters}>";
         }
 
         private static string BuildHintName(INamedTypeSymbol type)
@@ -517,7 +668,7 @@ namespace Velvet.SourceGenerators
                 : string.Join("_", chain);
 
             var safe = new StringBuilder(baseName.Length);
-            foreach (var ch in baseName)
+            foreach (var ch in baseName.Replace("@", string.Empty))
             {
                 safe.Append(ch switch
                 {
@@ -659,58 +810,24 @@ namespace Velvet.SourceGenerators
 
         internal readonly struct MethodInfo : IEquatable<MethodInfo>
         {
-            public MethodInfo(
-                string name,
-                string accessibility,
-                bool isStatic,
-                string returnTypeDisplay,
-                ImmutableArray<ParameterInfo> parameters)
+            public MethodInfo(string name, string text)
             {
                 Name = name;
-                Accessibility = accessibility;
-                IsStatic = isStatic;
-                ReturnTypeDisplay = returnTypeDisplay;
-                Parameters = parameters;
+                Text = text;
             }
 
             public string Name { get; }
-            public string Accessibility { get; }
-            public bool IsStatic { get; }
-            public string ReturnTypeDisplay { get; }
-            public ImmutableArray<ParameterInfo> Parameters { get; }
+
+            /// <summary>The emitted member, one line per <c>\n</c>, unindented.</summary>
+            public string Text { get; }
 
             public bool Equals(MethodInfo other) =>
                 string.Equals(Name, other.Name, StringComparison.Ordinal) &&
-                string.Equals(Accessibility, other.Accessibility, StringComparison.Ordinal) &&
-                IsStatic == other.IsStatic &&
-                string.Equals(ReturnTypeDisplay, other.ReturnTypeDisplay, StringComparison.Ordinal) &&
-                Parameters.SequenceEqual(other.Parameters);
+                string.Equals(Text, other.Text, StringComparison.Ordinal);
 
             public override bool Equals(object? obj) => obj is MethodInfo other && Equals(other);
 
-            public override int GetHashCode() =>
-                unchecked(StringComparer.Ordinal.GetHashCode(Name) * 31 + Parameters.Length);
-        }
-
-        internal readonly struct ParameterInfo : IEquatable<ParameterInfo>
-        {
-            public ParameterInfo(string name, string typeDisplay)
-            {
-                Name = name;
-                TypeDisplay = typeDisplay;
-            }
-
-            public string Name { get; }
-            public string TypeDisplay { get; }
-
-            public bool Equals(ParameterInfo other) =>
-                string.Equals(Name, other.Name, StringComparison.Ordinal) &&
-                string.Equals(TypeDisplay, other.TypeDisplay, StringComparison.Ordinal);
-
-            public override bool Equals(object? obj) => obj is ParameterInfo other && Equals(other);
-
-            public override int GetHashCode() =>
-                unchecked(StringComparer.Ordinal.GetHashCode(Name) * 31 + StringComparer.Ordinal.GetHashCode(TypeDisplay));
+            public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Text);
         }
 
         /// <summary>

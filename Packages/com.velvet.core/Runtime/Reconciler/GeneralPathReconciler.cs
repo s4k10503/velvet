@@ -155,7 +155,8 @@ namespace Velvet
             try
             {
                 // Build the old-key → (domIndex, node) map. Duplicate keys register the earlier index
-                // as orphaned (it will be removed) — mirrors ReconcileKeyedSync's Pass 2 BuildMap.
+                // as orphaned (it will be removed), through the same ReconcileKeying.RegisterOldKey the
+                // keyed paths use.
                 if (commit.OldKeys.Count == 0)
                 {
                     for (var i = 0; i < oldNodes.Length; i++) commit.OldKeys.Add(_keying.ReconcileKey(oldNodes[i], i));

@@ -918,9 +918,47 @@ under `[Unreleased]`, a clean merge can file that entry inside the section the r
 push. So a head behind a release takes its base in with `settle.py update`, and its pull request checks
 run again over the result. A head behind only commits that date nothing is not refused.
 
+And they refuse a head that has to outlive its merge — `main`, `upm` or a maintenance line — because
+`settle.py merge` squashes the head and deletes it. `scripts/pr/long_lived.py` decides which heads
+those are, and `settle.py` and `merge_unchecked_against_base.py` both ask it; the maintenance-line
+section says how a line lands.
+
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
+
+### Merging a pull request
+
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
+its head has passed or been skipped; every other pull request is merged by hand after review, with
+`settle.py merge`. The label means *merge when every check on the head has passed or been skipped*:
+add it once review has settled, and remove it to hold the pull request. Labelling takes triage access
+or above, so only an account holding that can opt a pull request in. The workflow does not create the
+label; it has to exist in the repository.
+
+It merges through `settle.py merge`, run from a checkout of the default branch and never of the pull
+request, so every precondition above applies, and a refusal is logged with the run still succeeding.
+It asks again about one pull request when `Test` or `Source generators` passes a run for it, when the
+label is added, when a labelled draft is marked ready for review, and when dispatched with its number
+(*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull requests carrying the label when
+either of those two passes a push run on `main`, which is what clears a red base, and when a release
+dispatch of `UPM` passes, which is what clears an unpublished release. A refusal cleared by anything
+else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
+for a manual dispatch.
+
+A completed run whose head is no longer the pull request's is left to the newer head's runs, and a head
+on a fork is refused, as `settle.py` refuses one by hand. Adding the label or marking the pull request
+ready reaches a pull request based on a maintenance line only where that line holds the workflow,
+since those events run the workflow file the base branch holds; a completed run reaches it either way.
+
+The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a
+merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the
+green-base precondition above reads the required workflows' push runs, so a break an automerged change
+carried would go unseen until some later push. The `upm` split would wait for that push too. Without
+the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
+for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
+Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
+holds it as it holds anyone: it lists no bypass actor.
 
 ### Enabling Unity tests (free Personal license)
 
@@ -1122,6 +1160,13 @@ owed a release. The first is not optional: a fix that stays on the line is one a
 three days. Merging forward is also what makes it checkable, because git then records the ancestry
 and `merge-base --is-ancestor` answers it without anyone reading a pull request;
 `unreleased_maintenance_line.py` reports both at session start.
+
+**Merging forward takes a merge commit, and the line outlives it.** A squash records no ancestry,
+and `settle.py merge` squashes and then deletes the head, so it refuses a pull request whose head is
+the line, as the `gh pr merge` guards do. Land it from the web interface with *Create a merge commit*,
+and if GitHub's delete-on-merge setting removes the line afterwards, restore it with the pull
+request's *Restore branch* button. The continuous-integration section says which other heads are
+refused the same way.
 
 **A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
 entries; a maintenance line holding them is a backport nobody shipped, and the release readings do

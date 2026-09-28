@@ -18,8 +18,7 @@ namespace Velvet.SourceGenerators.CodeFixes
     /// deps-comparing hook (<c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> / <c>UseMemo</c> /
     /// <c>UseImperativeHandle</c>, or the V DSL's <c>V.Memoized</c> / <c>V.MemoizedWithKey</c>). Only handles
     /// the simple <c>new[]</c> / <c>new T[] { ... }</c> deps initializer forms that the analyzer flags (loose
-    /// <c>params</c> deps are left untouched). Preserves the leading trivia of the previous element so
-    /// multi-line deps stay aligned.
+    /// <c>params</c> deps are left untouched).
     /// </summary>
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(Vel100FillMissingDepsCodeFixProvider))]
     [Shared]
@@ -79,16 +78,7 @@ namespace Velvet.SourceGenerators.CodeFixes
             var initializer = UseEffectDepsSyntax.TryGetInitializer(depsExpr);
             if (initializer is null) return document;
 
-            var newElement = SyntaxFactory.IdentifierName(localName);
-            // Carry over the previous element's leading trivia so multi-line initializers keep their
-            // newline + indentation. Single-line `new[] { a, b }` becomes `new[] { a, b, c }` because
-            // the last element has no leading trivia to copy.
-            if (initializer.Expressions.Count > 0)
-            {
-                var last = initializer.Expressions[initializer.Expressions.Count - 1];
-                newElement = newElement.WithLeadingTrivia(last.GetLeadingTrivia());
-            }
-            var newInitializer = initializer.AddExpressions(newElement);
+            var newInitializer = initializer.AddExpressions(SyntaxFactory.IdentifierName(localName));
             var newRoot = root.ReplaceNode(initializer, newInitializer);
             return document.WithSyntaxRoot(newRoot);
         }

@@ -1053,9 +1053,11 @@ namespace MyApp.Pages
                 new UseEffectExhaustiveDepsAnalyzer(),
                 new Vel100FillMissingDepsCodeFixProvider(),
                 codeActionTitle: "Add missing local to hook deps array",
-                expectedDiagnosticId: "VEL100");
-            // The new dep `c` lands on its own line (multi-line trivia preserved). Single-line `, c }` would
-            // indicate trivia loss. SeparatedList.Add does not append a trailing comma to the new tail element.
+                expectedDiagnosticId: "VEL100",
+                formatDocument: false);
+            // Read without formatting the whole document, which would re-indent the new element whatever the fix
+            // produced. The new dep `c` lands on its own line; a single-line `, c }` would mean the layout was
+            // lost. SeparatedList.Add does not append a trailing comma to the new tail element.
             var normalized = fixedText.Replace("\r\n", "\n");
             Assert.Contains("                a,\n", normalized);
             Assert.Contains("                b,\n", normalized);
