@@ -567,8 +567,6 @@ namespace Velvet
 
     /// <summary>
     /// Non-generic base for a Context Provider.
-    /// Note: a single wrapper VisualElement is added to the DOM for the Provider (each VNode maps to one DOM
-    /// element), so consider the impact on USS selectors and layout.
     /// </summary>
     public abstract class ContextProviderNode : VNode
     {

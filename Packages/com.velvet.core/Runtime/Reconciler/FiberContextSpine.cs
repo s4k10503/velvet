@@ -149,8 +149,12 @@ namespace Velvet
                             Container = detachedContainer,
                             WalksCommittedTree = false,
                         };
+                        // A VirtualList item is one rendered node rather than a reconciled child array.
                         PushEnclosingProviders(
-                            detached.DescendantNodes, FiberKeying.WalkRoot, in detachedWalk,
+                            detached.RootProviderChildrenStartAtWalkRoot
+                                ? detached.DescendantNodes
+                                : FiberKeying.UnwrapLoneFragment(detached.DescendantNodes!),
+                            FiberKeying.WalkRoot, in detachedWalk,
                             detached.RootProviderChildrenStartAtWalkRoot);
                     }
                     continue;
@@ -275,7 +279,8 @@ namespace Velvet
                     // FiberStack.Current stays `ancestor`, so a Component among them is still a direct
                     // child fiber of `ancestor`.
                     if (element.Children is not { Length: > 0 }) return false;
-                    return PushEnclosingProviders(element.Children, FiberKeying.WalkRoot, in walk);
+                    return PushEnclosingProviders(
+                        FiberKeying.UnwrapLoneFragment(element.Children), FiberKeying.WalkRoot, in walk);
                 }
 
                 case AnimatePresenceNode presence:
@@ -303,10 +308,11 @@ namespace Velvet
             walk.Pushed.Add(provider);
             if (provider.Children != null)
             {
-                var providerPosition = childrenStartAtWalkRoot
-                    ? FiberKeying.WalkRoot
-                    : FiberKeying.ProviderChild(position, provider.Key, nodeIndex);
-                if (PushEnclosingProviders(provider.Children, providerPosition, in walk))
+                // Children starting at the walk root are the ones a Provider reconciled as an element reconciles.
+                var (providerChildren, providerPosition) = childrenStartAtWalkRoot
+                    ? (FiberKeying.UnwrapLoneFragment(provider.Children), FiberKeying.WalkRoot)
+                    : (provider.Children, FiberKeying.ProviderChild(position, provider.Key, nodeIndex));
+                if (PushEnclosingProviders(providerChildren, providerPosition, in walk))
                 {
                     return true;
                 }
@@ -406,7 +412,8 @@ namespace Velvet
             walk.Pushed.Add(motionProvider);
             if (motion.Children is { Length: > 0 })
             {
-                if (PushEnclosingProviders(motion.Children, FiberKeying.WalkRoot, in walk))
+                if (PushEnclosingProviders(
+                        FiberKeying.UnwrapLoneFragment(motion.Children), FiberKeying.WalkRoot, in walk))
                 {
                     return true;
                 }
