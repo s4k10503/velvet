@@ -771,6 +771,7 @@ namespace Velvet
             // fallback. Without a boundary (plain async) the child commits its own slot directly.
             // Read before the render, which can dispose this fiber when an error boundary above it catches.
             var context = fiber.Reconciler!.Context;
+            var catchesBeforeTheRender = context.NextCaughtErrorSequence;
             try
             {
                 RenderAndReconcile(fiber, deferReconcile: underBoundary);
@@ -788,7 +789,9 @@ namespace Velvet
                 // committing what the boundary's re-render is about to discard.
                 FiberEffects.CommitSubtreeEffects(fiber);
             }
-            if (underBoundary)
+            // An error boundary that caught the render above has shown its fallback for this error already, and a
+            // retry that renders the faulted child again has it caught and reported a second time.
+            if (underBoundary && context.NextCaughtErrorSequence == catchesBeforeTheRender)
             {
                 // Invalidate the (possibly memoized) boundary so its re-render re-walks the now-resolved
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.
