@@ -29,11 +29,13 @@ namespace Velvet
 
     internal static class VelvetTaskOutcome
     {
+        // A settle runs on the thread that completes the task, as ValueTask.AsTask() and Preserve() do:
+        // handed to the main thread instead, a caller blocking there on what it settles would never see it.
         internal static void OnSettled(VelvetTask task, Action<VelvetTaskOutcome<AsyncUnit>> settle) =>
-            task.GetAwaiter().OnCompleted(() => settle(Consume(task)));
+            task.GetAwaiter().OnCompleted(() => settle(Consume(task)), resumeOnMainThread: false);
 
         internal static void OnSettled<T>(VelvetTask<T> task, Action<VelvetTaskOutcome<T>> settle) =>
-            task.GetAwaiter().OnCompleted(() => settle(Consume(task)));
+            task.GetAwaiter().OnCompleted(() => settle(Consume(task)), resumeOnMainThread: false);
 
         internal static Task AsTask(VelvetTask task)
         {

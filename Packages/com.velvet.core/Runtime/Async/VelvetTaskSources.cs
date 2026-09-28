@@ -30,8 +30,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version)
         {
@@ -82,8 +82,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
@@ -151,8 +151,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version)
         {
@@ -187,9 +187,9 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version)
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread)
         {
-            _source.OnCompleted(continuation, state, version);
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
             var context = SynchronizationContext.Current;
             if (context != null && context.GetType() != typeof(SynchronizationContext))
             {
@@ -238,8 +238,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version) => _source.GetResult(version);
 
@@ -300,8 +300,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
@@ -412,8 +412,8 @@ namespace Velvet
 
         public override VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version) => _source.GetResult(version);
 
@@ -458,8 +458,8 @@ namespace Velvet
 
         public override VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
@@ -533,13 +533,13 @@ namespace Velvet
             }
         }
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version)
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread)
         {
             lock (_gate)
             {
                 if (_waiting != null)
                 {
-                    _waiting.Add((continuation, state, VelvetMainThread.IsCurrent));
+                    _waiting.Add((continuation, state, resumeOnMainThread));
                     return;
                 }
             }

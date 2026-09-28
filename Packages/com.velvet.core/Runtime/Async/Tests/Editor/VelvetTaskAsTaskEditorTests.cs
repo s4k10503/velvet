@@ -8,6 +8,13 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class VelvetTaskAsTaskEditorTests
     {
+        static void OnAnotherThread(Action action)
+        {
+            var thread = new Thread(() => action());
+            thread.Start();
+            thread.Join();
+        }
+
         [Test]
         public void Given_APendingResultTask_When_TakenAsATaskAndItCompletes_Then_TheTaskCarriesItsResult()
         {
@@ -64,6 +71,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((status, carriesTheToken), Is.EqualTo((TaskStatus.Canceled, true)));
+        }
+
+        [Test]
+        public void Given_AResultTaskTakenAsATaskOnTheMainThread_When_ItsSourceCompletesOnAnotherThread_Then_TheTaskCompletesWithoutTheMainThread()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var task = source.Task.AsTask();
+            OnAnotherThread(() => source.SetResult(5));
+
+            // Act
+            var completed = task.Wait(TimeSpan.FromSeconds(1));
+
+            // Assert
+            Assert.That((completed, completed ? task.Result : 0), Is.EqualTo((true, 5)));
         }
     }
 }

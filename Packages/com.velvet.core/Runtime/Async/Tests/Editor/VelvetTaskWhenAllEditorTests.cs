@@ -482,6 +482,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_OnePreservedPendingTaskPassedTwice_When_ItCompletes_Then_TheCombinationCarriesItAtBothPositions()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var preserved = source.Task.Preserve();
+            var all = VelvetTask.WhenAll(preserved, preserved);
+
+            // Act
+            source.SetResult(7);
+
+            // Assert
+            Assert.That(all.GetAwaiter().GetResult(), Is.EqualTo(new[] { 7, 7 }));
+        }
+
+        [Test]
         public void Given_AConsumedResultTask_When_ViewedAsATaskCarryingNothing_Then_TheViewIsConsumedToo()
         {
             // Arrange

@@ -78,16 +78,19 @@ itself a faulted combination contributing all of its own, and a cancelled member
 `VelvetTask.WhenAll(…).AsTask()` where each failure matters.
 
 The combination consumes each member, and a `VelvetTask` carrying a source allows one consume, the rule
-.NET's ValueTask carries. So a member must not also be awaited elsewhere, and must not be passed twice into
-a single call: that throws out of the call rather than out of the await. A task that carries a value
-instead — `VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned
-without suspending — has no version to consume, so the same one may sit at two argument positions.
-Consume what the combination returns once as well.
+.NET's ValueTask carries — unless `Preserve()` returned it. So a member that was not preserved must not
+also be awaited elsewhere, and must not be passed twice into a single call: that throws out of the call
+rather than out of the await. A task that carries a value instead — `VelvetTask.FromResult`,
+`VelvetTask.CompletedTask`, and an `async` method that returned without suspending — has no version to
+consume, so the same one may sit at two argument positions, as a preserved one may. Consume what the
+combination returns once as well.
 
 Where a task has to be consumed more than once, `Preserve()` — the counterpart of
 ValueTask.Preserve() — consumes it and returns one that any number of awaiters may await and read, a
 continuation registered on the main thread resuming there as any other does. `AsTask()` returns a
-`Task` or `Task<T>` instead. `VelvetTaskPreserveEditorTests` and `VelvetTaskAsTaskEditorTests` pin both.
+`Task` or `Task<T>` instead. Each settles on the thread that completes the original task, whichever
+thread asked for it, so a preserved task's status moves and an `AsTask()` result can be waited on from
+the main thread before Unity runs anything posted there. `VelvetTaskPreserveEditorTests` and `VelvetTaskAsTaskEditorTests` pin both.
 
 ## Declining a cancellation
 

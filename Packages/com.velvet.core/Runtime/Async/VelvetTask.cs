@@ -254,7 +254,9 @@ namespace Velvet
                 }
             }
 
-            public void OnCompleted(Action continuation)
+            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+
+            internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {
                 if (_task._source == null)
                 {
@@ -265,7 +267,8 @@ namespace Velvet
                     _task._source.OnCompleted(
                         VelvetTaskAwaiterActions.InvokeContinuation,
                         continuation,
-                        _task._version);
+                        _task._version,
+                        resumeOnMainThread);
                 }
             }
         }
@@ -333,7 +336,9 @@ namespace Velvet
             public T GetResult() =>
                 _task._source == null ? _task._result : _task._source.GetResult(_task._version);
 
-            public void OnCompleted(Action continuation)
+            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+
+            internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {
                 if (_task._source == null)
                 {
@@ -344,7 +349,8 @@ namespace Velvet
                     _task._source.OnCompleted(
                         VelvetTaskAwaiterActions.InvokeContinuation,
                         continuation,
-                        _task._version);
+                        _task._version,
+                        resumeOnMainThread);
                 }
             }
         }

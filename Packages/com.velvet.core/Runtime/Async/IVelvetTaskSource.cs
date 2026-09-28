@@ -10,7 +10,7 @@ namespace Velvet
 
         VelvetTaskStatus GetStatus(short version);
 
-        void OnCompleted(Action<object?> continuation, object? state, short version);
+        void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread);
 
         void GetResult(short version);
     }

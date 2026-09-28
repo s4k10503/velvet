@@ -130,5 +130,19 @@ namespace Velvet.Tests
             // Assert
             Assert.That((ranBeforeTheHandoffs, ranOnThread == mainThreadId), Is.EqualTo((0, true)));
         }
+
+        [Test]
+        public void Given_ATaskPreservedOnTheMainThread_When_ItsSourceCompletesOnAnotherThread_Then_ItsStatusMovesWithoutTheMainThread()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource();
+            var preserved = source.Task.Preserve();
+
+            // Act
+            OnAnotherThread(() => source.SetResult());
+
+            // Assert
+            Assert.That(preserved.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
     }
 }

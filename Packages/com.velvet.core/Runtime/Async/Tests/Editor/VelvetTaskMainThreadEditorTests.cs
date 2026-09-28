@@ -343,6 +343,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AThreadHoldingASynchronizationContextAndRunByATaskScheduler_When_AnAsyncMethodThereAwaitsYield_Then_TheContextTakesItBeforeTheScheduler()
+        {
+            // Arrange
+            var context = new RecordingSynchronizationContext();
+            var scheduler = new RecordingTaskScheduler();
+            OnAnotherThread(() =>
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                Task.Factory.StartNew(
+                    () => YieldThenReadWhetherOnAPoolThread(),
+                    CancellationToken.None,
+                    TaskCreationOptions.None,
+                    scheduler);
+                scheduler.RunQueued();
+            });
+
+            // Act
+            var queuedToTheScheduler = scheduler.RunQueued();
+            var postedToTheContext = context.RunPosted();
+
+            // Assert
+            Assert.That((postedToTheContext, queuedToTheScheduler), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
         public void Given_AThreadHoldingTheBaseSynchronizationContext_When_ATaskSchedulerRunsAnAsyncMethodThereThatAwaitsYield_Then_ItResumesThroughThatScheduler()
         {
             // Arrange
