@@ -4,7 +4,8 @@
   the fallback's layout effects and before those of the boundary's ancestors, as React calls
   `onCaughtError`. It was called as soon as the fallback was reconciled, before any of its layout effects. A
   boundary that an ancestor boundary replaces before that commit no longer reports the error it caught,
-  matching React.
+  matching React. A boundary that a time-sliced transition mounted or re-rendered, catching before the
+  transition completes, reports in the commit that completes it, after its own layout effects.
 - A fallback an error boundary shows after catching an error thrown from a `UseEffect`, a `UseFrame`
   callback, or a `V.VirtualList` row that a scroll or a resize renders runs its layout effects in that same
   commit. They waited for the next commit of some other component.
