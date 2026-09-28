@@ -13,8 +13,13 @@ namespace Velvet
     internal sealed class ChildElementPlacement
     {
         private readonly ReconcilerBufferPool _pool;
+        private readonly ReconcilerContext _ctx;
 
-        public ChildElementPlacement(ReconcilerBufferPool pool) => _pool = pool;
+        public ChildElementPlacement(ReconcilerContext ctx)
+        {
+            _ctx = ctx;
+            _pool = ctx.BufferPool;
+        }
 
         // The four coordinates one placement pass works in. SlotStart anchors the slot-local conversion;
         // ScanStart is the first DOM index to map, which is SlotStart + linearEnd for the keyed paths and
@@ -255,6 +260,10 @@ namespace Velvet
                 if (element == null) continue;
                 if (isExisting && element.parent == parent)
                 {
+                    if (StyleRelationalVariantManipulator.CarriesSourceMarker(element))
+                    {
+                        _ctx.RelationalSourcesDirty = true;
+                    }
                     // Equivalent to element.RemoveFromHierarchy() but skips its internal scan-from-zero by
                     // locating the element near the previous removal.
                     var removeAt = IndexOfNear(parent, element, removeHint);

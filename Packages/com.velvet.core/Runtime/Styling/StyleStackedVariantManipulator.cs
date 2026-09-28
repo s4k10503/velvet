@@ -242,7 +242,7 @@ namespace Velvet
         private void ResolveRelational()
         {
             UnhookRelational();
-            if (_relational is not { } rel)
+            if (_relational == null)
             {
                 return;
             }
@@ -253,15 +253,25 @@ namespace Velvet
             {
                 SetInner(false);
             }
-            // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
-            var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
-            StyleRelationalVariantManipulator.FindSources(target, rel.IsPeer, sourceClass, _ctx, _relSources);
-            if (_relSources.Count == 0)
+            RetargetRelational();
+        }
+
+        // Hooks the relational sources the tree now holds, keeping the state of each one already hooked.
+        internal void RetargetRelational()
+        {
+            if (_relational is not { } rel)
             {
                 return;
             }
-            _relSignals ??= new RelationalSourceSet(OnRelSignal);
-            _relSignals.Hook(_relSources, seedChecked: TracksChecked, registerChecked: TracksChecked);
+            if (target?.panel == null)
+            {
+                return;
+            }
+            // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
+            var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
+            StyleRelationalVariantManipulator.FindSources(target, rel.IsPeer, sourceClass, _ctx, _relSources);
+            _relSignals ??= new RelationalSourceSet(_ctx, OnRelSignal);
+            _relSignals.Retarget(_relSources, seedChecked: TracksChecked, registerChecked: TracksChecked);
         }
 
         private void UnhookRelational()

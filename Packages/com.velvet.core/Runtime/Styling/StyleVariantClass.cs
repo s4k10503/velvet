@@ -213,8 +213,8 @@ namespace Velvet
 #pragma warning restore CS8524
 
         /// <summary>
-        /// Which source a relational kind reads (a preceding <c>peer</c> sibling when <c>IsPeer</c>, else the
-        /// nearest <c>group</c> ancestor) and which of that source's states it reacts to; null for every
+        /// Which sources a relational kind reads (the preceding <c>peer</c> siblings when <c>IsPeer</c>, else the
+        /// <c>group</c> ancestors) and which of their states it reacts to; null for every
         /// non-relational kind. One switch answers all three questions so they cannot answer differently, and
         /// it carries no discard arm — see the remarks on <see cref="StyleVariantKind"/>.
         /// </summary>

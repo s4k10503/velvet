@@ -213,7 +213,7 @@ multiple groups / peers can coexist without cross-talk:
 V.Div(className: "group ...",
     children: new[]
     {
-        // Tints only when THIS card (the group) is hovered.
+        // Tints when this card, or any other unnamed group around it, is hovered.
         V.Label(className: "text-muted group-hover:text-foreground", text: "Title"),
     });
 

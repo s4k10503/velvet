@@ -446,34 +446,59 @@ namespace Velvet
     // Hooks every source a relational binding matched and reports a state lit while ANY of them holds it:
     // `.peer:hover ~ x` matches whichever preceding peer is hovered, and `.group:hover x` whichever ancestor
     // group is. An on edge is forwarded as it arrives and the consumer dedups it; an off edge is forwarded
-    // only once no hooked source still holds the state. An off from a source that never reported the
-    // matching on still passes when nothing else holds the state, so a state lit before a re-resolve is
-    // cleared by its source's next off, as it was with one hooked source.
+    // only once no hooked source still holds the state.
+    //
+    // The set follows the tree the way a selector does: Retarget hooks sources that joined and releases the
+    // ones that left, keeping each source that stayed with the state it holds, and a source the cleaner
+    // takes out of the tree is released at once (DropDeparted), before its element can be pooled and rented
+    // elsewhere. ReconcilerContext.RelationalSources indexes the sets by the source elements they hook.
     internal sealed class RelationalSourceSet
     {
+        private readonly ReconcilerContext _ctx;
         private readonly Action<RelationalVariantSignal, bool> _emit;
         private readonly List<Source> _sources = new();
+        private readonly Stack<Source> _spare = new();
         private readonly int[] _holding = new int[RelationalSignalCount];
 
         private const int RelationalSignalCount = (int)RelationalVariantSignal.Checked + 1;
 
-        public RelationalSourceSet(Action<RelationalVariantSignal, bool> emit) => _emit = emit;
-
-        public void Hook(List<VisualElement> sources, bool seedChecked, bool registerChecked)
+        public RelationalSourceSet(ReconcilerContext ctx, Action<RelationalVariantSignal, bool> emit)
         {
+            _ctx = ctx;
+            _emit = emit;
+        }
+
+        // Hooks every element of sources not hooked yet and releases every hooked one sources no longer names.
+        public void Retarget(List<VisualElement> sources, bool seedChecked, bool registerChecked)
+        {
+            for (var i = _sources.Count - 1; i >= 0; i--)
+            {
+                if (!sources.Contains(_sources[i].Element!))
+                {
+                    Release(i);
+                }
+            }
             foreach (var element in sources)
             {
-                var source = new Source(this);
-                _sources.Add(source);
-                source.Signals.Hook(element, seedChecked, registerChecked);
+                if (IndexOf(element) < 0)
+                {
+                    var source = _spare.Count > 0 ? _spare.Pop() : new Source(this);
+                    source.Element = element;
+                    _sources.Add(source);
+                    Index(element).Add(this);
+                    source.Signals.Hook(element, seedChecked, registerChecked);
+                }
             }
         }
 
+        // Unhooks every source without reporting an edge: the consumer resets its own applied state around this.
         public void Unhook()
         {
             foreach (var source in _sources)
             {
                 source.Signals.Unhook();
+                Unindex(source.Element!);
+                Recycle(source);
             }
             _sources.Clear();
             Array.Clear(_holding, 0, _holding.Length);
@@ -484,6 +509,77 @@ namespace Velvet
             foreach (var hooked in _sources)
             {
                 hooked.Signals.SettleChecked(source, value);
+            }
+        }
+
+        // Releases element from every set that hooks it, reporting the off edges only it was holding.
+        public static void DropDeparted(ReconcilerContext ctx, VisualElement element)
+        {
+            if (!ctx.RelationalSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            foreach (var set in sets.ToArray())
+            {
+                set.Release(set.IndexOf(element));
+            }
+        }
+
+        private int IndexOf(VisualElement element)
+        {
+            for (var i = 0; i < _sources.Count; i++)
+            {
+                if (ReferenceEquals(_sources[i].Element, element))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private void Release(int index)
+        {
+            var source = _sources[index];
+            _sources.RemoveAt(index);
+            source.Signals.Unhook();
+            Unindex(source.Element!);
+            for (var slot = 0; slot < RelationalSignalCount; slot++)
+            {
+                if (source.Holding[slot] && --_holding[slot] == 0)
+                {
+                    _emit((RelationalVariantSignal)slot, false);
+                }
+            }
+            Recycle(source);
+        }
+
+        private void Recycle(Source source)
+        {
+            Array.Clear(source.Holding, 0, source.Holding.Length);
+            source.Element = null;
+            _spare.Push(source);
+        }
+
+        private List<RelationalSourceSet> Index(VisualElement element)
+        {
+            if (!_ctx.RelationalSources.TryGetValue(element, out var sets))
+            {
+                sets = new List<RelationalSourceSet>();
+                _ctx.RelationalSources[element] = sets;
+            }
+            return sets;
+        }
+
+        private void Unindex(VisualElement element)
+        {
+            if (!_ctx.RelationalSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            sets.Remove(this);
+            if (sets.Count == 0)
+            {
+                _ctx.RelationalSources.Remove(element);
             }
         }
 
@@ -505,6 +601,7 @@ namespace Velvet
         {
             public readonly bool[] Holding = new bool[RelationalSignalCount];
             public readonly RelationalVariantSignals Signals;
+            public VisualElement? Element;
 
             public Source(RelationalSourceSet set)
                 => Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));

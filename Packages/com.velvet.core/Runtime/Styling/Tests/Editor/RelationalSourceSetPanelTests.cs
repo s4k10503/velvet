@@ -45,7 +45,95 @@ namespace Velvet.Tests
                 V.Label(name: "child", className: "peer-checked:bg-on"));
         }
 
+        // A checked far peer rendered or not, ahead of an unchecked near one.
+        [Component]
+        private static VNode OptionalCheckedPeer()
+        {
+            var showFar = Hooks.UseStore(s_store, s => s.Checked);
+            return V.Div(
+                "container",
+                showFar ? V.Toggle(key: "far", name: "far", className: "peer", value: true) : null,
+                V.Toggle(key: "near", name: "near", className: "peer", value: false),
+                V.Label(key: "child", name: "child", className: "peer-checked:bg-on"));
+        }
+
+        // An outer container that carries `group` or not, around a group-hover consumer.
+        [Component]
+        private static VNode OptionalGroup()
+        {
+            var isGroup = Hooks.UseStore(s_store, s => s.Checked);
+            return V.Div(name: "outer", className: isGroup ? "group" : "", children: new VNode[]
+            {
+                V.Label(name: "child", className: "group-hover:bg-on"),
+            });
+        }
+
+        private void Rerender(bool value)
+        {
+            s_store.Set(value);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
         private T Q<T>(string name) where T : VisualElement => _window.rootVisualElement.Q<T>(name);
+
+        [Test]
+        public void Given_ACheckedPeerLightingTheConsumer_When_ThatPeerIsRemoved_Then_ThePayloadClears()
+        {
+            // Arrange
+            s_store = new PeerStore(true);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(OptionalCheckedPeer, key: "screen"));
+            var child = Q<Label>("child");
+            var before = child.ClassListContains("bg-on");
+
+            // Act
+            Rerender(false);
+
+            // Assert — the remaining peer is unchecked, and the consumer is the element that was lit, so it never
+            // re-attached.
+            Assert.That(
+                (before, Q<Toggle>("near").value, ReferenceEquals(Q<Label>("child"), child), child.ClassListContains("bg-on")),
+                Is.EqualTo((true, false, true, false)));
+        }
+
+        [Test]
+        public void Given_AnUncheckedPeer_When_ACheckedPeerIsInsertedBeforeTheConsumer_Then_ThePayloadApplies()
+        {
+            // Arrange
+            s_store = new PeerStore(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(OptionalCheckedPeer, key: "screen"));
+            var child = Q<Label>("child");
+            var before = child.ClassListContains("bg-on");
+
+            // Act
+            Rerender(true);
+
+            // Assert — the consumer is the element mounted first, so it never re-attached.
+            Assert.That(
+                (before, ReferenceEquals(Q<Label>("child"), child), child.ClassListContains("bg-on")),
+                Is.EqualTo((false, true, true)));
+        }
+
+        [Test]
+        public void Given_AnAncestorThatGainsTheGroupClass_When_ItIsHovered_Then_TheGroupHoverPayloadApplies()
+        {
+            // Arrange
+            s_store = new PeerStore(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(OptionalGroup, key: "screen"));
+            Rerender(true);
+            // A registry of its own, so the simulated event below reaches an outer element nothing hooked.
+            Q<VisualElement>("outer").RegisterCallback<PointerOverEvent>(_ => { });
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled())
+            {
+                Q<VisualElement>("outer").SimulateEvent(evt);
+            }
+
+            // Assert — the class is a term: without it the hover must light nothing.
+            Assert.That(
+                (Q<VisualElement>("outer").ClassListContains("group"), Q<Label>("child").ClassListContains("bg-on")),
+                Is.EqualTo((true, true)));
+        }
 
         [Test]
         public void Given_ACheckedPeerBehindAnUncheckedNearerPeer_When_Mounted_Then_ThePeerCheckedPayloadApplies()

@@ -146,7 +146,7 @@ namespace Velvet
         };
 
         // Resolves an element's OWN effect from its class list (last token wins per axis, an important one over
-        // every plain one, except Whitespace —
+        // every plain one; within one importance, Whitespace is the exception —
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
         // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
         // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
@@ -163,7 +163,9 @@ namespace Velvet
                 return default;
             }
             var facets = default(TextEffectFacets);
-            // Same two-pass importance rule as StyleFontClass.TryExtract.
+            // Same two-pass importance rule as StyleFontClass.TryExtract. The explicit-whitespace override
+            // below is settled within each pass, so an important whitespace-pre-line beats a plain
+            // whitespace-nowrap and an important whitespace-nowrap beats a plain whitespace-pre-line.
             for (var pass = 0; pass < 2; pass++)
             {
                 foreach (var cls in classNames)
@@ -174,23 +176,24 @@ namespace Velvet
                         ParseToken(core, ref facets);
                     }
                 }
+                // An explicit whitespace-{normal,nowrap,pre,pre-wrap} class on the SAME element wins over that
+                // element's own whitespace-pre-line token of the same importance, whichever appears earlier/later in the
+                // class list — order-dependent "last wins" (the rule every other case in ParseToken uses) is not a
+                // meaningful concept across two independently-authored utility families, so the choice is made
+                // unconditionally instead. This is the least-surprising option: pre-line mutates the displayed
+                // string, so a reader who also reached for a direct, single-purpose whitespace-* class most
+                // likely wants its literal CSS-standard behavior, not a silently-collapsed one. Resolving to the
+                // explicit None reset (not back to unset) settles the conflict on THIS element AND stops a
+                // pre-line request from a FARTHER ancestor from still reaching this element through the normal
+                // cascade — the same explicit-reset semantics normal-case / no-underline already give
+                // Transform/Decoration.
+                if (facets.SawExplicitWhitespaceClass)
+                {
+                    facets.Whitespace = WhitespaceCollapseKind.None;
+                    facets.SawExplicitWhitespaceClass = false;
+                }
             }
             var whitespace = facets.Whitespace;
-            // An explicit whitespace-{normal,nowrap,pre,pre-wrap} class on the SAME element always wins over
-            // that element's own whitespace-pre-line token, regardless of which appears earlier/later in the
-            // class list — order-dependent "last wins" (the rule every other case in ParseToken uses) is not a
-            // meaningful concept across two independently-authored utility families, so the choice is made
-            // unconditionally instead. This is the least-surprising option: pre-line mutates the displayed
-            // string, so a reader who also reached for a direct, single-purpose whitespace-* class most
-            // likely wants its literal CSS-standard behavior, not a silently-collapsed one. Resolving to the
-            // explicit None reset (not back to unset) settles the conflict on THIS element AND stops a
-            // pre-line request from a FARTHER ancestor from still reaching this element through the normal
-            // cascade — the same explicit-reset semantics normal-case / no-underline already give
-            // Transform/Decoration.
-            if (facets.SawExplicitWhitespaceClass)
-            {
-                whitespace = WhitespaceCollapseKind.None;
-            }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading);
         }
 

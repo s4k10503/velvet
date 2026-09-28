@@ -26,6 +26,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantPreLineAndAPlainNowrap_When_Parsed_Then_PreLineWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!whitespace-pre-line", "whitespace-nowrap" });
+
+            // Assert
+            Assert.That(effect.Whitespace, Is.EqualTo(WhitespaceCollapseKind.PreLine));
+        }
+
+        [Test]
+        public void Given_AnImportantNowrapAndAPlainPreLine_When_Parsed_Then_TheExplicitResetWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!whitespace-nowrap", "whitespace-pre-line" });
+
+            // Assert
+            Assert.That(effect.Whitespace, Is.EqualTo(WhitespaceCollapseKind.None));
+        }
+
+        [Test]
         public void Given_AnImportantUppercaseBeforeALaterPlainLowercase_When_Parsed_Then_TheImportantOneWins()
         {
             // Act

@@ -53,6 +53,77 @@ namespace Velvet
             return string.IsNullOrEmpty(name) ? baseClass : baseClass + "/" + name;
         }
 
+        // Whether cls marks a relational source of either relation, unnamed or named.
+        internal static bool IsSourceMarker(string cls)
+            => cls == PeerClass || cls == GroupClass
+                || cls.StartsWith(PeerClass + "/", StringComparison.Ordinal)
+                || cls.StartsWith(GroupClass + "/", StringComparison.Ordinal);
+
+        internal static bool CarriesSourceMarker(VisualElement element)
+        {
+            foreach (var cls in element.GetClasses())
+            {
+                if (IsSourceMarker(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal static bool DeclaresSourceMarker(string[]? classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var cls in classNames)
+            {
+                if (cls != null && IsSourceMarker(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether one list carries a source marker the other does not.
+        internal static bool SourceMarkersDiffer(string[] a, string[] b)
+            => HasMarkerMissingFrom(a, b) || HasMarkerMissingFrom(b, a);
+
+        private static bool HasMarkerMissingFrom(string[] from, string[] other)
+        {
+            foreach (var cls in from)
+            {
+                if (cls != null && IsSourceMarker(cls) && Array.IndexOf(other, cls) < 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Retargets every relational consumer's sources against the tree as it now stands (see
+        // ReconcilerContext.RelationalSourcesDirty).
+        internal static void RetargetAll(ReconcilerContext ctx)
+        {
+            if (!ctx.RelationalSourcesDirty)
+            {
+                return;
+            }
+            ctx.RelationalSourcesDirty = false;
+            // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
+            // removes from the stacked registry (see VariantSettleSweep.SnapshotStacked).
+            foreach (var manipulator in new List<StyleRelationalVariantManipulator>(ctx.RelationalVariantManipulators.Values))
+            {
+                manipulator.Retarget();
+            }
+            foreach (var stacked in new List<StyleStackedVariantManipulator>(ctx.StackedVariantManipulators.Values))
+            {
+                stacked.RetargetRelational();
+            }
+        }
+
         private readonly ReconcilerContext _ctx;
         private readonly List<Binding> _bindings = new();
 
@@ -113,6 +184,18 @@ namespace Velvet
         {
             ResetApplied();
             UnhookAll();
+        }
+
+        private void Retarget()
+        {
+            if (target?.panel == null)
+            {
+                return;
+            }
+            foreach (var b in _bindings)
+            {
+                b.Retarget(target);
+            }
         }
 
         private void ResolveAll()
@@ -297,16 +380,21 @@ namespace Velvet
                 var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
                 if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
 
-                FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
-                if (_found.Count == 0 || !HasAnyState())
+                Retarget(target);
+            }
+
+            // registerChecked only for peer (group has no checked state). seedChecked reflects an
+            // already-checked peer immediately; a source already hooked keeps the state it holds.
+            public void Retarget(VisualElement target)
+            {
+                if (!HasAnyState())
                 {
                     return;
                 }
-
-                _signals ??= new RelationalSourceSet(OnSignal);
-                // registerChecked only for peer (group has no checked state). seedChecked reflects an
-                // already-checked peer immediately (the slot was cleared above, so no double-apply).
-                _signals.Hook(_found, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
+                FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
+                _signals ??= new RelationalSourceSet(_owner._ctx, OnSignal);
+                var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
+                _signals.Retarget(_found, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
             }
 
             public void Unhook()
