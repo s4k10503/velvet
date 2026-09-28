@@ -57,10 +57,15 @@ namespace Velvet
         }
     }
 
-    // Bookkeeping for one V.DragOverlay positioner: only the one-shot unsupported-panel warning — the
-    // positioner element itself is the registry key, and all session state lives on DndActiveDrag.
+    // Bookkeeping for one V.DragOverlay positioner: where it was declared and the one-shot
+    // unsupported-panel warning — the positioner element itself is the registry key, and all session
+    // state lives on DndActiveDrag.
     internal sealed class DndOverlayBinding
     {
+        // The placeholder V.DragOverlay's portal leaves at its declaring position, which is what pairs the
+        // overlay with a scope: the positioner itself sits in the layer panel, under no scope. Null for a
+        // positioner whose DragOverlay prop is declared outside any portal.
+        public VisualElement? Anchor;
         public bool WarnedUnsupportedPanel;
     }
 
@@ -162,7 +167,7 @@ namespace Velvet
     // element's binding lifecycle and the panel-space conversion.
     internal static class DndOverlayDriver
     {
-        public static DndOverlayBinding Attach(VisualElement positioner)
+        public static DndOverlayBinding Attach(VisualElement positioner, ReconcilerContext ctx)
         {
             // Forced inline for the same reason AnchoredDriver forces absolute: dynamic left/top has no
             // other way to work. PickingMode.Ignore keeps the ghost from intercepting the drop or waking
@@ -170,7 +175,7 @@ namespace Velvet
             positioner.pickingMode = PickingMode.Ignore;
             positioner.style.position = Position.Absolute;
             positioner.style.display = DisplayStyle.None;
-            return new DndOverlayBinding();
+            return new DndOverlayBinding { Anchor = ctx.CurrentPortalPlaceholder };
         }
 
         public static void Detach(VisualElement positioner, ReconcilerContext ctx)

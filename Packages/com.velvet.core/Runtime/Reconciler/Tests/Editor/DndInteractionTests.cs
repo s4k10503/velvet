@@ -32,6 +32,9 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setShowSource;
         private static StateUpdater<bool> s_setAltDraggingClass;
         private static StateUpdater<bool> s_setDeclaringFocusable;
+        private static StateUpdater<bool> s_setFlag;
+        private static StateUpdater<int> s_setStage;
+        private static bool s_innerDisabled;
 
         [SetUp]
         public void SetUp()
@@ -44,6 +47,9 @@ namespace Velvet.Tests
             s_setShowSource = default;
             s_setAltDraggingClass = default;
             s_setDeclaringFocusable = default;
+            s_setFlag = default;
+            s_setStage = default;
+            s_innerDisabled = false;
         }
 
         [TearDown]
@@ -664,6 +670,154 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_ended.Count, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode NestedDraggablesScene() => V.DndContext(
+            onDragStart: e => s_started.Add(e.Active.Id),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("outer", name: "outer",
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                    children: new VNode[]
+                    {
+                        V.Draggable("inner", name: "inner", disabled: s_innerDisabled,
+                            className: "w-[50px] h-[50px]"),
+                    }),
+            });
+
+        [Test]
+        public void Given_ADraggableInsideAnother_When_APressLandsOnTheInnerOne_Then_OnlyTheInnerOneDrags()
+        {
+            // Arrange — dnd-kit's innermost activator claims the press before the outer one sees it.
+            Mount(NestedDraggablesScene);
+
+            // Act
+            SendPointerDown(Q("inner"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "inner" }));
+        }
+
+        [Test]
+        public void Given_ADisabledDraggableInsideAnother_When_APressLandsOnTheInnerOne_Then_TheOuterOneDrags()
+        {
+            // Arrange — a disabled dnd-kit draggable carries no listeners, so the press reaches the outer one.
+            s_innerDisabled = true;
+            Mount(NestedDraggablesScene);
+
+            // Act
+            SendPointerDown(Q("inner"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "outer" }));
+        }
+
+        // A draggable holding a plain wrapper, inside it an element whose NoDrag the flag sets, and inside
+        // that a thumb: the press path runs thumb, marked element, wrapper.
+        [Component]
+        private static VNode NoDragChildScene()
+        {
+            var (flag, setFlag) = Hooks.UseState(true);
+            s_setFlag = setFlag;
+            return V.DndContext(
+                onDragStart: e => s_started.Add(e.Active.Id),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                        children: new VNode[]
+                        {
+                            V.Div(name: "wrapper", className: "w-[80px] h-[80px]", children: new VNode[]
+                            {
+                                V.Div(name: "control", className: "w-[60px] h-[60px]",
+                                    props: new FiberElementProps { NoDrag = flag },
+                                    children: new VNode[] { V.Div(name: "thumb", className: "w-[20px] h-[20px]") }),
+                            }),
+                        }),
+                });
+        }
+
+        [Test]
+        public void Given_AChildMarkedNoDrag_When_APressLandsInsideIt_Then_NoDragStarts()
+        {
+            // Arrange
+            Mount(NoDragChildScene);
+
+            // Act — the press lands on the marked element's own child.
+            SendPointerDown(Q("thumb"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AChildWhoseNoDragARenderDropped_When_APressLandsInsideIt_Then_TheDragStarts()
+        {
+            // Arrange
+            Mount(NoDragChildScene);
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Act
+            SendPointerDown(Q("thumb"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "item" }));
+        }
+
+        // A draggable whose child is, by stage, a Button carrying NoDrag, nothing, then a Button without it:
+        // the empty stage returns the first Button to the element pool before the second one is created.
+        [Component]
+        private static VNode SwappedNoDragButtonScene()
+        {
+            var (stage, setStage) = Hooks.UseState(0);
+            s_setStage = setStage;
+            return V.DndContext(
+                onDragStart: e => s_started.Add(e.Active.Id),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                        children: new VNode[]
+                        {
+                            stage == 1
+                                ? null
+                                : new ElementNode
+                                {
+                                    Key = stage == 0 ? "marked" : "plain",
+                                    ElementType = typeof(Button),
+                                    Name = "control",
+                                    ClassNames = V.ParseClassNames("w-[60px] h-[30px]"),
+                                    Props = new FiberElementProps { NoDrag = stage == 0 },
+                                    Children = System.Array.Empty<VNode>(),
+                                    Events = System.Array.Empty<FiberEventBinding>(),
+                                },
+                        }),
+                });
+        }
+
+        [Test]
+        public void Given_ANoDragButtonReplacedByAPooledPlainOne_When_APressLandsOnTheReplacement_Then_TheDragStarts()
+        {
+            // Arrange — the replacement comes back from the element pool as the very instance that
+            // carried NoDrag.
+            Mount(SwappedNoDragButtonScene);
+            var marked = Q("control");
+            s_setStage.Invoke(1);
+            _mounted.FlushStateForTest();
+            s_setStage.Invoke(2);
+            _mounted.FlushStateForTest();
+            var plain = Q("control");
+
+            // Act
+            SendPointerDown(plain, new Vector2(10, 10));
+
+            // Assert
+            Assert.That((ReferenceEquals(marked, plain), s_started.Count), Is.EqualTo((true, 1)));
         }
 
         #region Collision strategies (pure functions, no panel)

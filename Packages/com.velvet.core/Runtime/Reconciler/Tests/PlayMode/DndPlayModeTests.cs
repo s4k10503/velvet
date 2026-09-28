@@ -27,6 +27,7 @@ namespace Velvet.Tests
         private static readonly List<string> s_started = new();
         private static readonly List<string> s_ended = new();
         private static DragActivation s_cardActivation;
+        private static StateUpdater<bool> s_setShowChild;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
@@ -34,6 +35,7 @@ namespace Velvet.Tests
             s_started.Clear();
             s_ended.Clear();
             s_cardActivation = new DragActivation(Distance: 4f);
+            s_setShowChild = default;
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -106,19 +108,24 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode ClickableChildScene() => V.DndContext(
-            onDragStart: e => s_started.Add(e.Active.Id),
-            onDragEnd: e => s_ended.Add(e.Over?.Id),
-            className: "w-[300px] h-[300px]",
-            children: new VNode[]
-            {
-                V.Draggable("card", name: "card", activation: s_cardActivation,
-                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
-                    children: new VNode[]
-                    {
-                        V.Button(name: "child", className: "w-[60px] h-[30px]"),
-                    }),
-            });
+        private static VNode ClickableChildScene()
+        {
+            var (showChild, setShowChild) = Hooks.UseState(true);
+            s_setShowChild = setShowChild;
+            return V.DndContext(
+                onDragStart: e => s_started.Add(e.Active.Id),
+                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("card", name: "card", activation: s_cardActivation,
+                        className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                        children: new VNode[]
+                        {
+                            showChild ? V.Button(name: "child", className: "w-[60px] h-[30px]") : null,
+                        }),
+                });
+        }
 
         [UnityTest]
         public IEnumerator Given_APressOnAClickableChildInsideADraggable_When_ItTravelsPastTheDistanceAndReleases_Then_TheDragRunsAndTheChildDoesNotClick()
@@ -142,6 +149,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((s_started.Count, s_ended.Count, clicks), Is.EqualTo((1, 1, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnconstrainedDragWhoseCapturingChildUnmountsBeforeAMove_When_ThePointerMovesOffTheCard_Then_TheCardTakesThePointer()
+        {
+            // Arrange — the Button holds the pointer from its own pointer-down, and leaves the tree
+            // holding it, so the next move is captured by nobody and lands on the panel root.
+            s_cardActivation = DragActivation.None;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ClickableChildScene, key: "root"));
+            yield return null;
+            yield return null;
+            var card = Main("card");
+            SendPointerDown(Main("child"), new Vector2(10, 10));
+            s_setShowChild.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Act
+            SendPointerMoveUntargeted(card.panel, new Vector2(250, 250));
+            yield return null;
+
+            // Assert
+            Assert.That((s_started.Count, card.HasPointerCapture(PointerId.mousePointerId)), Is.EqualTo((1, true)));
         }
 
         [UnityTest]
@@ -266,7 +296,7 @@ namespace Velvet.Tests
                     ElementType = typeof(Button),
                     Name = "btn",
                     ClassNames = V.ParseClassNames("absolute left-[0px] top-[0px] w-[80px] h-[40px]"),
-                    Props = new FiberElementProps { Draggable = new DraggableSettings("btn") },
+                    Props = new FiberElementProps { Draggable = new DraggableSettings("btn", Activation: s_cardActivation) },
                     Children = System.Array.Empty<VNode>(),
                     Events = System.Array.Empty<FiberEventBinding>(),
                 },
@@ -294,6 +324,28 @@ namespace Velvet.Tests
 
             // Assert — the drag completed (OnDragEnd fired) and the click did not.
             Assert.That((s_ended.Count, clicks), Is.EqualTo((1, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnconstrainedDraggableClickableButton_When_APressReleasesInPlace_Then_TheDragRunsAndTheClickDoesNotFire()
+        {
+            // Arrange
+            s_cardActivation = DragActivation.None;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(DraggableButtonScene, key: "root"));
+            yield return null;
+            yield return null;
+            var btn = (Button)Main("btn");
+            var clicks = 0;
+            btn.clicked += () => clicks++;
+
+            // Act
+            SendPointerDown(btn, new Vector2(10, 10));
+            SendPointerUp(btn, new Vector2(10, 10));
+            yield return null;
+
+            // Assert
+            Assert.That((s_started.Count, s_ended.Count, clicks), Is.EqualTo((1, 1, 0)));
         }
 
         [Component]
@@ -370,6 +422,45 @@ namespace Velvet.Tests
                 V.DragOverlay(key: "first", children: new VNode[] { V.Label("ghost", name: "first-ghost") }),
                 V.DragOverlay(key: "second", children: new VNode[] { V.Label("ghost", name: "second-ghost") }),
             });
+
+        // Two sibling scopes, the idle one declared first so its overlay registers first.
+        [Component]
+        private static VNode TwoScopeOverlayScene() => V.Div(
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.DndContext(key: "idle", className: "w-[100px] h-[100px]", children: new VNode[]
+                {
+                    V.DragOverlay(key: "idle-overlay", children: new VNode[] { V.Label("ghost", name: "idle-ghost") }),
+                }),
+                V.DndContext(key: "live", activation: DragActivation.None, className: "w-[100px] h-[100px]",
+                    children: new VNode[]
+                    {
+                        V.Draggable("item", name: "item", movement: DragMovement.None, className: "w-[50px] h-[50px]"),
+                        V.DragOverlay(key: "live-overlay", children: new VNode[] { V.Label("ghost", name: "live-ghost") }),
+                    }),
+            });
+
+        [UnityTest]
+        public IEnumerator Given_DragOverlaysUnderTwoScopes_When_ADragStartsInOne_Then_OnlyThatScopesOverlayShows()
+        {
+            // Arrange — dnd-kit's DragOverlay renders only while its own DndContext's drag is active.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoScopeOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+
+            // Act
+            SendPointerDown(Main("item"), new Vector2(10, 110));
+            yield return null;
+
+            // Assert
+            Assert.That(
+                (overlayRoot.Q<Label>("idle-ghost").parent.style.display.value,
+                    overlayRoot.Q<Label>("live-ghost").parent.style.display.value),
+                Is.EqualTo((DisplayStyle.None, DisplayStyle.Flex)));
+        }
 
         [UnityTest]
         public IEnumerator Given_TwoDragOverlaysInOneScope_When_ADragIsActive_Then_BothShowThePreview()

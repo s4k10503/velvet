@@ -255,7 +255,19 @@ namespace Velvet
             }
             if (settings != null)
             {
-                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element);
+                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, _ctx);
+            }
+        }
+
+        internal void ApplyNoDrag(VisualElement element, bool noDrag)
+        {
+            if (noDrag)
+            {
+                _ctx.NoDragElements.Add(element);
+            }
+            else
+            {
+                _ctx.NoDragElements.Remove(element);
             }
         }
 

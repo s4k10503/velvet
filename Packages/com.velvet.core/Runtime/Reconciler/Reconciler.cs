@@ -672,6 +672,7 @@ namespace Velvet
             _ctx.DragOverlayBindings.Clear();
             _ctx.DndScopeBindings.Clear();
             _ctx.DroppableBindings.Clear();
+            _ctx.NoDragElements.Clear();
         }
 
         private void ReleaseManipulators()

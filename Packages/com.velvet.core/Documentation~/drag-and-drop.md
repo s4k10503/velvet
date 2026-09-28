@@ -29,9 +29,10 @@ pooled element leaves with everything the session ever wrote restored.
   sized to the source at activation and tracks the pointer while a drag is active (hidden
   otherwise). What renders INSIDE it is ordinary user state — set an "active item" in
   `onDragStart`, clear it in `onDragEnd`/`onDragCancel`, and render the preview conditionally:
-  dnd-kit's own `activeId` recipe. Every overlay mounted in the tree when the drag starts shows the
-  preview, as every dnd-kit `DragOverlay` under one context renders its children while a drag is
-  active; an overlay that mounts mid-drag stays hidden until the next drag.
+  dnd-kit's own `activeId` recipe. Every overlay declared under the dragging scope and mounted
+  when the drag starts shows the preview, as every dnd-kit `DragOverlay` renders its children while
+  its own context's drag is active; an overlay under another scope stays hidden, and one that mounts
+  mid-drag stays hidden until the next drag.
 
 Any existing element can be a source, target, or scope through the corresponding
 `FiberElementProps` slots — the factories are sugar. An element carrying both `Draggable` and
@@ -54,7 +55,16 @@ pointer-up never reaches those listeners.
 
 A press on an interactive child that captures the pointer at its own pointer-down (a button
 inside a draggable card) drags the card once the constraint is met, and the child's click is
-aborted; a sub-threshold release stays the child's click.
+aborted; a sub-threshold release stays the child's click. A control that has a pointer gesture of
+its own — a slider, a scroller, a text field's selection — loses it to the drag the same way. Set
+`FiberElementProps.NoDrag` on the control or on an element around it
+(`V.Div(props: new FiberElementProps { NoDrag = true }, children: ...)`) and a press inside it
+never arms an enclosing draggable. That is this layer's spelling of dnd-kit's opt-out, a child that
+stops or prevents its pointer-down: a draggable arms before any of its children's own pointer-down
+callbacks run.
+
+When draggables nest, the innermost enabled one under the press takes it and the outer ones do not
+arm, as dnd-kit's innermost activator claims the press.
 
 ## Collision detection
 

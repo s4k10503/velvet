@@ -751,6 +751,7 @@
 [Velvet] property Velvet.FiberElementProps.FieldValue: System.Object?
 [Velvet] property Velvet.FiberElementProps.FocusScope: Velvet.FocusScopeSettings?
 [Velvet] property Velvet.FiberElementProps.Focusable: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.NoDrag: System.Boolean
 [Velvet] property Velvet.FiberElementProps.Particles: Velvet.ParticlesSettings?
 [Velvet] property Velvet.FiberElementProps.SceneView: Velvet.SceneViewSettings?
 [Velvet] property Velvet.FiberElementProps.ScrollView: Velvet.ScrollViewSettings?
