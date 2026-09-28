@@ -37,6 +37,7 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 - The declared return type is `VNode` or `MemoNode` (VEL008). To memoize a value of any other type, call `Hooks.UseMemo`.
 - The method is not `async` and does not return `Task` or `ValueTask` (VEL004): the node is placed synchronously, and memoizing the task itself is `Hooks.UseMemo`'s job.
 - No parameter is `ref` or `out` (VEL005): a render served from the cache does not run `_Impl`, so a write through the parameter would happen on some renders and not on others.
+- No parameter is a ref struct such as `Span<T>`, or a pointer (VEL010): each parameter is boxed into the dependency array and read by the factory lambda, and C# allows neither for a ref struct and no boxing of a pointer.
 - The body lives in `<MethodName>_Impl` (VEL009 when the partial declaration carries one): the declaration with a body is the implementing half, and C# accepts only one.
 
 ## Use inside the Runtime asmdef
@@ -53,6 +54,7 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 | VEL007 | containing class is not partial |
 | VEL008 | return type is neither VNode nor MemoNode |
 | VEL009 | partial method already has a body |
+| VEL010 | ref struct or pointer parameter |
 
 For a complete list including the `ReactiveScopeAnalyzer` and `PurityAnalyzer` diagnostics, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
 

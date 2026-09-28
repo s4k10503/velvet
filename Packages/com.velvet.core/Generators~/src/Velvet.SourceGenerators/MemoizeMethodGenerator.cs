@@ -171,6 +171,21 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
+            // Every argument is also a dependency, boxed into the object?[] V.Memoized compares, and read by a
+            // lambda; a ref struct can be neither (CS1503, CS9108), and a pointer cannot be boxed (CS1503).
+            var unboxable = method.Parameters.FirstOrDefault(p =>
+                p.Type.IsRefLikeType || p.Type.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer);
+            if (unboxable is not null)
+            {
+                diagnostics.Add(new DiagnosticInfo(
+                    MemoizeDiagnostics.Vel010UnboxableParameterNotSupported,
+                    decl.Identifier.GetLocation(),
+                    method.Name,
+                    unboxable.Name,
+                    unboxable.Type.ToDisplayString()));
+                isValid = false;
+            }
+
             // For async / Task-like cases, VEL004 already conveys the cause clearly, so suppress VEL008
             // (Task<VNode> is not a VNode-derived type, but it is clearer to surface VEL004 first).
             if (!isAsyncOrTaskLike && !IsMemoNodeAssignableTo(compilation, method.ReturnType))

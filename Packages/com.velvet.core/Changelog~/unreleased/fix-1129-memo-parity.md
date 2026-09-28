@@ -17,3 +17,6 @@
 
 - VEL008 reports a `[MemoizeMethod]` return type deriving from `VNode` other than `MemoNode`. It accepted any
   such type, and the generated body, which returns a `MemoNode`, then failed to compile.
+
+- VEL010 reports a `[MemoizeMethod]` parameter of a ref struct type such as `Span<T>`, or of a pointer type.
+  Neither can be a dependency, and the generated wrapper failed to compile with nothing naming the parameter.

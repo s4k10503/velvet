@@ -413,6 +413,8 @@ namespace MyApp
         [InlineData("VEL004", "private partial global::System.Threading.Tasks.Task<global::Velvet.VNode> Build(int x);", "public partial class Page")]
         [InlineData("VEL005", "private partial global::Velvet.VNode Build(ref int x);", "public partial class Page")]
         [InlineData("VEL005", "private partial global::Velvet.VNode Build(out int x);", "public partial class Page")]
+        [InlineData("VEL010", "private partial global::Velvet.VNode Build(global::System.ReadOnlySpan<int> x);", "public partial class Page")]
+        [InlineData("VEL010", "private unsafe partial global::Velvet.VNode Build(int* x);", "public partial class Page")]
         [InlineData("VEL006", "partial global::Velvet.VNode Build(int x);", "public partial class Page")]
         [InlineData("VEL007", "private partial global::Velvet.VNode Build(int x);", "public class Page")]
         [InlineData("VEL008", "private partial string Build(int x);", "public partial class Page")]

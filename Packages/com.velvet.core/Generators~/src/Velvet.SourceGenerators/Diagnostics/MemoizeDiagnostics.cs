@@ -58,6 +58,12 @@ namespace Velvet.SourceGenerators.Diagnostics
             "Method '{0}' already has a body; write implementation in '{0}_Impl' instead",
             "[MemoizeMethod] partial methods are declarations only; the implementation must be written in a separate method with the '_Impl' suffix by convention.");
 
+        public static readonly DiagnosticDescriptor Vel010UnboxableParameterNotSupported = Warn(
+            "VEL010",
+            "[MemoizeMethod] does not support ref struct or pointer parameters",
+            "Method '{0}' has parameter '{1}' of type '{2}', which cannot be a dependency; [MemoizeMethod] keys on every parameter",
+            "Each parameter is a dependency: it is boxed into the object?[] V.Memoized compares and read by the factory lambda. A ref struct such as Span<T> can be neither boxed nor captured, and a pointer cannot be boxed. Pass an array or a value the span or pointer was read from instead.");
+
         public static readonly DiagnosticDescriptor Vel100UseEffectMissingDep = HookWarn(
             "VEL100",
             "Hook lambda captures a local that is not in the deps array",
