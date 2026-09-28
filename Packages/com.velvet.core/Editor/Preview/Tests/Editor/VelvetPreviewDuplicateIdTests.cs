@@ -24,7 +24,7 @@ namespace Velvet.Tests
             var assemblies = new[] { typeof(VelvetPreviewDuplicateIdTests).Assembly };
 
             // Act
-            string refusal = null;
+            string refusal = "";
             try
             {
                 discover.Invoke(null, new object[] { assemblies });
