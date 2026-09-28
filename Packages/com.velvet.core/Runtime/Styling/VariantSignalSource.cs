@@ -451,7 +451,7 @@ namespace Velvet
     // The set follows the tree the way a selector does: Retarget hooks sources that joined and releases the
     // ones that left, keeping each source that stayed with the state it holds, and a source the cleaner
     // takes out of the tree is released at once (DropDeparted), before its element can be pooled and rented
-    // elsewhere. ReconcilerContext.RelationalSources indexes the sets by the source elements they hook.
+    // elsewhere. ReconcilerContext.RelationalVariantSources indexes the sets by the source elements they hook.
     internal sealed class RelationalSourceSet
     {
         private readonly ReconcilerContext _ctx;
@@ -515,7 +515,7 @@ namespace Velvet
         // Releases element from every set that hooks it, reporting the off edges only it was holding.
         public static void DropDeparted(ReconcilerContext ctx, VisualElement element)
         {
-            if (!ctx.RelationalSources.TryGetValue(element, out var sets))
+            if (!ctx.RelationalVariantSources.TryGetValue(element, out var sets))
             {
                 return;
             }
@@ -562,24 +562,24 @@ namespace Velvet
 
         private List<RelationalSourceSet> Index(VisualElement element)
         {
-            if (!_ctx.RelationalSources.TryGetValue(element, out var sets))
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
             {
                 sets = new List<RelationalSourceSet>();
-                _ctx.RelationalSources[element] = sets;
+                _ctx.RelationalVariantSources[element] = sets;
             }
             return sets;
         }
 
         private void Unindex(VisualElement element)
         {
-            if (!_ctx.RelationalSources.TryGetValue(element, out var sets))
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
             {
                 return;
             }
             sets.Remove(this);
             if (sets.Count == 0)
             {
-                _ctx.RelationalSources.Remove(element);
+                _ctx.RelationalVariantSources.Remove(element);
             }
         }
 

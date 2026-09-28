@@ -59,18 +59,6 @@ namespace Velvet
                 || cls.StartsWith(PeerClass + "/", StringComparison.Ordinal)
                 || cls.StartsWith(GroupClass + "/", StringComparison.Ordinal);
 
-        internal static bool CarriesSourceMarker(VisualElement element)
-        {
-            foreach (var cls in element.GetClasses())
-            {
-                if (IsSourceMarker(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         internal static bool DeclaresSourceMarker(string[]? classNames)
         {
             if (classNames == null)
@@ -104,14 +92,14 @@ namespace Velvet
         }
 
         // Retargets every relational consumer's sources against the tree as it now stands (see
-        // ReconcilerContext.RelationalSourcesDirty).
+        // ReconcilerContext.RelationalVariantSourcesDirty).
         internal static void RetargetAll(ReconcilerContext ctx)
         {
-            if (!ctx.RelationalSourcesDirty)
+            if (!ctx.RelationalVariantSourcesDirty)
             {
                 return;
             }
-            ctx.RelationalSourcesDirty = false;
+            ctx.RelationalVariantSourcesDirty = false;
             // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
             // removes from the stacked registry (see VariantSettleSweep.SnapshotStacked).
             foreach (var manipulator in new List<StyleRelationalVariantManipulator>(ctx.RelationalVariantManipulators.Values))

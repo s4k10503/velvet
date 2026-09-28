@@ -260,10 +260,8 @@ namespace Velvet
                 if (element == null) continue;
                 if (isExisting && element.parent == parent)
                 {
-                    if (StyleRelationalVariantManipulator.CarriesSourceMarker(element))
-                    {
-                        _ctx.RelationalSourcesDirty = true;
-                    }
+                    // Any moved element, not only a marked one: telling them apart would read the live class list.
+                    _ctx.RelationalVariantSourcesDirty = true;
                     // Equivalent to element.RemoveFromHierarchy() but skips its internal scan-from-zero by
                     // locating the element near the previous removal.
                     var removeAt = IndexOfNear(parent, element, removeHint);
