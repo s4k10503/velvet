@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -13,45 +15,66 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the per-project opt-outs from what the build steps carry into a player, and the Project Settings
-    /// page that records them.
+    /// Pins the per-project opt-outs from what the build steps carry into a player, the Project Settings page
+    /// that records them, and the missing-sheet report the holder's opt-out silences.
     /// </summary>
     [TestFixture]
     internal sealed class BuildInclusionOptOutTests
     {
         private const string GraphicsSettingsAsset = "ProjectSettings/GraphicsSettings.asset";
         private const string PlayerSettingsAsset = "ProjectSettings/ProjectSettings.asset";
-        private const string SettingsFile = "ProjectSettings/VelvetBuildSettings.asset";
 
+        private static readonly Regex ReportedTarget = new(@"target '([^']*)' is on a panel that does not carry");
+
+        private static readonly FieldInfo MissingReported = typeof(VelvetStyleUtilities)
+            .GetField("s_missingReported", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private readonly List<string> _reported = new();
+        private readonly List<IDisposable> _disposables = new();
         private string _settingsFileBefore;
+        private object _reportedBefore;
 
         [SetUp]
         public void SetUp()
         {
-            _settingsFileBefore = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
+            _settingsFileBefore = File.Exists(VelvetBuildSettings.SettingsFile)
+                ? File.ReadAllText(VelvetBuildSettings.SettingsFile)
+                : null;
+            File.Delete(VelvetBuildSettings.SettingsFile);
+            _reportedBefore = MissingReported.GetValue(null);
+            MissingReported.SetValue(null, false);
+            Application.logMessageReceived += Record;
         }
 
         [TearDown]
         public void TearDown()
         {
-            var settings = VelvetBuildSettings.instance;
-            settings.ExcludeStyleSheet = false;
-            foreach (var name in VelvetShaders.Names) settings.SetExcluded(name, false);
+            Application.logMessageReceived -= Record;
+            foreach (var disposable in _disposables) disposable.Dispose();
+            _disposables.Clear();
+            _reported.Clear();
+            MissingReported.SetValue(null, _reportedBefore);
 
             BundledShaderBuildInclusion.Revert();
             BundledStyleSheetBuildInclusion.Revert();
             File.Delete(RecordFile(typeof(BundledShaderBuildInclusion)));
             File.Delete(RecordFile(typeof(BundledStyleSheetBuildInclusion)));
 
-            if (_settingsFileBefore == null) File.Delete(SettingsFile);
-            else File.WriteAllText(SettingsFile, _settingsFileBefore);
+            if (_settingsFileBefore == null) File.Delete(VelvetBuildSettings.SettingsFile);
+            else File.WriteAllText(VelvetBuildSettings.SettingsFile, _settingsFileBefore);
+        }
+
+        private void Record(string condition, string stackTrace, LogType type)
+        {
+            var match = ReportedTarget.Match(condition);
+            if (type == LogType.Warning && match.Success) _reported.Add(match.Groups[1].Value);
         }
 
         [Test]
         public void Given_AShaderTheProjectExcluded_When_ThePreprocessInjects_Then_EveryOtherBundledShaderIsIncluded()
         {
             // Arrange
-            VelvetBuildSettings.instance.SetExcluded(VelvetShaders.DropShadow, true);
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.DropShadow, true));
 
             // Act
             new BundledShaderBuildInclusion().OnPreprocessBuild(null);
@@ -64,11 +87,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheSettingsFileChangedAfterABuild_When_TheNextBuildRuns_Then_ItFollowsTheFile()
+        {
+            // Arrange — a build that read the file before the change, as a pull between two builds leaves it.
+            var injector = new BundledShaderBuildInclusion();
+            injector.OnPreprocessBuild(null);
+            injector.OnPostprocessBuild(null);
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.FilterBrightness, true));
+
+            // Act
+            injector.OnPreprocessBuild(null);
+
+            // Assert
+            Assert.That(AlwaysIncluded(VelvetShaders.FilterBrightness), Is.False);
+        }
+
+        [Test]
         public void Given_TheStyleSheetExcluded_When_ThePreprocessRuns_Then_TheHolderIsNotPreloaded()
         {
             // Arrange — the reading before the build is folded in, so a project that preloaded the holder
             // itself could not satisfy this.
-            VelvetBuildSettings.instance.ExcludeStyleSheet = true;
+            VelvetBuildSettings.Change(settings => settings.ExcludeStyleSheet = true);
             var before = BundledStyleSheetBuildInclusion.Unreached();
 
             // Act
@@ -82,7 +121,7 @@ namespace Velvet.Tests
         public void Given_TheStyleSheetExcludedAndItsSettingsFileLocked_When_ThePreprocessRuns_Then_ItDoesNotRefuse()
         {
             // Arrange — an exclusive handle, as BundledStyleSheetInclusionTests arranges its unwritable file.
-            VelvetBuildSettings.instance.ExcludeStyleSheet = true;
+            VelvetBuildSettings.Change(settings => settings.ExcludeStyleSheet = true);
             var injector = new BundledStyleSheetBuildInclusion();
 
             // Act
@@ -111,13 +150,12 @@ namespace Velvet.Tests
         {
             // Arrange
             var page = Page();
-            var sheet = page.Query<Toggle>().Where(t => t.label == VelvetStyleUtilities.RuntimeAssetsPath).First();
 
             // Act
-            sheet.SimulateChange(false);
+            PageToggle(page, VelvetStyleUtilities.RuntimeAssetsPath).SimulateChange(false);
 
             // Assert
-            Assert.That(File.ReadAllText(SettingsFile), Does.Contain("_excludeStyleSheet: 1"));
+            Assert.That(VelvetBuildSettings.Read().ExcludeStyleSheet, Is.True);
         }
 
         [Test]
@@ -127,25 +165,70 @@ namespace Velvet.Tests
             var page = Page();
 
             // Act
-            ShaderToggle(page, VelvetShaders.GradientSilhouette).SimulateChange(false);
+            PageToggle(page, VelvetShaders.GradientSilhouette).SimulateChange(false);
 
             // Assert
-            Assert.That(File.ReadAllText(SettingsFile), Does.Contain("- " + VelvetShaders.GradientSilhouette));
+            Assert.That(VelvetBuildSettings.Read().Excludes(VelvetShaders.GradientSilhouette), Is.True);
         }
 
         [Test]
         public void Given_AnExcludedShader_When_ItIsTickedAgain_Then_ItIsIncludedAgain()
         {
             // Arrange
-            VelvetBuildSettings.instance.SetExcluded(VelvetShaders.FilterSaturate, true);
-            var toggle = ShaderToggle(Page(), VelvetShaders.FilterSaturate);
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.FilterSaturate, true));
+            var toggle = PageToggle(Page(), VelvetShaders.FilterSaturate);
 
             // Act
             toggle.SimulateChange(true);
 
             // Assert
-            Assert.That(VelvetBuildSettings.instance.Excludes(VelvetShaders.FilterSaturate), Is.False);
+            Assert.That(VelvetBuildSettings.Read().Excludes(VelvetShaders.FilterSaturate), Is.False);
         }
+
+        [Test]
+        public void Given_AnOpenPageAndAChangeLandingOnDisk_When_AnotherToggleIsChanged_Then_BothChoicesAreSaved()
+        {
+            // Arrange — the page reads the file when it opens; the change after it is a teammate's, arriving
+            // with a pull.
+            var page = Page();
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.DropShadow, true));
+
+            // Act
+            PageToggle(page, VelvetStyleUtilities.RuntimeAssetsPath).SimulateChange(false);
+
+            // Assert
+            var saved = VelvetBuildSettings.Read();
+            Assert.That((saved.ExcludeStyleSheet, saved.Excludes(VelvetShaders.DropShadow)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_TheHolderExcluded_When_ATreeIsMountedOnAPanelWithoutTheSheet_Then_OnlyALaterMountIsReported()
+        {
+            // Arrange
+            VelvetBuildSettings.Change(settings => settings.ExcludeStyleSheet = true);
+            var silenced = OnBarePanel("silenced");
+            var bare = OnBarePanel("bare");
+
+            // Act — the second mount follows lifting the exclusion, so a report the first one made would have
+            // taken the run's only one.
+            Mount(silenced);
+            VelvetBuildSettings.Change(settings => settings.ExcludeStyleSheet = false);
+            Mount(bare);
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
+        private VisualElement OnBarePanel(string name)
+        {
+            var host = new HeadlessEditorPanelHost();
+            _disposables.Add(host);
+            var target = new VisualElement { name = name };
+            host.Root.Add(target);
+            return target;
+        }
+
+        private void Mount(VisualElement target) => _disposables.Insert(0, V.Mount(target, V.Div()));
 
         private static VisualElement Page()
         {
@@ -154,8 +237,8 @@ namespace Velvet.Tests
             return root;
         }
 
-        private static Toggle ShaderToggle(VisualElement page, string shaderName)
-            => page.Query<Toggle>().Where(t => t.label == shaderName).First();
+        private static Toggle PageToggle(VisualElement page, string label)
+            => page.Query<Toggle>().Where(t => t.label == label).First();
 
         private static bool AlwaysIncluded(string shaderName)
         {

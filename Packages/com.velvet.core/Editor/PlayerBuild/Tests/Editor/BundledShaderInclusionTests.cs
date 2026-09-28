@@ -206,6 +206,30 @@ namespace Velvet.Tests
             Assert.That((writableUnderLock, refused?.GetType()), Is.EqualTo((false, (Type)null)));
         }
 
+        [Test]
+        public void Given_EveryShaderListedByTheProject_When_ABuildPreprocesses_Then_NoRecordIsLeft()
+        {
+            // Arrange — the project's own entries, so the build adds nothing. A record left behind would read as
+            // something to undo, and refuse the next build in this session on a read-only file.
+            foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
+            var injector = new BundledShaderBuildInclusion();
+
+            // Act
+            bool recorded;
+            try
+            {
+                injector.OnPreprocessBuild(null);
+                recorded = File.Exists(RecordFilePath());
+            }
+            finally
+            {
+                foreach (var name in VelvetShaders.Names) RemoveFirst(Shader.Find(name));
+            }
+
+            // Assert
+            Assert.That(recorded, Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): the base refuses every locked file, this record case included.
         // What changed is that a build with nothing to write no longer refuses; a leftover record is still
         // something to undo.

@@ -4,7 +4,8 @@
   bundled shaders, out of its player builds. Both were carried into every build with no way to exclude
   them short of deleting them from the package. A player built without the holder throws from
   `VelvetStyleUtilities.Sheet`, naming the setting; a paint whose shader was left out and reaches the
-  player by no other route draws nothing and logs the missing shader once.
+  player by no other route draws nothing and logs the missing shader once. The choice is saved in
+  the project's ProjectSettings folder and read from there on every build.
 
 ### Fixed
 

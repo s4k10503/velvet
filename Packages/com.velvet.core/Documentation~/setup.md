@@ -41,9 +41,14 @@ container in a column while `gap-4` still spaces its children, the sheet is miss
 
 `V.Mount` says so. When its target is on a panel, or once it is added to one, it looks for the sheet on
 the target and every ancestor, following `@import`s, so a theme or project stylesheet that imports
-`StyleUtilities.uss` counts. If none carries it, the mount logs a warning naming the target and pointing
-here. It warns once per run, however many mounts share the problem. A player built without the sheet's
-holder ([player-builds.md](player-builds.md)) has nothing to compare against, so there it stays quiet.
+`StyleUtilities.uss` counts, and so does a copy of the sheet an asset bundle carries. If none carries it,
+the mount logs a warning naming the target and pointing here. It warns once per run, however many mounts
+share the problem. It looks when the mount is made and when the target reaches a panel, and nowhere below
+the target, so attach the sheet before `V.Mount`, to the target or an ancestor of it.
+
+A project that leaves the sheet's holder out of its builds ([player-builds.md](player-builds.md)) gets no
+warning, in the editor or in a player: leaving the holder out says the sheet reaches the panels some other
+way, or is not used.
 
 ## The supported path
 
@@ -76,7 +81,7 @@ call above reads a reference instead: the package ships
 build step adds it to PlayerSettings' preloaded assets so the build carries it. You do not configure any of
 that.
 
-The sheet is in every build unless the project opts out under **Project Settings ▸ Velvet**.
+The holder is in every build unless the project opts out under **Project Settings ▸ Velvet**.
 [player-builds.md](player-builds.md) says what that costs, what opting out costs, and why this mechanism
 rather than a `Resources` folder.
 

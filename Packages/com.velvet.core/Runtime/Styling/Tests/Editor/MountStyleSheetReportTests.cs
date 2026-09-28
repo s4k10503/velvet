@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
+using Object = UnityEngine.Object;
 
 namespace Velvet.Tests
 {
@@ -172,6 +173,48 @@ namespace Velvet.Tests
 
             // Act — what entering play mode runs.
             RearmMissingReport?.Invoke(null, null);
+            MountBare();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
+        [Test]
+        public void Given_ACopyOfTheSheetOnThePanelRoot_When_ATreeIsMountedBelowIt_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange — a copy carrying the asset's name, as an asset bundle holds one beside the sheet the holder
+            // resolves.
+            var copy = Object.Instantiate(VelvetStyleUtilities.Sheet);
+            copy.name = VelvetStyleUtilities.Sheet.name;
+            var root = PanelRoot();
+            root.styleSheets.Add(copy);
+            var copied = Named("copied");
+            root.Add(copied);
+
+            // Act
+            try
+            {
+                Mount(copied);
+                MountBare();
+            }
+            finally
+            {
+                Object.DestroyImmediate(copy);
+            }
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
+        [Test]
+        public void Given_AMountDisposedOffAnyPanel_When_ItsTargetIsAddedToOneWithoutTheSheet_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange
+            var disposed = Named("disposed");
+            V.Mount(disposed, V.Div()).Dispose();
+
+            // Act
+            PanelRoot().Add(disposed);
             MountBare();
 
             // Assert

@@ -130,6 +130,12 @@ namespace Velvet.Editor
                 included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
                 added.Add(name);
             }
+            // With nothing added there is nothing to undo, and an empty record would still read as a leftover
+            // that makes the next build in this session refuse a read-only file.
+            if (added.Count == 0)
+            {
+                return;
+            }
             // Recorded before the apply, not after: a record naming something that never landed is removed on
             // the next pass, while entries applied with no record are the permanent diff.
             File.WriteAllLines(RecordFile, added);
@@ -224,7 +230,10 @@ namespace Velvet.Editor
         }
 
         private static IEnumerable<string> Wanted()
-            => VelvetShaders.Names.Where(name => !VelvetBuildSettings.instance.Excludes(name));
+        {
+            var settings = VelvetBuildSettings.Read();
+            return VelvetShaders.Names.Where(name => !settings.Excludes(name));
+        }
 
         private static int IndexOf(SerializedProperty array, UnityEngine.Object item)
         {

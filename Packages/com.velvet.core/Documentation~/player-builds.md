@@ -76,7 +76,8 @@ was not measured, and is not claimed here.
 - The sheet is in every player build unless the project opts out under **Project Settings ▸ Velvet**, by
   unticking the holder. A player built without it has no sheet for `AttachTo` to find, so
   `VelvetStyleUtilities.Sheet` throws there, naming the opt-out; opt out only when the sheet reaches your
-  panels some other way, such as the scene reference [setup.md](setup.md) describes, or not at all.
+  panels some other way, such as the scene reference [setup.md](setup.md) describes, or not at all. Opting
+  out also silences the warning `V.Mount` gives for a panel without the sheet, in the editor as well.
 - The entry exists only while the build runs. `ProjectSettings/ProjectSettings.asset` is written back byte
   for byte afterwards, so nothing lands in your diff; an entry you added yourself is left alone, and the
   rest of your preloaded assets — including an empty slot — go back exactly as they were. A build that dies

@@ -29,7 +29,7 @@ namespace Velvet.Editor
         // Same ordering and the same read-only exemption as BundledShaderBuildInclusion.OnPreprocessBuild.
         public void OnPreprocessBuild(BuildReport report)
         {
-            var excluded = VelvetBuildSettings.instance.ExcludeStyleSheet;
+            var excluded = VelvetBuildSettings.Read().ExcludeStyleSheet;
             if (File.Exists(RecordFile) || (!excluded && Unreached()))
             {
                 RequireWritableSettings();

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -11,12 +13,14 @@ namespace Velvet.Editor
     /// owns what each opt-out costs.
     /// </summary>
     /// <remarks>
-    /// Stored under <c>ProjectSettings/</c> rather than in editor preferences, so the choice travels with the
-    /// project. A project that never changes one has no file and includes everything.
+    /// Read from the file on every use rather than held in memory. A held copy outlives a pull that changes the
+    /// file, so a build would use the stale choice and the next toggle would write it back over the new one.
     /// </remarks>
-    [FilePath("ProjectSettings/VelvetBuildSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal sealed class VelvetBuildSettings : ScriptableSingleton<VelvetBuildSettings>
+    [Serializable]
+    internal sealed class VelvetBuildSettings
     {
+        internal const string SettingsFile = "ProjectSettings/VelvetBuildSettings.json";
+
         [SerializeField] private bool _excludeStyleSheet;
         [SerializeField] private List<string> _excludedShaders = new();
 
@@ -37,7 +41,26 @@ namespace Velvet.Editor
             }
         }
 
-        internal void Persist() => Save(true);
+        internal static VelvetBuildSettings Read()
+            => File.Exists(SettingsFile)
+                ? JsonUtility.FromJson<VelvetBuildSettings>(File.ReadAllText(SettingsFile))
+                : new VelvetBuildSettings();
+
+        // Applied to what the file holds now, so one toggle changes one choice and leaves the rest as they are on
+        // disk.
+        internal static void Change(Action<VelvetBuildSettings> change)
+        {
+            var settings = Read();
+            change(settings);
+            // MUTANT_SURVIVES(equivalent, literal): pretty-printing changes only whitespace, which Read parses the same.
+            File.WriteAllText(SettingsFile, JsonUtility.ToJson(settings, true));
+        }
+
+        // A project that leaves the holder out has said the sheet reaches its panels some other way or not at
+        // all, which is also what a player built without the holder reads: there the report stays quiet.
+        [InitializeOnLoadMethod]
+        private static void SilenceMissingSheetReportWhenHolderExcluded()
+            => VelvetStyleUtilities.MissingReportSilenced = () => Read().ExcludeStyleSheet;
 
         [SettingsProvider]
         internal static SettingsProvider CreateProvider() => new("Project/Velvet", SettingsScope.Project)
@@ -49,17 +72,14 @@ namespace Velvet.Editor
 
         private static void Populate(VisualElement root)
         {
-            var settings = instance;
+            var settings = Read();
             var sheet = new Toggle(VelvetStyleUtilities.RuntimeAssetsPath)
             {
                 value = !settings.ExcludeStyleSheet,
                 tooltip = "Preload the utility stylesheet's holder in player builds.",
             };
             sheet.RegisterValueChangedCallback(change =>
-            {
-                settings.ExcludeStyleSheet = !change.newValue;
-                settings.Persist();
-            });
+                Change(current => current.ExcludeStyleSheet = !change.newValue));
             root.Add(sheet);
 
             foreach (var name in VelvetShaders.Names)
@@ -70,10 +90,7 @@ namespace Velvet.Editor
                     tooltip = "Add this shader to Always Included Shaders in player builds.",
                 };
                 shader.RegisterValueChangedCallback(change =>
-                {
-                    settings.SetExcluded(name, !change.newValue);
-                    settings.Persist();
-                });
+                    Change(current => current.SetExcluded(name, !change.newValue)));
                 root.Add(shader);
             }
         }

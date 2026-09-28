@@ -1,5 +1,7 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
@@ -128,8 +130,13 @@ namespace Velvet
         }
 
         private static bool s_missingReported;
+
+        /// <summary>Set from the editor assembly, where the project's build settings live: whether the project
+        /// left the sheet's holder out of its builds, which silences the report.</summary>
+        internal static Func<bool>? MissingReportSilenced;
         private static FieldInfo? s_importsField;
         private static FieldInfo? s_importedSheetField;
+        private static string? s_sheetSignature;
 
         // Styles resolve on a panel, so that is where the search runs: at once for a target already on one, and
         // on each later arrival, since the panel a target moves to need not carry the sheet.
@@ -141,6 +148,9 @@ namespace Velvet
                 ReportIfMissingAbove(target);
             }
         }
+
+        internal static void StopReporting(VisualElement target)
+            => target.UnregisterCallback<AttachToPanelEvent>(OnMountTargetAttached);
 
         private static void OnMountTargetAttached(AttachToPanelEvent attached)
             => ReportIfMissingAbove((VisualElement)attached.currentTarget);
@@ -165,6 +175,8 @@ namespace Velvet
                 }
             }
 
+            if (MissingReportSilenced?.Invoke() == true) return;
+
             s_missingReported = true;
             FiberLogger.LogWarning("VelvetStyleUtilities",
                 $"V.Mount's target '{target.name}' is on a panel that does not carry Velvet's utility "
@@ -177,17 +189,31 @@ namespace Velvet
         // A theme or project sheet that @imports the utilities carries them too.
         private static bool Reaches(StyleSheet from, StyleSheet sheet)
         {
-            if (from == sheet) return true;
+            s_sheetSignature ??= Signature(sheet);
+            if (Signature(from) == s_sheetSignature) return true;
 
-            s_importsField ??= typeof(StyleSheet).GetField("imports", BindingFlags.Instance | BindingFlags.NonPublic);
-            foreach (var import in s_importsField?.GetValue(from) as Array ?? Array.Empty<object>())
+            foreach (var imported in Imports(from))
             {
-                s_importedSheetField ??= import.GetType().GetField("styleSheet");
-                if (s_importedSheetField?.GetValue(import) is not StyleSheet imported) continue;
                 if (Reaches(imported, sheet)) return true;
             }
 
             return false;
+        }
+
+        // The name and the imports' names rather than the reference, because an asset bundle carries its own copy
+        // of the sheet, and of each partial, beside the ones the holder resolves.
+        private static string Signature(StyleSheet sheet)
+            => sheet.name + ":" + string.Join(",", Imports(sheet).Select(imported => imported.name));
+
+        private static IEnumerable<StyleSheet> Imports(StyleSheet sheet)
+        {
+            s_importsField ??= typeof(StyleSheet).GetField("imports", BindingFlags.Instance | BindingFlags.NonPublic);
+            foreach (var import in s_importsField?.GetValue(sheet) as Array ?? Array.Empty<object>())
+            {
+                s_importedSheetField ??= import.GetType().GetField("styleSheet");
+                var imported = s_importedSheetField?.GetValue(import) as StyleSheet;
+                if (imported != null) yield return imported;
+            }
         }
 
 #if UNITY_EDITOR
