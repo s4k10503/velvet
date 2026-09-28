@@ -216,13 +216,14 @@ namespace Velvet
     /// Focus-management behavior for a container subtree: <see cref="Contain"/>, <see cref="RestoreFocus"/>,
     /// and <see cref="AutoFocus"/> are straightforward toggles;
     /// <see cref="SingleTabStop"/> is the WAI-ARIA composite-widget (roving) contract adapted to UI Toolkit,
-    /// where arrow/dpad movement inside the group is already engine-native 2D navigation. Record structural
+    /// where arrow/dpad movement inside the group is engine-native 2D navigation. Record structural
     /// equality simplifies DiffProps.
     /// </summary>
     /// <param name="Contain">Tab/Shift-Tab wrap within the subtree (computed by a focus ring scoped to it);
     /// a 2D/pointer move that exits the subtree is snapped back within the same event flush, wherever it
     /// landed. A press on empty non-focusable space clears focus to nothing first — that path re-focuses
-    /// the scope on the panel's next scheduler tick instead.</param>
+    /// the scope on the panel's next scheduler tick, as does focus that moves to another panel unless it
+    /// lands in a portal declared inside the scope or in another contained scope.</param>
     /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
     /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
     /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
@@ -231,7 +232,8 @@ namespace Velvet
     /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
     /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
     /// — in either direction — lands on the last-focused member, else the scope's first. Members keep
-    /// tabIndex 0, so engine 2D arrow/dpad navigation inside is untouched.</param>
+    /// tabIndex 0, so engine 2D arrow/dpad navigation moves between them; a 2D move that lands outside the
+    /// subtree returns to the member it started from.</param>
     public sealed record FocusScopeSettings(
         bool Contain = false,
         bool RestoreFocus = false,

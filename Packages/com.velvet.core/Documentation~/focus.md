@@ -17,8 +17,10 @@ existing container. Four independent knobs, mirroring React Aria's props:
   escapes anyway (a spatial d-pad flick, a pointer press outside) is snapped back inside within
   the same event flush — wherever the escape landed, including inside another scope. A press on
   empty non-focusable space clears focus to nothing first (no focus event ever lands anywhere),
-  so that path re-focuses the scope on the panel's next scheduler tick instead. When two
-  contained scopes are live at once, the one currently holding focus wins.
+  so that path re-focuses the scope on the panel's next scheduler tick. Focus that moves to another
+  panel — a layer or world-space host, or a panel Velvet does not manage — is pulled back on that
+  same tick, unless it lands in a portal declared inside the scope. When two contained scopes are
+  live at once, the one currently holding focus wins, across panels as within one.
 - **`restoreFocus`** — when the scope unmounts while holding focus, focus returns to the element
   it came FROM when it first entered the scope, skipped if that element is gone or can no longer
   take focus (an unmounted origin is dropped rather than chased into pool reuse). Pair with
@@ -37,18 +39,18 @@ existing container. Four independent knobs, mirroring React Aria's props:
   boundary instead — see below). Members keep their `tabIndex`, so spatial navigation INSIDE the
   group is untouched.
 
-Deviation from the web: arrows/d-pad can spatially exit a `singleTabStop` group at its edge,
-since spatial navigation is geometric on runtime panels.
+Arrows/d-pad move between a group's members by their on-screen geometry and never leave the group:
+a spatial move that lands outside it returns to the member it started from.
 
-Engine trap: setting `TabIndex` to -1 on a runtime panel removes the element from BOTH the Tab
-ring AND spatial 2D navigation — it is not the web's "focusable but not tab-reachable". That is
-why `singleTabStop` is interception-based rather than a hand-rolled roving tabindex over
-`TabIndex` values.
+`TabIndex` -1 takes an element out of the Tab ring while `Focus()` and a pointer press still focus
+it, as the web's `tabindex="-1"` does. On a runtime panel it also takes the element out of
+arrow/d-pad navigation, which is why `singleTabStop` is interception-based rather than a hand-rolled
+roving tabindex over `TabIndex` values.
 
 ## Element props
 
 Three focus-related element props ride `FiberElementProps` alongside the existing `Focusable`:
-`TabIndex` (positive values sort ahead of 0 in the sequential ring; see the -1 trap above),
+`TabIndex` (positive values sort ahead of 0 in the sequential ring; -1 is covered above),
 `DelegatesFocus` (focusing the element forwards to its first focusable child), and `FocusScope`
 (the settings record behind the scope knobs above).
 
@@ -95,9 +97,5 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
 - No orientation/wrap options on `singleTabStop`; spatial navigation handles in-group movement.
-- No callback-shaped escape hook: call-site `Chained` is the only escape control.
 - No global input-modality tracker. The focus-visible heuristic is element-local, so a
   programmatic focus right after pointer use shows the ring.
-- No cross-panel containment — `contain` is per panel. A globally exclusive modal is the Topmost
-  layer plus a full-screen scrim, which makes outside input land in the modal's own panel
-  physically.

@@ -1831,13 +1831,14 @@ namespace Velvet
         /// </summary>
         /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
         /// snapped back within the same event flush (a press on empty space that clears focus to nothing
-        /// re-focuses on the panel's next tick).</param>
+        /// re-focuses on the panel's next tick, and so does focus that moves to another panel unless it lands
+        /// in a portal declared inside the scope or in another contained scope).</param>
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
         /// when it first entered the scope.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
-        /// arrow/dpad navigation inside is untouched.</param>
+        /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,

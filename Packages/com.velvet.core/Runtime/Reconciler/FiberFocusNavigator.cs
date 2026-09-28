@@ -651,6 +651,14 @@ namespace Velvet
                 return;
             }
 
+            // Ahead of the placeholder forwarding below, which would carry a landing on a placeholder
+            // outside the group on to whatever that placeholder stands for.
+            if (IsSpatialMove(evt.direction)
+                && TryHoldInSingleTabStopGroup(target, evt.relatedTarget as VisualElement, ctx))
+            {
+                return;
+            }
+
             // Chained placeholder forwarding: the placeholder is a zero-size proxy tab stop in the declaring
             // panel's ring — focus reaching it means the sequential order crossed the portal's call site, so
             // hand focus into the host panel at the edge matching the travel direction. Containment is
@@ -717,7 +725,7 @@ namespace Velvet
         }
 
         // The shared snap-back: when focus is leaving `relatedTarget`'s nearest contain scope for a
-        // `target` outside it (same panel — cross-panel moves are never snapped), refocus the scope's
+        // `target` outside it (same panel — a cross-panel move is OnFocusOut's), refocus the scope's
         // remembered member (else its ring-first) and report true. The scope must still be REGISTERED:
         // FiberElementCleaner drops a dying scope's registry entry before firing its restore focus, so a
         // teardown's restore is never reverted back into the detaching subtree.
@@ -747,6 +755,31 @@ namespace Velvet
             ScheduleRevertedLandingSettle(target, ctx);
             return true;
         }
+
+        // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
+        // TryHandleSingleTabStopGroupExit owns. The engine's 2D search is not public, so the move is corrected
+        // after it lands rather than predicted: a landing outside the nearest group returns to the member the
+        // move started from.
+        private static bool TryHoldInSingleTabStopGroup(
+            VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
+        {
+            var groupRoot = FindNearestScopeRootWhere(
+                relatedTarget, ctx, static settings => settings.SingleTabStop, out _);
+            if (groupRoot == null || groupRoot.Contains(target))
+            {
+                return false;
+            }
+            relatedTarget!.Focus();
+            ScheduleRevertedLandingSettle(target, ctx);
+            return true;
+        }
+
+        // A spatial move reaches FocusIn under a direction that is neither sequential nor the unspecified
+        // one a pointer press and a programmatic Focus() carry. FocusScopeSingleTabStopPlaybackTests holds
+        // the engine to that.
+        private static bool IsSpatialMove(FocusChangeDirection direction)
+            => direction is not VisualElementFocusChangeDirection
+                && !ReferenceEquals(direction, FocusChangeDirection.unspecified);
 
         // A reverted landing's focus events can interleave — under the engine's queued focus dispatch —
         // such that the element never receives a terminating Blur: every focus-derived consumer on it
@@ -790,9 +823,10 @@ namespace Velvet
         // panel (the engine blurs the old panel to nothing on a panel switch). By the tick: a real
         // teardown has detached the scope root or replaced its binding (skip — the binding identity check
         // covers a pooled root recycled into a NEW scope under the same element key), a same-panel move
-        // has repopulated focusedElement (skip — the FocusIn side owns it), and a cross-panel move left
-        // some other managed panel holding focus (skip — containment is per panel and must not fight it).
-        // Only the true "focus went nowhere" case remains, and containment pulls it back inside.
+        // has repopulated focusedElement (skip — the FocusIn side owns it), and a cross-panel move has left
+        // another panel holding focus. That landing stands when it sits inside another contain scope, as
+        // OnFocusIn lets a same-panel one stand, or in a portal declared inside this scope; any other is
+        // pulled back like focus that went nowhere.
         private static void OnFocusOut(FocusOutEvent evt, ReconcilerContext ctx)
         {
             if (evt.relatedTarget != null || evt.target is not VisualElement leaving)
@@ -818,7 +852,13 @@ namespace Velvet
                 {
                     return;
                 }
-                if (AnyManagedPanelHoldsFocus(ctx))
+                if (containRoot.panel.focusController?.focusedElement != null)
+                {
+                    return;
+                }
+                var elsewhere = FocusedElementInManagedPanels(ctx);
+                if (elsewhere != null && (IsLogicallyWithin(elsewhere, containRoot, ctx)
+                    || FindEnclosingContainScopeRoot(elsewhere, ctx, out _) != null))
                 {
                     return;
                 }
@@ -831,33 +871,76 @@ namespace Velvet
             });
         }
 
+        // Physical containment, except that a portal's content counts as sitting where the portal was
+        // declared: a child of a portal target hops to the placeholder whose slot range holds it.
+        private static bool IsLogicallyWithin(VisualElement element, VisualElement root, ReconcilerContext ctx)
+        {
+            for (var current = element; current != null;)
+            {
+                if (ReferenceEquals(current, root))
+                {
+                    return true;
+                }
+                var parent = current.parent;
+                current = parent == null ? null : FindPortalPlaceholderHolding(parent, current, ctx) ?? parent;
+            }
+            return false;
+        }
+
+        private static VisualElement? FindPortalPlaceholderHolding(
+            VisualElement target, VisualElement child, ReconcilerContext ctx)
+        {
+            foreach (var (placeholder, info) in ctx.PortalState)
+            {
+                if (!ReferenceEquals(info.Target, target))
+                {
+                    continue;
+                }
+                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
+                {
+                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical)
+                        && ReferenceEquals(target[physical], child))
+                    {
+                        return placeholder;
+                    }
+                }
+            }
+            return null;
+        }
+
         // True when any panel this reconciler manages (the main panel, a layer host, a world-space host)
         // currently holds a focused element. UI Toolkit focus is per panel, so "this panel's controller
         // reads null" alone cannot distinguish focus-went-nowhere from focus-went-to-another-panel.
         internal static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
+            => FocusedElementInManagedPanels(ctx) != null;
+
+        private static VisualElement? FocusedElementInManagedPanels(ReconcilerContext ctx)
         {
-            if (ctx.MainPanelRoot?.panel?.focusController?.focusedElement != null)
+            if (ctx.MainPanelRoot?.panel?.focusController?.focusedElement is VisualElement main)
             {
-                return true;
+                return main;
             }
             foreach (var host in ctx.LayerHosts.Values)
             {
-                if (host.Document != null
-                    && host.Document.rootVisualElement?.panel?.focusController?.focusedElement != null)
+                if (FocusedElementIn(host) is { } held)
                 {
-                    return true;
+                    return held;
                 }
             }
             foreach (var record in ctx.WorldSpaceBindings.Values)
             {
-                if (record.Document != null
-                    && record.Document.rootVisualElement?.panel?.focusController?.focusedElement != null)
+                if (FocusedElementIn(record) is { } held)
                 {
-                    return true;
+                    return held;
                 }
             }
-            return false;
+            return null;
         }
+
+        private static VisualElement? FocusedElementIn(PanelHostRecord host)
+            => host.Document != null
+                ? host.Document.rootVisualElement?.panel?.focusController?.focusedElement as VisualElement
+                : null;
 
         // True when `root`'s panel currently has a focused element that is `root` itself or one of its
         // descendants — the shared "does this subtree currently hold focus" check needed by every path
@@ -893,10 +976,15 @@ namespace Velvet
         // plain or SingleTabStop scope nested in a modal still belongs to the modal's containment.
         private static VisualElement? FindEnclosingContainScopeRoot(
             VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
+            => FindNearestScopeRootWhere(element, ctx, static settings => settings.Contain, out binding);
+
+        private static VisualElement? FindNearestScopeRootWhere(
+            VisualElement? element, ReconcilerContext ctx, Func<FocusScopeSettings, bool> kind,
+            out FocusScopeBinding? binding)
         {
             for (var current = element; current != null; current = current.parent)
             {
-                if (ctx.FocusScopeBindings.TryGetValue(current, out var found) && found.Settings.Contain)
+                if (ctx.FocusScopeBindings.TryGetValue(current, out var found) && kind(found.Settings))
                 {
                     binding = found;
                     return current;
