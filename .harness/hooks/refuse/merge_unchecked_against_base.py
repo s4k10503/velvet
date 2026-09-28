@@ -90,7 +90,7 @@ def target_of(cwd, pr):
 
 
 def targeted_as_base(cwd, branch):
-    """Whether any pull request, in any state, is based on `branch`, or None when unread."""
+    """Whether an open pull request is based on `branch`, or None when unread."""
     listed = gh_json(cwd, ["api", "repos/{owner}/{repo}/" + long_lived.targeted_path(branch)])
     return bool(listed) if isinstance(listed, list) else None
 
@@ -147,7 +147,7 @@ def refuse_one(cwd, pr):
     lasting = long_lived.by_name(target.head) or targeted_as_base(cwd, target.head)
     if lasting is None:
         return UNREADABLE_REFUSAL.format(
-            f"whether any pull request is based on {target.head} could not be read")
+            f"whether an open pull request is based on {target.head} could not be read")
     if lasting:
         return f"{label}: {long_lived.reason(target.head)}; `settle.py merge` refuses it too.\n"
 

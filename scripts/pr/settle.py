@@ -283,7 +283,7 @@ def check_results(runs, statuses):
 
 
 def targeted_as_base(project, branch):
-    """Whether any pull request, in any state, is based on `branch`."""
+    """Whether an open pull request is based on `branch`."""
     return bool(rest_json("repos/{}/{}".format(repository(project), long_lived.targeted_path(branch))))
 
 

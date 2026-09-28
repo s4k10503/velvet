@@ -23,11 +23,14 @@ def by_name(branch):
 
 
 def targeted_path(branch):
-    """The listing, below `repos/<owner>/<name>/`, of a pull request in any state based on `branch`.
+    """The listing, below `repos/<owner>/<name>/`, of an open pull request based on `branch`.
+
+    Open only: a branch some pull request was once based on would otherwise be refused for good,
+    and a maintenance line is held by its name whatever targets it.
 
     One entry is enough to answer, so one is asked for.
     """
-    return f"pulls?state=all&base={quote(branch, safe='')}&per_page=1"
+    return f"pulls?state=open&base={quote(branch, safe='')}&per_page=1"
 
 
 def reason(branch):

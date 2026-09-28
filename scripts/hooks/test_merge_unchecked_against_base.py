@@ -46,8 +46,9 @@ if "/pulls?" in argv[1]:
     if table.get("targets_unreadable"):
         sys.stderr.write("gh: HTTP 502\\n")
         sys.exit(1)
-    base = parse_qs(urlparse(argv[1]).query)["base"][0]
-    print(json.dumps(table.get("targeted", {}).get(base, [])))
+    query = parse_qs(urlparse(argv[1]).query)
+    listed = table.get("targeted", {}).get(query["base"][0], [])
+    print(json.dumps([pull for pull in listed if query["state"][0] in ("all", pull["state"])]))
     sys.exit(0)
 if "/pulls/" in argv[1]:
     pull = table["pulls"].get(argv[1].rsplit("/", 1)[1])
@@ -262,7 +263,7 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
 
     def test_Given_AHeadAnotherPullRequestIsBasedOn_When_TheMergeIsAsked_Then_ItIsRefused(self):
         # Arrange
-        targeted = {"topic": [{"number": 9}]}
+        targeted = {"topic": [{"number": 9, "state": "open"}]}
 
         # Act
         result = self.ask(self.green(), targeted=targeted)
@@ -271,12 +272,24 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         self.assertEqual((result.returncode, "its head topic is a long-lived branch" in result.stderr),
                          (REFUSED, True))
 
+    # GREEN_ON_BASE(characterization): the base holds no long-lived rule, so it lets this through too.
+    # What it pins is that a closed pull request does not count: asking `state=all` reddens it.
+    def test_Given_AHeadOnlyClosedPullRequestsWereBasedOn_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange — the stub filters by the state asked for, as the API does.
+        targeted = {"topic": [{"number": 9, "state": "closed"}]}
+
+        # Act
+        result = self.ask(self.green(), targeted=targeted)
+
+        # Assert — the listings asked ride along, since a guard that stopped early allows too.
+        self.assertEqual((result.returncode, self.listings_asked()), (ALLOWED, 2))
+
     def test_Given_PullRequestsBasedOnTheHeadThatCannotBeRead_When_TheMergeIsAsked_Then_ItIsRefusedAsUnread(self):
         # Act
         result = self.ask(self.green(), targets_unreadable=True)
 
         # Assert
-        self.assertEqual((result.returncode, "whether any pull request is based on topic could not "
+        self.assertEqual((result.returncode, "whether an open pull request is based on topic could not "
                           "be read" in result.stderr), (REFUSED, True))
 
 

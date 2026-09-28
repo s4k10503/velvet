@@ -919,7 +919,7 @@ push. So a head behind a release takes its base in with `settle.py update`, and 
 run again over the result. A head behind only commits that date nothing is not refused.
 
 And they refuse a head that has to outlive its merge — `main`, `upm`, a maintenance line, or a branch
-any pull request, open or closed, has been based on — because `settle.py merge` squashes the head and
+an open pull request is based on — because `settle.py merge` squashes the head and
 deletes it. `scripts/pr/long_lived.py` decides which heads those are, and `settle.py` and
 `merge_unchecked_against_base.py` both ask it; the maintenance-line section says how a line lands.
 

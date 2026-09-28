@@ -21,6 +21,7 @@ import types
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import parse_qs, urlparse
 
 GREEN = "a" * 40
 MOVED = "b" * 40
@@ -785,12 +786,29 @@ class LongLivedHeadTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    def test_Given_ABranchOnlyClosedPullRequestsWereBasedOn_When_TargetingIsRead_Then_ItIsNotLongLived(self):
+        # Arrange — the API filters by the state the listing asks for, which this answers the same way.
+        based_on = [{"base": {"ref": "stack"}, "state": "closed"}]
+
+        def listing(path):
+            query = parse_qs(urlparse(path).query)
+            return [pull for pull in based_on if query["base"] == [pull["base"]["ref"]]
+                    and query["state"][0] in ("all", pull["state"])]
+
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "rest_json", listing):
+            # Act
+            targeted = settle.targeted_as_base(Path("."), "stack")
+
+        # Assert
+        self.assertFalse(targeted)
+
     def test_Given_ABranchWithQuerySyntaxInItsName_When_ItsTargetingIsAsked_Then_ItStaysOneValue(self):
         # Act
         path = settle.long_lived.targeted_path("fix/a&b")
 
         # Assert
-        self.assertEqual(path, "pulls?state=all&base=fix%2Fa%26b&per_page=1")
+        self.assertEqual(path, "pulls?state=open&base=fix%2Fa%26b&per_page=1")
 
 
 class ReadyStateTests(unittest.TestCase):
