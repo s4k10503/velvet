@@ -400,7 +400,8 @@ namespace Velvet.Tests
             Assert.That(host.particleCount, Is.GreaterThan(0));
         }
 
-        // A non-looping root that finishes within the first advances, over one child system.
+        // A non-looping root whose emission is enabled at rate zero and whose 125ms timeline the first
+        // firing below completes, over one child system.
         private ParticlesBinding MountFinishingRootOver(ParticleSystem child, string name, System.Action<ParticleSystem> configureRoot = null)
         {
             _fakeMs = 1000;
@@ -408,22 +409,23 @@ namespace Velvet.Tests
             var effect = CreateEffectSource(name);
             var rootMain = effect.main;
             rootMain.loop = false;
-            rootMain.duration = 0.02f;
-            rootMain.startLifetime = 0.01f;
+            rootMain.duration = 0.125f;
+            var rootEmission = effect.emission;
+            rootEmission.rateOverTime = 0f;
             child.transform.SetParent(effect.transform);
             configureRoot?.Invoke(effect);
             MountAndLayout(V.Particles(effect, name: "px-park", className: "w-[128px] h-[128px]"));
             return _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-park")];
         }
 
-        // Each 20 fake-ms step fires the tick once and advances the simulation by exactly that step, so
-        // the first firing takes the 20ms root past its whole timeline and the second observes it
-        // finished.
+        // Each 125 fake-ms step fires the tick once and advances the simulation by exactly that step,
+        // a value binary floating point holds exactly, so the clock the tick keeps lands on 0.125
+        // after the first firing rather than beside it.
         private void AdvanceTicks(int ticks)
         {
             for (var i = 0; i < ticks; i++)
             {
-                _fakeMs += 20;
+                _fakeMs += 125;
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
         }
@@ -458,7 +460,7 @@ namespace Velvet.Tests
             emission.enabled = false;
             var binding = MountFinishingRootOver(child, "fx-park-empty");
 
-            // Act — two firings: the second is the first to see the root's 20ms timeline over.
+            // Act — two firings: the second is the first to see the root's 125ms timeline over.
             AdvanceTicks(2);
 
             // Assert
@@ -468,7 +470,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFinishedRootWithADelayedChild_When_TheTickObservesIt_Then_TheTickKeepsRunning()
         {
-            // Arrange — the child starts emitting 200ms after play, past every firing below; until
+            // Arrange — the child starts emitting 200ms after play, past both firings below; until
             // then it holds no particle, yet it has a burst still due.
             var child = new GameObject("fx-delayed-child").AddComponent<ParticleSystem>();
             var childMain = child.main;
@@ -479,8 +481,8 @@ namespace Velvet.Tests
             childEmission.rateOverTime = 1000f;
             var binding = MountFinishingRootOver(child, "fx-park-delayed");
 
-            // Act — 120ms: past the root's timeline and short of the child's 200ms delay.
-            AdvanceTicks(6);
+            // Act — the second firing sees 125ms: the root's timeline over, the child's delay not.
+            AdvanceTicks(2);
 
             // Assert
             Assert.That(binding.RepaintTick, Is.Not.Null);
@@ -513,14 +515,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFinishedBurstWithLiveParticles_When_TheTickObservesIt_Then_TheTickKeepsRunning()
         {
-            // Arrange — a 20ms burst of one-second particles: its emission is over after the first
+            // Arrange — a 50ms burst of one-second particles: its emission is over after the first
             // firing, and every particle it made is still alive for the rest.
             _fakeMs = 1000;
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
             var effect = CreateEffectSource("fx-burst-live");
             var main = effect.main;
             main.loop = false;
-            main.duration = 0.02f;
+            main.duration = 0.05f;
             main.startLifetime = 1f;
             var emission = effect.emission;
             emission.rateOverTime = 1000f;
@@ -561,14 +563,15 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFinishedBurstOutsidePlayMode_When_PlayIsCalledOnTheElement_Then_ItEmitsAgain()
         {
-            // Arrange — a 20ms burst of 50ms particles: finished and emptied well inside 120ms.
+            // Arrange — a 50ms burst of 200ms particles: finished and emptied well inside 750ms, and
+            // replayed particles still alive 125ms after the replay.
             _fakeMs = 1000;
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
             var effect = CreateEffectSource("fx-replay");
             var main = effect.main;
             main.loop = false;
-            main.duration = 0.02f;
-            main.startLifetime = 0.05f;
+            main.duration = 0.05f;
+            main.startLifetime = 0.2f;
             var emission = effect.emission;
             emission.rateOverTime = 1000f;
             MountAndLayout(V.Particles(effect, name: "px-replay", className: "w-[128px] h-[128px]"));

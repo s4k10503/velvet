@@ -345,6 +345,8 @@ namespace Velvet.Tests
             // child keeps emitting, and the element draws it.
             var child = CreateEmitter();
             var root = new GameObject("fx-root").AddComponent<ParticleSystem>();
+            // A system plays from the moment it is added in Play Mode, and its duration is set only while stopped.
+            root.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             var rootMain = root.main;
             rootMain.loop = false;
             rootMain.duration = 0.05f;
@@ -383,6 +385,7 @@ namespace Velvet.Tests
             // Arrange — the first child's one short burst ends and its stop action destroys it while
             // the red child after it keeps emitting.
             var finishing = new GameObject("fx-finishing").AddComponent<ParticleSystem>();
+            finishing.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             var finishingMain = finishing.main;
             finishingMain.loop = false;
             finishingMain.duration = 0.1f;
@@ -447,6 +450,7 @@ namespace Velvet.Tests
             var childEmission = child.emission;
             childEmission.enabled = false;
             var root = new GameObject("fx-root").AddComponent<ParticleSystem>();
+            root.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             var rootMain = root.main;
             rootMain.loop = false;
             rootMain.duration = 0.05f;
