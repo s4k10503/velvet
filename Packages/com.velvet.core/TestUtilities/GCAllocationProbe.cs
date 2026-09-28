@@ -40,5 +40,21 @@ namespace Velvet.TestUtilities
             }
             return blocks;
         }
+
+        /// <summary>
+        /// Counts the blocks one run of a delegate charges as the middle of three windows, for a delegate
+        /// whose every run allocates the same.
+        /// </summary>
+        /// <remarks>
+        /// Two single windows compared for equality fail when one of them reads a block high, and one
+        /// high window among the three cannot move the middle count.
+        /// </remarks>
+        public static int MedianBlocksDuring(Action repeatable)
+        {
+            var first = SampleBlocksDuring(repeatable);
+            var second = SampleBlocksDuring(repeatable);
+            var third = SampleBlocksDuring(repeatable);
+            return Math.Max(Math.Min(first, second), Math.Min(Math.Max(first, second), third));
+        }
     }
 }

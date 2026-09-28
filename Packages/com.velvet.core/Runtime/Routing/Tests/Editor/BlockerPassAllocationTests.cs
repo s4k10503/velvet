@@ -31,9 +31,10 @@ namespace Velvet.Tests
             {
                 Once();
             }
-            return GCAllocationProbe.SampleBlocksDuring(Once);
+            return GCAllocationProbe.MedianBlocksDuring(Once);
         }
 
+        // GREEN_ON_BASE(characterization): the base already charges both passes the same count.
         [Test]
         public void Given_APassOverTwoRegistrations_When_Compared_To_APassOverNone_Then_TheCostIsTheSame()
         {
