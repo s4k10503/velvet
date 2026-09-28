@@ -491,8 +491,13 @@ namespace Velvet
             var oldVariantClasses = hasPreviousApplied ? previousApplied.VariantClasses : Array.Empty<string>();
             var variantApplied = newVariantClasses.Length > 0;
             // Decided before the class-driven sync rather than beside the play below, because a tween swap
-            // changes what that sync may write (ResolveInlineHold).
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
             var playedTransition = ResolvePlayedSwap(element, swapTransition, oldVariantClasses, newVariantClasses);
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition);
+            }
             var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
                 new MotionAppliedClassSet(appliedOld, oldVariantClasses),
                 new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
@@ -1346,6 +1351,30 @@ namespace Velvet
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
         }
+
+        // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
+        // property, else the USS rule of a utility that carries no gate.
+        internal static StyleLonghandSet LonghandsOf(string[] classes)
+        {
+            var longhands = StyleLonghandSet.Empty;
+            foreach (var rawCls in classes)
+            {
+                if (TryGetInlineResolvedCore(rawCls, out var core, out _))
+                {
+                    if (StyleArbitraryValueResolver.TryParse(core, out var style))
+                    {
+                        longhands = longhands.Union(StyleArbitraryLonghands.Of(style.Property));
+                    }
+                }
+                else if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
+                {
+                    longhands = longhands.Union(rule.Properties);
+                }
+            }
+            return longhands;
+        }
+
+        internal static bool IsInlineResolved(string rawCls) => TryGetInlineResolvedCore(rawCls, out _, out _);
 
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {

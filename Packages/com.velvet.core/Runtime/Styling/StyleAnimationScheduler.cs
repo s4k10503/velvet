@@ -64,8 +64,27 @@ namespace Velvet
                 return;
             }
 
+            // A spring or bezier config carries no enter classes: they are settable only inside this assembly, and
+            // only the tween presets set them. So the play moves nothing and completes at once, and it leaves a
+            // pending enter running, as a zero-duration tween's does: cancelling it would drop the pose swap an
+            // inherited label change starts in the same render (FiberNodePatcher.PatchMotion).
+            if (config.Type == TransitionType.Spring)
+            {
+                ValidateSpringParameters(config.Stiffness, config.Damping, config.Mass);
+                onComplete?.Invoke();
+                return;
+            }
+
+            if (config.Type == TransitionType.Bezier)
+            {
+                ValidateBezierParameters(config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
+                    config.DurationSec);
+                onComplete?.Invoke();
+                return;
+            }
+
             // A classic (non-variant) enter's classes are all transient overlays on top of the element's base
-            // classes, so nothing rests and RestingClasses stays null on every branch below.
+            // classes, so nothing rests and RestingClasses stays null.
             var play = new VariantPlay
             {
                 Element = element,
@@ -77,25 +96,6 @@ namespace Velvet
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = false,
             };
-
-            if (config.Type == TransitionType.Spring)
-            {
-                // Reachable only in principle: a classic (non-variant) transition's EnterFromClass/EnterToClass
-                // are internal-setter-only, so a caller-authored spring config passed here has none set and this
-                // no-ops to an immediate complete (see StartSpringVariant) — kept for completeness/symmetry with
-                // PlayVariantEnter / PlayExit rather than silently ignoring Type on this call path.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass);
-                return;
-            }
-
-            if (config.Type == TransitionType.Bezier)
-            {
-                // Same "reachable only in principle" caveat as the Spring branch above: a classic (non-variant)
-                // config carries no enter classes, so this no-ops to an immediate complete — kept for symmetry.
-                StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec);
-                return;
-            }
 
             // Classic transition enter: the to-classes are a TRANSIENT overlay, so they are removed on
             // completion (variantMode: false). Per-property overrides are wired only where a variant swap sets
@@ -126,10 +126,11 @@ namespace Velvet
             => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
-            // MUTANT_SURVIVES(unreachable): a hold is registered beside the play it hands its Release to.
-            // No other play starts on the element while it stays registered: ResolveInlineHold and an exit's
-            // landing take it first, and an enter holds only on a fresh element or after an exit landed its hold.
-            => _pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending.OnSwap, onSwap);
+            // MUTANT_SURVIVES(unreachable): a registered hold's swap is always the element's pending enter.
+            // Each call that ends or replaces that enter releases, lands or replaces the hold before it returns:
+            // the swap's onSwap, ResolveInlineHold, an exit, a presence enter that plays, and a teardown.
+            => _pendingEnters.TryGetValue(element, out var pending)
+                && ReferenceEquals(pending.OnSwap, onSwap);
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
         // element already carries the toClasses (the resting variants[animate], applied
@@ -994,6 +995,116 @@ namespace Velvet
                 CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
                 pending.OnComplete?.Invoke();
             }
+        }
+
+        // A zero-duration pose lands the properties it names: the enter or reversal still running on the element
+        // stops animating them and keeps animating the rest. The caller runs this before it writes the pose, so
+        // an inline value it writes is timed by the transition this leaves (InlineStyleTransitionTimingTests).
+        internal void LandNamedProperties(VisualElement element, string[] poseClasses, StyleTransitionConfig config)
+        {
+            if (config.Type != TransitionType.Tween || IsPlayableDuration(config.DurationSec)
+                || !_pendingEnters.TryGetValue(element, out var pending))
+            {
+                return;
+            }
+            var named = FiberNodePatcher.LonghandsOf(poseClasses);
+            if (pending.Spring != null || pending.Bezier != null)
+            {
+                if (pending.Spring != null)
+                {
+                    MotionSpringDriver.ReleaseChannels(element, pending.Spring, named);
+                }
+                else
+                {
+                    BezierTweenDriver.ReleaseChannels(element, pending.Bezier!, named);
+                }
+                // A released slot takes the value the play's resting classes give it, which are the ones the sync
+                // that follows diffs from: a value the pose repeats is not written by that sync.
+                FiberNodePatcher.ReapplyArbitraryValues(element,
+                    Writing(pending.RestingClasses ?? pending.ToClasses!, named));
+                RemoveOwnedInlineTokens(element, pending, named);
+            }
+            else if (pending.RestingClasses != null)
+            {
+                LandOnHeldTransition(element, named);
+            }
+        }
+
+        // The play's settle re-applies the inline values the element's class list names, so the inline-resolved
+        // classes writing what the pose now owns leave that list. This scheduler put them there, as a variant
+        // enter's to-classes or as the resting classes an exit's cancel restored before handing this play its
+        // reversal, and no class diff takes them off.
+        private static void RemoveOwnedInlineTokens(VisualElement element, PendingAnimation pending,
+            StyleLonghandSet named)
+        {
+            foreach (var cls in pending.ToClasses!)
+            {
+                RemoveIfOwned(element, cls, named);
+            }
+            foreach (var cls in pending.RestingClasses ?? Array.Empty<string>())
+            {
+                RemoveIfOwned(element, cls, named);
+            }
+        }
+
+        private static void RemoveIfOwned(VisualElement element, string cls, StyleLonghandSet named)
+        {
+            if (FiberNodePatcher.IsInlineResolved(cls) && Writes(cls, named))
+            {
+                element.RemoveFromClassList(cls);
+            }
+        }
+
+        private static bool Writes(string cls, StyleLonghandSet named)
+            => FiberNodePatcher.LonghandsOf(new[] { cls }).Overlaps(named);
+
+        private static string[] Writing(string[] classes, StyleLonghandSet named)
+            => Array.FindAll(classes, cls => Writes(cls, named));
+
+        // Appends each named longhand to a variant tween's inline transition-property on a 1ms duration, so it
+        // lands within two frames while the entries before it keep timing the rest of what they timed
+        // (MotionZeroDurationLandingTests). A classic enter's or a preset exit's transition-property is its USS
+        // one, which is why only a play with resting classes reaches here.
+        // Rejected: a zero duration, under which an earlier `all` still times the longhand; and leaving the
+        // longhand out, which rests a class-driven value at the running tween's old target
+        // (HeldTransitionOverrideEngineTests holds both).
+        private static void LandOnHeldTransition(VisualElement element, StyleLonghandSet named)
+        {
+            var held = element.style.transitionProperty.value;
+            var count = held.Count;
+            var names = new List<StylePropertyName>(held);
+            var durations = Wrapped(element.style.transitionDuration.value, count);
+            var easings = Wrapped(element.style.transitionTimingFunction.value, count);
+            // Written only where the play wrote one (ApplyTransitionStyles), so a USS delay keeps applying.
+            var delayList = element.style.transitionDelay.value;
+            var delays = delayList != null ? Wrapped(delayList, count) : null;
+            foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
+            {
+                if (named.Contains(longhand))
+                {
+                    names.Add(new StylePropertyName(StyleUtilityProperties.UssName(longhand)));
+                    durations.Add(new TimeValue(1f, TimeUnit.Millisecond));
+                    easings.Add(new EasingFunction(EasingMode.Linear));
+                    delays?.Add(new TimeValue(0f, TimeUnit.Millisecond));
+                }
+            }
+            element.style.transitionProperty = names;
+            element.style.transitionDuration = durations;
+            element.style.transitionTimingFunction = easings;
+            if (delays != null)
+            {
+                element.style.transitionDelay = delays;
+            }
+        }
+
+        private static List<T> Wrapped<T>(List<T> list, int count)
+        {
+            var wrapped = new List<T>();
+            for (var i = 0; i < count; i++)
+            {
+                wrapped.Add(list[i % list.Count]);
+            }
+            return wrapped;
         }
 
         // Whether the given element is currently exiting.

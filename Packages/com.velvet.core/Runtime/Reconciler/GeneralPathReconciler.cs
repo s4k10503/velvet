@@ -2189,7 +2189,7 @@ namespace Velvet
         private void PlayPresenceEnter(
             in PresenceExpansion pass,
             MotionNode? motion,
-            VisualElement? anchor,
+            VisualElement anchor,
             VisualElement? motionElement,
             bool wasExiting)
         {
@@ -2248,7 +2248,7 @@ namespace Velvet
         // restart the full enter duration from it.
         private void DispatchPresenceEnter(
             MotionNode motion,
-            VisualElement? anchor,
+            VisualElement anchor,
             VisualElement? motionElement,
             bool wasExiting,
             float staggerDelaySec,
@@ -2262,6 +2262,9 @@ namespace Velvet
             {
                 // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
                 // resting state).
+                // An enter that plays cancels the pose swap a label change started in this render, and with it
+                // the onSwap that would write the swap's held inline values, so they land first.
+                _patcher.LandInlineHold(motionElement!);
                 var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
                     enterTransition);
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
@@ -2274,6 +2277,11 @@ namespace Velvet
             }
             else
             {
+                // As for the variant enter above; of the classic enters, only a timed tween plays.
+                if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
+                {
+                    _patcher.LandInlineHold(anchor);
+                }
                 _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
                     ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }

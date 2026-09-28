@@ -464,7 +464,8 @@ Three consequences worth knowing:
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal is held as an
   exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`.
+  the node's `None`. A label change into a `None` pose while an earlier swap is still moving the
+  Motion lands the properties that pose names within two frames, and leaves the rest moving.
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured

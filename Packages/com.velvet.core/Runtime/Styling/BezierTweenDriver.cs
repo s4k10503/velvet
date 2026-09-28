@@ -226,6 +226,37 @@ namespace Velvet
         }
 
         /// <summary>
+        /// The bezier sibling of <see cref="MotionSpringDriver.ReleaseChannels"/>.
+        /// </summary>
+        public static void ReleaseChannels(VisualElement element, BezierTweenState state, StyleLonghandSet named)
+        {
+            if (state.Opacity != null && named.Contains(StyleLonghand.Opacity))
+            {
+                state.Opacity = null;
+                element.style.opacity = StyleKeyword.Null;
+            }
+            // X and Y are created together, so they are dropped together.
+            if (state.TranslateX != null && named.Contains(StyleLonghand.Translate))
+            {
+                state.TranslateX = null;
+                state.TranslateY = null;
+                element.style.translate = StyleKeyword.Null;
+            }
+            if (state.Scale != null && named.Contains(StyleLonghand.Scale))
+            {
+                state.Scale = null;
+                element.style.scale = StyleKeyword.Null;
+            }
+            if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
+            {
+                state.Rotate = null;
+                element.style.rotate = StyleKeyword.Null;
+            }
+            state.Colors?.RemoveAll(c => MotionSpringDriver.ReleasesProperty(element, c.Property, named));
+            state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
+        }
+
+        /// <summary>
         /// Freezes each active channel's CURRENT sampled value as its new <see cref="BezierTweenChannel.From"/>,
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,
         /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh full-duration reversal from
