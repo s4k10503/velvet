@@ -33,8 +33,10 @@ namespace Velvet
         private int _navigationSequence;
 
         /// <summary>
-        /// The most recently constructed router that has not been disposed, or null. The routing hooks do not
-        /// read it: they act on the router <c>V.RouterProvider</c> publishes above them.
+        /// The most recently constructed router, until that router is disposed; null then, and before any is
+        /// constructed. Disposing an earlier router leaves it as it is, and disposing the latest does not
+        /// restore one constructed before it. The routing hooks do not read it: they act on the router
+        /// <c>V.RouterProvider</c> publishes above them.
         /// </summary>
         public static Router? Current { get; private set; }
 

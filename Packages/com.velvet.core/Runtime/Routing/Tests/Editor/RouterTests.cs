@@ -910,6 +910,42 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Router.Current
+
+        // GREEN_ON_BASE(characterization): the base clears Router.Current this way too.
+        // The change rewrites the property's documentation, which said otherwise.
+        [Test]
+        public void Given_TwoRoutersConstructed_When_TheLaterIsDisposed_Then_CurrentIsNullWhileTheEarlierLives()
+        {
+            // Arrange
+            using var earlier = new Router(new[] { Route("/") });
+            var later = new Router(new[] { Route("/") });
+
+            // Act
+            later.Dispose();
+
+            // Assert
+            Assert.That(Router.Current, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves Router.Current alone this way too.
+        // The change rewrites the property's documentation to say so.
+        [Test]
+        public void Given_TwoRoutersConstructed_When_TheEarlierIsDisposed_Then_CurrentIsStillTheLater()
+        {
+            // Arrange
+            var earlier = new Router(new[] { Route("/") });
+            using var later = new Router(new[] { Route("/") });
+
+            // Act
+            earlier.Dispose();
+
+            // Assert
+            Assert.That(ReferenceEquals(Router.Current, later), Is.True);
+        }
+
+        #endregion
+
         #region ScopeFactory
 
         [Test]
