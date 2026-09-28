@@ -338,9 +338,9 @@ namespace Velvet
                     // Unlinked rather than cancelled: the round this navigation committed runs on under a
                     // token linked to this one.
                     myCancellation.Unlink();
-                    // A Blocker proceeding stays so while any navigation is under way, as React Router's stays
-                    // proceeding until one completes: the attempt that took over from the one it released
-                    // passes it too. With none left under way, nothing is left for it to be proceeding with.
+                    // Settled with no navigation left under way and not before, as React Router keeps a blocker
+                    // proceeding until a navigation completes: the attempt that took over from the one it
+                    // released passes it too. With none left under way, nothing is left for it to proceed with.
                     if (_activeNavigation == null)
                     {
                         _blockerManager.SettleProceeding();
@@ -657,7 +657,7 @@ namespace Velvet
             finally
             {
                 // A Back or Forward with no entry left to step onto is refused before it becomes an attempt,
-                // so the settle every attempt makes on its way out is not made for it.
+                // so the settle a navigation makes on its way out is not made for it.
                 if (_activeNavigation == null)
                 {
                     _blockerManager.SettleProceeding();

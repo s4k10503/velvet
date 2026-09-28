@@ -42,11 +42,11 @@ returns the Blocker to `Idle` whatever its state.
 
 ## When a Blocker starts over
 
-Every Blocker returns to `Idle` when a navigation commits. A `Proceeding` Blocker stays so while any
-navigation is under way, as React Router's stays proceeding until a navigation completes: one that takes
-over from the navigation it released is not put to it either. It also returns to `Idle` when a
-navigation ends without committing — a Guard redirect that goes nowhere, a failure, a cancellation —
-and none is left under way.
+Every Blocker returns to `Idle` when a navigation commits. A navigation that ends without committing
+while another is under way leaves a `Proceeding` Blocker as it is, as React Router's stays proceeding
+until a navigation completes: one that takes over from the navigation it released is not put to it
+either. One that ends without committing — a Guard redirect that goes nowhere, a failure, a
+cancellation — with none left under way returns it to `Idle`.
 
 A navigation a `Blocked` Blocker lets through does not release it: the block stands while that
 navigation loads, and ends when a navigation commits. A navigation it vetoes replaces what it holds.
