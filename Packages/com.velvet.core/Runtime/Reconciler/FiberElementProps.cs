@@ -220,10 +220,11 @@ namespace Velvet
     /// equality simplifies DiffProps.
     /// </summary>
     /// <param name="Contain">Tab/Shift-Tab wrap within the subtree (computed by a focus ring scoped to it);
-    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush, wherever it
-    /// landed. A press on empty non-focusable space clears focus to nothing first — that path re-focuses
-    /// the scope on the panel's next scheduler tick, as does focus that moves to another panel unless it
-    /// lands in a portal declared inside the scope or in another contained scope.</param>
+    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush unless it
+    /// landed in a contained scope created after this one. A press on empty non-focusable space clears
+    /// focus to nothing first — that path re-focuses the scope on the panel's next scheduler tick, as does
+    /// focus that moves to another panel unless it lands in a portal declared inside the scope or in a
+    /// contained scope created after this one.</param>
     /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
     /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
     /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a

@@ -37,6 +37,11 @@ namespace Velvet
         public bool AutoFocusFired;
         public EventCallback<AttachToPanelEvent>? OnAttach;
 
+        // Creation order across every mounted tree. Of two contained scopes a landing crosses between, the
+        // newer one keeps it; a strict order is what stops the two pulling focus back from each other.
+        public readonly long Sequence = ++s_lastSequence;
+        private static long s_lastSequence;
+
         public FocusScopeBinding(FocusScopeSettings settings)
         {
             Settings = settings;
@@ -64,6 +69,10 @@ namespace Velvet
         // Bounds the SingleTabStop exit walk (skipping members while searching for the first focusable
         // outside the scope) so a pathological ring cannot spin this listener unboundedly.
         private const int MaxRingWalk = 4096;
+
+        // Every context whose navigator is attached to a panel. Containment reads across all of them, so that
+        // two mounted trees' scopes rank against each other.
+        private static readonly List<ReconcilerContext> s_attachedContexts = new();
 
         // Attaches the navigator's listener trio to `element`'s panel root exactly once per panel. The
         // anchor is always the panel's TRUE root (panel.visualTree): registering on anything narrower
@@ -132,6 +141,10 @@ namespace Velvet
             root.RegisterCallback(onFocusIn);
             root.RegisterCallback(onFocusOut);
             ctx.NavigatorAttachments[root] = (onMove, onFocusIn, onFocusOut);
+            if (!s_attachedContexts.Contains(ctx))
+            {
+                s_attachedContexts.Add(ctx);
+            }
         }
 
         internal static void DetachAll(ReconcilerContext ctx)
@@ -143,6 +156,10 @@ namespace Velvet
                 root.UnregisterCallback(callbacks.OnFocusOut);
             }
             ctx.NavigatorAttachments.Clear();
+            // MUTANT_SURVIVES(equivalent, line removed): a disposed context has emptied its scope, portal
+            // and z-layer tables, so a focused element it still finds is one a live context finds as well,
+            // or one pulled back from exactly as a reading that finds nothing is.
+            s_attachedContexts.Remove(ctx);
             foreach (var (element, hook) in ctx.NavigatorPendingAttachHooks)
             {
                 element.UnregisterCallback(hook);
@@ -684,14 +701,13 @@ namespace Velvet
 
             // Contain snap-back: focus left a contained scope through a path the sequential interception
             // cannot see (a spatial 2D move, or a pointer press outside) — pull it back inside within the
-            // same event flush. A landing INSIDE any contain scope stands instead: the scope receiving
-            // focus claims it (the newest scope wins — a stacked dialog must be able to
-            // take focus from the modal underneath), and because a snap-back's own landing is by
-            // construction inside a contain scope, the recursion is structurally terminal — no re-entrancy
-            // flag needed (one would not work anyway: UI Toolkit QUEUES focus events raised from inside a
-            // dispatch, so a nested FocusIn runs only after this handler returns).
-            if (FindEnclosingContainScopeRoot(target, ctx, out _) == null
-                && TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
+            // same event flush. A landing inside a NEWER contain scope stands instead (a stacked dialog must
+            // be able to take focus from the modal underneath). A snap-back happens only when the landing's
+            // contain scope, if it has one, is the older, so the snap-back's own landing stands and the
+            // recursion ends there — no re-entrancy flag needed (one would not work anyway: UI Toolkit
+            // QUEUES focus events raised from inside a dispatch, so a nested FocusIn runs only after this
+            // handler returns).
+            if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
             {
                 // The landing was reverted: recording it in the landing scope's bookkeeping would corrupt
                 // that scope's roving memory with a member the user never actually reached.
@@ -725,8 +741,9 @@ namespace Velvet
         }
 
         // The shared snap-back: when focus is leaving `relatedTarget`'s nearest contain scope for a
-        // `target` outside it (same panel — a cross-panel move is OnFocusOut's), refocus the scope's
-        // remembered member (else its ring-first) and report true. The scope must still be REGISTERED:
+        // `target` logically outside it and outside any newer contain scope (same panel — a cross-panel move
+        // is OnFocusOut's), refocus the scope's remembered member (else its ring-first) and report true.
+        // The scope must still be REGISTERED:
         // FiberElementCleaner drops a dying scope's registry entry before firing its restore focus, so a
         // teardown's restore is never reverted back into the detaching subtree.
         private static bool TrySnapBackToContainScope(
@@ -737,7 +754,8 @@ namespace Velvet
                 return false;
             }
             var containRoot = FindEnclosingContainScopeRoot(relatedTarget, ctx, out var binding);
-            if (containRoot == null || binding == null || containRoot.Contains(target))
+            if (containRoot == null || binding == null || IsLogicallyWithin(target, containRoot)
+                || LandsInANewerContainScope(target, binding))
             {
                 return false;
             }
@@ -824,9 +842,9 @@ namespace Velvet
         // teardown has detached the scope root or replaced its binding (skip — the binding identity check
         // covers a pooled root recycled into a NEW scope under the same element key), a same-panel move
         // has repopulated focusedElement (skip — the FocusIn side owns it), and a cross-panel move has left
-        // another panel holding focus. That landing stands when it sits inside another contain scope, as
-        // OnFocusIn lets a same-panel one stand, or in a portal declared inside this scope; any other is
-        // pulled back like focus that went nowhere.
+        // another panel holding focus, in this tree or another. That landing stands when it is logically
+        // inside this scope, or inside a newer contain scope as OnFocusIn lets a same-panel one stand; any
+        // other is pulled back like focus that went nowhere.
         private static void OnFocusOut(FocusOutEvent evt, ReconcilerContext ctx)
         {
             if (evt.relatedTarget != null || evt.target is not VisualElement leaving)
@@ -856,9 +874,9 @@ namespace Velvet
                 {
                     return;
                 }
-                var elsewhere = FocusedElementInManagedPanels(ctx);
-                if (elsewhere != null && (IsLogicallyWithin(elsewhere, containRoot, ctx)
-                    || FindEnclosingContainScopeRoot(elsewhere, ctx, out _) != null))
+                var elsewhere = FocusedElementInAnyTree();
+                if (elsewhere != null && (IsLogicallyWithin(elsewhere, containRoot)
+                    || LandsInANewerContainScope(elsewhere, binding)))
                 {
                     return;
                 }
@@ -871,20 +889,62 @@ namespace Velvet
             });
         }
 
-        // Physical containment, except that a portal's content counts as sitting where the portal was
-        // declared: a child of a portal target hops to the placeholder whose slot range holds it.
-        private static bool IsLogicallyWithin(VisualElement element, VisualElement root, ReconcilerContext ctx)
+        private static bool IsLogicallyWithin(VisualElement element, VisualElement root)
         {
-            for (var current = element; current != null;)
+            for (var current = element; current != null; current = LogicalParentOf(current))
             {
                 if (ReferenceEquals(current, root))
                 {
                     return true;
                 }
-                var parent = current.parent;
-                current = parent == null ? null : FindPortalPlaceholderHolding(parent, current, ctx) ?? parent;
             }
             return false;
+        }
+
+        // Whether a landing's nearest contain scope, in any mounted tree, was created after `scope`.
+        private static bool LandsInANewerContainScope(VisualElement landing, FocusScopeBinding scope)
+        {
+            for (var current = landing; current != null; current = LogicalParentOf(current))
+            {
+                foreach (var ctx in s_attachedContexts)
+                {
+                    if (ctx.FocusScopeBindings.TryGetValue(current, out var found) && found.Settings.Contain)
+                    {
+                        // MUTANT_SURVIVES(equivalent, boundary): equal sequences are `scope` itself, and a
+                        // landing whose nearest contain scope that is lies logically within it, which both
+                        // callers return on before asking.
+                        return found.Sequence > scope.Sequence;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // The physical parent, except that content an element was relocated out of its declared slot stands
+        // at that slot: a z-managed element at its placeholder, and a portal target's child at the placeholder
+        // whose slot range holds it.
+        private static VisualElement? LogicalParentOf(VisualElement current)
+        {
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (ctx.ZLayerMembers.TryGetValue(current, out var member))
+                {
+                    return member.Placeholder;
+                }
+            }
+            var parent = current.parent;
+            if (parent == null)
+            {
+                return null;
+            }
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (FindPortalPlaceholderHolding(parent, current, ctx) is { } placeholder)
+                {
+                    return placeholder;
+                }
+            }
+            return parent;
         }
 
         private static VisualElement? FindPortalPlaceholderHolding(
@@ -908,11 +968,23 @@ namespace Velvet
             return null;
         }
 
-        // True when any panel this reconciler manages (the main panel, a layer host, a world-space host)
-        // currently holds a focused element. UI Toolkit focus is per panel, so "this panel's controller
+        // True when any panel this reconciler manages (the main panel, a layer or world-space host, a panel
+        // an element-valued portal targets) currently holds a focused element. UI Toolkit focus is per panel, so "this panel's controller
         // reads null" alone cannot distinguish focus-went-nowhere from focus-went-to-another-panel.
         internal static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
             => FocusedElementInManagedPanels(ctx) != null;
+
+        private static VisualElement? FocusedElementInAnyTree()
+        {
+            foreach (var ctx in s_attachedContexts)
+            {
+                if (FocusedElementInManagedPanels(ctx) is { } held)
+                {
+                    return held;
+                }
+            }
+            return null;
+        }
 
         private static VisualElement? FocusedElementInManagedPanels(ReconcilerContext ctx)
         {
@@ -930,6 +1002,14 @@ namespace Velvet
             foreach (var record in ctx.WorldSpaceBindings.Values)
             {
                 if (FocusedElementIn(record) is { } held)
+                {
+                    return held;
+                }
+            }
+            // An element-valued portal can target a panel no host record owns.
+            foreach (var info in ctx.PortalState.Values)
+            {
+                if (info.Target?.panel?.focusController?.focusedElement is VisualElement held)
                 {
                     return held;
                 }

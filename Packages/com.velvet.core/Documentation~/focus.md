@@ -15,12 +15,15 @@ existing container. Four independent knobs, mirroring React Aria's props:
 
 - **`contain`** — Tab/Shift-Tab wrap within the subtree instead of leaving it, and a move that
   escapes anyway (a spatial d-pad flick, a pointer press outside) is snapped back inside within
-  the same event flush — wherever the escape landed, including inside another scope. A press on
-  empty non-focusable space clears focus to nothing first (no focus event ever lands anywhere),
-  so that path re-focuses the scope on the panel's next scheduler tick. Focus that moves to another
-  panel — a layer or world-space host, or a panel Velvet does not manage — is pulled back on that
-  same tick, unless it lands in a portal declared inside the scope. When two contained scopes are
-  live at once, the one currently holding focus wins, across panels as within one.
+  the same event flush, inside a plain scope as anywhere else. A press on empty non-focusable space
+  clears focus to nothing first (no focus event ever lands anywhere), so that path re-focuses the
+  scope on the panel's next scheduler tick. Focus that moves to another panel — a layer or
+  world-space host, another mounted tree's panel, or a panel Velvet does not manage — is pulled back
+  on that same tick. Neither pull-back applies to content of a portal declared inside the scope, in
+  whatever panel the portal renders, an element-valued `V.Portal(target:)` included. When two contained
+  scopes are live at once — in one panel, across panels, or across mounted trees — the one created
+  later wins: a landing in it stands, and a landing in the older one is pulled back. A scope nested
+  in another is created before the scope around it when both mount in the same render.
 - **`restoreFocus`** — when the scope unmounts while holding focus, focus returns to the element
   it came FROM when it first entered the scope, skipped if that element is gone or can no longer
   take focus (an unmounted origin is dropped rather than chased into pool reuse). Pair with
@@ -40,7 +43,9 @@ existing container. Four independent knobs, mirroring React Aria's props:
   group is untouched.
 
 Arrows/d-pad move between a group's members by their on-screen geometry and never leave the group:
-a spatial move that lands outside it returns to the member it started from.
+a spatial move that lands outside it returns to the member it started from. An element outside the
+group that lies between two members is where a move toward the members beyond it lands, so that
+move is reverted and those members are not reached by arrows from that side.
 
 `TabIndex` -1 takes an element out of the Tab ring while `Focus()` and a pointer press still focus
 it, as the web's `tabindex="-1"` does. On a runtime panel it also takes the element out of

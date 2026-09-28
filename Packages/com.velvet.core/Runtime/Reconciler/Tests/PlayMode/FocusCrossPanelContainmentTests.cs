@@ -11,17 +11,23 @@ namespace Velvet.Tests
     /// <summary>
     /// A <c>contain</c> scope holds focus against every panel: focus that moves from its panel to another is
     /// pulled back on the scope's panel's next tick, unless it lands in a portal declared inside the scope or
-    /// in another contained scope.
+    /// in a newer contained scope — in this mounted tree or another.
     /// </summary>
     internal sealed class FocusCrossPanelContainmentTests
     {
+        private static VisualElement s_portalTarget;
+
         private GameObject _panelGo;
         private PanelSettings _settings;
         private MountedTree _mounted;
+        private GameObject _otherPanelGo;
+        private PanelSettings _otherSettings;
+        private MountedTree _otherMounted;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
+            s_portalTarget = null;
             _panelGo = new GameObject("CrossPanelContainmentPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -35,17 +41,62 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
+            _otherMounted?.Dispose();
+            _otherMounted = null;
             if (_panelGo != null) Object.Destroy(_panelGo);
             if (_settings != null) Object.Destroy(_settings);
+            if (_otherPanelGo != null) Object.Destroy(_otherPanelGo);
+            if (_otherSettings != null) Object.Destroy(_otherSettings);
+            s_portalTarget = null;
             yield return null;
         }
 
+        // A second runtime panel of its own, which no tree is mounted on until a case mounts one.
+        private IEnumerator CreateOtherPanel()
+        {
+            _otherPanelGo = new GameObject("CrossPanelContainmentOtherPanel");
+            var doc = _otherPanelGo.AddComponent<UIDocument>();
+            _otherSettings = TestPanelSettings.Create();
+            _otherSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            doc.panelSettings = _otherSettings;
+            yield return null;
+        }
+
+        private VisualElement MainRoot => _panelGo.GetComponent<UIDocument>().rootVisualElement;
+
+        private VisualElement OtherRoot => _otherPanelGo.GetComponent<UIDocument>().rootVisualElement;
+
         // Resolved from this mount's own bookkeeping, for the reason FocusChainedPortalTests gives.
-        private VisualElement Main(string name)
-            => _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>(name);
+        private VisualElement Main(string name) => MainRoot.Q<VisualElement>(name);
 
         private VisualElement HostElement(string name)
             => _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement.Q<VisualElement>(name);
+
+        private IEnumerator MountOnMain(VNode root)
+        {
+            _mounted = V.Mount(MainRoot, root);
+            yield return null;
+            yield return null;
+        }
+
+        private static void FocusAndAssume(VisualElement element)
+        {
+            element.Focus();
+            Assume.That(element.panel.focusController.focusedElement, Is.EqualTo(element),
+                "Precondition: the scope under test holds focus");
+        }
+
+        // Reads what `panel` holds focused on two consecutive frames once the pull-back tick has had its
+        // frame, so two scopes pulling focus back from each other every tick fail the comparison instead of
+        // matching it by phase.
+        private static IEnumerator ReadTwoSettledFrames(VisualElement onPanel, Focusable[] readings)
+        {
+            yield return null;
+            yield return null;
+            readings[0] = onPanel.panel.focusController.focusedElement;
+            yield return null;
+            readings[1] = onPanel.panel.focusController.focusedElement;
+        }
 
         // Two portals share the Overlay host: the one declared inside the modal mounts its button beside
         // the one declared outside it, so only the slot range each placeholder owns tells them apart.
@@ -66,54 +117,45 @@ namespace Velvet.Tests
             }),
         });
 
-        private IEnumerator MountModalBesideAPortalSharingItsLayer()
-        {
-            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
-                V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
-            yield return null;
-            yield return null;
-            var m1 = Main("m1");
-            m1.Focus();
-            Assume.That(m1.panel.focusController.focusedElement, Is.EqualTo(m1),
-                "Precondition: the modal holds focus");
-        }
-
         // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
         // This case pins that the pull-back spares a portal declared inside the modal.
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAPortalDeclaredInsideIt_Then_FocusStaysInThePortal()
         {
             // Arrange
-            yield return MountModalBesideAPortalSharingItsLayer();
+            yield return MountOnMain(V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
+            FocusAndAssume(Main("m1"));
             var inner = HostElement("inner");
+            var readings = new Focusable[2];
 
             // Act
             Main("m1").Blur();
             inner.Focus();
-            yield return null;
-            yield return null;
+            yield return ReadTwoSettledFrames(inner, readings);
 
             // Assert
-            Assert.That(inner.panel.focusController.focusedElement, Is.EqualTo(inner));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { inner, inner }));
         }
 
         [UnityTest]
         public IEnumerator Given_AContainedScope_When_FocusMovesToAPortalDeclaredOutsideItOnTheSameLayer_Then_FocusReturnsToTheScope()
         {
             // Arrange
-            yield return MountModalBesideAPortalSharingItsLayer();
+            yield return MountOnMain(V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
             var m1 = Main("m1");
+            FocusAndAssume(m1);
+            var readings = new Focusable[2];
 
             // Act
             m1.Blur();
             HostElement("outer").Focus();
-            yield return null;
-            yield return null;
+            yield return ReadTwoSettledFrames(m1, readings);
 
             // Assert
-            Assert.That(m1.panel.focusController.focusedElement, Is.EqualTo(m1));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, m1 }));
         }
 
+        // The dialog's scope is created when the portal drains, after the modal's.
         [Component]
         private static VNode ModalBesideAContainedLayerDialog() => V.Div(children: new VNode[]
         {
@@ -131,29 +173,42 @@ namespace Velvet.Tests
         });
 
         // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
-        // This case pins that the pull-back spares a contained dialog on another layer.
+        // This case pins that the pull-back spares a newer contained dialog on another layer.
         [UnityTest]
-        public IEnumerator Given_AContainedScope_When_FocusMovesToAContainedScopeOnAnotherPanel_Then_TheNewScopeKeepsIt()
+        public IEnumerator Given_AContainedScope_When_FocusMovesToANewerContainedScopeOnAnotherPanel_Then_TheNewerScopeKeepsIt()
         {
             // Arrange
-            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
-                V.Component(ModalBesideAContainedLayerDialog, key: "root"));
-            yield return null;
-            yield return null;
+            yield return MountOnMain(V.Component(ModalBesideAContainedLayerDialog, key: "root"));
             var m1 = Main("m1");
-            m1.Focus();
-            Assume.That(m1.panel.focusController.focusedElement, Is.EqualTo(m1),
-                "Precondition: the modal holds focus");
+            FocusAndAssume(m1);
             var d1 = HostElement("d1");
+            var readings = new Focusable[2];
 
             // Act
             m1.Blur();
             d1.Focus();
-            yield return null;
-            yield return null;
+            yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(d1.panel.focusController.focusedElement, Is.EqualTo(d1));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ANewerContainedScopeOnAnotherPanel_When_FocusMovesIntoTheOlderScope_Then_TheNewerScopeTakesItBack()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalBesideAContainedLayerDialog, key: "root"));
+            var d1 = HostElement("d1");
+            FocusAndAssume(d1);
+            var readings = new Focusable[2];
+
+            // Act
+            d1.Blur();
+            Main("m1").Focus();
+            yield return ReadTwoSettledFrames(d1, readings);
+
+            // Assert
+            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
         }
 
         [Component]
@@ -173,23 +228,119 @@ namespace Velvet.Tests
         public IEnumerator Given_AContainedScopeInALayerHost_When_FocusMovesToTheMainPanel_Then_FocusReturnsToTheScope()
         {
             // Arrange
-            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
-                V.Component(LayerModalOverTheMainPanel, key: "root"));
-            yield return null;
-            yield return null;
+            yield return MountOnMain(V.Component(LayerModalOverTheMainPanel, key: "root"));
             var d1 = HostElement("d1");
-            d1.Focus();
-            Assume.That(d1.panel.focusController.focusedElement, Is.EqualTo(d1),
-                "Precondition: the layer modal holds focus");
+            FocusAndAssume(d1);
+            var readings = new Focusable[2];
 
             // Act
             d1.Blur();
             Main("outside").Focus();
-            yield return null;
-            yield return null;
+            yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(d1.panel.focusController.focusedElement, Is.EqualTo(d1));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
+        }
+
+        [Component]
+        private static VNode ModalDeclaringAZIndexedPortalChild() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
+                {
+                    V.Button(name: "zp", className: "absolute z-10"),
+                }),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base never pulls focus back from a panel it manages.
+        // This case pins that a z-indexed portal child, which leaves its slot for a layer container, still
+        // counts as the portal's content.
+        [UnityTest]
+        public IEnumerator Given_AContainedScope_When_FocusMovesToAZIndexedChildOfAPortalDeclaredInsideIt_Then_FocusStaysThere()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalDeclaringAZIndexedPortalChild, key: "root"));
+            FocusAndAssume(Main("m1"));
+            var zp = HostElement("zp");
+            var readings = new Focusable[2];
+
+            // Act
+            Main("m1").Blur();
+            zp.Focus();
+            yield return ReadTwoSettledFrames(zp, readings);
+
+            // Assert
+            Assert.That(readings, Is.EqualTo(new Focusable[] { zp, zp }));
+        }
+
+        [Component]
+        private static VNode ModalDeclaringAnElementPortal() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.Portal(s_portalTarget, key: "elsewhere", children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                }),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContainedScope_When_FocusMovesToAnElementPortalItDeclaredIntoAPanelNoTreeMounts_Then_FocusStaysInThePortal()
+        {
+            // Arrange
+            yield return CreateOtherPanel();
+            s_portalTarget = OtherRoot;
+            yield return MountOnMain(V.Component(ModalDeclaringAnElementPortal, key: "root"));
+            FocusAndAssume(Main("m1"));
+            var p1 = OtherRoot.Q<VisualElement>("p1");
+            var readings = new Focusable[2];
+
+            // Act
+            Main("m1").Blur();
+            p1.Focus();
+            yield return ReadTwoSettledFrames(p1, readings);
+
+            // Assert
+            Assert.That(readings, Is.EqualTo(new Focusable[] { p1, p1 }));
+        }
+
+        [Component]
+        private static VNode OlderTreeModal() => V.FocusScope(name: "olderModal", contain: true, children: new VNode[]
+        {
+            V.Button(name: "a1"),
+        });
+
+        [Component]
+        private static VNode NewerTreeModal() => V.FocusScope(name: "newerModal", contain: true, children: new VNode[]
+        {
+            V.Button(name: "b1"),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ContainedScopesInTwoMountedTrees_When_FocusMovesFromTheNewerIntoTheOlder_Then_TheNewerKeepsItWithoutAlternating()
+        {
+            // Arrange — each tree is its own mount on its own panel, the older mounted first.
+            yield return CreateOtherPanel();
+            yield return MountOnMain(V.Component(OlderTreeModal, key: "root"));
+            _otherMounted = V.Mount(OtherRoot, V.Component(NewerTreeModal, key: "root"));
+            yield return null;
+            yield return null;
+            var b1 = OtherRoot.Q<VisualElement>("b1");
+            FocusAndAssume(b1);
+            var readings = new Focusable[2];
+
+            // Act
+            b1.Blur();
+            Main("a1").Focus();
+            yield return ReadTwoSettledFrames(b1, readings);
+
+            // Assert
+            Assert.That(readings, Is.EqualTo(new Focusable[] { b1, b1 }));
         }
     }
 }

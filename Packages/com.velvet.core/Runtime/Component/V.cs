@@ -1830,9 +1830,10 @@ namespace Velvet
         /// container exists yet. Style it like any Div.
         /// </summary>
         /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
-        /// snapped back within the same event flush (a press on empty space that clears focus to nothing
-        /// re-focuses on the panel's next tick, and so does focus that moves to another panel unless it lands
-        /// in a portal declared inside the scope or in another contained scope).</param>
+        /// snapped back within the same event flush unless it lands in a contained scope created after this
+        /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
+        /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
+        /// in a contained scope created after this one).</param>
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
         /// when it first entered the scope.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
