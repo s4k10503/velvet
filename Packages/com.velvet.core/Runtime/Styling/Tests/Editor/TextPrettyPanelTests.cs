@@ -114,6 +114,20 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true)), measured);
         }
 
+        // A panel with one pixel per point read a half-point narrowing back as none, so the narrowing has to
+        // hold with the box a whole point wider than this panel lays it out.
+        [Test]
+        public void Given_AShortLastWordAloneOnItsLine_When_Pretty_Then_TheNarrowingHoldsAPointWider()
+        {
+            // Arrange / Act
+            var (_, pretty, arranged, measured) = MountWithOrphan("e");
+
+            // Assert
+            Assert.That(
+                (arranged, Height(pretty, Head, pretty.contentRect.width + 1f) > Height(pretty, Head, float.NaN) + 0.5f),
+                Is.EqualTo((true, true)), measured);
+        }
+
         // GREEN_ON_BASE(characterization): the base never narrows a text-pretty box.
         [Test]
         public void Given_ALastWordWiderThanAThirdOfTheLine_When_Pretty_Then_TheBoxIsLeftAlone()

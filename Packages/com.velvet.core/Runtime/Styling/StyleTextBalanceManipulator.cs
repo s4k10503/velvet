@@ -76,6 +76,9 @@ namespace Velvet
         // kShortLineDenominator in ScoreLineBreaker's ShouldOptimize.
         private const float ShortLineDenominator = 3f;
 
+        // How far text-pretty's width backs off the pixel grid; see FindPrettyWidth.
+        private const float PixelGridMarginPx = 1f;
+
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
         private readonly ReconcilerContext _ctx;
 
@@ -356,7 +359,14 @@ namespace Velvet
                     hi = mid;
                 }
             }
-            return MeasureHeight(textElement, text, lo) <= naturalHeight + HeightEpsilonPx ? lo : null;
+            // Layout rounds the written width to the panel's pixel grid: a 126.5 write read back as 127 on a
+            // runner with one pixel per point, undoing a narrowing of half a point. So the width backs off to
+            // a whole point one point below the search's result, and the line count is checked a point
+            // narrower still.
+            var width = Mathf.Floor(lo) - PixelGridMarginPx;
+            return MeasureHeight(textElement, text, width - PixelGridMarginPx) <= naturalHeight + HeightEpsilonPx
+                ? width
+                : null;
         }
 
         private static float MeasureHeight(TextElement textElement, string text, float width) =>
