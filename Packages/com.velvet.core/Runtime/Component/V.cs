@@ -2131,7 +2131,8 @@ namespace Velvet
         /// <param name="children">Child VNodes whose enter / exit transitions are tracked.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="initial">When false, suppresses the enter animations of the children the first render
-        /// mounts, and of every Motion mounting under them for as long as they stay.</param>
+        /// mounts, and of the Motions mounting under them for as long as they stay, other than an inner
+        /// presence's children.</param>
         /// <param name="staggerSec">Delay (seconds) staggered between sequential children.</param>
         /// <param name="mode">Exit / enter sequencing. <see cref="AnimatePresenceMode.Sync"/> (default) overlaps
         /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight

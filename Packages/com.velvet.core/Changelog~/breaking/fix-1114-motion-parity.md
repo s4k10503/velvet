@@ -23,5 +23,5 @@
 
 - `V.AnimatePresence(initial: false)` withholds the mount enter of every Motion that mounts under a child
   its first render created, for as long as that child stays, a later render's and a `V.Portal`'s included,
-  as Framer's `PresenceChild` does. It used to reach only the Motions that first render created outside a
+  as Framer's `PresenceChild` does; an inner presence's children answer to that presence. It used to reach only the Motions that first render created outside a
   portal.

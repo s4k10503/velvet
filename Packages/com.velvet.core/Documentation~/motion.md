@@ -92,7 +92,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   `V.AnimatePresence` are that presence's, as in Framer without `propagate`. `initial: false`
   suppresses the mount enter of every Motion that mounts under a child the presence's first render
   created, a `V.Portal`'s and a later render's included, for as long as that child stays, as Framer's
-  `PresenceChild` keeps the `initial` it was created with.
+  `PresenceChild` keeps the `initial` it was created with; an inner presence's children answer to that
+  presence.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
   Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A

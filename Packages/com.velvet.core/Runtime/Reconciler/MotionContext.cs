@@ -23,8 +23,8 @@ namespace Velvet
 
         // Whether the presence child being emitted withholds mount enters (GeneralPathReconciler.LiveEntrySite).
         // Pushed around each presence-child emission, so an inner presence answers for its own children, and
-        // carried by the snapshots a portal or a virtual list mounts under. Null outside every emission, where
-        // ComponentFiber.BlocksInitialEnters answers instead.
+        // carried by the snapshots a portal or a virtual list mounts under. Where neither pushed it, it is null
+        // and ComponentFiber.BlocksInitialEnters answers instead.
         public static readonly ComponentContext<bool?> EntersBlocked = ComponentContext<bool?>.Create(null);
 
         // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
