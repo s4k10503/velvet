@@ -43,9 +43,6 @@ namespace Velvet
     // element's own frame — so text that fits the parent but wraps inside either still balances. A nowrap element reaches the same verdict through the same
     // comparison, since MeasureTextSize honors the element's own resolved white-space.
     //
-    // Prerequisite: Velvet's Label ships no base white-space rule, so its engine default is nowrap and
-    // `text-balance` alone is a silent no-op — it needs `text-wrap` / `whitespace-normal` alongside.
-    //
     // Re-derives on attach, on its own and its PARENT's GeometryChangedEvent, and on ChangeEvent<string>
     // (a text swap that keeps the same box size raises no geometry event). The parent subscription is what
     // catches an ancestor WIDENING: the written width pins the target's own rect, so nothing fires on the

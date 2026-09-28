@@ -35,12 +35,18 @@ light), and the three facets coexist on one element.
 For each element with a font class, `StyleFontResolver` computes one `(family, weight, italic)`
 intent and asks `VelvetFonts.Resolve`:
 
-1. **Family asset found** (a weight-specific Font Asset is registered) → assign it via
-   `-unity-font-definition`. Only the part the asset can't satisfy is emulated through
-   `-unity-font-style` (e.g. faux bold when you asked for `font-black` but only a regular asset
-   is registered, or faux italic when no italic asset exists).
-2. **No family / no asset** → fall back to the binary threshold: weight `>= 600` renders bold,
-   below renders normal, combined with italic. This matches the USS fallback classes in
+1. **Family asset found** → assign it via `-unity-font-definition`. The entry is chosen the way
+   CSS's font matching chooses a face: by style first, so an italic request takes an entry that
+   carries an italic face (and an upright request one that carries an upright face) at any weight
+   before the requested weight in the other style; then by weight, in CSS's search order — an exact
+   weight; for a request from 400 to 500, the lightest weight from the request up to 500, then the
+   heaviest below the request, then the lightest above 500; under 400, the heaviest at or below the
+   request, then the lightest above; over 500, the lightest at or above the request, then the
+   heaviest below. Only the part the asset can't satisfy is synthesized through
+   `-unity-font-style`: bold for a request of 600 or more on a face under 600, and italic when no
+   italic face is available.
+2. **No family / no asset** → the same synthesis over the default face: weight `>= 600` renders
+   bold, below renders normal, combined with italic. This matches the USS fallback classes in
    `_typography.uss`, so output is sensible before any font is registered.
 
 Inline style wins over the USS classes, so the resolver is the authoritative font layer.
@@ -75,7 +81,8 @@ VelvetFonts.Register(families, defaultFamily: "sans");
 ```
 
 With the `Bold` entry registered, `font-bold` renders a **true** bold asset rather than faux bold;
-`font-medium` with no `Medium` entry picks the closest registered weight.
+`font-medium` with no `Medium` entry picks the registered weight CSS's search order reaches first
+(see [How resolution works](#how-resolution-works)).
 
 ## Multilingual / CJK fallback
 
@@ -106,7 +113,7 @@ them.
 `text-xs`…`text-9xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
-`text-wrap` / `text-nowrap` / `text-balance` / `truncate` / `text-ellipsis` / `text-clip`
+`text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
 (`text-overflow: ellipsis | clip`) / text color / `uppercase` `lowercase` `capitalize` `normal-case`
 (text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
@@ -169,9 +176,11 @@ metric.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
-as `<line-height=1.625em>…</line-height>`; `leading-[Npx]` emits an absolute `<line-height=Npx>` —
-only the `px` unit is accepted inside the bracket for now, and any other unit (or a malformed value)
-is silently ignored.
+as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
+unitless number, an `em` length and a percentage are all relative to the font size and emit an em tag
+(`leading-[1.5]`, `leading-[1.5em]` and `leading-[150%]` each emit `<line-height=1.5em>`), while `px`
+and `rem` (1rem = 16px, as `w-[…]` takes it) emit an absolute `<line-height=Npx>`. A negative
+value, any other unit, or a malformed value is ignored.
 
 `leading-*`'s em form is resolved by the **text engine itself** against whichever font size is
 actually in effect at that point in the string, so it composes correctly with any `text-*` size, or
@@ -224,18 +233,16 @@ Two deviations from CSS:
   (`max-w-[50%]`) it oscillates — the bound decays until the box is released, the release
   re-widens the parent, and the next pass starts over. Give such a parent a definite width.
 
-**Prerequisite — needs a wrapping white-space too:** Velvet's `Label` ships with no bundled base
-white-space rule, so its engine default is `nowrap`. `text-balance` alone is therefore a **silent
-no-op** on a default `Label` — pair it with `text-wrap` / `whitespace-normal` (or another wrapping
-white-space) for it to have any effect.
+**Wrapping:** like CSS's `text-wrap: balance`, whose shorthand sets the wrap mode to `wrap`,
+`text-balance` alone makes the text wrap (`white-space: normal`). A `whitespace-*` class on the same
+element keeps its own value instead, so `whitespace-pre-wrap text-balance` still preserves spaces.
 
 **Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
 so a width is written only when the text wraps at the width the text actually gets — the
 ceiling-clamped available width less the element's own horizontal padding and border. Otherwise —
 empty text included — the slot goes back to the element's own cascade, dropping a previously
-balanced width and restoring a co-present `w-*` value. A `white-space: nowrap` element reaches the
-same verdict through the same comparison, which is why the prerequisite above is silent rather than
-an error.
+balanced width and restoring a co-present `w-*` value. An element a `whitespace-*` class keeps from
+wrapping reaches the same verdict through the same comparison.
 
 **Staleness:** the manipulator re-derives on attach; on its own `GeometryChangedEvent`; on a
 listener on the PARENT's `GeometryChangedEvent` (needed because the manipulator's own `width` write
@@ -245,6 +252,9 @@ available width is read from, closes that gap); and on the `ChangeEvent<string>`
 whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the same
 wrapped box size, and therefore raises no geometry event, from going stale).
 
+**`text-pretty`** makes the text wrap the same way `text-balance` does, and its line breaks are the
+engine's own: where a browser may also move a break to avoid a very short last line, Velvet does not.
+
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 
 | Tailwind | Why omitted |
@@ -252,7 +262,6 @@ wrapped box size, and therefore raises no geometry event, from going stale).
 | `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
 | `font-stretch-*` | No variable-font / width-axis support |
 | `tabular-nums` etc. (font-variant-numeric) | No OpenType feature-substitution slot in the runtime font pipeline |
-| `text-pretty` | Also a browser line-breaking heuristic, and a distinct one from `balance` (avoids orphans without redistributing every line) — not aliased to `text-balance` since the two have different goals; unsupported for now |
 
 None of the font-smoothing / font-stretch / font-variant-numeric rows above are reproducible at
 runtime by any class or `refCallback` — there is no engine hook to flip. Where the *look* matters

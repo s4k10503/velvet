@@ -17,8 +17,9 @@ namespace Velvet.Tests
     /// <c>italic</c>/<c>not-italic</c>/<c>bold-italic</c> set the italic axis. Later classes of the same
     /// facet win, and the three facets coexist so <c>font-bold italic</c> composes.</item>
     /// <item>With no registered family a request folds to the binary <c>-unity-font-style</c> threshold
-    /// (weight ≥ 600 → bold); with a family it selects the closest registered weight and reports the
-    /// faux bold/italic the chosen asset cannot satisfy.</item>
+    /// (weight ≥ 600 → bold); with a family it selects the weight CSS's font matching selects, among the
+    /// faces of the requested style first, and reports the faux bold/italic the chosen asset cannot
+    /// satisfy.</item>
     /// <item>Mutating the registry raises <see cref="VelvetFonts.FontsChanged"/>.</item>
     /// </list>
     /// </summary>
@@ -309,6 +310,175 @@ namespace Velvet.Tests
             {
                 Object.DestroyImmediate(asset);
             }
+        }
+
+        // Each available set puts the weight CSS selects on the other side of the request from the nearest
+        // weight, or from the heavier of two equally near ones.
+        [TestCase(500, new[] { 400, 600 }, 400, TestName = "Given_A500RequestBetween400And600_When_Matched_Then_TheLighterIsSelected")]
+        [TestCase(400, new[] { 350, 500 }, 500, TestName = "Given_A400RequestNearerALighterFace_When_Matched_Then_TheHeavierUpTo500IsSelected")]
+        [TestCase(480, new[] { 440, 510 }, 440, TestName = "Given_A480RequestNearerAFacePast500_When_Matched_Then_TheLighterIsSelected")]
+        [TestCase(300, new[] { 250, 320 }, 250, TestName = "Given_A300RequestNearerAHeavierFace_When_Matched_Then_TheLighterIsSelected")]
+        [TestCase(600, new[] { 400, 900 }, 900, TestName = "Given_A600RequestNearerALighterFace_When_Matched_Then_TheHeavierIsSelected")]
+        public void Given_AFamilyWithoutTheRequestedWeight_When_Matched_Then_CssSearchOrderDecides(
+            int requested, int[] available, int expected)
+        {
+            // Arrange
+            var family = FamilyWithWeights(available);
+
+            // Act
+            var entry = family.FindClosestWeight((VelvetFontWeight)requested);
+
+            // Assert
+            Assert.That((int)entry.weight, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): here the weight CSS selects is also the nearest one, which the
+        // base already returned; these pin the order within each pass and the exact match.
+        [TestCase(300, new[] { 100, 200 }, 200, TestName = "Given_A300RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
+        [TestCase(600, new[] { 700, 900 }, 700, TestName = "Given_A600RequestWithOnlyHeavierFaces_When_Matched_Then_TheLightestIsSelected")]
+        [TestCase(450, new[] { 300, 420 }, 420, TestName = "Given_A450RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
+        [TestCase(450, new[] { 600, 700 }, 600, TestName = "Given_A450RequestWithOnlyFacesPast500_When_Matched_Then_TheLightestIsSelected")]
+        [TestCase(400, new[] { 450, 500 }, 450, TestName = "Given_A400RequestWithFacesUpTo500_When_Matched_Then_TheLightestIsSelected")]
+        [TestCase(300, new[] { 500, 700 }, 500, TestName = "Given_A300RequestWithOnlyHeavierFaces_When_Matched_Then_TheLightestIsSelected")]
+        [TestCase(700, new[] { 300, 500 }, 500, TestName = "Given_A700RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
+        [TestCase(400, new[] { 300, 400, 500 }, 400, TestName = "Given_A400RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
+        [TestCase(300, new[] { 200, 300, 400 }, 300, TestName = "Given_A300RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
+        [TestCase(700, new[] { 600, 700, 800 }, 700, TestName = "Given_A700RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
+        public void Given_AFamily_When_Matched_Then_CssSearchOrderAgreesWithTheNearestWeight(
+            int requested, int[] available, int expected)
+        {
+            // Arrange
+            var family = FamilyWithWeights(available);
+
+            // Act
+            var entry = family.FindClosestWeight((VelvetFontWeight)requested);
+
+            // Assert
+            Assert.That((int)entry.weight, Is.EqualTo(expected));
+        }
+
+        private static VelvetFontFamily FamilyWithWeights(int[] weights)
+        {
+            var entries = new VelvetFontWeightEntry[weights.Length];
+            for (var i = 0; i < weights.Length; i++)
+            {
+                entries[i] = new VelvetFontWeightEntry { weight = (VelvetFontWeight)weights[i] };
+            }
+            return new VelvetFontFamily("sans", entries);
+        }
+
+        [Test]
+        public void Given_AnItalicFaceOnlyAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — CSS narrows by font-style before weight, so the regular italic beats the bold upright.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: true);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnUprightFaceOnlyAtAHeavierWeight_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange — the upright sibling of the italic narrowing: the regular slot holds only an italic.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == boldUpright, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnItalicFaceOnlyByAddressAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — an Addressables key is a face too. The cache is seeded so nothing is loaded.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                SeedAddressCache("Fonts/RegularItalic", regularItalic);
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italicAddress = "Fonts/RegularItalic" },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: true);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnUprightFaceOnlyByAddressAtAHeavierWeight_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                SeedAddressCache("Fonts/BoldUpright", boldUpright);
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, uprightAddress = "Fonts/BoldUpright" }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == boldUpright, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        private static void SeedAddressCache(string key, FontAsset asset)
+        {
+            var field = typeof(VelvetFonts).GetField("_addrCache",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var cache = (Dictionary<string, FontAsset>)field.GetValue(null);
+            cache[key] = asset;
         }
 
         #endregion

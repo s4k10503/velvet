@@ -710,6 +710,39 @@ namespace Velvet.Tests
             Assert.That(leaf.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.PreWrap));
         }
 
+        // Under a nowrap parent, so a label that only inherits cannot pass.
+        [TestCase("text-balance", TestName = "Given_TextBalanceAloneUnderANowrapParent_When_Resolved_Then_TheLabelWraps")]
+        [TestCase("text-pretty", TestName = "Given_TextPrettyAloneUnderANowrapParent_When_Resolved_Then_TheLabelWraps")]
+        public void Given_ATextWrapStyleClassAlone_When_Resolved_Then_TheLabelWraps(string cls)
+        {
+            // Arrange / Act
+            var leaf = MountLabelUnderParentAndResolve("whitespace-nowrap", cls);
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.Normal));
+        }
+
+        // GREEN_ON_BASE(characterization): the base has no text-balance rule, so pre-wrap already holds.
+        // Declare `.text-balance` below the whitespace-* rules and this is what reddens.
+        [Test]
+        public void Given_TextBalanceBesideWhitespacePreWrap_When_Resolved_Then_PreWrapHolds()
+        {
+            // Arrange / Act
+            var leaf = MountLabelUnderParentAndResolve("", "whitespace-pre-wrap text-balance");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.PreWrap));
+        }
+
+        private Label MountLabelUnderParentAndResolve(string parentClassName, string labelClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: parentClassName, V.Label(name: "leaf", className: labelClassName, text: "x")));
+            var leaf = _window.rootVisualElement.Q<Label>("leaf");
+            ForcePanelUpdate(leaf.panel);
+            return leaf;
+        }
+
         [Test]
         public void Given_BareFlexClass_When_StylesResolved_Then_FlexDirectionIsRow()
         {

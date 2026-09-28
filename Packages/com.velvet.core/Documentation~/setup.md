@@ -21,7 +21,7 @@ of declaring it as a rule:
 `ring-*` `shadow-*` `bg-gradient-to-*` — painted.
 `blur-*` `brightness-*` `saturate-*` `contrast-*` `grayscale` `invert` `sepia` `hue-rotate-*`
 `drop-shadow-*` — the filter set.
-`animate-*` `text-balance` `outline-*`.
+`animate-*` `outline-*`.
 
 <!-- sheet-independent:end -->
 

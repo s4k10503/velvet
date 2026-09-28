@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -45,8 +46,8 @@ namespace Velvet
     }
 
     // Which unit a resolved Leading value carries: Em multiplies whatever font-size is in effect at the
-    // point the rich-text tag is generated (every named leading-* preset); Pixel is an absolute length
-    // (leading-[Npx]). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind, this axis has
+    // point the rich-text tag is generated (every named leading-* preset, and a bracket value that is
+    // unitless, em or a percentage); Pixel is an absolute length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind, this axis has
     // deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
     // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
     // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
@@ -224,9 +225,9 @@ namespace Velvet
                 facets.Leading = new LeadingValue(LeadingUnit.Em, em);
                 return true;
             }
-            if (TryParseLeadingBracket(cls, out var px))
+            if (TryParseLeadingBracket(cls, out var bracketLeading))
             {
-                facets.Leading = new LeadingValue(LeadingUnit.Pixel, px);
+                facets.Leading = bracketLeading;
                 return true;
             }
             return false;
@@ -264,31 +265,56 @@ namespace Velvet
             return core.StartsWith("leading-[", StringComparison.Ordinal);
         }
 
-        // Parses leading-[Npx]. Only the px unit is accepted inside the bracket for v1 — an explicit "px"
-        // suffix is REQUIRED (a bare unitless number, or any other unit such as em/%/rem, is rejected)
-        // because the feature is deliberately scoped down to px for its first iteration; widening to other
-        // units is left for later. A malformed or unsupported-unit value returns false and Leading is simply
-        // left unset for this token — silently, no Debug.LogWarning — mirroring
-        // StyleArbitraryValueResolver.TryParse's own established convention for a bracket value that fails to
-        // parse (e.g. w-[abc]): there, an unparsed token falls back to the USS class list, where it matches
-        // no selector and is inert; here, IsArbitraryLeadingClass's unconditional prefix check keeps it out
-        // of the class list too, so the result is the same inertness by a different, axis-appropriate route.
-        private static bool TryParseLeadingBracket(string cls, out float px)
+        // Parses leading-[<value>] with CSS line-height's grammar: a unitless number or an em length
+        // multiplies the element's font size, and a percentage is a percentage of it, so all three become
+        // an em tag; px and rem are absolute lengths, rem at the fixed 16px the other bracket utilities use
+        // (StyleArbitraryValueResolver.TryParseValue). A negative value, any other unit or a malformed value
+        // leaves Leading unset — silently, the way an unparsed w-[abc] is inert; IsArbitraryLeadingClass
+        // keeps the token out of the class list either way.
+        private static bool TryParseLeadingBracket(string cls, out LeadingValue leading)
         {
-            px = 0f;
+            leading = default;
             const string prefix = "leading-[";
             if (!cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
             {
                 return false;
             }
-            var inner = cls.Substring(prefix.Length, cls.Length - prefix.Length - 1);
-            if (!inner.EndsWith("px", StringComparison.Ordinal))
+            var inner = cls.AsSpan(prefix.Length, cls.Length - prefix.Length - 1);
+            if (!TryParseLineHeight(inner, out var amount, out var unit))
             {
                 return false;
             }
-            var numeric = inner.Substring(0, inner.Length - 2);
-            return float.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out px)
-                && !float.IsNaN(px) && !float.IsInfinity(px) && px >= 0f;
+            if (amount < 0f)
+            {
+                return false;
+            }
+            leading = new LeadingValue(unit, amount);
+            return true;
+        }
+
+        private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)
+        {
+            unit = LeadingUnit.Em;
+            if (StyleArbitraryValueResolver.TryParseFloat(value, out amount))
+            {
+                return true;
+            }
+            if (value.EndsWith("em".AsSpan(), StringComparison.Ordinal)
+                && !value.EndsWith("rem".AsSpan(), StringComparison.Ordinal))
+            {
+                return StyleArbitraryValueResolver.TryParseFloat(value.Slice(0, value.Length - 2), out amount);
+            }
+            if (!StyleArbitraryValueResolver.TryParseValue(value, out amount, out var lengthUnit))
+            {
+                return false;
+            }
+            if (lengthUnit == LengthUnit.Percent)
+            {
+                amount /= 100f;
+                return true;
+            }
+            unit = LeadingUnit.Pixel;
+            return true;
         }
 
         // Applies a resolved whitespace-pre-line collapse, then transform, then decoration, then leading to a
@@ -352,9 +378,8 @@ namespace Velvet
         }
 
         // Wraps text in the <line-height=X> rich-text tag both the standard and Advanced Text Generators
-        // implement (px / em / % forms; only em — the named presets — and px — the bracket form — are ever
-        // produced here). InvariantCulture on the number is required, not cosmetic: this is the first spot in
-        // this file that stringifies a float into markup the ENGINE itself re-parses, and a comma decimal
+        // implement (px / em / % forms; only em and px are ever produced here). InvariantCulture on the
+        // number is required, not cosmetic: this is the first spot in this file that stringifies a float into markup the ENGINE itself re-parses, and a comma decimal
         // separator (e.g. "1,625em" under a comma-decimal thread culture) does not match the tag's numeric
         // grammar, so the tag would silently fail to apply — a new bug class for this axis, since
         // Transform/Decoration never stringify a number at all.

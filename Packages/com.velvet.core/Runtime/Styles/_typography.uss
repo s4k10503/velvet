@@ -71,6 +71,13 @@
 .text-top-center { -unity-text-align: upper-center; }
 .text-top-left { -unity-text-align: upper-left; }
 
+/* text-balance / text-pretty (Tailwind: text-wrap: balance | pretty). The text-wrap shorthand resets
+   text-wrap-mode to wrap, so either class alone makes the text wrap. Declared above the whitespace-*
+   rules so a co-present whitespace-* class keeps its own wrapping and collapsing. Where the lines break
+   is C#'s part for text-balance (StyleTextBalanceManipulator); text-pretty keeps the engine's breaks. */
+.text-balance { white-space: normal; }
+.text-pretty { white-space: normal; }
+
 /* White Space. UnityEngine.UIElements.WhiteSpace has four members — normal / nowrap / pre / pre-wrap —
    all reachable directly from USS. whitespace-pre-line has no rule here: CSS pre-line (collapse
    space/tab runs, keep newlines) has no matching enum member, so it is realised in C# instead — a
@@ -80,12 +87,7 @@
 .whitespace-pre { white-space: pre; }
 .whitespace-pre-wrap { white-space: pre-wrap; }
 
-/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). text-balance / text-pretty are browser
-   line-breaking HEURISTICS (best-fit paragraph shaping), not a white-space value, so there is no rule
-   for either here. text-pretty has no UI Toolkit hook and is intentionally omitted. text-balance DOES
-   have a class-facing effect, but not through USS: StyleTextBalanceManipulator approximates it in C# by
-   binary-searching TextElement.MeasureTextSize for the narrowest inline width that keeps the same
-   line count — see StyleTextBalanceManipulator.cs and Documentation~/fonts.md. */
+/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). */
 .text-wrap { white-space: normal; }
 .text-nowrap { white-space: nowrap; }
 

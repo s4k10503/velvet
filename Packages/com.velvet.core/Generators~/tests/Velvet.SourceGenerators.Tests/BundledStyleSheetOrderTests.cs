@@ -69,7 +69,9 @@ namespace Velvet.SourceGenerators.Tests
                 narrow: name => name.StartsWith("overflow-", StringComparison.Ordinal)
                     || name.StartsWith("whitespace-", StringComparison.Ordinal)
                     || name == "text-wrap"
-                    || name == "text-nowrap"),
+                    || name == "text-nowrap"
+                    || name == "text-balance"
+                    || name == "text-pretty"),
 
             // transition-none sits between transition-all and the property-specific utilities, so it precedes
             // only these four of the six that contain it. Moving it ahead of transition-all to match the
