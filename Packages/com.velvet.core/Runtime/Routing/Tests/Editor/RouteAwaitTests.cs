@@ -99,6 +99,40 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Arguments
+
+        [Test]
+        public void Given_ANullDeferred_When_AwaitingWithARenderFunction_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => V.Await<string>(null!, value => V.Label(text: value)));
+        }
+
+        [Test]
+        public void Given_ANullRenderFunction_When_Awaiting_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() =>
+                V.Await(new Deferred<string>(VelvetTask.FromResult("ready")), (Func<string, VNode?>)null!));
+        }
+
+        [Test]
+        public void Given_ANullDeferred_When_AwaitingWithElementChildren_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => V.Await<string>(null!, V.Label(text: "child")));
+        }
+
+        [Test]
+        public void Given_NullElementChildren_When_Awaiting_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() =>
+                V.Await(new Deferred<string>(VelvetTask.FromResult("ready")), (VNode)null!));
+        }
+
+        #endregion
+
         #region Resolving
 
         [Test]

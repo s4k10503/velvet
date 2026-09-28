@@ -9,6 +9,8 @@ namespace Velvet
         // In registration order: the last one is the Blocker a navigation consults.
         private readonly List<BlockerEntry> _blockers = new();
 
+        // MUTANT_SURVIVES(equivalent, boundary): with it always true, Check answers false over an empty list.
+        // What this spares a router with no Blocker is the argument Router.Consult builds, not a decision.
         internal bool HasBlockers => _blockers.Count > 0;
 
         #region Register
@@ -81,6 +83,8 @@ namespace Velvet
         // change's announcement does not break the walk.
         private void ReturnToIdle(bool proceedingOnly)
         {
+            // MUTANT_SURVIVES(equivalent, arithmetic): a walk started past the end meets the bound check below.
+            // It skips the indices past the end and reaches the same entries.
             for (var i = _blockers.Count - 1; i >= 0; i--)
             {
                 if (i >= _blockers.Count)

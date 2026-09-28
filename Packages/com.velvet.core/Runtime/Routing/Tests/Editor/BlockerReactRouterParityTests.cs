@@ -255,6 +255,44 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABlockHeldByABlockerNoLongerRegisteredLast_When_ANavigationCommits_Then_ItReturnsToIdle()
+        {
+            // Arrange — the first Blocker blocks while it is the last registered; the one registered after it
+            // lets the next navigation through.
+            var router = BuildRouter("/home", Route("home"), Route("a"), Route("b"));
+            var first = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, first);
+            router.NavigateSync("/a");
+            router.RouteBlockerManager.Register(_ => false, new RouteBlockerState());
+
+            // Act
+            var result = router.NavigateSync("/b");
+
+            // Assert
+            Assert.That((result, first.Status), Is.EqualTo((NavigationResult.Success, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_AReleasedNavigationTheNextBlockerBlocks_When_ItEnds_Then_OnlyTheReleasingBlockerReturnsToIdle()
+        {
+            // Arrange — the first Blocker holds the navigation, and a second registered after it is the one
+            // the released navigation is put to.
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var releasing = new RouteBlockerState();
+            var holding = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, releasing);
+            router.NavigateSync("/other");
+            router.RouteBlockerManager.Register(_ => true, holding);
+
+            // Act
+            releasing.Proceed();
+
+            // Assert
+            Assert.That((releasing.Status, holding.Status),
+                Is.EqualTo((RouteBlockerStatus.Idle, RouteBlockerStatus.Blocked)));
+        }
+
+        [Test]
         public void Given_ABlockedBlocker_When_ItsRegistrationIsDisposed_Then_ItReturnsToIdle()
         {
             // Arrange

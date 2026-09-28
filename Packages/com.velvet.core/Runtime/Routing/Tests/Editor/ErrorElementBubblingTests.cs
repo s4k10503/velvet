@@ -525,6 +525,22 @@ namespace Velvet.Tests
             Assert.That(HasLabel(_root, "child-boom"), Is.True);
         }
 
+        [Test]
+        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_TheDefaultErrorElementShowsTheStackTrace()
+        {
+            // Arrange — the loader that throws is this fixture's, so its frame names the fixture.
+            var router = BuildNoBoundaryRouter();
+            LogAssert.Expect(LogType.Exception, new Regex("child-boom"));
+
+            // Act
+            using var mounted = MountWithRouter(router);
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            var labels = _root.Query<Label>().ToList();
+            Assert.That(labels.Exists(label => label.text.Contains(nameof(ErrorElementBubblingTests))), Is.True);
+        }
+
         private Router BuildNoBoundaryRouter()
         {
             var routes = V.Routes(

@@ -1096,6 +1096,27 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(NavigationResult.Cancelled));
         });
 
+        // GREEN_ON_BASE(refactor): the base unwinds a cancelled cache hit the same way before its loaders.
+        // The branch moves that check out of the blocker phase, which it removes from there.
+        [UnityTest]
+        public IEnumerator Given_CancelledToken_When_GoBackHitsCachedEntry_Then_NothingIsLeftInFlight()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var router = new Router(_routes);
+            await router.NavigateAsync("/home");
+            await router.NavigateAsync("/about");
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Act
+            var result = await router.GoBack(cts.Token);
+
+            // Assert
+            Assert.That($"result={result} status={router.Status} pending={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("result=Cancelled status=Idle pending=none"));
+        });
+
         [UnityTest]
         public IEnumerator Given_CancelledToken_When_GoBackHitsCachedEntry_Then_DoesNotCommitLocation()
             => VelvetTask.ToCoroutine(async () =>

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet;
 using Velvet.TestUtilities;
@@ -182,6 +183,74 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((blocked, state.Status), Is.EqualTo((true, RouteBlockerStatus.Blocked)));
+        }
+
+        [Test]
+        public void Given_ANullPredicate_When_Registered_Then_ThrowsArgumentNullException()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => manager.Register(null, new RouteBlockerState()));
+        }
+
+        [Test]
+        public void Given_ANullState_When_Registered_Then_ThrowsArgumentNullException()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => manager.Register(_ => true, null));
+        }
+
+        [Test]
+        public void Given_OneBlocker_When_Check_Then_NothingIsLogged()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            manager.Register(_ => false, new RouteBlockerState());
+
+            // Act
+            manager.Check(Attempt(), NoResume);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_ARegistrationDisposedWhileTheBlockersStartOver_When_ResetAll_Then_TheWalkCompletes()
+        {
+            // Arrange — both Blockers hold a block, each blocking while it was the last registered, and the
+            // later one's state change disposes both registrations before the walk reaches the earlier one.
+            var manager = new RouteBlockerManager();
+            var earlier = new RouteBlockerState();
+            var later = new RouteBlockerState();
+            var earlierRegistration = manager.Register(_ => true, earlier);
+            manager.Check(Attempt(), NoResume);
+            var laterRegistration = manager.Register(_ => true, later);
+            manager.Check(Attempt(), NoResume);
+            later.Changed = () =>
+            {
+                earlierRegistration.Dispose();
+                laterRegistration.Dispose();
+            };
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                manager.ResetAll();
+            }
+            catch (Exception exception)
+            {
+                caught = exception;
+            }
+
+            // Assert
+            Assert.That((caught?.GetType().Name ?? "none", earlier.Status, later.Status),
+                Is.EqualTo(("none", RouteBlockerStatus.Idle, RouteBlockerStatus.Idle)));
         }
 
         #endregion
@@ -607,6 +676,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_blockerObservedDep, Is.EqualTo("settled"));
+        }
+
+        #endregion
+
+        #region UseBlocker under a router that changes
+
+        private static StateUpdater<Router> s_setProvidedRouter;
+        private static Router s_initialRouter;
+
+        [Component]
+        private static VNode RouterSwitchingHost()
+        {
+            var (router, setRouter) = Hooks.UseState(s_initialRouter);
+            s_setProvidedRouter = setRouter;
+            return V.Provider(RouterContext.Router, router,
+                new VNode[] { V.Component(StableDepsBlockerRender, key: "form") });
+        }
+
+        [Component]
+        private static VNode StableDepsBlockerRender()
+        {
+            Hooks.UseBlocker(_ => true, "stable");
+            return V.Label(text: "form");
+        }
+
+        [Test]
+        public void Given_AUseBlockerWithStableDeps_When_TheRouterAboveItChanges_Then_ItBlocksTheNewRouterAndReleasesTheOld()
+        {
+            // Arrange
+            var first = BuildRouter("/home", Route("home"), Route("other"));
+            var second = BuildRouter("/home", Route("home"), Route("other"));
+            s_initialRouter = first;
+            s_setProvidedRouter = default;
+            using var mounted = V.Mount(new VisualElement(), V.Component(RouterSwitchingHost, key: "host"));
+
+            // Act
+            s_setProvidedRouter.Invoke(second);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((first.NavigateSync("/other"), second.NavigateSync("/other")),
+                Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)));
         }
 
         #endregion
