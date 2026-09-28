@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Experimental = UnityEngine.UIElements.Experimental;
+using UitkEasing = UnityEngine.UIElements.Experimental.Easing;
 
 namespace Velvet
 {
@@ -14,28 +14,28 @@ namespace Velvet
         private static readonly Func<float, float>[] s_curves =
         {
             t => t * (1.8f + t * (-0.6f + t * -0.2f)),
-            Experimental.Easing.InQuad,
-            Experimental.Easing.OutQuad,
-            Experimental.Easing.InOutQuad,
-            Experimental.Easing.Linear,
-            Experimental.Easing.InSine,
-            Experimental.Easing.OutSine,
-            Experimental.Easing.InOutSine,
-            Experimental.Easing.InCubic,
-            Experimental.Easing.OutCubic,
-            Experimental.Easing.InOutCubic,
-            Experimental.Easing.InCirc,
-            Experimental.Easing.OutCirc,
-            Experimental.Easing.InOutCirc,
-            Experimental.Easing.InElastic,
-            Experimental.Easing.OutElastic,
-            Experimental.Easing.InOutElastic,
-            Experimental.Easing.InBack,
-            Experimental.Easing.OutBack,
-            Experimental.Easing.InOutBack,
-            Experimental.Easing.InBounce,
-            Experimental.Easing.OutBounce,
-            Experimental.Easing.InOutBounce,
+            UitkEasing.InQuad,
+            UitkEasing.OutQuad,
+            UitkEasing.InOutQuad,
+            UitkEasing.Linear,
+            UitkEasing.InSine,
+            UitkEasing.OutSine,
+            UitkEasing.InOutSine,
+            UitkEasing.InCubic,
+            UitkEasing.OutCubic,
+            UitkEasing.InOutCubic,
+            UitkEasing.InCirc,
+            UitkEasing.OutCirc,
+            UitkEasing.InOutCirc,
+            UitkEasing.InElastic,
+            UitkEasing.OutElastic,
+            UitkEasing.InOutElastic,
+            UitkEasing.InBack,
+            UitkEasing.OutBack,
+            UitkEasing.InOutBack,
+            UitkEasing.InBounce,
+            UitkEasing.OutBounce,
+            UitkEasing.InOutBounce,
         };
 
         public static float Evaluate(EasingMode mode, float t)
