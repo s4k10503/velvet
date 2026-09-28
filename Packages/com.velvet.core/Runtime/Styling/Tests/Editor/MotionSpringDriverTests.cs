@@ -453,6 +453,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARectWhoseHeightChangesByExactlyThePixelTolerance_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange
+            var oldRect = new Rect(0f, 0f, 64f, 64f + MotionLayoutIdDriver.PixelTolerance);
+            var newRect = new Rect(0f, 0f, 64f, 64f);
+
+            // Act
+            var delta = MotionLayoutIdDriver.ComputeDelta(oldRect, newRect, Vector2.zero);
+
+            // Assert
+            Assert.That(delta.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_ANewRectAHundredthOfAPixelWide_When_DeltaComputed_Then_ItsWidthIsNotScaled()
+        {
+            // Arrange
+            var oldRect = new Rect(0f, 0f, 1f, 64f);
+            var newRect = new Rect(0f, 0f, 0.01f, 64f);
+
+            // Act
+            var delta = MotionLayoutIdDriver.ComputeDelta(oldRect, newRect, Vector2.zero);
+
+            // Assert
+            Assert.That(delta.Scale.x, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_ANewRectAHundredthOfAPixelTall_When_DeltaComputed_Then_ItsHeightIsNotScaled()
+        {
+            // Arrange
+            var oldRect = new Rect(0f, 0f, 64f, 1f);
+            var newRect = new Rect(0f, 0f, 64f, 0.01f);
+
+            // Act
+            var delta = MotionLayoutIdDriver.ComputeDelta(oldRect, newRect, Vector2.zero);
+
+            // Assert
+            Assert.That(delta.Scale.y, Is.EqualTo(1f));
+        }
+
+        [Test]
         public void Given_ARectMovedWithoutResizing_When_DeltaComputed_Then_OnlyTheTranslateIsSet()
         {
             // Arrange — moved from (10,20) to (110,220), same 100x50 size.

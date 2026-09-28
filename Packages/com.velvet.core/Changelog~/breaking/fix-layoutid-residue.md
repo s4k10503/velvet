@@ -1,7 +1,7 @@
 ### Changed
 
 - A `layoutId` move takes the curve its transition's `Type` names, as a variant swap does: a tween by
-  `DurationSec` / `Easing`, a bezier by its control points, a spring by its knobs, each after
+  `DurationSec` / `Easing`, eased as a USS transition is, a bezier by its control points, a spring by its knobs, each after
   `DelaySec`, and a zero duration such as `StyleTransitionConfig.None` lands it at once. It always
   sprang on the transition's `Stiffness` / `Damping` / `Mass`, so a Motion whose transition is a tween
   for its variants — `StyleTransitionConfig`'s default `Type` — sprang on the default knobs. Set a

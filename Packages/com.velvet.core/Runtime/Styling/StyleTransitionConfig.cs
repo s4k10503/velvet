@@ -234,8 +234,9 @@ namespace Velvet
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, or the spring model.
+                // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
+                Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,

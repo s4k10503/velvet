@@ -620,7 +620,7 @@ namespace Velvet
             // it fires whether or not this patch also changed Variants/Animate.
             if (newNode.LayoutId != null)
             {
-                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.Transition), _ctx);
+                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
             }
         }
 

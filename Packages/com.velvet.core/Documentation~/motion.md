@@ -324,8 +324,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
   unrotated over the same centre, at the drawn lengths of its sides.
 - The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
-  the element's own, its scale multiplies it — and the inline values those slots held before the tween
-  are put back when it ends.
+  the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
+  held before the tween, or whatever something else wrote there while the tween ran, which the tween
+  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
+  its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
@@ -338,10 +340,12 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
   rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
   (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
-  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing`, a bezier by its control points,
-  each after `DelaySec`, and a zero duration lands the move at once. A Motion whose caller names no
-  `transition`, `duration`, `easing` or `delay` moves on Framer's default layout transition, a 0.45 s
-  tween eased by `cubic-bezier(0.4, 0, 0.1, 1)`.
+  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing` on the curve UI Toolkit eases a
+  USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
+  zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
+  `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
+  `cubic-bezier(0.4, 0, 0.1, 1)`. A transition the scheduler rejects lands the move at once, its warning
+  logged where the move settles rather than on every render.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
   the stretch as for any change of size. The scale holds the element's transform origin still (its

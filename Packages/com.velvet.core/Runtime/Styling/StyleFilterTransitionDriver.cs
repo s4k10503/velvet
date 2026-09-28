@@ -624,7 +624,7 @@ namespace Velvet
         // Maps the five easing curves Velvet's .ease-* utilities expose onto their standard CSS cubic-bezier
         // control points and evaluates them; any curve not exposed by a Velvet utility (only reachable via a
         // hand-authored resolvedStyle) falls back to linear.
-        internal static float Ease(EasingMode mode, float t)
+        private static float Ease(EasingMode mode, float t)
         {
             t = Mathf.Clamp01(t);
             return mode switch

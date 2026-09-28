@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEditor.UIElements.TestFramework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -178,24 +179,6 @@ namespace Velvet.Tests
             var replacement = Root.Q<VisualElement>("shared");
             Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword, replacement.style.scale.keyword),
                 Is.EqualTo((false, StyleKeyword.Null, StyleKeyword.Null)));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_NoProjectionRunsOnTheReplacement()
-        {
-            // Arrange
-            s_movedLeft = 200;
-            using var mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
-            Tick();
-
-            // Act
-            s_setMoved.Invoke(true);
-            mounted.FlushStateForTest();
-            Tick();
-
-            // Assert
-            var replacement = Root.Q<VisualElement>("shared");
-            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(replacement), Is.False);
         }
 
         [Test]
@@ -1590,16 +1573,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
-        {
-            // Arrange / Act — the Motion's own transition has no duration; its Layout is a spring.
-            var element = MoveOn(new StyleTransitionConfig { Layout = s_layoutSpring });
-
-            // Assert
-            Assert.That(TranslateX(element), Is.LessThan(-50f));
-        }
-
-        [Test]
         public void Given_ALayoutIdMotionWithAZeroDurationTransition_When_ItMoves_Then_ItLandsAtOnce()
         {
             // Arrange / Act
@@ -1716,6 +1689,414 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TranslateX(element), Is.EqualTo(-200f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenNoTiming_When_TheFadePresetsDurationHasPassed_Then_ItIsStillOnFramersDefaultCurve()
+        {
+            // Arrange
+            var element = MoveOn(null);
+
+            // Act — about 0.24s: past the Fade preset's 0.2s, a little over half of Framer's 0.45s.
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — about 29px short on Framer's curve; the Fade preset has landed, and a spring on
+            // 100/10/1 is within a few pixels of its box.
+            Assert.That(TranslateX(element), Is.LessThan(-15f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionOnAnEaseInCubicTween_When_HalfItsDurationHasPassed_Then_ItHasCoveredAnEighthOfTheWay()
+        {
+            // Arrange
+            var element = MoveOn(new StyleTransitionConfig { DurationSec = 0.32f, Easing = EasingMode.EaseInCubic });
+
+            // Act — ten 16ms frames.
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — an eighth of the 200px covered, give or take a frame; a linear curve would be half way.
+            Assert.That(TranslateX(element), Is.LessThan(-150f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionOnADelayedSpring_When_LessThanTheDelayHasPassed_Then_ItHoldsTheOldBox()
+        {
+            // Arrange
+            var element = MoveOn(new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f, DelaySec = 0.3f,
+            });
+
+            // Act
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(-200f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionOnATweenOneFrameLong_When_OneFrameHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange
+            var element = MoveOn(new StyleTransitionConfig { DurationSec = 0.016f });
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_SomethingElseWritesItsTranslate_Then_TheTweenComposesWithThatValue()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            Tick();
+
+            // Act — a drag, say, writes the slot.
+            element.style.translate = new Translate(1000f, 0f);
+            Tick();
+
+            // Assert — the 1000px plus a tween still within 200px of its box.
+            Assert.That(TranslateX(element), Is.GreaterThan(500f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWhoseTranslateSomethingElseWroteMidTween_When_TheTweenEnds_Then_TheSlotHoldsThatValue()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            Tick();
+            element.style.translate = new Translate(30f, 0f);
+
+            // Act
+            AdvancePast(3f);
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(30f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidResize_When_SomethingElseWritesItsScale_Then_TheTweenComposesWithThatValue()
+        {
+            // Arrange — the box doubles about its corner, so the tween writes only the scale.
+            var element = ResizeBoxWithOrigin("origin-[0%_0%]");
+
+            // Act
+            element.style.scale = new Scale(new Vector3(3f, 3f, 1f));
+            Tick();
+
+            // Assert — three times a tween scale of at least a half.
+            Assert.That(element.style.scale.value.value.x, Is.GreaterThan(1.2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base suspends an element's transitions for its tween whichever slots it writes.
+        // Taking the suspension slot by slot must still take it for a tween that writes the scale alone.
+        [Test]
+        public void Given_ALayoutIdMotionThatTransitionsItsTransform_When_ItResizesAboutItsCorner_Then_ItsTransitionsAreSuspended()
+        {
+            // Arrange / Act — the tween writes only the scale.
+            var element = ResizeBoxWithOrigin("origin-[0%_0%] transition-transform");
+
+            // Assert
+            Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Undefined));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionScaledByAStylesheetClass_When_ItDoublesInPlace_Then_TheTweenStartsAtTheInverseTimesThatScale()
+        {
+            // Arrange — the scale comes from the bundled stylesheet rather than an inline value.
+            VelvetStyleUtilities.AttachTo(Root);
+
+            // Act
+            var element = ResizeBoxWithOrigin("scale-150");
+
+            // Assert
+            Assert.That(element.style.scale.value.value.x, Is.EqualTo(0.75f).Within(0.01f));
+        }
+
+        // Step 1 moves a 200px box 200px right; its own classes translate it by half its width and a quarter
+        // of its height.
+        [Component]
+        private static VNode PercentTranslateBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                    className: $"left-[{step * 200}px] top-[0px] w-[200px] h-[200px] translate-x-1/2 translate-y-1/4"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByAFractionOfItsSize_When_ItMoves_Then_TheTweenAddsToThatFractionInPixels()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PercentTranslateBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — its own 100px and 50px, less the 200px the layout moved.
+            var element = Root.Q<VisualElement>("shared");
+            var translate = element.style.translate.value;
+            Assert.That(new[] { translate.x.value, translate.y.value }, Is.EqualTo(new[] { -100f, 50f }).Within(1f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItMovesAgain_Then_ItsFrameStepsTheNewTweenOncePerFrame()
+        {
+            // Arrange — the first move's frame is already running when the second starts.
+            var element = MoveOn(new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.32f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            });
+            s_setStep.Invoke(2);
+            _moveMount.FlushStateForTest();
+            Tick();
+
+            // Act — ten 16ms frames, half of the second tween.
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — about half of the 400px left; stepped twice a frame it would have landed.
+            Assert.That(TranslateX(element), Is.LessThan(-100f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs every move's tween past its first frame.
+        // Ending projections through a list kept across frames must not end a later one.
+        [Test]
+        public void Given_ALayoutIdMotionWhoseTweenEnded_When_ItMovesAgainAndAFramePasses_Then_ItIsStillTweening()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            AdvancePast(3f);
+            s_setStep.Invoke(2);
+            _moveMount.FlushStateForTest();
+            Tick();
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.LessThan(-50f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops a torn-down element's tween.
+        // Projections kept by element must not follow it into the pool.
+        [Test]
+        public void Given_ALayoutIdMotionRemovedMidTween_When_ThePoolHandsItsElementToAnotherMotion_Then_TheTweenDoesNotWriteToIt()
+        {
+            // Arrange — the first move is tweening when the Motion is removed.
+            using var mounted = V.Mount(Root, V.Component(PooledMotionReuseRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setStep.Invoke(4);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            var reused = Root.Q<VisualElement>("reused");
+            Assert.That((ReferenceEquals(original, reused), reused.style.translate.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItLeavesThePanelWithoutBeingUnmounted_Then_ItsTranslateIsHandedBack()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            Tick();
+
+            // Act
+            element.RemoveFromHierarchy();
+            Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatLeftThePanelMidTween_When_SomethingElseWritesItsTranslate_Then_TheSlotKeepsThatValue()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            Tick();
+            element.RemoveFromHierarchy();
+
+            // Act
+            element.style.translate = new Translate(1000f, 0f);
+            Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(1000f).Within(0.01f));
+        }
+
+        // "a" holds the id at the left; step 1 moves "b" 50px right and gives it that id.
+        [Component]
+        private static VNode TakenIdRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(key: "a", name: "a", layoutId: "card", transition: s_layoutSpring,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+                V.Motion(key: "b", name: "b", layoutId: step == 0 ? null : "card", transition: s_layoutSpring,
+                    className: $"absolute left-[{(step == 0 ? 300 : 350)}px] top-[0px] w-[100px] h-[100px]"),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base tweens a Motion that takes an id from the box its holder stands at.
+        // Reading a Motion's own box again where it settles must not reach a box it read off another.
+        [Test]
+        public void Given_ALiveLayoutIdMotionHoldingAnId_When_AnotherTakesItAndMoves_Then_TheTakerTweensFromTheHoldersBox()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(TakenIdRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — from "a" at 0, 350px back; from its own box it would be 50px back.
+            Assert.That(TranslateX(Root.Q<VisualElement>("b")), Is.LessThan(-200f));
+        }
+
+        private static StateUpdater<int> s_setBump;
+        private static StyleTransitionConfig s_bumpTransition;
+
+        // Stop 1 moves the box 200px right; a bump patches it where it stands.
+        [Component]
+        private static VNode BumpedBoxRender()
+        {
+            var (stop, setStop) = Hooks.UseState(0);
+            var (bump, setBump) = Hooks.UseState(0);
+            s_setStop = setStop;
+            s_setBump = setBump;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_bumpTransition,
+                    className: $"absolute left-[{stop * 200}px] top-[0px] w-[100px] h-[100px] bump-{bump}"),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base's wait holds the box the patch left, where the element stands once its tween ends.
+        // A box read off the tween's drawing must not outlive that tween.
+        [Test]
+        public void Given_ALayoutIdMotionPatchedMidTweenWithoutMoving_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereTheTweenDrewItThen()
+        {
+            // Arrange — patched where it stands a few frames into a move, the move then played out.
+            s_bumpTransition = s_layoutSpring;
+            using var mounted = V.Mount(Root, V.Component(BumpedBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            s_setStop.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+            s_setBump.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            AdvancePast(3f);
+
+            // Act — a layout change no render made.
+            element.style.marginLeft = 50f;
+            Tick();
+
+            // Assert — not from about 200px back, where the tween drew it when it was patched.
+            Assert.That(TranslateX(element), Is.GreaterThan(-100f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base validates nothing a patch hands it.
+        // Validating the layout transition must not come to warn on every render.
+        [Test]
+        public void Given_ALayoutIdMotionOnADurationTheSchedulerRejects_When_ItRerendersWithoutMoving_Then_NothingWarns()
+        {
+            // Arrange
+            var warnings = 0;
+            void Count(string message, string stack, LogType type)
+            {
+                if (message.Contains("Invalid DurationSec")) warnings++;
+            }
+            s_bumpTransition = new StyleTransitionConfig { DurationSec = 11f };
+            using var mounted = V.Mount(Root, V.Component(BumpedBoxRender, key: "root"));
+            Tick();
+            Application.logMessageReceived += Count;
+
+            // Act
+            try
+            {
+                for (var bump = 1; bump <= 2; bump++)
+                {
+                    s_setBump.Invoke(bump);
+                    mounted.FlushStateForTest();
+                    Tick();
+                }
+            }
+            finally
+            {
+                Application.logMessageReceived -= Count;
+            }
+
+            // Assert
+            Assert.That(warnings, Is.Zero);
+        }
+
+        private static VisualElement s_otherRoot;
+
+        private static readonly StyleTransitionConfig s_linearTween = new() { DurationSec = 0.64f, Easing = EasingMode.Linear };
+
+        // Step 1 moves two boxes 200px right: "here" on this panel, and "there" portalled onto s_otherRoot's.
+        [Component]
+        private static VNode TwoPanelBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode Box(string id) => V.Motion(key: id, name: id, layoutId: id, transition: s_linearTween,
+                className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]");
+            return V.Div(children: new VNode[] { Box("here"), V.Portal(s_otherRoot, new[] { Box("there") }, key: "portal") });
+        }
+
+        // GREEN_ON_BASE(characterization): the base steps each tween by a tick of its own on its element's panel.
+        // One frame per panel must step and end only its own panel's projections.
+        [Test]
+        public void Given_LayoutIdMotionsMovingAlikeOnTwoPanels_When_BothPanelsRunTheirFrames_Then_EachMovesAtItsOwnPace()
+        {
+            // Arrange
+            using var other = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            s_otherRoot = other.rootVisualElement;
+            using var mounted = V.Mount(Root, V.Component(TwoPanelBoxRender, key: "root"));
+            Tick();
+            other.FrameUpdateMs(16);
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            for (var i = 0; i < 8; i++)
+            {
+                Tick();
+                other.FrameUpdateMs(16);
+            }
+
+            // Assert — within a frame's travel of each other: stepped by both panels' frames, "there" would be
+            // twice as far on, and ended by this panel's, back at its box.
+            var here = TranslateX(Root.Q<VisualElement>("here"));
+            var there = TranslateX(other.rootVisualElement.Q<VisualElement>("there"));
+            Assert.That(Mathf.Abs(here - there), Is.LessThan(20f));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

@@ -58,7 +58,9 @@ namespace Velvet
             LayoutIdBox? oldBox = null;
             if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous))
             {
-                oldBox = previous.Element != null && TryReadBox(previous.Element, ctx, out var live) ? live : previous.Box;
+                oldBox = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out var live)
+                    ? live
+                    : previous.Box;
             }
 
             ctx.ElementToLayoutId[element] = layoutId;
@@ -68,7 +70,7 @@ namespace Velvet
             CancelPendingSettle(element, ctx);
             if (oldBox is not { } fromBox) return;
 
-            var pending = new LayoutIdPendingSettle(fromBox, element.layout, timing);
+            var pending = new LayoutIdPendingSettle(fromBox, element.layout, timing, ReferenceEquals(previous.Element, element));
             pending.Callback = _ => Settle(element, ctx);
             element.RegisterCallback(pending.Callback);
             ctx.LayoutIdPendingSettles[element] = pending;
@@ -127,17 +129,27 @@ namespace Velvet
             // only an ancestor laid out.
             if (host == null || parent == null || !IsFiniteRect(layout)) return;
 
+            // A box the patch read off this element is read again where that patch left it unless a move of its
+            // own is still drawing it: a patch that moved nothing leaves a wait that a later layout change can
+            // fire after the move that drew the box has ended
+            // (Given_ALayoutIdMotionPatchedMidTweenWithoutMoving_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereTheTweenDrewItThen).
+            var fromBox = pending.From;
+            if (pending.ReadOffItself && !IsMoving(element, ctx) && TryReadBox(element, pending.PatchedLayout, ctx, out var redrawn))
+            {
+                fromBox = redrawn;
+            }
+
             var parentScale = AncestorScale(parent, ctx);
             // Taken to undistorted units: a box read under this parent was drawn at the scale its ancestors had
             // when it was read, and one mapped in from elsewhere at the scale they have now.
-            var readScale = ReferenceEquals(pending.From.Parent, parent) ? pending.From.AncestorScale : parentScale;
-            var drawnFrom = FromRect(element, pending.From, ctx);
+            var readScale = ReferenceEquals(fromBox.Parent, parent) ? fromBox.AncestorScale : parentScale;
+            var drawnFrom = FromRect(element, fromBox, ctx);
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
-            var moves = pending.Timing.Animates && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
+            var moves = pending.Timing.Animates() && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
-            projection ??= CreateProjection(element, ctx);
+            projection ??= CreateProjection(element, host, ctx);
             projection.From = from;
             projection.Moving = moves;
             projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
@@ -156,12 +168,12 @@ namespace Velvet
             return new Rect(centre - size / 2f, size);
         }
 
-        private static LayoutIdProjection CreateProjection(VisualElement element, ReconcilerContext ctx)
+        private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
-            var projection = new LayoutIdProjection(translate, scale,
+            var projection = new LayoutIdProjection(host, translate, scale,
                 translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate,
                 scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value)
             {
@@ -181,7 +193,7 @@ namespace Velvet
                 if (!ctx.LayoutIdProjections.ContainsKey(element) && element.panel?.visualTree == host
                     && element.hierarchy.parent is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
                 {
-                    CreateProjection(element, ctx);
+                    CreateProjection(element, host, ctx);
                 }
             }
             foreach (var entry in ctx.LayoutIdProjections)
@@ -214,6 +226,8 @@ namespace Velvet
 
         private static Vector2 Compute(VisualElement element, LayoutIdProjection projection, int pass, ReconcilerContext ctx)
         {
+            // MUTANT_SURVIVES(equivalent): a second computation in one pass reads the same layouts, progress and
+            // ancestor scales as the first, and writes back the values the first wrote.
             if (projection.Pass == pass) return projection.Scale;
             projection.Pass = pass;
             var layout = element.layout;
@@ -306,8 +320,10 @@ namespace Velvet
             var remaining = false;
             foreach (var entry in ctx.LayoutIdProjections)
             {
-                if (entry.Key.panel?.visualTree != host) continue;
-                if (!entry.Value.Moving && IsUnit(entry.Value.ParentScale)) s_ended.Add(entry.Key);
+                var projection = entry.Value;
+                if (projection.Host != host) continue;
+                // One whose element left the panel with no teardown is ended too, since no pass projects it there.
+                if (entry.Key.panel?.visualTree != host || !projection.Moving && IsUnit(projection.ParentScale)) s_ended.Add(entry.Key);
                 else remaining = true;
             }
             foreach (var element in s_ended)
@@ -339,10 +355,13 @@ namespace Velvet
 
         private static Vector2 TransformOrigin(VisualElement element) => element.resolvedStyle.transformOrigin;
 
-        private static bool TryReadBox(VisualElement element, ReconcilerContext ctx, out LayoutIdBox box)
+        private static bool IsMoving(VisualElement element, ReconcilerContext ctx) =>
+            ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
+
+        // The box the element is drawn at while its layout is the given one.
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box)
         {
             box = default;
-            var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
             var parentScale = AncestorScale(parent, ctx);
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
@@ -355,6 +374,8 @@ namespace Velvet
         {
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
+                // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
+                // the wait that replaced it, which that wait's own callback settles on the same event.
                 element.UnregisterCallback(pending.Callback);
             }
         }
@@ -372,7 +393,7 @@ namespace Velvet
             {
                 if (ctx.CurrentPass != null)
                 {
-                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, ctx, out var live) ? live : current.Box);
+                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, element.layout, ctx, out var live) ? live : current.Box);
                     ctx.LayoutIdSnapshots.Add(layoutId);
                 }
                 else
@@ -452,6 +473,8 @@ namespace Velvet
 
         private static bool SameRect(Rect a, Rect b) => IsFiniteRect(b) && EdgeTravel(a, b) <= PixelTolerance;
 
+        // MUTANT_SURVIVES(equivalent): no float s puts |s - 1| at exactly 1e-5f. Near 1, s - 1 is exact and a
+        // whole number of s's spacing, 2^-23 or 2^-24, and 1e-5f is a whole number of neither.
         private static bool IsUnit(Vector2 scale) => Mathf.Abs(scale.x - 1f) <= 1e-5f && Mathf.Abs(scale.y - 1f) <= 1e-5f;
 
         private static bool IsFiniteRect(Rect r) =>
@@ -498,14 +521,17 @@ namespace Velvet
 
     internal sealed class LayoutIdPendingSettle
     {
-        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, LayoutIdTiming timing)
+        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, LayoutIdTiming timing, bool readOffItself)
         {
             From = from;
             PatchedLayout = patchedLayout;
             Timing = timing;
+            ReadOffItself = readOffItself;
         }
 
         public LayoutIdBox From { get; }
+        // From was read off this same element rather than off another holder of the id.
+        public bool ReadOffItself { get; }
         public Rect PatchedLayout { get; }
         public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
@@ -513,13 +539,17 @@ namespace Velvet
 
     internal sealed class LayoutIdProjection
     {
-        public LayoutIdProjection(StyleTranslate ownInlineTranslate, StyleScale ownInlineScale, Vector3 ownTranslate, Vector3 ownScale)
+        public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale, Vector3 ownTranslate, Vector3 ownScale)
         {
+            Host = host;
             OwnInlineTranslate = ownInlineTranslate;
             OwnInlineScale = ownInlineScale;
             OwnTranslate = ownTranslate;
             OwnScale = ownScale;
         }
+
+        // The panel whose frame steps and ends this projection.
+        public readonly VisualElement Host;
 
         // The natural box where the progress starts, relative to the parent's drawn corner in undistorted units.
         public Rect From;
@@ -544,8 +574,8 @@ namespace Velvet
     }
 
     // The transition a layoutId move takes: the Motion's own `transition`, or its Layout in place of it when
-    // set, as Framer reads `transition.layout`, with Framer's default layout transition when the Motion has
-    // none. Its type decides the curve, the way it does for a variant swap.
+    // set, as Framer reads `transition.layout`, with Framer's default layout transition where the caller gave
+    // V.Motion no timing at all. Its type decides the curve, the way it does for a variant swap.
     internal readonly struct LayoutIdTiming
     {
         // Framer's defaultLayoutTransition: { duration: 0.45, ease: [0.4, 0, 0.1, 1] }.
@@ -556,14 +586,11 @@ namespace Velvet
 
         private readonly StyleTransitionConfig _config;
 
-        private LayoutIdTiming(StyleTransitionConfig config, bool animates)
+        private LayoutIdTiming(StyleTransitionConfig config)
         {
             _config = config;
-            Animates = animates;
         }
 
-        // False for a zero duration or a configuration the scheduler rejects, which lands the move at once.
-        public bool Animates { get; }
         public bool IsSpring => _config.Type == TransitionType.Spring;
         public float Stiffness => _config.Stiffness;
         public float Damping => _config.Damping;
@@ -571,17 +598,20 @@ namespace Velvet
         public float DurationSec => _config.DurationSec;
         public float DelaySec => Mathf.Max(_config.DelaySec, 0f);
 
-        public static LayoutIdTiming From(StyleTransitionConfig? transition)
+        public static LayoutIdTiming From(StyleTransitionConfig? transition) => new(transition?.Layout ?? transition ?? s_default);
+
+        // False for a zero duration or a configuration the scheduler rejects, which lands the move at once.
+        // Asked once a move has settled rather than on every patch, since a rejected one warns.
+        public bool Animates()
         {
-            var t = transition?.Layout ?? transition ?? s_default;
+            var t = _config;
             // Not a switch naming each type: its catch-all would have to throw, where LayoutIdProgress, Ease and
             // StyleAnimationScheduler time a type neither a spring nor a bezier as a tween.
-            var animates = t.Type == TransitionType.Spring
+            return t.Type == TransitionType.Spring
                 ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
                 : t.Type == TransitionType.Bezier
                     ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
                     : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
-            return new LayoutIdTiming(t, animates);
         }
 
         // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold.
@@ -589,7 +619,7 @@ namespace Velvet
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
-            : StyleFilterTransitionDriver.Ease(_config.Easing, t);
+            : UssEasing.Evaluate(_config.Easing, t);
     }
 
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
@@ -613,8 +643,9 @@ namespace Velvet
         public bool Step(float dtSec)
         {
             _elapsedSec += dtSec;
+            // Inside the delay active is not positive, and needs no guard: SpringIntegrator.Step ignores a step
+            // that is not positive, and both curves clamp a time below 0 to their start.
             var active = _elapsedSec - _timing.DelaySec;
-            if (active <= 0f) return false;
             if (_timing.IsSpring)
             {
                 _spring.Step(Mathf.Min(dtSec, active), 0f, _timing.Stiffness, _timing.Damping, _timing.Mass);
