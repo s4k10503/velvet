@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -964,10 +965,15 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
-        // Step 1 grows the outer layoutId Motion from 300px to 600px, its corner fixed, and flips the inner
-        // one's element type where it stands inside it.
+        // Which Motions step 1 of GrowingOuterRender recreates by flipping their element type. Flipping the
+        // outer one recreates the inner one with it, under the new outer element.
+        private static bool s_flipOuter;
+        private static bool s_flipInner;
+
+        // Step 1 grows the outer layoutId Motion from 300px to 600px, its corner fixed; the inner one stands
+        // where it was inside it.
         [Component]
-        private static VNode GrowingOuterInnerFlipRender()
+        private static VNode GrowingOuterRender()
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
@@ -977,36 +983,124 @@ namespace Velvet.Tests
                 V.Motion(
                     name: "outer",
                     layoutId: "outer-box",
+                    elementType: s_flipOuter && step != 0 ? typeof(Box) : null,
                     transition: s_layoutSpring,
                     className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px]",
                     children: new VNode[]
                     {
                         V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
-                            elementType: step == 0 ? null : typeof(Box),
+                            elementType: s_flipInner && step != 0 ? typeof(Box) : null,
                             className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
                     }),
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves a Motion that flips type where it stands without a pose.
-        // The box its teardown leaves must keep the parent-relative comparison under that same parent.
-        [Test]
-        public void Given_ALayoutIdMotionInsideAGrowingOne_When_ItFlipsTypeWhereItStands_Then_ItCarriesNoInversePose()
+        private MountedTree MountGrowingOuter(bool flipOuter, bool flipInner)
         {
-            // Arrange
-            using var mounted = V.Mount(Root, V.Component(GrowingOuterInnerFlipRender, key: "root"));
+            s_flipOuter = flipOuter;
+            s_flipInner = flipInner;
+            var mounted = V.Mount(Root, V.Component(GrowingOuterRender, key: "root"));
             Tick();
-            var original = Root.Q<VisualElement>("inner");
+            return mounted;
+        }
 
-            // Act
+        // Plays step 1 up to the frame its layout settles on.
+        private void GrowTheOuter(MountedTree mounted)
+        {
             s_setStep.Invoke(1);
             mounted.FlushStateForTest();
             Tick();
+        }
 
-            // Assert — a new element with no inline translate of its own.
+        // A point of an element's own box carried up to Root through each element's layout offset and its
+        // inline translate and scale about its transform origin: where it is drawn while a layoutId tween owns
+        // those slots, which the resolved transform reports only a frame later.
+        private Vector2 DrawnPoint(VisualElement element, Vector2 point)
+        {
+            for (var e = element; e != Root; e = e.hierarchy.parent)
+            {
+                Vector2 origin = e.resolvedStyle.transformOrigin;
+                var translate = e.style.translate.keyword == StyleKeyword.Null
+                    ? Vector2.zero
+                    : new Vector2(e.style.translate.value.x.value, e.style.translate.value.y.value);
+                var scale = e.style.scale.keyword == StyleKeyword.Null ? 1f : e.style.scale.value.value.x;
+                point = e.layout.position + translate + origin + scale * (point - origin);
+            }
+            return point;
+        }
+
+        private Rect DrawnBox(VisualElement element)
+        {
+            var min = DrawnPoint(element, Vector2.zero);
+            return new Rect(min, DrawnPoint(element, element.layout.size) - min);
+        }
+
+        private static bool Near(Rect actual, Rect expected) =>
+            Mathf.Abs(actual.x - expected.x) < 1f && Mathf.Abs(actual.y - expected.y) < 1f
+            && Mathf.Abs(actual.width - expected.width) < 1f && Mathf.Abs(actual.height - expected.height) < 1f;
+
+        [Test]
+        public void Given_ALayoutIdMotionStandingInsideAGrowingOne_When_TheOuterStartsItsTween_Then_TheInnerIsDrawnOverItsOldBox()
+        {
+            // Arrange
+            using var mounted = MountGrowingOuter(flipOuter: false, flipInner: false);
+
+            // Act
+            GrowTheOuter(mounted);
+
+            // Assert — where it stood, at its own size, though the outer one is drawn at half its new size.
+            Assert.That(Near(DrawnBox(Root.Q<VisualElement>("inner")), new Rect(20f, 20f, 50f, 50f)), Is.True);
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionStandingInsideAGrowingOne_When_TheOuterTweenIsUnderWay_Then_TheInnerKeepsItsSizeAndItsPlaceInTheOuter()
+        {
+            // Arrange
+            using var mounted = MountGrowingOuter(flipOuter: false, flipInner: false);
+            GrowTheOuter(mounted);
+            var outer = Root.Q<VisualElement>("outer");
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — the outer one is still growing, and the inner one sits 20px inside its drawn corner at
+            // its own 50px.
+            var outerBox = DrawnBox(outer);
+            Assert.That((outerBox.width < 550f,
+                    Near(DrawnBox(Root.Q<VisualElement>("inner")), new Rect(outerBox.position + new Vector2(20f, 20f), new Vector2(50f, 50f)))),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInsideAGrowingOne_When_ItFlipsTypeWhereItStands_Then_ItIsDrawnOverItsOldBox()
+        {
+            // Arrange
+            using var mounted = MountGrowingOuter(flipOuter: false, flipInner: true);
+            var original = Root.Q<VisualElement>("inner");
+
+            // Act
+            GrowTheOuter(mounted);
+
+            // Assert — a new element, where the old one stood and at its size.
             var replacement = Root.Q<VisualElement>("inner");
-            Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword),
-                Is.EqualTo((false, StyleKeyword.Null)));
+            Assert.That((ReferenceEquals(original, replacement), Near(DrawnBox(replacement), new Rect(20f, 20f, 50f, 50f))),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInsideAGrowingOne_When_TheOuterFlipsTypeWhileGrowing_Then_TheInnerIsDrawnOverItsOldBox()
+        {
+            // Arrange
+            using var mounted = MountGrowingOuter(flipOuter: true, flipInner: false);
+            var original = Root.Q<VisualElement>("inner");
+
+            // Act
+            GrowTheOuter(mounted);
+
+            // Assert — recreated with the outer one, where it stood and at its size.
+            var replacement = Root.Q<VisualElement>("inner");
+            Assert.That((ReferenceEquals(original, replacement), Near(DrawnBox(replacement), new Rect(20f, 20f, 50f, 50f))),
+                Is.EqualTo((false, true)));
         }
 
         // Step 1 grows a spacer above a plain parent by 100px, pushing it down, and flips the layoutId Motion's
@@ -1190,6 +1284,158 @@ namespace Velvet.Tests
             // Assert — every tween has settled and both inline slots are back with the classes.
             Assert.That((element.style.translate.keyword, element.style.transitionProperty.keyword),
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionScaledByItsOwnClass_When_ItDoublesInPlace_Then_TheTweenStartsAtTheInverseTimesItsOwnScale()
+        {
+            // Arrange / Act
+            var element = ResizeBoxWithOrigin("scale-[1.5]");
+
+            // Assert — half of its own one and a half, so it is drawn at the size it was drawn at before.
+            Assert.That(Mathf.Abs(element.style.scale.value.value.x - 0.75f), Is.LessThan(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a settled tween's scale slot back to the element's own class.
+        // Composing the tween with that class must not leave the composite behind.
+        [Test]
+        public void Given_ALayoutIdMotionScaledByItsOwnClass_When_ItsTweenSettles_Then_ItsOwnScaleIsInTheSlot()
+        {
+            // Arrange
+            var element = ResizeBoxWithOrigin("scale-[1.5]");
+
+            // Act
+            AdvancePast(3f);
+
+            // Assert
+            Assert.That(element.style.scale.value.value.x, Is.EqualTo(1.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByItsOwnClass_When_ItMoves_Then_TheTweenStartsWhereItWasDrawn()
+        {
+            // Arrange — the box is drawn 30px right of its layout by its own class, at 30 before the move.
+            s_ownClasses = "translate-x-[30px]";
+            using var mounted = V.Mount(Root, V.Component(OwnTranslateBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the layout moved 200px right, so the slot holds its own 30px less 200.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(Mathf.Abs(element.style.translate.value.x.value + 170f), Is.LessThan(1f));
+        }
+
+        private static string s_ownClasses;
+
+        // Step 1 moves the box 200px right; s_ownClasses are its own transform classes.
+        [Component]
+        private static VNode OwnTranslateBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                    className: $"left-[{step * 200}px] top-[0px] w-[100px] h-[100px] {s_ownClasses}"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItMovesAgain_Then_TheNewTweenStartsWhereItIsDrawn()
+        {
+            // Arrange — the first move is a few frames in, the box drawn somewhere between its two stops.
+            using var mounted = V.Mount(Root, V.Component(ThreeStopBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            s_setStop.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 6; i++) Tick();
+            var drawnBefore = DrawnBox(element).x;
+
+            // Act
+            s_setStop.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the first stop is 200px behind the second, the box is drawn short of it, and the new tween
+            // starts from where it is drawn rather than from the first stop.
+            Assert.That((drawnBefore < 150f, Mathf.Abs(DrawnBox(element).x - drawnBefore) < 1f), Is.EqualTo((true, true)));
+        }
+
+        // Step 1 moves the box out of a parent it leaves behind for good into a new one.
+        [Component]
+        private static VNode ReplacedParentBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                step == 0
+                    ? V.Div(key: "left", name: "left", className: "w-[300px] h-[200px]", children: new[] { SharedBox(0) })
+                    : V.Div(key: "right", name: "right", className: "left-[300px] w-[300px] h-[200px]", children: new[] { SharedBox(0) }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatLeftARemovedParent_When_ItsTweenStarts_Then_ItsIdNoLongerHoldsThatParent()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(ReplacedParentBoxRender, key: "root"));
+            Tick();
+            var removedParent = Root.Q<VisualElement>("left");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the old parent is out of the tree, and nothing the id holds refers to it.
+            var heldParent = mounted.Root.Reconciler.Context.LayoutIdRegistry.TryGetValue("shared-box", out var entry)
+                ? entry.Box?.Parent
+                : null;
+            Assert.That((removedParent.panel, ReferenceEquals(heldParent, removedParent)),
+                Is.EqualTo(((IPanel)null, false)));
+        }
+
+        // A board stretched to twice its width holding a column rotated 45 degrees: the column's axes are drawn
+        // sheared, so the box in it is drawn as a rhombus. Step 1 moves the box out into a plain parent.
+        [Component]
+        private static VNode ShearedFrameBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "board", className: "w-[200px] h-[200px] scale-x-[2]", children: new VNode[]
+                {
+                    V.Div(key: "column", className: "w-[200px] h-[200px] rotate-[45deg]",
+                        children: step == 0 ? new[] { SharedBox(50) } : Array.Empty<VNode>()),
+                }),
+                V.Div(key: "plain", className: "w-[200px] h-[200px]", children: step == 0 ? Array.Empty<VNode>() : new[] { SharedBox(50) }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts a box leaving a sheared frame at its sides' drawn lengths.
+        // No uniform scale reproduces a rhombus, and Documentation~/motion.md states which one is taken.
+        [Test]
+        public void Given_ALayoutIdMotionInAShearedFrame_When_ItMovesToAPlainParent_Then_ItStartsAtTheDrawnLengthOfItsSides()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(ShearedFrameBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — each side of the unit square is drawn sqrt(2^2 cos^2 45 + sin^2 45) = sqrt(2.5) long.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That(Mathf.Abs(replacement.style.scale.value.value.x - Mathf.Sqrt(2.5f)), Is.LessThan(0.01f));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

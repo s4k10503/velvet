@@ -84,7 +84,7 @@ namespace Velvet.Tests
         private static readonly StyleTransitionConfig s_shortSwap = new() { DurationSec = 0.1f };
 
         private bool LayoutIdSpringRuns(VisualElement element)
-            => _mounted!.Root.Reconciler.Context.LayoutIdTicks.ContainsKey(element);
+            => _mounted!.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(element);
 
         // Frame by frame rather than in one step, so the spring integrates the way a live panel would drive it.
         private void RunFrames(int count)

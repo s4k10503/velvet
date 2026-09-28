@@ -315,8 +315,15 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   new one, an inverse inline transform is applied immediately, then it springs back to zero —
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
-  compared, so a Motion nested in a moving one tweens only its own move inside it. An outer Motion's
-  change of size is not accounted for in an inner one's start.
+  compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
+  inside one that grows or shrinks keeps its own size and its offset from the outer one's drawn corner on
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. A move that
+  lands while a tween is still running starts from where the element is drawn, not from its last layout.
+  A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
+  unrotated over the same centre, at the drawn lengths of its sides.
+- The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
+  the element's own, its scale multiplies it — and the inline values those slots held before the tween
+  are put back when it ends.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
