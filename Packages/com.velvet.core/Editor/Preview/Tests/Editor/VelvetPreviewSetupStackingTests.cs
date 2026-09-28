@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
-    // RunSetupFor over this assembly runs the two setups below; nothing else in it declares one.
+    // RunSetupFor over this assembly runs the three setups below; nothing else in it declares one.
     internal sealed class VelvetPreviewSetupStackingTests
     {
         private static readonly List<string> s_log = new();
@@ -36,6 +36,13 @@ namespace Velvet.Tests
         }
 
         private static VNode Story() => V.Div();
+
+        // A nested type's full name extends its outer type's, so type-then-name order runs it after SetupB.
+        private static class Later
+        {
+            [VelvetPreviewSetup]
+            private static void Setup() => s_log.Add("setup N");
+        }
 
         [SetUp]
         public void SetUp()
@@ -79,7 +86,7 @@ namespace Velvet.Tests
             environment?.Dispose();
 
             // Assert
-            Assert.That(ran, Is.EqualTo("setup A, setup B"));
+            Assert.That(ran, Is.EqualTo("setup A, setup B, setup N"));
         }
 
         [Test]

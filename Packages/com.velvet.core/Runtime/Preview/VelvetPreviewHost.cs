@@ -86,6 +86,8 @@ namespace Velvet
             try
             {
                 _environment = VelvetPreviewRegistry.RunSetupsFor(story.Assembly, ApplyStyleHint);
+                // A hint published outside any setup is still this mount's to take, setups or none.
+                ApplyStyleHint();
                 var tree = useArgs ? story.Build(args) : story.Build();
                 if (tree == null)
                 {

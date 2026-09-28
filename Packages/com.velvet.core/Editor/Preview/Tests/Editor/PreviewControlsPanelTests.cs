@@ -22,6 +22,26 @@ namespace Velvet.Tests
 
         internal sealed class Inner { public int Value; }
 
+        internal sealed class Loop
+        {
+            public Loop Next;
+
+            public static Loop Closed()
+            {
+                var loop = new Loop();
+                loop.Next = loop;
+                return loop;
+            }
+        }
+
+        // The public constructor leaves abstractness as the only thing that stops Set object creating one.
+        internal abstract class Shape
+        {
+            public int Sides;
+
+            public Shape() { }
+        }
+
         internal struct Point { public int X; }
 
         internal sealed class Frozen
@@ -70,6 +90,8 @@ namespace Velvet.Tests
             public Vector2Int Cell;
             public Frozen Locked = new();
             public Dictionary<string, int> Lookup = new();
+            public Loop Ring = Loop.Closed();
+            public Shape Outline;
             public Action Callback;
         }
 
@@ -112,7 +134,16 @@ namespace Velvet.Tests
             where TField : BaseField<TValue> =>
             scope?.Query<TField>().Where(f => f.label == label).First();
 
-        private Foldout FoldoutFor(string label) => _panel.Query<Foldout>().Where(f => f.text == label).First();
+        private Foldout CollapsedFoldoutFor(string label) =>
+            _panel.Query<Foldout>().Where(f => f.text == label).First();
+
+        private static Foldout Expanded(Foldout foldout)
+        {
+            foldout?.SimulateChange(true);
+            return foldout;
+        }
+
+        private Foldout FoldoutFor(string label) => Expanded(CollapsedFoldoutFor(label));
 
         private static Label NoteStartingWith(VisualElement scope, string text) =>
             scope?.Query<Label>().Where(l => l.text.StartsWith(text, StringComparison.Ordinal)).First();
@@ -598,6 +629,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(note?.text, Does.Contain("unsupported"));
+        }
+
+        [Test]
+        public void Given_AnObjectMember_When_ControlsBuilt_Then_ItsFoldoutStartsCollapsed()
+        {
+            // Act
+            var nested = CollapsedFoldoutFor(nameof(ControlArgs.Nested));
+
+            // Assert
+            Assert.That(nested?.value, Is.False);
+        }
+
+        [Test]
+        public void Given_AMemberEdit_When_Applied_Then_TheArgsAreANewInstanceAndTheOldOneIsUnchanged()
+        {
+            // Arrange
+            var before = Args;
+
+            // Act
+            Field<TextField, string>(_panel, nameof(ControlArgs.Title))?.SimulateChange("z");
+
+            // Assert
+            Assert.That((ReferenceEquals(before, Args), before.Title), Is.EqualTo((false, "t")));
+        }
+
+        [Test]
+        public void Given_ANestedObjectEdit_When_Applied_Then_TheObjectTheArgsHeldBeforeIsUnchanged()
+        {
+            // Arrange
+            var before = Args.Nested;
+
+            // Act
+            Field<IntegerField, int>(FoldoutFor(nameof(ControlArgs.Nested)), nameof(Inner.Value))?.SimulateChange(5);
+
+            // Assert
+            Assert.That((Args.Nested.Value, before.Value), Is.EqualTo((5, 0)));
+        }
+
+        [Test]
+        public void Given_AListElementEdit_When_Applied_Then_TheListTheArgsHeldBeforeIsUnchanged()
+        {
+            // Arrange
+            var before = Args.Names;
+
+            // Act
+            Field<TextField, string>(FoldoutFor(nameof(ControlArgs.Names)), "[0]")?.SimulateChange("z");
+
+            // Assert
+            Assert.That((string.Join(",", Args.Names), before[0]), Is.EqualTo(("z", "a")));
+        }
+
+        [Test]
+        public void Given_AnArrayElementEdit_When_Applied_Then_TheArrayTheArgsHeldBeforeIsUnchanged()
+        {
+            // Arrange
+            var before = Args.Numbers;
+
+            // Act
+            Field<IntegerField, int>(FoldoutFor(nameof(ControlArgs.Numbers)), "[0]")?.SimulateChange(7);
+
+            // Assert
+            Assert.That((string.Join(",", Args.Numbers), before[0]), Is.EqualTo(("7,2", 1)));
+        }
+
+        [Test]
+        public void Given_AnObjectThatRefersBackToItself_When_ItsReferenceIsExpanded_Then_ACycleIsNoted()
+        {
+            // Act
+            var next = Expanded(FoldoutFor(nameof(ControlArgs.Ring))?.Query<Foldout>()
+                .Where(f => f.text == nameof(Loop.Next)).First());
+
+            // Assert
+            Assert.That(next?.Query<Label>().Where(l => l.text == "cycle").First(), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ANullAbstractMember_When_Expanded_Then_ItOffersNoSetButton()
+        {
+            // Act
+            var outline = FoldoutFor(nameof(ControlArgs.Outline));
+
+            // Assert
+            Assert.That(outline?.Query<Label>().Where(l => l.text == "null").First(), Is.Not.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base notes a delegate member as unsupported.

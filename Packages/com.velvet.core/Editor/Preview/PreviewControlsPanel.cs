@@ -11,8 +11,8 @@ namespace Velvet.Editor.Preview
 {
     /// <summary>
     /// The "controls" addon for the preview window: reflects a story's args type into a column of typed editor
-    /// knobs, holding one live args instance. Editing a knob writes back into that instance and raises
-    /// <see cref="ArgsChanged"/> so the window re-renders the story with the edited args.
+    /// knobs. Editing a knob replaces the args instance with an edited copy and raises <see cref="ArgsChanged"/>
+    /// with it, so the window re-renders the story with the edited args.
     /// </summary>
     internal sealed class PreviewControlsPanel : VisualElement
     {
@@ -23,16 +23,19 @@ namespace Velvet.Editor.Preview
 
         private const string DateFormat = "yyyy-MM-dd HH:mm:ss";
 
+        private static readonly MethodInfo s_memberwiseClone =
+            typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic);
+
         private readonly Label _heading;
         private readonly VisualElement _rows;
 
-        // The live args instance the knobs mutate, or null for a parameterless story.
+        // The current args instance, replaced by every edit, or null for a parameterless story.
         private object _args;
 
-        /// <summary>Raised with the live args instance whenever a control changes; the window re-renders with it.</summary>
+        /// <summary>Raised with the new args instance whenever a control changes; the window re-renders with it.</summary>
         public event Action<object> ArgsChanged;
 
-        /// <summary>The live args instance currently driven by the controls (null for a parameterless story).</summary>
+        /// <summary>The current args instance (null for a parameterless story).</summary>
         public object Args => _args;
 
         public PreviewControlsPanel()
@@ -86,49 +89,67 @@ namespace Velvet.Editor.Preview
                 return;
             }
 
-            AddMemberRows(_rows, _args, story.ArgsType, () => ArgsChanged?.Invoke(_args));
+            var root = new Slot(story.ArgsType, () => _args, ReplaceArgs, null);
+            AddMemberRows(_rows, root, new Chain(_args, null));
         }
 
-        // A nested owner is written back through changed(), so an edit inside a struct reaches the args instance
-        // holding it.
-        private static void AddMemberRows(VisualElement container, object owner, Type type, Action changed)
+        private void ReplaceArgs(object args)
         {
-            foreach (var field in type.GetFields(MemberFlags))
+            _args = args;
+            ArgsChanged?.Invoke(args);
+        }
+
+        // An edit writes a copy of every container on the path from the args down to the edited member, so the
+        // story gets a new args instance and new containers along that path, as Storybook replaces args rather
+        // than mutating them. No container the story was handed before is changed.
+        private static void AddMemberRows(VisualElement container, Slot owner, Chain ancestors)
+        {
+            foreach (var field in owner.Type.GetFields(MemberFlags))
             {
                 if (field.IsInitOnly || field.IsLiteral) continue;
-                AddRow(container, field.Name, field.FieldType, field, field.GetValue(owner), value =>
+                var read = (Func<object>)(() => field.GetValue(owner.Read()));
+                AddRow(container, field.Name, field, new Slot(field.FieldType, read, value =>
                 {
-                    field.SetValue(owner, value);
-                    changed();
-                });
+                    var copy = ShallowCopy(owner.Read());
+                    field.SetValue(copy, value);
+                    owner.Write(copy);
+                }, ancestors));
             }
 
-            foreach (var property in type.GetProperties(MemberFlags))
+            foreach (var property in owner.Type.GetProperties(MemberFlags))
             {
                 if (!IsEditable(property)) continue;
-                AddRow(container, property.Name, property.PropertyType, property, property.GetValue(owner), value =>
+                var read = (Func<object>)(() => property.GetValue(owner.Read()));
+                AddRow(container, property.Name, property, new Slot(property.PropertyType, read, value =>
                 {
-                    property.SetValue(owner, value);
-                    changed();
-                });
+                    var copy = ShallowCopy(owner.Read());
+                    property.SetValue(copy, value);
+                    owner.Write(copy);
+                }, ancestors));
             }
         }
+
+        // A List<T> copied member-wise would share its backing array with the original, so it is rebuilt instead.
+        private static object ShallowCopy(object value) =>
+            value is IList && !value.GetType().IsArray
+                ? Activator.CreateInstance(value.GetType(), value)
+                : s_memberwiseClone.Invoke(value, null);
 
         private static bool IsEditable(PropertyInfo property) =>
             property.CanRead && property.CanWrite && property.GetIndexParameters().Length == 0;
 
-        private static void AddRow(
-            VisualElement container, string label, Type type, MemberInfo member, object current, Action<object> onChange)
+        private static void AddRow(VisualElement container, string label, MemberInfo member, Slot slot)
         {
             var range = member?.GetCustomAttribute<RangeAttribute>();
-            container.Add(BuildField(label, type, range, current, onChange)
-                          ?? Note($"{label}  ({type.Name}: unsupported type)"));
+            container.Add(BuildField(label, slot, range) ?? Note($"{label}  ({slot.Type.Name}: unsupported type)"));
         }
 
         // Returns null for a type no control edits, so the caller shows a read-only note instead.
-        private static VisualElement BuildField(
-            string label, Type type, RangeAttribute range, object current, Action<object> onChange)
+        private static VisualElement BuildField(string label, Slot slot, RangeAttribute range)
         {
+            var type = slot.Type;
+            var current = slot.Read();
+            var onChange = slot.Write;
             if (range != null && (type == typeof(int) || type == typeof(float)))
             {
                 return BuildRange(label, type, range, current, onChange);
@@ -149,7 +170,7 @@ namespace Velvet.Editor.Preview
                 return Bind(picker, (UnityEngine.Object)current, onChange);
             }
 
-            return BuildObject(label, type, current, onChange);
+            return BuildObject(label, slot);
         }
 
         private static VisualElement Bind<T>(BaseField<T> field, T current, Action<object> onChange)
@@ -196,39 +217,51 @@ namespace Velvet.Editor.Preview
             return radio;
         }
 
-        // Storybook's object control, which also edits arrays: a foldout of the value's own controls.
-        private static VisualElement BuildObject(string label, Type type, object current, Action<object> onChange)
+        // Storybook's object control, which also edits arrays: a foldout of the value's own controls, built when
+        // it is first expanded so a graph that refers back to itself builds none of its controls until opened.
+        private static VisualElement BuildObject(string label, Slot slot)
         {
-            var elementType = ElementTypeOf(type);
-            if (elementType == null && !HasEditableMembers(type)) return null;
+            var elementType = ElementTypeOf(slot.Type);
+            if (elementType == null && !HasEditableMembers(slot.Type)) return null;
 
-            var foldout = new Foldout { text = label };
-            FillObject(foldout, type, elementType, current, onChange);
+            var foldout = new Foldout { text = label, value = false };
+            foldout.RegisterValueChangedCallback(_ =>
+            {
+                if (foldout.contentContainer.childCount == 0) FillObject(foldout, slot, elementType);
+            });
             return foldout;
         }
 
-        private static void FillObject(
-            Foldout foldout, Type type, Type elementType, object current, Action<object> onChange)
+        private static void FillObject(Foldout foldout, Slot slot, Type elementType)
         {
             foldout.Clear();
+            var current = slot.Read();
             if (current == null)
             {
-                AddCreateButton(foldout, type, elementType, onChange);
+                AddCreateButton(foldout, slot, elementType);
                 return;
             }
 
+            if (Chain.Holds(slot.Ancestors, current))
+            {
+                foldout.Add(Note("cycle"));
+                return;
+            }
+
+            var ancestors = new Chain(current, slot.Ancestors);
             if (elementType == null)
             {
-                AddMemberRows(foldout, current, type, () => onChange(current));
+                AddMemberRows(foldout, slot, ancestors);
                 return;
             }
 
-            AddElementRows(foldout, type, elementType, (IList)current, onChange);
+            AddElementRows(foldout, slot, elementType, ancestors);
         }
 
-        private static void AddCreateButton(Foldout foldout, Type type, Type elementType, Action<object> onChange)
+        private static void AddCreateButton(Foldout foldout, Slot slot, Type elementType)
         {
-            if (!type.IsArray && type.GetConstructor(Type.EmptyTypes) == null)
+            var type = slot.Type;
+            if (!type.IsArray && (type.IsAbstract || type.GetConstructor(Type.EmptyTypes) == null))
             {
                 foldout.Add(Note("null"));
                 return;
@@ -236,37 +269,36 @@ namespace Velvet.Editor.Preview
 
             foldout.Add(new Button(() =>
             {
-                var created = type.IsArray ? Array.CreateInstance(elementType, 0) : Activator.CreateInstance(type);
-                onChange(created);
-                FillObject(foldout, type, elementType, created, onChange);
+                slot.Write(type.IsArray ? Array.CreateInstance(elementType, 0) : Activator.CreateInstance(type));
+                FillObject(foldout, slot, elementType);
             }) { text = "Set object" });
         }
 
-        private static void AddElementRows(
-            Foldout foldout, Type type, Type elementType, IList list, Action<object> onChange)
+        private static void AddElementRows(Foldout foldout, Slot slot, Type elementType, Chain ancestors)
         {
+            var count = ((IList)slot.Read()).Count;
             var length = new IntegerField("Length");
-            length.SetValueWithoutNotify(list.Count);
+            length.SetValueWithoutNotify(count);
             length.RegisterValueChangedCallback(e =>
             {
-                var resized = Resize(list, type, elementType, Math.Max(0, e.newValue));
-                onChange(resized);
-                FillObject(foldout, type, elementType, resized, onChange);
+                slot.Write(Resized((IList)slot.Read(), slot.Type, elementType, Math.Max(0, e.newValue)));
+                FillObject(foldout, slot, elementType);
             });
             foldout.Add(length);
 
-            for (var i = 0; i < list.Count; i++)
+            for (var i = 0; i < count; i++)
             {
                 var index = i;
-                AddRow(foldout, $"[{i}]", elementType, null, list[i], value =>
+                AddRow(foldout, $"[{i}]", null, new Slot(elementType, () => ((IList)slot.Read())[index], value =>
                 {
-                    list[index] = value;
-                    onChange(list);
-                });
+                    var copy = (IList)ShallowCopy(slot.Read());
+                    copy[index] = value;
+                    slot.Write(copy);
+                }, ancestors));
             }
         }
 
-        private static IList Resize(IList list, Type type, Type elementType, int length)
+        private static IList Resized(IList list, Type type, Type elementType, int length)
         {
             if (type.IsArray)
             {
@@ -275,9 +307,10 @@ namespace Velvet.Editor.Preview
                 return array;
             }
 
-            while (list.Count > length) list.RemoveAt(list.Count - 1);
-            while (list.Count < length) list.Add(elementType.IsValueType ? Activator.CreateInstance(elementType) : null);
-            return list;
+            var copy = (IList)ShallowCopy(list);
+            while (copy.Count > length) copy.RemoveAt(copy.Count - 1);
+            while (copy.Count < length) copy.Add(elementType.IsValueType ? Activator.CreateInstance(elementType) : null);
+            return copy;
         }
 
         private static Type ElementTypeOf(Type type)
@@ -296,6 +329,24 @@ namespace Velvet.Editor.Preview
             }
 
             return Array.Exists(type.GetProperties(MemberFlags), IsEditable);
+        }
+
+        // One editable location in the args graph: how to read its current value, and how to hand its owner a
+        // replacement for it.
+        private sealed record Slot(Type Type, Func<object> Read, Action<object> Write, Chain Ancestors);
+
+        // The objects above a location, so a graph that refers back to an ancestor is noted rather than walked.
+        private sealed record Chain(object Value, Chain Parent)
+        {
+            public static bool Holds(Chain chain, object value)
+            {
+                for (var link = chain; link != null; link = link.Parent)
+                {
+                    if (ReferenceEquals(link.Value, value)) return true;
+                }
+
+                return false;
+            }
         }
 
         private static Label Note(string text) =>

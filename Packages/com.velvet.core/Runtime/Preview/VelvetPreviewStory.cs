@@ -9,7 +9,7 @@ namespace Velvet
     /// Metadata and invocation support for a discovered <c>[VelvetPreview]</c> story.
     /// <para>
     /// A story method is parameterless or takes one supported args value. The preview window creates controls
-    /// for supported writable members and rebuilds the story when one is edited.
+    /// for supported writable members and re-renders the story when one is edited.
     /// </para>
     /// </summary>
     public sealed class VelvetPreviewStory

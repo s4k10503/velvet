@@ -108,6 +108,7 @@ namespace Velvet
         // keeping its type and position keeps its state.
         internal void Render(VNode tree)
         {
+            if (_disposed) throw new InvalidOperationException("Cannot update an unmounted root.");
             _tree.Tree = tree ?? throw new ArgumentNullException(nameof(tree));
             FiberWorkLoop.ScheduleRerender(Root, FiberUpdatePriority.Urgent);
             Root.Reconciler!.Context.BatchScheduler.FlushImmediate();

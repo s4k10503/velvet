@@ -46,7 +46,7 @@ is noticed.
 Stories are addressed by a stable `Group/Name` id, so two stories must not collide on both.
 Discovery refuses a set holding a duplicate id: `VelvetPreviewRegistry.DiscoverStories()` throws an
 `InvalidOperationException` naming each story whose id an earlier one holds together with that earlier
-one, and the window shows that message in place of the story list. Stories declared in **test-runner assemblies are
+one, and the window lists no stories and shows that message in its status line. Stories declared in **test-runner assemblies are
 excluded**, so fixture stories authored for unit tests never leak into the window or the
 capture set.
 
@@ -149,7 +149,7 @@ it survives remounts and domain reloads.
 
 The **Controls** addon is the Storybook "controls" equivalent. If a story takes one supported
 args value, the window creates typed editor knobs for its supported public, writable members.
-Editing a knob updates the current args value and re-renders the story with it, **without tearing down
+Editing a knob replaces the current args value and re-renders the story with it, **without tearing down
 the assembly environment** — so a knob edited per keystroke does not re-register fonts, re-seed the
 store, or recreate the dummy API each time. What the re-render does to the tree is above, under
 [Declaring a story](#declaring-a-story--velvetpreview). An args type with no supported writable members
@@ -173,9 +173,12 @@ stands for is named beside it, and an enum splits at five values where Storybook
 | A `UnityEngine.Object` type | `ObjectField` picking assets of that type (Storybook's `file`) |
 | A one-dimensional array, a `List<T>`, or a class or struct with public writable members | A foldout of controls for its elements or members (Storybook's `object`) |
 
-An array or list foldout starts with a **Length** field that resizes it; a `null` one shows a
-**Set object** button when the type can be created (an array, or a type with a public
-parameterless constructor). A member no control edits — a delegate, a multi-dimensional array —
+A foldout is built when it is first expanded. An array or list foldout starts with a **Length**
+field that resizes it; a `null` one shows a **Set object** button when the type can be created (an
+array, or a non-abstract type with a public parameterless constructor); and a value that refers back
+to an object above it in the args shows a **cycle** note instead of its members. An edit hands the
+story a new args instance, copying each nested object, struct, array or list on the path to the
+edited member, so a component that takes part of the args as props sees the edit. A member no control edits — a delegate, a multi-dimensional array —
 shows a read-only note rather than crashing. Value-type args begin
 at `default(T)`; a class or record needs a public parameterless constructor. The first
 mount and the capture harness both use that initial value, which may be `null` for a

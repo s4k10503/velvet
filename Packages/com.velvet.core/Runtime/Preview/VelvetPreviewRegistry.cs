@@ -93,7 +93,11 @@ namespace Velvet
                     "static, non-generic, parameterless, and return void, IDisposable, or Action.");
             }
 
-            setups.Sort((a, b) => string.CompareOrdinal(Describe(a), Describe(b)));
+            setups.Sort((a, b) =>
+            {
+                var byType = string.CompareOrdinal(a.DeclaringType?.FullName, b.DeclaringType?.FullName);
+                return byType != 0 ? byType : string.CompareOrdinal(a.Name, b.Name);
+            });
             s_setupCache[assembly] = setups;
             return setups;
         }
