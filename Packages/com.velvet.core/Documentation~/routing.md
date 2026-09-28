@@ -49,7 +49,8 @@ than read from it — `Hooks.UseNavigate` (and so every `V.Link`, `V.NavLink` an
 `Hooks.UseNavigation`, `Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — act on
 the router the nearest `V.RouterProvider` publishes, so two routers can each drive a tree of their own.
 
-Mount it above everything that navigates. Either order works against the first `NavigateAsync`: mounted
+Mount it above everything that navigates, and once: a `V.RouterProvider` beneath another throws an
+`InvalidOperationException`, as React Router refuses a `<Router>` inside another. Either order works against the first `NavigateAsync`: mounted
 first, the opening route arrives through the subscription that carries every later one; mounted after a
 navigation has already committed, it reads `Router.CurrentLocation` at its first render.
 

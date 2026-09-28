@@ -24,6 +24,10 @@
   `Hooks.UseOutletContext` still answer there, as React Router's do. A tree that publishes the routing
   contexts by hand publishes `RouterContext.Router`, which is new, beside them.
 
+- A `V.RouterProvider` rendered beneath another throws `InvalidOperationException`, as React Router
+  refuses a `<Router>` inside another. It used to render, with the Outlets beneath it reading the route
+  depth the outer router's Outlets had published.
+
 - Navigation blocking follows React Router's `useBlocker`. `Hooks.UseBlocker` takes a `bool` or a
   predicate over `BlockerFunctionArgs` (`CurrentLocation`, `NextLocation`, `HistoryAction`), which
   replaces the NavigationAttempt type; the asynchronous predicate overloads of `Hooks.UseBlocker` and

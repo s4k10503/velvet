@@ -12,6 +12,7 @@ namespace Velvet
         public static VNode Render(Props p)
         {
             var router = p.Router;
+            var enclosing = Hooks.UseContext(RouterContext.Router);
             var (location, setLocation) = Hooks.UseState(router.CurrentLocation);
 
             Hooks.UseEffect(() =>
@@ -24,6 +25,15 @@ namespace Velvet
                 setLocation.Invoke(router.CurrentLocation);
                 return (Action)(() => router.OnLocationChanged -= Handle);
             }, new object[] { router });
+
+            // After the hooks rather than above them, so every render calls the same ones. React Router's
+            // Router refuses the same nesting: the Outlets beneath the inner one would otherwise index its
+            // matches with the depth the outer one's Outlets published.
+            if (enclosing != null)
+            {
+                throw new InvalidOperationException(
+                    "You cannot render a V.RouterProvider inside another V.RouterProvider.");
+            }
 
             // Loader data and errors are read from the router at render rather than held in state of their
             // own: what re-renders this component is the location above, and

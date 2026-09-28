@@ -2406,7 +2406,8 @@ namespace Velvet
         /// <summary>
         /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes it, with its location,
         /// loader data and loader errors, to the routing hooks, then renders the matched route through an
-        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates, and once: rendered beneath
+        /// another, it throws <see cref="InvalidOperationException"/>, as React Router's <c>Router</c> does.
         /// </summary>
         /// <remarks>
         /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is

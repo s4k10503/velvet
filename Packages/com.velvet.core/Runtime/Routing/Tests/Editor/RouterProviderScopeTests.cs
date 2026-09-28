@@ -19,6 +19,7 @@ namespace Velvet.Tests
     /// router throw, naming themselves.</item>
     /// <item><c>UseParams</c>, <c>UseOutletContext</c> and <c>V.Outlet</c> answer there instead, as React
     /// Router's do.</item>
+    /// <item>A <c>V.RouterProvider</c> beneath another throws, as React Router's <c>Router</c> does.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -284,6 +285,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((caught?.Message, _root.FindLabelByText("probe") != null), Is.EqualTo(((string?)null, true)));
+        }
+
+        #endregion
+
+        #region Nested providers
+
+        [Test]
+        public void Given_ARouterProviderAsARouteElementOfAnother_When_Mounted_Then_ItsRenderThrows()
+        {
+            // Arrange
+            _other = BuildRouter("/inner", Route("inner"));
+            _provided = BuildRouter("/start", Route("start", element: V.RouterProvider(_other)));
+            Exception? caught = null;
+
+            // Act
+            using var mounted = MountUnderBoundary(V.RouterProvider(_provided), ex => caught = ex);
+
+            // Assert
+            Assert.That(caught?.Message,
+                Is.EqualTo("You cannot render a V.RouterProvider inside another V.RouterProvider."));
         }
 
         #endregion
