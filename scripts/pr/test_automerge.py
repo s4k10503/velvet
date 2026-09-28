@@ -351,7 +351,7 @@ class SweepTests(unittest.TestCase):
                          ([3, 5], ["repos/owner/name/pulls/3", "repos/owner/name/pulls/5"]))
 
     def test_Given_ABasePush_When_Run_Then_APullRequestIsNotHeldToTheBasesHead(self):
-        # Arrange — a push run's head is the default branch's commit, which no pull request's head is.
+        # Arrange — a push run's head is the default branch's commit, not the pull request's.
         pulls = {3: pull(number=3, head=TESTED)}
 
         # Act
