@@ -187,7 +187,7 @@ Styling is composed entirely from utility classes — no per-component USS files
 - **`StyleArbitraryValueResolver`** — arbitrary-value JIT syntax (`w-[120px]`, `scale-[1.4]`, `rotate-[45deg]`, etc.).
 - **Variants** — Tailwind-style prefixes: state (`hover:` / `focus:` / `active:` / `checked:`), theme (`dark:`), responsive (`sm:` / `md:` / `lg:` / `xl:` / `2xl:`), relational (`group-` / `peer-`), and stacked (`dark:hover:`, order-independent). See [styling-variants.md](Packages/com.velvet.core/Documentation~/styling-variants.md).
 - **Container queries** — `@container` (apply via `VelvetResponsive.ContainerClass`) marks an element a responsive root, so its descendants' `sm:` / `md:` / … evaluate against **that** element's width instead of the panel root's (the CSS `container-type: inline-size` equivalent). Binding is resolved when a descendant attaches, so toggle the marker before a subtree mounts (or re-mount to re-point it).
-- **Transforms & transitions** — `scale-*` / `translate-*` / `rotate-*`, `transition-*` / `duration-*` / `ease-*`. Note: UI Toolkit 6.x cannot transition the combined `transform`, so these map onto the independent `translate` / `scale` / `rotate` properties.
+- **Transforms & transitions** — `scale-*` / `translate-*` / `rotate-*`, `transition-*` / `duration-*` / `ease-*`. The transform utilities write the `translate` / `scale` / `rotate` properties, and `transition-transform` transitions all three together, as CSS's `transition-property: transform` does.
 
 ### Animation (Framer Motion)
 

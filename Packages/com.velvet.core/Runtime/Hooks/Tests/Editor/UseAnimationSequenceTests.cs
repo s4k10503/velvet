@@ -379,5 +379,144 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
         }
+
+        // The ticks a real opacity 0→1 spring play takes to settle at the fake clock's 16ms cadence, read off
+        // the driver a play runs rather than off the walker's own estimate.
+        private static int OpacitySpringSettleTicks(float stiffness, float damping, float mass)
+        {
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
+            var element = new UnityEngine.UIElements.VisualElement();
+            var ticks = 1;
+            while (!MotionSpringDriver.Step(element, state, 0.016f))
+            {
+                ticks++;
+            }
+            return ticks;
+        }
+
+        private void AdvanceTicks(int ticks)
+        {
+            for (var i = 0; i < ticks; i++)
+            {
+                UseFrameFakeClockHost.Ms += 16;
+                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            }
+            _mounted.FlushStateForTest();
+        }
+
+        private static AnimationSequenceStep[] SpringThenB(StyleTransitionConfig spring) => new[]
+        {
+            AnimationSequenceStep.To("a", spring),
+            AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.05f }),
+        };
+
+        [Test]
+        public void Given_ASpringToStepWithNoHold_When_TimeStopsShortOfTheSpringsSettle_Then_TheStepIsStillCurrent()
+        {
+            // Arrange — the default spring settles well past a second.
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring };
+            s_steps = SpringThenB(spring);
+            var settleTicks = OpacitySpringSettleTicks(spring.Stiffness, spring.Damping, spring.Mass);
+            Mount();
+
+            // Act
+            AdvanceTicks(settleTicks - 3);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
+        }
+
+        [Test]
+        public void Given_AStiffSpringToStepWithNoHold_When_TimePassesTheSpringsSettle_Then_TheNextStepIsCurrent()
+        {
+            // Arrange — a stiff, near-critically-damped spring settles in well under half a second.
+            var spring = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 1000f, Damping = 63f, Mass = 1f,
+            };
+            s_steps = SpringThenB(spring);
+            var settleTicks = OpacitySpringSettleTicks(spring.Stiffness, spring.Damping, spring.Mass);
+            Mount();
+
+            // Act
+            AdvanceTicks(settleTicks + 3);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_ASpringToStepWithADelay_When_TimePassesTheSettleButNotTheDelayOnTop_Then_TheStepIsStillCurrent()
+        {
+            // Arrange
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, DelaySec = 0.4f };
+            s_steps = SpringThenB(spring);
+            var settleTicks = OpacitySpringSettleTicks(spring.Stiffness, spring.Damping, spring.Mass);
+            Mount();
+
+            // Act — 0.4s of delay is 25 ticks; stop 5 short of it.
+            AdvanceTicks(settleTicks + 20);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
+        }
+
+        [Test]
+        public void Given_ASpringToStepWithANegativeDelay_When_TimeStopsShortOfTheSpringsSettle_Then_TheStepIsStillCurrent()
+        {
+            // Arrange — a play starts a spring with a negative delay at once, so the hold is the settle alone.
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, DelaySec = -1f };
+            s_steps = SpringThenB(spring);
+            var settleTicks = OpacitySpringSettleTicks(spring.Stiffness, spring.Damping, spring.Mass);
+            Mount();
+
+            // Act
+            AdvanceTicks(settleTicks - 3);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
+        }
+
+        // Each parameter at zero and at infinity: a play warns and completes at once, so the step holds nothing.
+        [TestCase(0f, 10f, 1f)]
+        [TestCase(float.PositiveInfinity, 10f, 1f)]
+        [TestCase(100f, 0f, 1f)]
+        [TestCase(100f, float.PositiveInfinity, 1f)]
+        [TestCase(100f, 10f, 0f)]
+        [TestCase(100f, 10f, float.PositiveInfinity)]
+        public void Given_ASpringToStepAPlayRefusesToTick_When_TwoTicksPass_Then_TheNextStepIsCurrent(
+            float stiffness, float damping, float mass)
+        {
+            // Arrange
+            s_steps = SpringThenB(new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = stiffness, Damping = damping, Mass = mass,
+            });
+            Mount();
+
+            // Act
+            AdvanceTicks(2);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_ASpringToStepThatWouldRunForHours_When_TwentySecondsPass_Then_TheNextStepIsCurrent()
+        {
+            // Arrange — Framer Motion times a spring over at most 20 seconds; this one takes over a day to settle.
+            s_steps = SpringThenB(new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 1f, Damping = 0.0001f, Mass = 1f,
+            });
+            Mount();
+
+            // Act — 20s is 1250 ticks.
+            AdvanceTicks(1253);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+        }
     }
 }

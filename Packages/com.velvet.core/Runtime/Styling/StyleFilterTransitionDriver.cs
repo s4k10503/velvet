@@ -55,8 +55,8 @@ namespace Velvet
     // blur-[6px], custom filter-[name:args], and the variant path hover:blur-md) with no per-manipulator wiring.
     //
     // Two documented precedence notes:
-    // - animate-hue owns style.filter unconditionally while active; combining transition-filter + animate-hue on
-    //   one element is unsupported (Hue wins). Hue's own Detach re-asserts static filters through
+    // - animate-hue owns style.filter while active: each write here re-asserts it (see
+    //   StyleAnimateDriver.ReassertLoop). Hue's own Detach re-asserts static filters through
     //   ApplyCombinedFilter, so a benign one-shot tween may kick off right after a Hue Detach — harmless.
     // - On the very reconcile patch that ADDS transition-filter, the class-driven filter write runs (through
     //   SyncClassDrivenStyling) BEFORE the applier enables the binding, so a value that changes in that same
@@ -239,6 +239,7 @@ namespace Velvet
                 list.Add(fn);
             }
             element.style.filter = list;
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         private static void StartTick(VisualElement element, StyleFilterTransitionBinding b)
@@ -276,6 +277,7 @@ namespace Velvet
             {
                 element.style.filter = StyleKeyword.Null;
             }
+            StyleAnimateDriver.ReassertLoop(element);
             Cancel(b);
         }
 

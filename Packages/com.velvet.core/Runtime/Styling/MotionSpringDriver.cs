@@ -120,6 +120,36 @@ namespace Velvet
         private const float DegreeRestDelta = 0.1f; // rotate (degrees)
         private const float DegreeRestSpeed = 0.1f;
 
+        // Framer Motion's own ceiling on simulating a spring's duration (maxGeneratorDuration); a spring
+        // still moving past it is timed at the ceiling.
+        private const float MaxSettleSec = 20f;
+
+        /// <summary>
+        /// How long a spring with these parameters runs before <see cref="Step"/> reports it settled, ticked at
+        /// the scheduler's cadence: a normalized channel travelling the whole 0→1 range, which is also a pixel
+        /// or degree channel travelling 100. A sequence step cannot see how far its label moves anything, and
+        /// Framer Motion's sequence times a spring whose distance it cannot read over the same 100. Zero for
+        /// parameters a play refuses to tick.
+        /// </summary>
+        public static float SettleSec(float stiffness, float damping, float mass)
+        {
+            if (!SpringIntegrator.AreValidParameters(stiffness, damping, mass))
+            {
+                return 0f;
+            }
+            const float dt = StyleAnimateDriver.TickMs / 1000f;
+            var spring = new SpringIntegrator(1f);
+            var elapsed = 0f;
+            // MUTANT_SURVIVES(equivalent): in float, elapsed steps from 19.98404 to 20.00004 and never equals 20,
+            // so `<=` stops on the same tick.
+            while (elapsed < MaxSettleSec && !spring.IsSettled(0f, NormalizedRestDelta, NormalizedRestSpeed))
+            {
+                spring.Step(dt, 0f, stiffness, damping, mass);
+                elapsed += dt;
+            }
+            return elapsed;
+        }
+
         /// <summary>
         /// Builds the running state from a resolved plan, or null when the plan animates nothing (the caller
         /// should treat this exactly like a zero-duration tween: land the classes and complete immediately).
@@ -232,6 +262,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         /// <summary>
@@ -327,6 +358,7 @@ namespace Velvet
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
         }
 
@@ -361,6 +393,7 @@ namespace Velvet
             state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)

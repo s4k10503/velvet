@@ -222,6 +222,7 @@ namespace Velvet
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
         }
 
@@ -255,6 +256,7 @@ namespace Velvet
             state.Colors?.RemoveAll(c => MotionSpringDriver.ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         /// <summary>
@@ -345,6 +347,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
+            StyleAnimateDriver.ReassertLoop(element);
         }
     }
 }

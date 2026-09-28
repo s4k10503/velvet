@@ -1232,9 +1232,7 @@ namespace Velvet
         // warn the caller, so it is still validated here for the same failure modes.
         private static bool ValidateSpringParameters(float stiffness, float damping, float mass)
         {
-            if (float.IsFinite(stiffness) && stiffness > 0f
-                && float.IsFinite(damping) && damping > 0f
-                && float.IsFinite(mass) && mass > 0f)
+            if (SpringIntegrator.AreValidParameters(stiffness, damping, mass))
             {
                 return true;
             }

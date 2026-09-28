@@ -33,6 +33,7 @@ namespace Velvet.Tests
         // time function, so stepping this by hand makes every painted mid-animation value deterministic.
         private double _now;
         private readonly List<Object> _spawned = new();
+        private (VisualElement element, StyleAnimateBinding binding)? _hueLoop;
 
         protected override void LoadStyleSheets()
         {
@@ -45,6 +46,11 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
+            if (_hueLoop != null)
+            {
+                StyleAnimateDriver.Detach(_hueLoop.Value.element, _hueLoop.Value.binding);
+                _hueLoop = null;
+            }
             base.TearDown();
             foreach (var obj in _spawned)
             {
@@ -560,6 +566,45 @@ namespace Velvet.Tests
 
             // Assert — the cancelled tween settles to its target instead of freezing at the mid-frame value.
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(12f));
+        }
+
+        // Starts an animate-hue loop on the element, detached again at teardown.
+        private void RunHueLoop(VisualElement element)
+        {
+            var binding = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Hue, 4f), panVertical: false);
+            _hueLoop = (element, binding);
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_ATweenFrameIsWritten_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_TheTweenSettles_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act — a teardown while mounted settles the tween at its target.
+            StyleFilterTransitionDriver.Detach(element, binding);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
         }
 
         #endregion

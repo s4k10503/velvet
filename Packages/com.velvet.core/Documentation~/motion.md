@@ -202,9 +202,8 @@ own transition system, so what they can animate is exactly what they can read a 
 of the class strings themselves** — there is no resolved style to sample, since the class swap and
 the plan are built in one synchronous call, off-panel, before any style resolution.
 
-- **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio. UI Toolkit
-  has no animatable `transform` shorthand, so movement is expressed with the three separate
-  transform utilities. Each of these has an identity value (opacity 1, scale 1, translate 0,
+- **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
+  utilities write. Each of these has an identity value (opacity 1, scale 1, translate 0,
   rotate 0deg), so naming it on **one** side of the delta is enough — the silent side falls back
   to identity, matching the usual "declare only what changes" authoring style.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
@@ -342,8 +341,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 
 ## Looping utilities (`animate-*`)
 
-Five class-driven loops, each infinite, each driven from a panel-root tick rather than from USS —
-UI Toolkit has no `@keyframes`:
+Five class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse` and
+`animate-spin` take Tailwind's durations and timing functions: the pulse reaches half opacity at
+mid-loop with each half eased by `cubic-bezier(0.4, 0, 0.6, 1)`, and the spin turns linearly.
 
 | class | what moves | default loop |
 |---|---|---|
@@ -357,20 +357,18 @@ UI Toolkit has no `@keyframes`:
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
 
-Each mode owns its style slot while it runs, and a static utility writing that slot is shadowed
-rather than blended: the gradient pair owns background position, size and repeat, `animate-hue` owns
-the filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot
-and the reconciler re-asserts whatever class was under it.
+Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
+declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
+filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. A static utility writing that
+slot is shadowed, and so is a `Spring` or `Bezier` Motion channel or a `transition-filter` tween
+driving it — the mode's frame is written over each of their writes. Detaching restores the slot and
+the reconciler re-asserts whatever class was under it.
 
-Two combinations to avoid, both because something else writes the same slot every frame:
-
-- a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
-  `rotate`, say. The result is whichever wrote last, not a blend.
-- a native transition covering that slot. Every mode suspends one for the length of its run, the way
-  Motion's own drivers do. The pan modes also set background size and repeat once at attach, before
-  the suspension, so a transition covering either still takes that one write. Note a transition needs
-  no `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
-  covers every slot.
+A native transition covering a mode's slot would animate each of the mode's writes, so every mode
+suspends one for the length of its run, the way Motion's own drivers do. The pan modes also set
+background size and repeat once at attach, before the suspension, so a transition covering either
+still takes that one write. Note a transition needs no `transition-*` utility — a bare `duration-*`
+leaves UI Toolkit's initial `all` standing, which covers every slot.
 
 The suspension is element-wide, so while a suspended mode runs, the element's *other*
 transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
@@ -378,9 +376,9 @@ the mode writes — `animate-pulse transition-colors` keeps its colour fade — 
 as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never
 reaches the class list is invisible to it — the bracket duration `duration-[400ms]` lands as an
 inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
-swap driving the same slot as the mode falls under the first bullet. While such a swap is running the
-slot is the swap's: the suspension is neither taken nor handed back for the swap's length, and the
-swap's own completion puts back whichever of the two the element still needs.
+swap driving the same slot as the mode is shadowed too. While such a swap is running the element's
+inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
+swap's length, and the swap's own completion puts back whichever of the two the element still needs.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 
@@ -396,9 +394,11 @@ A step is exactly one of:
   elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
-  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step needs an
-  explicit `holdSec` -- a spring's settle time is physics-derived, not statically knowable -- an omitted
-  one logs a warning and falls back to a fixed estimate rather than stalling the sequence.
+  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
+  `DelaySec` plus the time its spring takes to settle, simulated from `Stiffness` / `Damping` / `Mass`
+  across 100px (or opacity's whole 0→1), and at most 20 seconds. A label does not tell the sequence how
+  far anything moves, and Framer Motion's sequence times a spring whose distance it cannot read the same
+  way, over 100 and within 20 seconds.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances

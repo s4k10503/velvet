@@ -43,6 +43,15 @@ namespace Velvet
         /// <summary>The spring's current velocity (units of <see cref="Value"/> per second).</summary>
         public float Velocity { get; private set; }
 
+        /// <summary>
+        /// True when all three parameters are finite and positive — the springs a play drives. Anything else
+        /// completes immediately instead of ticking (see <c>StyleAnimationScheduler</c>'s validation).
+        /// </summary>
+        public static bool AreValidParameters(float stiffness, float damping, float mass)
+            => float.IsFinite(stiffness) && stiffness > 0f
+                && float.IsFinite(damping) && damping > 0f
+                && float.IsFinite(mass) && mass > 0f;
+
         public SpringIntegrator(float initialValue, float initialVelocity = 0f)
         {
             Value = initialValue;
