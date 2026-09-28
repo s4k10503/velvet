@@ -267,8 +267,8 @@ wrapped box size, and therefore raises no geometry event, from going stale).
 
 **`text-pretty`** avoids a short last line the way Chromium does: when the last line would hold a
 single word narrower than a third of the line, the same manipulator narrows the box until a word from
-the line above joins it, keeping the line count. It uses Chromium's trigger (`ScoreLineBreaker`'s
-`ShouldOptimize`: a last line with no break opportunity and under a third of the available width);
+the line above joins it, keeping the line count. It uses the trigger of Chromium's score line breaker
+(a last line with no break opportunity and under a third of the available width);
 where Chromium then re-breaks the last lines, Velvet narrows the box, as `text-balance` does. A word
 here is a run between whitespace.
 

@@ -54,34 +54,64 @@ namespace Velvet.Tests
             }
         }
 
-        // Mounts the pair and narrows both wrappers to just past the width the plain label needs for Head on
-        // one line, so the full text puts its last word on a second line of its own.
-        private (Label plain, Label pretty) MountAtHeadWidth(string lastWord)
+        // Mounts the pair and narrows both wrappers to the first whole-pixel content width at which the plain
+        // label's own measure puts Head on one line and the full text on more, so its last word sits on a
+        // line of its own in whatever font the host renders with. Arranged is false when no width in range
+        // does, which the cases report rather than read past.
+        private (Label plain, Label pretty, bool arranged, string measured) MountWithOrphan(string lastWord)
         {
             s_text = Head + " " + lastWord;
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderPair));
             Settle();
             var plain = _window.rootVisualElement.Q<Label>("plain");
-            var headWidth = plain.MeasureTextSize(Head, float.NaN, VisualElement.MeasureMode.Undefined,
-                float.NaN, VisualElement.MeasureMode.Undefined).x;
+            var oneLine = Height(plain, Head, float.NaN);
+            var headWidth = Mathf.Ceil(Width(plain, Head));
+            var fullWidth = Mathf.Ceil(Width(plain, s_text));
+            var content = float.NaN;
+            for (var width = headWidth; width <= fullWidth; width++)
+            {
+                if (Height(plain, Head, width) <= oneLine + 0.5f && Height(plain, s_text, width) > oneLine + 0.5f)
+                {
+                    content = width;
+                    break;
+                }
+            }
             var style = plain.resolvedStyle;
             var frame = style.marginLeft + style.marginRight + style.paddingLeft + style.paddingRight
                 + style.borderLeftWidth + style.borderRightWidth;
-            s_setWrapperWidth.Invoke(Mathf.Ceil(headWidth + frame) + 1f);
-            Settle();
-            return (plain, _window.rootVisualElement.Q<Label>("pretty"));
+            var arranged = !float.IsNaN(content);
+            if (arranged)
+            {
+                s_setWrapperWidth.Invoke(content + frame);
+                Settle();
+            }
+            var pretty = _window.rootVisualElement.Q<Label>("pretty");
+            var measured = $"line {oneLine} head {headWidth} full {fullWidth} content {content} frame {frame} "
+                + $"plain {plain.layout.width}x{plain.layout.height} pretty {pretty.layout.width}x{pretty.layout.height}";
+            return (plain, pretty, arranged, measured);
         }
 
+        private static float Width(TextElement element, string text) =>
+            element.MeasureTextSize(text, float.NaN, VisualElement.MeasureMode.Undefined,
+                float.NaN, VisualElement.MeasureMode.Undefined).x;
+
+        private static float Height(TextElement element, string text, float width) =>
+            element.MeasureTextSize(text, width,
+                float.IsNaN(width) ? VisualElement.MeasureMode.Undefined : VisualElement.MeasureMode.Exactly,
+                float.NaN, VisualElement.MeasureMode.Undefined).y;
+
         [Test]
-        public void Given_AShortLastWordAloneOnItsLine_When_Pretty_Then_TheBoxNarrowsAtTheSameHeight()
+        public void Given_AShortLastWordAloneOnItsLine_When_Pretty_Then_AWordJoinsItAtTheSameHeight()
         {
             // Arrange / Act
-            var (plain, pretty) = MountAtHeadWidth("e");
+            var (plain, pretty, arranged, measured) = MountWithOrphan("e");
 
-            // Assert
+            // Assert — no line added, and at the box it now has the text before the last word no longer fits
+            // one line, so a word of it has moved down beside the last one.
             Assert.That(
-                (pretty.layout.height == plain.layout.height, pretty.layout.width < plain.layout.width - 1f),
-                Is.EqualTo((true, true)));
+                (arranged, pretty.layout.height == plain.layout.height,
+                    Height(pretty, Head, pretty.contentRect.width) > Height(pretty, Head, float.NaN) + 0.5f),
+                Is.EqualTo((true, true, true)), measured);
         }
 
         // GREEN_ON_BASE(characterization): the base never narrows a text-pretty box.
@@ -89,10 +119,10 @@ namespace Velvet.Tests
         public void Given_ALastWordWiderThanAThirdOfTheLine_When_Pretty_Then_TheBoxIsLeftAlone()
         {
             // Arrange / Act — Chromium leaves a last line of this width to the greedy breaks.
-            var (_, pretty) = MountAtHeadWidth("eeeeeeeeeeee");
+            var (_, pretty, arranged, measured) = MountWithOrphan("eeeeeeeeeeee");
 
             // Assert
-            Assert.That(pretty.style.width.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((arranged, pretty.style.width.keyword), Is.EqualTo((true, StyleKeyword.Null)), measured);
         }
 
         // GREEN_ON_BASE(characterization): the base never narrows a text-pretty box.
@@ -100,25 +130,26 @@ namespace Velvet.Tests
         public void Given_ALastLineHoldingTwoWords_When_Pretty_Then_TheBoxIsLeftAlone()
         {
             // Arrange / Act — at the head's width "e f" share the second line.
-            var (_, pretty) = MountAtHeadWidth("e f");
+            var (_, pretty, arranged, measured) = MountWithOrphan("e f");
 
             // Assert
-            Assert.That(pretty.style.width.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((arranged, pretty.style.width.keyword), Is.EqualTo((true, StyleKeyword.Null)), measured);
         }
 
         [Test]
         public void Given_ANarrowedPrettyBox_When_ItsTextStopsEndingInAShortWord_Then_TheBoxIsHandedBack()
         {
             // Arrange
-            var (_, pretty) = MountAtHeadWidth("e");
-            var narrowed = pretty.style.width.keyword;
+            var (_, pretty, arranged, measured) = MountWithOrphan("e");
+            var narrowed = (arranged, pretty.style.width.keyword);
 
             // Act
             s_setText.Invoke(Head + " eeeeeeeeeeee");
             Settle();
 
             // Assert
-            Assert.That((narrowed, pretty.style.width.keyword), Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
+            Assert.That($"{narrowed} {pretty.style.width.keyword}",
+                Is.EqualTo($"{(true, StyleKeyword.Undefined)} {StyleKeyword.Null}"), measured);
         }
     }
 }
