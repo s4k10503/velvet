@@ -754,6 +754,8 @@ namespace Velvet
                 return false;
             }
             var containRoot = FindEnclosingContainScopeRoot(relatedTarget, ctx, out var binding);
+            // MUTANT_SURVIVES(equivalent, logic): FindEnclosingContainScopeRoot hands back a binding exactly when
+            // it returns a root, so the two null tests agree, and joining them with && selects the same calls.
             if (containRoot == null || binding == null || IsLogicallyWithin(target, containRoot)
                 || LandsInANewerContainScope(target, binding))
             {
@@ -1027,9 +1029,14 @@ namespace Velvet
         }
 
         private static VisualElement? FocusedElementIn(PanelHostRecord host)
-            => host.Document != null
+        {
+            // MUTANT_SURVIVES(unreachable): a layer or world-space host holds a focusable element only while a
+            // portal targeting its root is mounted, and the portal loop in FocusedElementInManagedPanels reads
+            // that same panel through that target.
+            return host.Document != null
                 ? host.Document.rootVisualElement?.panel?.focusController?.focusedElement as VisualElement
                 : null;
+        }
 
         // True when `root`'s panel currently has a focused element that is `root` itself or one of its
         // descendants — the shared "does this subtree currently hold focus" check needed by every path
