@@ -698,9 +698,7 @@ namespace Velvet
                 ? NavigationLifecycle.Loading
                 : NavigationLifecycle.Idle;
 
-            var location = lifecycle == NavigationLifecycle.Loading
-                ? router.PendingLocation
-                : router.CurrentLocation;
+            var location = lifecycle == NavigationLifecycle.Loading ? router.PendingLocation : null;
 
             return new NavigationState { State = lifecycle, Location = location };
         }

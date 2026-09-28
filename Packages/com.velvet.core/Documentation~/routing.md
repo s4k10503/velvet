@@ -93,8 +93,10 @@ that caused it.
 A loader that throws — or whose task fails — does not abort the navigation. The location commits and
 the error is recorded against that route: the nearest route at or above the failing one that carries
 an `errorElement` renders it in place of its own `element`, and `Hooks.UseRouteError` returns the
-exception there. With no `errorElement` anywhere in the matched chain nothing below the root renders,
-the layout routes included.
+exception there. With no `errorElement` anywhere in the matched chain the root route renders a default
+one in place of its `element`, the layout routes below it included, as React Router's default error
+element does: a heading, the exception's message and its stack trace. In the editor and in a
+development build it also logs the exception.
 
 Stepping `GoBack` / `GoForward` onto an entry whose loaders had finished serves that entry's data and
 errors from the history cache instead of re-running the loaders.
@@ -107,17 +109,13 @@ errors from the history cache instead of re-running the loaders.
   commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that matches none never
   reports `Loading`.
 - `Location` is the location being navigated **to** while `State` is `Loading` — resolved, so it
-  carries the destination's `Params` and `Matches`, not just its path.
+  carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
+  `Idle`, as `navigation.location` is `undefined` then.
 
 `Router.PendingLocation` is the same destination read imperatively, for a host object that has no
 component to hook from.
 
 ## Where this deviates from React Router
-
-**`navigation.location` when idle.** React Router's is `undefined`, so `Boolean(navigation.location)`
-is its canonical "is something pending" test. Velvet's `NavigationState.Location` is the committed
-location when idle — the same value `Hooks.UseLocation()` returns. Branch on
-`State == NavigationLifecycle.Loading` instead.
 
 **No route actions.** Velvet has no form-submission model: a route declares no action, nothing reads
 an action's result, and `NavigationLifecycle` therefore has no `submitting` beside its two values.
@@ -135,8 +133,9 @@ re-enters the pipeline, so the path a guard redirects away from never reaches a 
 does: an unsaved-changes blocker is asked about `/login` rather than about the `/admin` that was
 navigated to, and a block there stops the redirect.
 
-**No URL.** There is no browser to own the address bar, so the router holds its own history stack,
-capped at 50 entries. `Router.NavigateAsync` states how long a redirect chain may be.
+**No URL.** There is no browser to own the address bar, so `Router` is `createMemoryRouter`'s
+counterpart and holds its own history stack, which grows without a bound as a memory history's does.
+`Router.NavigateAsync` states how long a redirect chain may be.
 
 ## Also see
 

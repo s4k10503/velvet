@@ -19,7 +19,6 @@ namespace Velvet
         private Dictionary<string?, object> _loaderData = new();
         private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
-        private const int MaxHistoryEntries = 50;
         // Cancellation for the currently in-flight navigation (null when idle). A newer navigation
         // that matches cancels it on its way past the match, so the prior attempt unwinds
         // (NavigationResult.Cancelled) wherever it is parked and concurrent navigations resolve to the most
@@ -915,14 +914,6 @@ namespace Velvet
 
             _history.Add(entry);
             _historyIndex = _history.Count - 1;
-
-            // Evicting the head entry when the cap is exceeded shifts every remaining index down by
-            // one, so _historyIndex must decrement too to keep pointing at the same logical entry.
-            if (_history.Count > MaxHistoryEntries)
-            {
-                _history.RemoveAt(0);
-                _historyIndex--;
-            }
         }
 
         /// <summary>

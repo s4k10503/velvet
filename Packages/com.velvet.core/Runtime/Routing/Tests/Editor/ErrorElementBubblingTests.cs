@@ -1,7 +1,10 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet;
 using Velvet.TestUtilities;
@@ -490,45 +493,36 @@ namespace Velvet.Tests
 
         #region No ancestor boundary bubbles to root
 
-        // GREEN_ON_BASE(characterization): the implicit root boundary already blanked the parent layout.
-        // Carried because the branch moves that resolution into a component body, whose success path
-        // dereferences the match this arm leaves null. Hence the Error Boundary, the instrument the
-        // boundary-holding-an-Outlet case above introduces: the blank survives that dereference too.
         [Test]
-        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ParentLayoutBlanksWithoutFailing()
+        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_TheDefaultErrorElementReplacesTheParentLayout()
         {
             // Arrange
             var router = BuildNoBoundaryRouter();
+            LogAssert.Expect(LogType.Exception, new Regex("child-boom"));
 
             // Act
-            using var mounted = MountWithRouterUnderErrorBoundary(router);
+            using var mounted = MountWithRouter(router);
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(
-                (HasLabel(_root, "parent-layout"), s_errorBoundaryCaught),
-                Is.EqualTo((false, false)),
-                "The implicit root boundary renders nothing, so even the parent layout blanks — and"
-                + " rendering nothing there is not a failure");
+                (HasLabel(_root, "parent-layout"), HasLabel(_root, "Unexpected Application Error!")),
+                Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the errored child already did not render with no ancestor
-        // errorElement anywhere in the chain. Carried, and mounted under the Error Boundary, for the
-        // reason the case above it gives.
         [Test]
-        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ErroredChildDoesNotRenderWithoutFailing()
+        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_TheDefaultErrorElementShowsTheErrorMessage()
         {
             // Arrange
             var router = BuildNoBoundaryRouter();
+            LogAssert.Expect(LogType.Exception, new Regex("child-boom"));
 
             // Act
-            using var mounted = MountWithRouterUnderErrorBoundary(router);
+            using var mounted = MountWithRouter(router);
+            mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(
-                (HasLabel(_root, "child"), s_errorBoundaryCaught),
-                Is.EqualTo((false, false)),
-                "The errored child does not render when no ancestor errorElement exists, and not"
-                + " rendering it is not a failure");
+            Assert.That(HasLabel(_root, "child-boom"), Is.True);
         }
 
         private Router BuildNoBoundaryRouter()

@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -347,76 +346,29 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region History FIFO cap
+        #region History length
 
-        // Derive the private cap so the boundary arrangements move with production.
-        private static int HistoryCap => (int)typeof(Router)
-            .GetField("MaxHistoryEntries", BindingFlags.NonPublic | BindingFlags.Static)
-            .GetRawConstantValue();
-
-        private static Router BuildRouterAtCapOverflow(out string lastPath)
+        [Test]
+        public void Given_ManyPushes_When_WalkingBackToStart_Then_TheFirstEntryIsStillThere()
         {
+            // Arrange
+            const int pushes = 120;
             var router = new Router(new[] { Route(":page") });
-            var total = HistoryCap + 1;
-            for (var i = 1; i <= total; i++)
+            for (var i = 1; i <= pushes; i++)
             {
                 router.NavigateSync($"/p{i}");
             }
-            lastPath = $"/p{total}";
-            return router;
-        }
-
-        [Test]
-        public void Given_PushesBeyondHistoryCap_When_GoBack_Then_LandsOnEntryBeforeLatest()
-        {
-            // Evicting the head shifts every entry down by one, so the history index must shift with
-            // it for a Back step to still land on the entry pushed immediately before the latest.
-            // Arrange
-            var router = BuildRouterAtCapOverflow(out var lastPath);
-            Assume.That(router.CurrentLocation.Path, Is.EqualTo(lastPath), "Precondition: the latest push committed");
-
-            // Act
-            router.GoBackSync();
-
-            // Assert
-            Assert.That(router.CurrentLocation.Path, Is.EqualTo($"/p{HistoryCap}"));
-        }
-
-        [Test]
-        public void Given_PushesBeyondHistoryCap_When_WalkingBackToStart_Then_OldestEntryWasEvicted()
-        {
-            // Arrange
-            var router = BuildRouterAtCapOverflow(out _);
 
             // Act
             // Bound the walk so a broken CanGoBack cannot hang the fixture.
             var steps = 0;
-            while (router.CanGoBack && steps++ < HistoryCap * 2)
+            while (router.CanGoBack && steps++ < pushes * 2)
             {
                 router.GoBackSync();
             }
 
             // Assert
-            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/p2"));
-        }
-
-        [Test]
-        public void Given_PushesBeyondHistoryCap_When_WalkingBackToStart_Then_HistoryCountIsCapped()
-        {
-            // Arrange
-            var router = BuildRouterAtCapOverflow(out _);
-
-            // Act
-            // Bound the walk so a broken CanGoBack cannot hang the fixture.
-            var backSteps = 0;
-            while (router.CanGoBack && backSteps < HistoryCap * 2)
-            {
-                router.GoBackSync();
-                backSteps++;
-            }
-
-            // Assert
-            Assert.That(backSteps, Is.EqualTo(HistoryCap - 1));
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/p1"));
         }
 
         #endregion

@@ -65,22 +65,15 @@ namespace Velvet
 
                 if (depth == boundaryDepth)
                 {
-                    if (boundaryElement == null)
-                    {
-                        // Implicit root boundary with no ErrorElement (Velvet has no default error surface):
-                        // the error bubbles to the root and, with no boundary defined anywhere in the
-                        // chain, the erroring subtree renders nothing.
-                        match = null;
-                        return false;
-                    }
-
-                    // This Outlet renders the boundary route's ErrorElement in place of its Element.
-                    routeElement = boundaryElement;
+                    // This Outlet renders the boundary route's ErrorElement in place of its Element — the
+                    // default one at the implicit root boundary, where no route declared one.
+                    routeElement = boundaryElement
+                        ?? V.Component(RouteDefaultErrorElement.Render, key: "velvet-default-error-element");
                     routeDepth = depth + 1;
                     return true;
                 }
 
-                // MUTANT_SURVIVES(equivalent): the depth == boundaryDepth arm above returns on both paths.
+                // MUTANT_SURVIVES(equivalent): the depth == boundaryDepth arm above returns.
                 // This is therefore reached only where the two depths differ.
                 if (depth > boundaryDepth)
                 {
@@ -105,9 +98,7 @@ namespace Velvet
 
         // The nearest route, scanning from the deepest errored route up toward the root, that defines a
         // RouteDefinition.ErrorElement. Returns -1 when no route errored. When a route errored but no route
-        // at or above it defines an ErrorElement, returns the root index 0 as an implicit boundary (the
-        // error bubbles all the way to the root): because Velvet has no default error surface, the caller
-        // renders nothing at that boundary, so the erroring matched tree renders nothing.
+        // at or above it defines an ErrorElement, returns the root index 0 as an implicit boundary.
         private static int ResolveErrorBoundaryDepth(
             IReadOnlyList<RouteMatch> matches,
             IReadOnlyDictionary<string, Exception>? errors)
@@ -151,7 +142,7 @@ namespace Velvet
             }
 
             // No route at or above the errored route defines an ErrorElement: bubble to the implicit root
-            // boundary. The root has no ErrorElement, so the caller renders nothing there.
+            // boundary.
             return 0;
         }
     }
