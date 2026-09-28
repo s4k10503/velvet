@@ -13,17 +13,18 @@ namespace Velvet
     {
         private static List<VelvetPreviewStory>? s_cachedStories;
 
-        private static readonly Dictionary<Assembly, MethodInfo?> s_setupCache = new();
+        private static readonly Dictionary<Assembly, List<MethodInfo>> s_setupCache = new();
 
         /// <summary>
         /// Discovered valid stories from the project's non-test assemblies, ordered by group then name.
         /// </summary>
+        /// <exception cref="InvalidOperationException">Two stories share a <c>Group/Name</c> id.</exception>
         public static List<VelvetPreviewStory> DiscoverStories() =>
             s_cachedStories ??= DiscoverStoriesIn(NonTestVelvetAssemblies());
 
         /// <summary>
         /// Discovers valid stories from <paramref name="assemblies"/>. Invalid discovered signatures are skipped
-        /// with a warning.
+        /// with a warning; a duplicate id throws, naming every collision.
         /// </summary>
         internal static List<VelvetPreviewStory> DiscoverStoriesIn(IEnumerable<Assembly> assemblies)
         {
@@ -47,50 +48,54 @@ namespace Velvet
                 var byGroup = string.CompareOrdinal(a.Group, b.Group);
                 return byGroup != 0 ? byGroup : string.CompareOrdinal(a.Name, b.Name);
             });
-            DropDuplicateIds(stories);
+            RefuseDuplicateIds(stories);
             return stories;
         }
 
         /// <summary>
-        /// Resolves and runs the <c>[VelvetPreviewSetup]</c> environment for <paramref name="assembly"/>. Returns
-        /// its teardown handle when it supplied one; otherwise returns <c>null</c>. Honors at most one setup per
-        /// assembly.
+        /// Runs every valid <c>[VelvetPreviewSetup]</c> environment <paramref name="assembly"/> declares,
+        /// ordered by declaring type then method name. Returns one handle that tears them down in reverse
+        /// order, or <c>null</c> when none supplied a teardown.
         /// </summary>
-        public static IDisposable? RunSetupFor(Assembly? assembly)
+        public static IDisposable? RunSetupFor(Assembly? assembly) => RunSetupsFor(assembly, afterEach: null);
+
+        // afterEach runs once per setup, straight after it, so a host can take a hint each setup publishes
+        // before the next setup overwrites it.
+        internal static IDisposable? RunSetupsFor(Assembly? assembly, Action? afterEach)
         {
             if (assembly == null) return null;
-            var chosen = ResolveSetup(assembly);
-            return chosen == null ? null : Invoke(chosen);
+            var teardowns = new List<IDisposable>();
+            foreach (var setup in ResolveSetups(assembly))
+            {
+                var teardown = Invoke(setup);
+                if (teardown != null) teardowns.Add(teardown);
+                afterEach?.Invoke();
+            }
+
+            return teardowns.Count == 0 ? null : new StackedTeardown(teardowns);
         }
 
-        private static MethodInfo? ResolveSetup(Assembly assembly)
+        private static List<MethodInfo> ResolveSetups(Assembly assembly)
         {
             if (s_setupCache.TryGetValue(assembly, out var cached)) return cached;
 
-            MethodInfo? chosen = null;
+            var setups = new List<MethodInfo>();
             foreach (var method in MethodsWith<VelvetPreviewSetupAttribute>(new[] { assembly }))
             {
-                if (!IsValidSetup(method))
+                if (IsValidSetup(method))
                 {
-                    Debug.LogWarning(
-                        $"[VelvetPreview] '{Describe(method)}' is ignored: a [VelvetPreviewSetup] method must be " +
-                        "static, non-generic, parameterless, and return void, IDisposable, or Action.");
+                    setups.Add(method);
                     continue;
                 }
 
-                if (chosen != null)
-                {
-                    Debug.LogWarning(
-                        $"[VelvetPreview] '{Describe(method)}' is ignored: assembly '{assembly.GetName().Name}' " +
-                        $"already declares a preview setup ('{Describe(chosen)}').");
-                    continue;
-                }
-
-                chosen = method;
+                Debug.LogWarning(
+                    $"[VelvetPreview] '{Describe(method)}' is ignored: a [VelvetPreviewSetup] method must be " +
+                    "static, non-generic, parameterless, and return void, IDisposable, or Action.");
             }
 
-            s_setupCache[assembly] = chosen;
-            return chosen;
+            setups.Sort((a, b) => string.CompareOrdinal(Describe(a), Describe(b)));
+            s_setupCache[assembly] = setups;
+            return setups;
         }
 
         // Test fixture stories are scaffolding, not project UI; keep their assemblies out of the preview and
@@ -151,19 +156,23 @@ namespace Velvet
             }
         }
 
-        // Two equal ids mean a capture would overwrite a PNG and a selection-restore would be ambiguous, so the
-        // first occurrence (discovery is already sorted) is kept and the rest are reported and removed.
-        private static void DropDuplicateIds(List<VelvetPreviewStory> stories)
+        // Refused rather than resolved to one of the stories, as Storybook refuses an index holding two stories
+        // under one id.
+        private static void RefuseDuplicateIds(List<VelvetPreviewStory> stories)
         {
-            var seen = new HashSet<string>();
-            for (var i = 0; i < stories.Count; i++)
+            var first = new Dictionary<string, VelvetPreviewStory>();
+            var collisions = new List<string>();
+            foreach (var story in stories)
             {
-                if (seen.Add(stories[i].Id)) continue;
-                Debug.LogWarning(
-                    $"[VelvetPreview] duplicate story id '{stories[i].Id}' is ignored: another story already " +
-                    "uses that Group/Name. Give it a distinct Name or Group.");
-                stories.RemoveAt(i);
-                i--;
+                if (first.TryAdd(story.Id, story)) continue;
+                collisions.Add(
+                    $"Duplicate stories with id '{story.Id}': '{Describe(first[story.Id].Method)}' and " +
+                    $"'{Describe(story.Method)}'. Give one a distinct Name or Group.");
+            }
+
+            if (collisions.Count > 0)
+            {
+                throw new InvalidOperationException("[VelvetPreview] " + string.Join("\n", collisions));
             }
         }
 
@@ -269,6 +278,29 @@ namespace Velvet
 
         private static string Describe(MethodInfo method) =>
             (method.DeclaringType?.FullName ?? "?") + "." + method.Name;
+
+        private sealed class StackedTeardown : IDisposable
+        {
+            private readonly List<IDisposable> _teardowns;
+
+            public StackedTeardown(List<IDisposable> teardowns) => _teardowns = teardowns;
+
+            // One teardown throwing must not strand the environments set up before it.
+            public void Dispose()
+            {
+                for (var i = _teardowns.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        _teardowns[i].Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogException(ex);
+                    }
+                }
+            }
+        }
 
         private sealed class ActionDisposable : IDisposable
         {

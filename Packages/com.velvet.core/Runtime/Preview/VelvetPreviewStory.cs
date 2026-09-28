@@ -35,11 +35,11 @@ namespace Velvet
         /// <summary>The story's single args-parameter type, or <c>null</c> when the story is parameterless.</summary>
         public Type? ArgsType { get; }
 
-        private readonly MethodInfo _method;
+        internal MethodInfo Method { get; }
 
         internal VelvetPreviewStory(MethodInfo method, VelvetPreviewAttribute attribute)
         {
-            _method = method ?? throw new ArgumentNullException(nameof(method));
+            Method = method ?? throw new ArgumentNullException(nameof(method));
             Name = string.IsNullOrEmpty(attribute.Name) ? method.Name : attribute.Name;
             Group = string.IsNullOrEmpty(attribute.Group) ? method.DeclaringType?.Name ?? "Preview" : attribute.Group;
             Width = attribute.Width;
@@ -66,7 +66,7 @@ namespace Velvet
             var invokeArgs = ArgsType == null ? null : new[] { args };
             try
             {
-                return _method.Invoke(null, invokeArgs) as VNode;
+                return Method.Invoke(null, invokeArgs) as VNode;
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {

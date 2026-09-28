@@ -230,11 +230,6 @@ namespace Velvet.Editor.DevTools
             {
                 var entry = entries[i];
                 var isSelected = i == _selectedEntryIndex;
-                var isDisposed = entry.Fiber.IsDisposed;
-
-                EditorGUI.BeginDisabledGroup(isDisposed);
-
-                var label = isDisposed ? $"[Disposed] {entry.Label}" : entry.Label;
 
                 EditorGUILayout.BeginHorizontal();
 
@@ -246,13 +241,11 @@ namespace Velvet.Editor.DevTools
                     RefreshSelectedComponent();
                 }
 
-                GUILayout.Label(label, isSelected ? EditorStyles.selectionRect : EditorStyles.label);
+                GUILayout.Label(entry.Label, isSelected ? EditorStyles.selectionRect : EditorStyles.label);
                 GUILayout.FlexibleSpace();
                 GUILayout.Label(entry.TypeName, EditorStyles.miniLabel);
 
                 EditorGUILayout.EndHorizontal();
-
-                EditorGUI.EndDisabledGroup();
             }
 
             EditorGUILayout.EndScrollView();
