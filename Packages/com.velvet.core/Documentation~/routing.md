@@ -71,7 +71,7 @@ navigation is sequenced against it.
 | Mode | What it does | React Router equivalent |
 |------|--------------|-------------------------|
 | `LoaderMode.Await` (default) | The navigation waits. The route already on screen stays there, `Hooks.UseNavigation().State` reports `Loading`, and the location commits with the data. | a plain `loader` |
-| `LoaderMode.Suspend` | The navigation commits at once and the loader runs on. `Hooks.UseLoaderData` returns `default` until it resolves, then the route re-renders. | an unawaited promise in the loader data, read through `<Await>` — but `<Await>` renders inside a `<Suspense>` fallback, and a Velvet route declares no pending element to pair with |
+| `LoaderMode.Suspend` | The navigation commits at once and the loader runs on. `Hooks.UseLoaderData` returns `default` until it resolves, then the route re-renders. | none: React Router defers a value inside a loader's data instead, as the next section does |
 
 `Await` is the one that awaits real I/O, and an `Await` loader that never completes is a navigation
 that never commits. Loaders of one navigation all start before any of them is awaited, so the matched
@@ -81,9 +81,9 @@ A `Suspend` loader keeps running while an `Await` loader holds the next commit, 
 belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
 `Hooks.UseLoaderData`. The commit that leaves the route is what cancels it.
 
-A loader still running when its round is cancelled can go on reading its token, and so can a Blocker
-still awaiting when its navigation is cancelled: the router never disposes the source behind a token it
-hands out, so a cancelled token reads as cancelled for as long as anything holds it.
+A loader still running when its round is cancelled can go on reading its token: the router never
+disposes the source behind a token it hands out, so a cancelled token reads as cancelled for as long as
+anything holds it.
 
 A cancellation callback a loader registers on its token runs when that cancellation happens. One that
 throws is reported through `Debug.LogException` rather than raised at the navigation or the disposal
@@ -96,6 +96,62 @@ exception there. With no `errorElement` anywhere in the matched chain the root r
 one in place of its `element`, the layout routes below it included, as React Router's default error
 element does: a heading, the exception's message and its stack trace. In the editor and in a
 development build it also logs the exception.
+
+### Deferred data
+
+A loader that has part of its data at once and part later returns the late part as a `Deferred<T>` inside
+its data — React Router's unawaited promise in loader data. The navigation commits with the rest, and
+the route reads the late part through `V.Await` — `<Await>` — beneath a `V.Suspense`, whose fallback shows
+until the value arrives:
+
+```csharp compile
+public static class Product
+{
+    public sealed class Data
+    {
+        public Data(string name, Deferred<string[]> reviews)
+        {
+            Name = name;
+            Reviews = reviews;
+        }
+
+        public string Name { get; }
+        public Deferred<string[]> Reviews { get; }
+    }
+
+    public static VelvetTask<object> Load(RouteLoaderContext ctx, System.Threading.CancellationToken ct)
+        => VelvetTask.FromResult<object>(new Data("Lamp", new Deferred<string[]>(FetchReviews(ct))));
+
+    [Component]
+    public static VNode Render()
+    {
+        var data = Hooks.UseLoaderData<Data>();
+        return V.Div(children: new VNode[]
+        {
+            V.Label(text: data?.Name),
+            V.Suspense(
+                fallback: V.Label(text: "Loading reviews…"),
+                children: new VNode[]
+                {
+                    V.Await(data!.Reviews, reviews => V.Label(text: string.Join(", ", reviews)),
+                        errorElement: V.Label(text: "Reviews are unavailable.")),
+                }),
+        });
+    }
+
+    private static async VelvetTask<string[]> FetchReviews(System.Threading.CancellationToken ct)
+    {
+        await VelvetTask.Yield();
+        ct.ThrowIfCancellationRequested();
+        return new[] { "Bright", "Sturdy" };
+    }
+}
+```
+
+`V.Await` takes a function of the value or, as element children, components that read it through
+`Hooks.UseAsyncValue`. Its `errorElement` renders when the deferred value's task fails or rendering the
+value throws, and `Hooks.UseAsyncError` returns the exception beneath it; without one the exception
+propagates to the nearest error boundary. Any number of `V.Await` may read one `Deferred<T>`.
 
 Stepping `GoBack` / `GoForward` onto an entry whose loaders had finished serves that entry's data and
 errors from the history cache instead of re-running the loaders.

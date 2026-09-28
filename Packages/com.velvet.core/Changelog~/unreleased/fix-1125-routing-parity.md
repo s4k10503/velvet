@@ -1,3 +1,10 @@
+### Added
+
+- `Deferred<T>`, `V.Await`, `Hooks.UseAsyncValue` and `Hooks.UseAsyncError`: React Router's deferred loader
+  data, `<Await>`, `useAsyncValue` and `useAsyncError`. A loader returns a `Deferred<T>` inside its data so
+  the navigation commits without waiting for it, and `V.Await` renders the value once it arrives,
+  suspending to the nearest `V.Suspense` until then.
+
 ### Fixed
 
 - A `Router`'s history keeps every entry, as a memory router's does. It used to drop its oldest entry

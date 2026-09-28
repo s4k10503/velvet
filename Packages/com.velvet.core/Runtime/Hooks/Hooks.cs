@@ -741,6 +741,29 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Returns the value the nearest <c>V.Await</c> above the caller resolved, cast to
+        /// <typeparamref name="T"/>: React Router's <c>useAsyncValue</c>. Returns <c>default</c> outside one,
+        /// and beneath one that is rendering its <c>errorElement</c>.
+        /// </summary>
+        /// <typeparam name="T">Expected value type.</typeparam>
+        public static T? UseAsyncValue<T>()
+        {
+            _ = Resolve("UseAsyncValue");
+            var outcome = UseContext(RouteAwait.Outcome);
+            return outcome?.Value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the exception the nearest <c>V.Await</c> above the caller is rendering its
+        /// <c>errorElement</c> for: React Router's <c>useAsyncError</c>. Returns null elsewhere.
+        /// </summary>
+        public static Exception? UseAsyncError()
+        {
+            _ = Resolve("UseAsyncError");
+            return UseContext(RouteAwait.Outcome)?.Error;
+        }
+
+        /// <summary>
         /// Returns the loader data for the route at the current Outlet depth, cast to <typeparamref name="T"/>.
         /// Returns <c>default</c> when there is no data.
         /// </summary>

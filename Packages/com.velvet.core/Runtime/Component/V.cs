@@ -2427,6 +2427,55 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Renders the value a <see cref="Deferred{T}"/> resolves to: React Router's <c>&lt;Await&gt;</c>. While
+        /// the value is still on its way it suspends to the nearest <see cref="Suspense"/>, which shows its
+        /// fallback. <c>Hooks.UseAsyncValue</c> reads the value beneath it.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Renders the resolved value.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering the value throws; <c>Hooks.UseAsyncError</c> reads the exception beneath
+        /// it. Without one, the exception propagates to the nearest error boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering the value.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            Func<T, VNode?> children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(
+                RouteAwait.Render,
+                new RouteAwait.Props(resolve, value => children((T)value!), null, errorElement),
+                key);
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> once a <see cref="Deferred{T}"/> resolves: React Router's
+        /// <c>&lt;Await&gt;</c> with element children, which read the value through
+        /// <c>Hooks.UseAsyncValue</c>. Suspends and fails as
+        /// <see cref="Await{T}(Deferred{T}, Func{T, VNode}, VNode, string)"/> does.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Rendered once the value resolves.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering <paramref name="children"/> throws.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering <paramref name="children"/>.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            VNode children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(RouteAwait.Render, new RouteAwait.Props(resolve, null, children, errorElement), key);
+        }
+
+        /// <summary>
         /// Path-based route definition. Declaratively expresses Velvet Router's nested routes and Loaders.
         /// </summary>
         /// <param name="path">URL path pattern for matching. Must not be null.</param>
