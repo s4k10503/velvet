@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// An important utility is inline-resolved on the highest (Important) layer, the inline-style stand-in
     /// for CSS <c>!important</c> (UI Toolkit inline styles already beat USS class rules), so it wins over
     /// a later base utility and over a state layer such as hover. A class-only utility has no inline form,
-    /// so its bang is accepted (stripped) but inert. GWT, one assert each.
+    /// so its bang is accepted (stripped) but inert. The font family arbitrates the bang itself, so an
+    /// important hover payload outranks an important base one. GWT, one assert each.
     /// </summary>
     [TestFixture]
     internal sealed class ImportantModifierBehaviorTests
@@ -64,6 +65,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.IsTrue(leaf.ClassListContains("flex"));
+        }
+
+        [Test]
+        public void Given_AnImportantWeightAndAnImportantHoverWeight_When_Hovered_Then_TheHoverWeightWins()
+        {
+            // Arrange — with no registered font asset a weight of 600 or more is realised as a bold style.
+            var leaf = MountLeaf("!font-[700] hover:!font-[300]");
+            var atRest = leaf.style.unityFontStyleAndWeight.value;
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert
+            Assert.That((atRest, leaf.style.unityFontStyleAndWeight.value),
+                Is.EqualTo((UnityEngine.FontStyle.Bold, UnityEngine.FontStyle.Normal)));
         }
 
         [Test]

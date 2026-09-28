@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -440,6 +441,73 @@ namespace Velvet
             {
                 _emit(RelationalVariantSignal.Checked, value);
             }
+        }
+    }
+    // Hooks every source a relational binding matched and reports a state lit while ANY of them holds it:
+    // `.peer:hover ~ x` matches whichever preceding peer is hovered, and `.group:hover x` whichever ancestor
+    // group is. An on edge is forwarded as it arrives and the consumer dedups it; an off edge is forwarded
+    // only once no hooked source still holds the state. An off from a source that never reported the
+    // matching on still passes when nothing else holds the state, so a state lit before a re-resolve is
+    // cleared by its source's next off, as it was with one hooked source.
+    internal sealed class RelationalSourceSet
+    {
+        private readonly Action<RelationalVariantSignal, bool> _emit;
+        private readonly List<Source> _sources = new();
+        private readonly int[] _holding = new int[RelationalSignalCount];
+
+        private const int RelationalSignalCount = (int)RelationalVariantSignal.Checked + 1;
+
+        public RelationalSourceSet(Action<RelationalVariantSignal, bool> emit) => _emit = emit;
+
+        public void Hook(List<VisualElement> sources, bool seedChecked, bool registerChecked)
+        {
+            foreach (var element in sources)
+            {
+                var source = new Source(this);
+                _sources.Add(source);
+                source.Signals.Hook(element, seedChecked, registerChecked);
+            }
+        }
+
+        public void Unhook()
+        {
+            foreach (var source in _sources)
+            {
+                source.Signals.Unhook();
+            }
+            _sources.Clear();
+            Array.Clear(_holding, 0, _holding.Length);
+        }
+
+        public void SettleChecked(VisualElement source, bool value)
+        {
+            foreach (var hooked in _sources)
+            {
+                hooked.Signals.SettleChecked(source, value);
+            }
+        }
+
+        private void OnSourceSignal(Source source, RelationalVariantSignal signal, bool on)
+        {
+            var slot = (int)signal;
+            if (source.Holding[slot] != on)
+            {
+                source.Holding[slot] = on;
+                _holding[slot] += on ? 1 : -1;
+            }
+            if (on || _holding[slot] == 0)
+            {
+                _emit(signal, on);
+            }
+        }
+
+        private sealed class Source
+        {
+            public readonly bool[] Holding = new bool[RelationalSignalCount];
+            public readonly RelationalVariantSignals Signals;
+
+            public Source(RelationalSourceSet set)
+                => Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));
         }
     }
 }

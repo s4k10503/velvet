@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -40,7 +41,8 @@ namespace Velvet
         private bool _applied;
         private ElementLocalVariantSignals _elementSignals = null!;
         private ResponsiveWidthSource _widthSource = null!;
-        private RelationalVariantSignals _relSignals = null!;
+        private RelationalSourceSet _relSignals = null!;
+        private readonly List<VisualElement> _relSources = new();
 
         public StyleStackedVariantManipulator(
             ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority,
@@ -253,15 +255,13 @@ namespace Velvet
             }
             // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
             var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
-            var source = rel.IsPeer
-                ? StyleRelationalVariantManipulator.FindPrevSiblingWithClass(target, sourceClass, _ctx)
-                : StyleRelationalVariantManipulator.FindAncestorWithClass(target, sourceClass);
-            if (source == null)
+            StyleRelationalVariantManipulator.FindSources(target, rel.IsPeer, sourceClass, _ctx, _relSources);
+            if (_relSources.Count == 0)
             {
                 return;
             }
-            _relSignals ??= new RelationalVariantSignals(OnRelSignal);
-            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked);
+            _relSignals ??= new RelationalSourceSet(OnRelSignal);
+            _relSignals.Hook(_relSources, seedChecked: TracksChecked, registerChecked: TracksChecked);
         }
 
         private void UnhookRelational()

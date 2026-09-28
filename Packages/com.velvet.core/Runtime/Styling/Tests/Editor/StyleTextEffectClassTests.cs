@@ -16,6 +16,26 @@ namespace Velvet.Tests
     internal sealed class StyleTextEffectClassTests
     {
         [Test]
+        public void Given_AnImportantLeadingBeforeALaterPlainLeading_When_Parsed_Then_TheImportantOneWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!leading-[24px]", "leading-[10px]" });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
+        }
+
+        [Test]
+        public void Given_AnImportantUppercaseBeforeALaterPlainLowercase_When_Parsed_Then_TheImportantOneWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!uppercase", "lowercase" });
+
+            // Assert
+            Assert.That(effect.Transform, Is.EqualTo(TextTransformKind.Upper));
+        }
+
+        [Test]
         public void Given_Uppercase_When_Parsed_Then_TransformIsUpper()
         {
             Assert.That(StyleTextEffectClass.Parse(new[] { "uppercase" }).Transform, Is.EqualTo(TextTransformKind.Upper));

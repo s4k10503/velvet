@@ -103,6 +103,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantArbitraryWeight_When_Extracted_Then_SetsWeight()
+        {
+            // Act
+            var found = StyleFontClass.TryExtract(new[] { "!font-[weight:700]" }, out var intent);
+
+            // Assert
+            Assert.That((found, intent.HasWeight, (int)intent.Weight), Is.EqualTo((true, true, 700)));
+        }
+
+        [Test]
+        public void Given_AnImportantWeightBeforeALaterPlainWeight_When_Extracted_Then_TheImportantOneWins()
+        {
+            // Act
+            StyleFontClass.TryExtract(new[] { "font-[weight:700]!", "font-[weight:300]" }, out var intent);
+
+            // Assert
+            Assert.That((int)intent.Weight, Is.EqualTo(700));
+        }
+
+        [Test]
         public void Given_WeightKeywordClass_When_Extracted_Then_SetsWeight()
         {
             Assume.That(StyleFontClass.TryExtract(new[] { "font-semibold" }, out var intent), Is.True);

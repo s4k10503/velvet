@@ -202,10 +202,11 @@ width.
 
 ### Relational variants (`group-` / `peer-`)
 
-`group-*` reacts to a **marked ancestor**: add the `group` class to a container, and a
+`group-*` reacts to **marked ancestors**: add the `group` class to a container, and a
 descendant's `group-hover:` payload toggles when that container is hovered. `peer-*` reacts to
-a **marked previous sibling**: add `peer` to one element, and a later sibling's `peer-checked:`
-payload toggles with that peer's checked state. Tailwind's **named** forms are supported, so
+**marked previous siblings**: add `peer` to one element, and a later sibling's `peer-checked:`
+payload toggles with that peer's checked state. With several marked ancestors or previous siblings,
+the payload holds while any one of them is in the state. Tailwind's **named** forms are supported, so
 multiple groups / peers can coexist without cross-talk:
 
 ```csharp

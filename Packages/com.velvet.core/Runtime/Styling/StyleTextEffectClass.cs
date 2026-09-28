@@ -145,7 +145,8 @@ namespace Velvet
             ["leading-loose"] = 2f,
         };
 
-        // Resolves an element's OWN effect from its class list (last token wins per axis, except Whitespace —
+        // Resolves an element's OWN effect from its class list (last token wins per axis, an important one over
+        // every plain one, except Whitespace —
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
         // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
         // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
@@ -162,9 +163,17 @@ namespace Velvet
                 return default;
             }
             var facets = default(TextEffectFacets);
-            foreach (var cls in classNames)
+            // Same two-pass importance rule as StyleFontClass.TryExtract.
+            for (var pass = 0; pass < 2; pass++)
             {
-                ParseToken(cls, ref facets);
+                foreach (var cls in classNames)
+                {
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (important == (pass == 1))
+                    {
+                        ParseToken(core, ref facets);
+                    }
+                }
             }
             var whitespace = facets.Whitespace;
             // An explicit whitespace-{normal,nowrap,pre,pre-wrap} class on the SAME element always wins over
@@ -251,9 +260,7 @@ namespace Velvet
         // Routed through StripImportant first so an important-modifier bang (!leading-[...] / leading-[...]!)
         // is tolerated: the 3 call sites above run THIS check before their own StripImportant call, so a
         // bang'd token that only matched the un-prefixed form would fall through, have its bang stripped
-        // downstream, and leak the bare bracket core into the class list as a dead token. The modifier
-        // itself stays a no-op for this family either way (see StripImportant's own Scope comment) — this
-        // only makes the classlist guard agree with the stripper on what counts as "this family".
+        // downstream, and leak the bare bracket core into the class list as a dead token.
         public static bool IsArbitraryLeadingClass(string cls)
         {
             if (string.IsNullOrEmpty(cls))

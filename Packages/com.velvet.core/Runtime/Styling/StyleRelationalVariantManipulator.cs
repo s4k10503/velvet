@@ -28,13 +28,13 @@ namespace Velvet
     }
 
     // Toggles relational variant payloads — the group/peer variants:
-    // group-hover: / group-focus: / group-active: react to the nearest ANCESTOR marked with the group class.
-    // peer-hover: / peer-focus: / peer-active: / peer-checked: react to the nearest preceding SIBLING marked
+    // group-hover: / group-focus: / group-active: react to every ANCESTOR marked with the group class.
+    // peer-hover: / peer-focus: / peer-active: / peer-checked: react to every preceding SIBLING marked
     // with the peer class.
-    // The NAMED forms are supported too: group-hover/sidebar: reacts to the nearest ancestor marked
-    // `group/sidebar`, peer-checked/email: to the nearest preceding sibling marked `peer/email`. One element
+    // The NAMED forms are supported too: group-hover/sidebar: reacts to ancestors marked
+    // `group/sidebar`, peer-checked/email: to preceding siblings marked `peer/email`. One element
     // may consume several distinct named (and the unnamed) sources at once, so the manipulator holds a LIST of
-    // bindings — one per (relation, name) — each resolving and subscribing to its own source independently.
+    // bindings — one per (relation, name) — each resolving and subscribing to its own sources independently.
     // The manipulator lives on the consuming (child) element. Focus variants use FocusInEvent / FocusOutEvent
     // (focus-within semantics) since group/peer sources are commonly containers or inputs. Sources are
     // resolved on AttachToPanelEvent. Lifecycle mirrors the other variant manipulators
@@ -176,14 +176,41 @@ namespace Velvet
             return null;
         }
 
-        // Walks declared siblings, not physical ones, on both ends: a z-managed consumer starts from its
-        // placeholder's slot (FiberZLayerCoordinator.TryGetLogicalPosition), and a z-managed sibling is read
-        // through its placeholder to the element it relocated.
-        internal static VisualElement? FindPrevSiblingWithClass(VisualElement element, string cls, ReconcilerContext ctx)
+        // Every source a relational binding reacts to, nearest first: each preceding declared sibling carrying
+        // cls for a peer, each ancestor carrying it for a group.
+        internal static void FindSources(VisualElement element, bool isPeer, string cls, ReconcilerContext ctx,
+            List<VisualElement> into)
         {
-            if (!FiberZLayerCoordinator.TryGetLogicalPosition(ctx, element, out var parent, out var index))
+            into.Clear();
+            if (isPeer)
             {
-                return null;
+                FindPrevSiblingsWithClass(element, cls, ctx, into);
+                return;
+            }
+            for (var p = element.parent; p != null; p = p.parent)
+            {
+                if (p.ClassListContains(cls))
+                {
+                    into.Add(p);
+                }
+            }
+        }
+
+        // Walks declared siblings, not physical ones, on both ends: the consumer starts from the slot its
+        // outermost node holds — a structural wrapper's, or a z-managed element's placeholder's
+        // (FiberZLayerCoordinator.TryGetLogicalPosition) — and each sibling is read through its placeholder
+        // and its wrapper to the element that declared the class.
+        private static void FindPrevSiblingsWithClass(VisualElement element, string cls, ReconcilerContext ctx,
+            List<VisualElement> into)
+        {
+            var physicalParent = element.parent;
+            var outer = physicalParent != null
+                && ReferenceEquals(ctx.WrapperToInnerMap.GetValueOrDefault(physicalParent), element)
+                    ? physicalParent
+                    : element;
+            if (!FiberZLayerCoordinator.TryGetLogicalPosition(ctx, outer, out var parent, out var index))
+            {
+                return;
             }
 
             for (var i = index - 1; i >= 0; i--)
@@ -193,12 +220,15 @@ namespace Velvet
                 {
                     sibling = relocated;
                 }
+                if (ctx.WrapperToInnerMap.TryGetValue(sibling, out var inner))
+                {
+                    sibling = inner;
+                }
                 if (sibling.ClassListContains(cls))
                 {
-                    return sibling;
+                    into.Add(sibling);
                 }
             }
-            return null;
         }
 
         // One relational source binding. Owns its source resolution, event subscription, and applied state, so
@@ -217,7 +247,8 @@ namespace Velvet
             private readonly int[][] _declarations;
             private readonly bool[] _applied;
 
-            private RelationalVariantSignals _signals = null!;
+            private RelationalSourceSet _signals = null!;
+            private readonly List<VisualElement> _found = new();
 
             public Binding(StyleRelationalVariantManipulator owner, RelationalBindingConfig config)
             {
@@ -266,18 +297,16 @@ namespace Velvet
                 var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
                 if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
 
-                var source = _isPeer
-                    ? FindPrevSiblingWithClass(target, SourceClass, _owner._ctx)
-                    : FindAncestorWithClass(target, SourceClass);
-                if (source == null || !HasAnyState())
+                FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
+                if (_found.Count == 0 || !HasAnyState())
                 {
                     return;
                 }
 
-                _signals ??= new RelationalVariantSignals(OnSignal);
+                _signals ??= new RelationalSourceSet(OnSignal);
                 // registerChecked only for peer (group has no checked state). seedChecked reflects an
                 // already-checked peer immediately (the slot was cleared above, so no double-apply).
-                _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
+                _signals.Hook(_found, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
             }
 
             public void Unhook()
