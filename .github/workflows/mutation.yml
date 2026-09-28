@@ -1,9 +1,9 @@
 name: Mutation campaign
 
-# The mutation campaign over a pull request's change, once per pull request rather than on every push.
+# The mutation campaign over a pull request's change, once per labelled head rather than on every push.
 # scripts/pr/automerge.py's hand-off dispatches it onto the head's branch when the `automerge` label is
 # added and on each push while the label is on; CONTRIBUTING.md's continuous-integration section owns
-# what the label means and what a merge requires of this workflow's aggregate.
+# what the label means and what a merge requires of this workflow's runs.
 #
 # The hand-off dispatches no head on another repository. The checkout is the branch's head rather than
 # a test merge, so change_base.py reads the change against the merge base of that head and `base`.
@@ -106,9 +106,55 @@ jobs:
           [ "$status" -eq 0 ] || exit "$status"
           grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
 
+  # ---------------------------------------------------------------------------
+  # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under the pull
+  # request's own ref, which is not this run's, so this restores what the branch and the default branch
+  # hold, imports the head once where no entry carries its exact key, and saves the result under that
+  # key for the shards and for the next campaign on the branch.
+  # ---------------------------------------------------------------------------
+  library:
+    name: Mutation campaign (Library)
+    needs: [license-check, mutation-plan]
+    if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      # The EditMode shard's launch, with the editor opening the project and quitting.
+      - if: steps.restore.outputs.cache-hit != 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u scripts/ci/licensed_editor.py -- -projectPath /github/workspace
+
+      - if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+
   mutation-shard:
     name: Mutation campaign (EditMode shard ${{ matrix.shard }})
-    needs: [license-check, mutation-plan]
+    needs: [license-check, mutation-plan, library]
     if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -311,27 +357,26 @@ jobs:
           exit "$status"
 
   # ---------------------------------------------------------------------------
-  # The check a merge reads off the head: scripts/pr/campaign.py names it, and
-  # refuse/merge_unproven_head.py reads this job alone out of the run. A skip here reads as passing to
-  # it and to settle.py, so this runs under always() and fails a cancelled run, where an `if` a cancel
-  # can make false would skip it. A skipped dependency counts as passing, as in test.yml's
+  # The merge reads the run's conclusion rather than this job's, through scripts/pr/campaign.py; this
+  # job asks for the merge once every other job passed or was skipped. always(), so a campaign with
+  # nothing to measure still asks. A skipped dependency counts as passing, as in test.yml's
   # required-checks: a job after the plan skips where no licence is configured or nothing is left for
   # it to measure.
   #
-  # On a pass it dispatches the merge run, which waits out this run, since this job is a check on
-  # the head. continue-on-error, because a merge run that did not start is not a campaign that failed.
+  # The merge run it dispatches waits out this run, since settle refuses a head whose checks are still
+  # running. continue-on-error, because a merge run that did not start is not a campaign that failed.
   # ---------------------------------------------------------------------------
   campaign:
     name: Mutation campaign
     if: always()
-    needs: [license-check, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
+    needs: [license-check, mutation-plan, library, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: write
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
         run: |
           failed=0
           for result in $RESULTS; do

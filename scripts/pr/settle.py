@@ -39,8 +39,8 @@ Ten preconditions:
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
   owns which heads those are.
-- **A head carrying the `automerge` label must carry a mutation campaign.** `campaign.py` owns which
-  heads owe one and which of several campaigns on one head is read.
+- **A mutation campaign that ran on the head must have passed, and a head carrying the `automerge`
+  label must have one.** `campaign.py` owns which run is the campaign and what it concluded.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -244,11 +244,24 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, sha):
-    """Check results for one head, or an empty list when no workflow ever ran for it."""
+def checks(project, sha, runs=()):
+    """Check results for one head, or an empty list when no workflow ever ran for it.
+
+    `runs` is `campaign_runs`' reading of the same head, whose superseded campaigns' checks are left
+    out.
+    """
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
-                         rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)))
+                         rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)),
+                         campaign.superseded_suites(runs))
+
+
+def campaign_runs(project, sha):
+    """Every workflow run whose head is `sha`, which `campaign.py` reads the campaign out of."""
+    payload = rest_json(campaign.runs_path(repository(project), sha))
+    listed = payload.get("workflow_runs", [])
+    whole_page(payload, listed, "workflow runs")
+    return listed
 
 
 def whole_page(payload, listed, kind):
@@ -265,20 +278,22 @@ def whole_page(payload, listed, kind):
         raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
 
 
-def check_results(runs, statuses):
+def check_results(runs, statuses, superseded=frozenset()):
     """One bucket per check, from the check-runs payload and the legacy commit-status one.
 
     One commit carries two check surfaces, and the base can require a context from either, so
     leaving one out would decide a merge against a check nobody read. Only the status payload's
     individual entries become buckets; its rollup state is not read at all.
 
-    A page that did not carry everything raises rather than deciding; `whole_page` owns why.
+    A page that did not carry everything raises rather than deciding; `whole_page` owns why. A check
+    run of a suite in `superseded` is left out.
     """
     listed = runs.get("check_runs", [])
     reported = statuses.get("statuses", [])
     whole_page(runs, listed, "check runs")
     whole_page(statuses, reported, "commit statuses")
-    listed = campaign.newest(listed)
+    listed = [run for run in listed
+              if (run.get("check_suite") or {}).get("id") not in superseded]
     results = [{"name": run.get("name", ""),
                 "bucket": "pending" if run.get("status") != "completed"
                 else _BUCKET.get(run.get("conclusion") or "", "fail")}
@@ -341,7 +356,7 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
     for the reason `unpublished_release` gives, and neither does `owed_campaign`, the reason
-    `campaign.missing` gives or None.
+    `campaign.reason` gives or None.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -454,7 +469,8 @@ def blocking_reasons(project, number, base=None, states=None):
     if unpublished:
         unpublished = published_check.unpublished_reason(
             project, f"origin/{target}", fetch=False, result=before.sha)
-    results = checks(project, before.sha)
+    runs = campaign_runs(project, before.sha)
+    results = checks(project, before.sha, runs)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -464,6 +480,7 @@ def blocking_reasons(project, number, base=None, states=None):
     behind_release = (state.release if state.release and not before.fork
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
+    # A head on another repository is dispatched no campaign, and the fork reason refuses it already.
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
@@ -473,9 +490,8 @@ def blocking_reasons(project, number, base=None, states=None):
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
                                  long_lived_head=long_lived_head,
-                                 owed_campaign=campaign.missing(
-                                     before.labels, {entry["name"] for entry in results},
-                                     before.sha)),
+                                 owed_campaign=None if before.fork else campaign.reason(
+                                     before.labels, campaign.state(runs), before.sha)),
                     after, before.branch, results, target)
 
 

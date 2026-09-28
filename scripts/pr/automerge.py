@@ -6,7 +6,9 @@ pull request. Settle decides the merge; what this adds is which pull request to 
 handed a pull_request_target event, what the labelled head is waiting on: `campaign.py`'s workflow
 where the head has no campaign, and the merge run otherwise. A refusal is an ordinary outcome
 here — CONTRIBUTING.md's "Merging a pull request" section says what asks again — so it exits 0,
-where a reading or a dispatch that failed, or a hand-off run that never finished, exits 1.
+where a reading that failed, or a hand-off run that never finished, exits 1. A hand-off whose reading
+or dispatch gh refuses exits 0 with a warning instead: its job is a check on the head, and a failed
+one would have settle and the hook refuse that head, a merge by hand without the label included.
 
 Run: python3 scripts/pr/automerge.py                      (the event GitHub hands a job)
      python3 scripts/pr/automerge.py --number <n> [--after-run <run id>]
@@ -149,7 +151,11 @@ def hand_off(project, number, run_id):
     if reason:
         print(f"PR#{number} left alone: {reason}")
         return
-    if settle.campaign.dispatch_owed(settle.checks(project, head["sha"])):
+    found = settle.campaign.state(settle.campaign_runs(project, head["sha"]))
+    if found == settle.campaign.RUNNING:
+        print(f"PR#{number}: the campaign on {head['sha'][:7]} is still running, and asks for the "
+              f"merge once it passes")
+    elif settle.campaign.dispatch_owed(found):
         try:
             dispatch(project, settle.campaign.WORKFLOW, head["ref"], base=base["ref"],
                      number=number)
@@ -158,10 +164,11 @@ def hand_off(project, number, run_id):
                                f"take the base in with `settle.py update`")
         print(f"PR#{number}: a campaign is dispatched onto {head['ref']}, whose run asks for the "
               f"merge once it passes")
-        return
-    dispatch(project, MERGE_WORKFLOW, base["repo"]["default_branch"], number=number,
-             after_run=run_id)
-    print(f"PR#{number}: {head['sha'][:7]} has its campaign, so the merge run is dispatched")
+    else:
+        dispatch(project, MERGE_WORKFLOW, base["repo"]["default_branch"], number=number,
+                 after_run=run_id)
+        print(f"PR#{number}: the campaign on {head['sha'][:7]} {found}, so the merge run is "
+              f"dispatched")
 
 
 def list_open_pulls(project):
@@ -228,8 +235,7 @@ def main(argv=None, environ=None):
             try:
                 hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""))
             except RuntimeError as error:
-                print(f"::error::PR#{event['pull_request']['number']}: {error}")
-                return 1
+                print(f"::warning::PR#{event['pull_request']['number']}: {error}")
             return 0
         numbers, tested = numbers_from_event(project, event)
 

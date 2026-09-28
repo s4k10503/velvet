@@ -43,7 +43,7 @@ MOVED = "0123456789abcdef"
 # recognised the command and read nothing.
 READINGS = 4
 
-# `gh` as this fixture answers it: the head with its labels, the check list, the head's check runs,
+# `gh` as this fixture answers it: the head with its labels, the check list, the head's workflow runs,
 # then the head again, told apart by a call count kept on disk. An empty `VELVET_HEAD_AGAIN` is the
 # second head reading failing.
 STUB_GH = """#!/bin/sh
@@ -73,13 +73,13 @@ UNLABELLED = json.dumps([])
 LABELLED = json.dumps([{"name": "automerge"}])
 
 
-def check_runs(*campaigns):
-    """The head's check runs: the aggregate, and a campaign per (id, conclusion) pair."""
-    listed = [{"id": 1, "name": "Required checks (Unity)", "status": "completed",
+def workflow_runs(*campaigns, path=".github/workflows/mutation.yml"):
+    """The head's workflow runs: Test's, and one of `path` per (number, status, conclusion)."""
+    listed = [{"run_number": 40, "path": ".github/workflows/test.yml", "status": "completed",
                "conclusion": "success"}]
-    listed += [{"id": identity, "name": "Mutation campaign", "status": "completed",
-                "conclusion": conclusion} for identity, conclusion in campaigns]
-    return json.dumps({"total_count": len(listed), "check_runs": listed})
+    listed += [{"run_number": number, "path": path, "status": status, "conclusion": conclusion}
+               for number, status, conclusion in campaigns]
+    return json.dumps({"total_count": len(listed), "workflow_runs": listed})
 
 
 class HeadCheckVerdictTests(unittest.TestCase):
@@ -104,7 +104,7 @@ class HeadCheckVerdictTests(unittest.TestCase):
         environment.update(VELVET_CALLS=str(self.calls), VELVET_HEAD=HEAD,
                            VELVET_HEAD_AGAIN=head_again, VELVET_CHECKS=checks,
                            VELVET_CHECKS_EXIT=str(checks_exit), VELVET_LABELS=labels,
-                           VELVET_RUNS=check_runs() if runs is None else runs,
+                           VELVET_RUNS=workflow_runs() if runs is None else runs,
                            VELVET_HEAD_AGAIN_PAYLOAD=(head_again_payload if head_again_payload is not None
                                                       else json.dumps({"headRefOid": head_again})))
         event = {"tool_name": "Bash", "cwd": str(self.root), "tool_input": {"command": MERGE}}
@@ -212,41 +212,61 @@ class HeadCheckVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((result.returncode,
-                          f"no Mutation campaign check has run on {HEAD[:7]}" in result.stderr),
+                          f"no mutation.yml run has measured {HEAD[:7]}" in result.stderr),
                          (REFUSED, True))
 
     def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
         # Arrange / Act
-        result = self.ask(labels=LABELLED, runs=check_runs((2, "success")))
+        result = self.ask(labels=LABELLED, runs=workflow_runs((2, "completed", "success")))
 
         # Assert — the reading count rides along for the reason the passing case above states.
         self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
 
-    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsAsked_Then_ItIsRefused(self):
-        # Arrange / Act — a campaign present on the head has to pass whether or not one was owed.
-        result = self.ask(runs=check_runs((2, "failure")))
+    def test_Given_ALabelledHeadWhoseOnlyCampaignNamedRunIsAnotherWorkflows_When_Asked_Then_ItIsRefused(self):
+        # Arrange / Act — a skipped run of another workflow, which a campaign job's name could label.
+        result = self.ask(labels=LABELLED, runs=workflow_runs(
+            (2, "completed", "skipped"), path=".github/workflows/test.yml"))
 
         # Assert
         self.assertEqual((result.returncode,
-                          f"not passing at {HEAD[:7]}: Mutation campaign" in result.stderr),
+                          f"no mutation.yml run has measured {HEAD[:7]}" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange / Act — a campaign that ran on the head has to pass whether or not one was owed.
+        result = self.ask(runs=workflow_runs((2, "completed", "failure")))
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"its mutation.yml run on {HEAD[:7]} failed" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignIsRunning_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange / Act — a dispatched run carries no check `gh pr checks` lists.
+        result = self.ask(runs=workflow_runs((2, "queued", None)))
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"its mutation.yml run on {HEAD[:7]} has not finished" in result.stderr),
                          (REFUSED, True))
 
     def test_Given_ANewerCampaignThatPassedListedFirst_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
-        # Arrange / Act — the older one was superseded on the same head, and a reader taking the
+        # Arrange / Act — the older one was cancelled on the same head, and a reader taking the
         # page's last entry takes it.
-        result = self.ask(labels=LABELLED, runs=check_runs((3, "success"), (2, "cancelled")))
+        result = self.ask(labels=LABELLED, runs=workflow_runs((3, "completed", "success"),
+                                                              (2, "completed", "cancelled")))
 
         # Assert
         self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
 
-    def test_Given_CheckRunsThatCameBackPartial_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
+    def test_Given_WorkflowRunsThatCameBackPartial_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
         # Arrange / Act — the page claims a run it did not carry, which may be the campaign.
-        runs = json.dumps({"total_count": 2, "check_runs": []})
+        runs = json.dumps({"total_count": 2, "workflow_runs": []})
         result = self.ask(runs=runs)
 
         # Assert
         self.assertEqual((result.returncode,
-                          f"the check runs of {HEAD[:7]} could not all be read" in result.stderr),
+                          f"the workflow runs of {HEAD[:7]} could not all be read" in result.stderr),
                          (REFUSED, True))
 
     def test_Given_LabelsThatCameBackUnreadable_When_TheMergeIsAsked_Then_TheyAreNamed(self):
@@ -256,7 +276,6 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, "its labels could not be read" in result.stderr),
                          (REFUSED, True))
-
 
 if __name__ == "__main__":
     unittest.main()

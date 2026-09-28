@@ -109,8 +109,8 @@ def main():
         sys.stdout.write(json.dumps({"total_count": 1, "workflow_runs": [
             {"run_number": 1, "status": "completed", "conclusion": conclusion, "head_sha": sha}]}))
         return 0
-    if argv[0] == "api" and argv[1].endswith("/check-runs?per_page=100") and "--jq" not in argv:
-        sys.stdout.write(json.dumps({"total_count": 0, "check_runs": []}))
+    if argv[0] == "api" and "/actions/runs?head_sha=" in argv[1] and "--jq" not in argv:
+        sys.stdout.write(json.dumps({"total_count": 0, "workflow_runs": []}))
         return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)

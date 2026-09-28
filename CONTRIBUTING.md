@@ -183,7 +183,7 @@ says when it does which.
 
 **A pull request's CI runs the campaign once review has settled, and that run is the one the pull
 request answers to.** The `Mutation campaign` workflow runs on the pull request's head when the
-`automerge` label is added, and again on each push while it is on;
+`automerge` label is added, and again on each push while it is on — once per labelled head;
 [Merging a pull request](#merging-a-pull-request) owns when it is dispatched and what a merge requires
 of it. `Mutation campaign ▸ mutation-plan` generates the mutants of the head's diff against its merge
 base with the pull request's base, taking the readings `--list` takes, and stops there when there are none — because no mutable package source
@@ -195,7 +195,10 @@ smaller pull requests; without one no shard would run, and the plan passes as th
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
-`Mutation campaign ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
+`Mutation campaign ▸ library` restores the EditMode Library the branch or the default branch holds,
+imports the head once where neither holds one under its exact key, and saves that for the branch, because
+`Test ▸ unity-tests` saves its own under the pull request's ref, which a dispatch on the branch is
+not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running every Nth of them
 in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
@@ -212,10 +215,14 @@ recorded is one nothing measured. Unlike a local run it takes every mutant rathe
 `--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
 unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
 files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. The check named
-`Mutation campaign` is the workflow's `campaign` job, which fails unless every job above passed or was
-skipped. A push to a labelled pull request runs them all again and cancels the run still measuring
-the head before it, so a review round that changes production code after the label is measured by the
-push that carries it. Running the campaign locally is optional: it answers the same question before
+`Mutation campaign` is the workflow's `campaign` job, which asks for the merge once every job above
+passed or was skipped; what a merge reads is the run's own conclusion. A push to a labelled pull
+request runs them all again and cancels the run still measuring the head before it, so a review round
+that changes production code after the label is measured by the push that carries it. The run is the
+branch's own copy of the workflow and of `mutation_check.py`, as the `pull_request` run it replaces
+ran the test merge's copy: a dispatch records its runs and checks against the commit of the ref it
+names, so a campaign dispatched from the default branch would be recorded against that branch's tip
+rather than the head it measured. Running the campaign locally is optional: it answers the same question before
 a push, and before the label.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
@@ -943,22 +950,31 @@ above, so only an account holding that can opt a pull request in. The workflow d
 label; it has to exist in the repository.
 
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
-reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then dispatches
-`.github/workflows/mutation.yml` onto the head's branch where no campaign has run on that head, or
-where the newest one was cancelled, and the merge run otherwise; a failed campaign is a verdict about
-its head, which a push or a re-run of its failed jobs asks again. The campaign reads the head against
+reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then reads the head's
+runs of `.github/workflows/mutation.yml` — the campaign is a run of that file, and a check of another
+workflow bearing a campaign job's name is not one. Where there is none, or the newest was cancelled,
+it dispatches one onto the head's branch; where the newest is still running it leaves it to finish;
+and otherwise it dispatches the merge run. A failed campaign is a verdict about its head, which a push
+or a re-run of its failed jobs asks again, and a cancelled one is asked again by adding the label
+again, with no push. The campaign reads the head against
 its merge base with the pull request's base, with the licence secrets, so it is dispatched onto a
 branch of this repository only: a head on a fork gets none, and settle refuses that head. A branch
 holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
-it — and no `Test` run shares its concurrency group. A dispatch that fails fails the hand-off's check
-on the head, and names `settle.py update` for a branch that predates the workflow.
+it — and no `Test` run shares its concurrency group. Two hand-offs of one head close enough together
+that neither finds the other's run can still dispatch twice, and the second then cancels the first. A
+hand-off whose reading or dispatch fails logs a warning, naming `settle.py update` for a branch that
+predates the workflow, and still passes: its job is a check on the head, and a failed one would
+have settle and the hook refuse that head, a merge by hand without the label included.
 
 `scripts/pr/campaign.py` owns what a merge requires of the campaign, and `settle.py merge`, the
-automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: the newest `Mutation
-campaign` check on the head must pass wherever one ran, and a head carrying the label must have one.
-No branch-protection rule requires that check, so an unlabelled pull request does not wait on a
-campaign. Merged by hand, it merges without one, and `settle.py merge` and the hook still refuse it
-where a campaign ran on its head and did not pass.
+automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: a head carrying the label
+must have a campaign whose newest run concluded `success`, and on any other head the newest campaign
+must not have failed or still be running. A cancelled campaign measured nothing, so it holds a
+labelled head alone. The checks of a campaign a
+newer one on the same head superseded are left out of settle's reading. No branch-protection rule
+requires any of it, so an unlabelled pull request does not wait on a campaign. Merged by hand, it
+merges without one, and `settle.py merge` and the hook still refuse it where a campaign on its head
+failed or is still running.
 
 The merge goes through `settle.py merge`, run from a checkout of the default branch and never of the
 pull request, so every precondition above applies, and a refusal is logged with the run still
