@@ -10,12 +10,12 @@ namespace Velvet
     // physical element entirely, e.g. after a same-key type flip or a move to a different parent — it
     // tweens from the old box to the new one instead of jump-cutting: capture the OLD box, let this
     // frame's layout settle at the NEW one, and draw the element over the old box with an inline translate
-    // and scale that a spring then carries back to its layout.
+    // and scale that its layout transition then carries back to its layout.
     //
     // A projection draws the element at its natural box divided by the scale its projected ancestors are
     // drawn at, about the parent's corner, so a layoutId Motion inside a growing or shrinking one keeps its
     // own size and its offset from that corner on every frame. Its natural box is lerped from the old box to
-    // the layout by one progress spring. One frame per panel steps every projection and then writes them,
+    // the layout by one progress value, driven by the transition LayoutIdTiming resolves. One frame per panel steps every projection and then writes them,
     // each after its ancestors, since a write reads the scale its ancestors are drawn at in that frame.
     //
     // A box is the rect an element is drawn at inside its parent, together with that parent, its centre and
@@ -35,7 +35,7 @@ namespace Velvet
     internal static class MotionLayoutIdDriver
     {
         // An edge this close to its layout, in pixels, and moving this slowly ends a projection's spring.
-        private const float RestPixels = 0.1f;
+        internal const float RestPixels = 0.1f;
 
         private static int s_pass;
         private static readonly List<VisualElement> s_ended = new();
@@ -48,7 +48,7 @@ namespace Velvet
         // trustworthy yet (a reparented/freshly-created element's .layout stays stale until the next
         // Yoga pass — see FiberWrapperElementAppliers's clip-wrapper comment on the same window), so it
         // is captured on this element's own first post-patch GeometryChangedEvent instead.
-        internal static void OnPatched(VisualElement element, string layoutId, float stiffness, float damping, float mass, ReconcilerContext ctx)
+        internal static void OnPatched(VisualElement element, string layoutId, LayoutIdTiming timing, ReconcilerContext ctx)
         {
             // The old box is read off whichever element the id is registered to — this one, or the one it
             // replaces, which teardown has not reached yet — rather than stored at registration: a freshly
@@ -68,7 +68,7 @@ namespace Velvet
             CancelPendingSettle(element, ctx);
             if (oldBox is not { } fromBox) return;
 
-            var pending = new LayoutIdPendingSettle(fromBox, element.layout, stiffness, damping, mass);
+            var pending = new LayoutIdPendingSettle(fromBox, element.layout, timing);
             pending.Callback = _ => Settle(element, ctx);
             element.RegisterCallback(pending.Callback);
             ctx.LayoutIdPendingSettles[element] = pending;
@@ -130,18 +130,14 @@ namespace Velvet
             var readScale = ReferenceEquals(pending.From.Parent, parent) ? pending.From.AncestorScale : parentScale;
             var drawnFrom = FromRect(element, pending.From, ctx);
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
-            var moves = !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
+            var moves = pending.Timing.Animates && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
             projection ??= CreateProjection(element, ctx);
             projection.From = from;
-            projection.Springing = moves;
-            projection.Spring = new SpringIntegrator(1f);
-            projection.Stiffness = pending.Stiffness;
-            projection.Damping = pending.Damping;
-            projection.Mass = pending.Mass;
-            projection.Rest = RestPixels / Mathf.Max(EdgeTravel(from, layout), RestPixels);
+            projection.Moving = moves;
+            projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
             Project(host, ctx);
             EnsureFrame(host, ctx);
         }
@@ -229,7 +225,7 @@ namespace Velvet
 
         private static Rect Drawn(LayoutIdProjection projection, Rect layout, Vector2 parentScale)
         {
-            var t = projection.Springing ? projection.Spring.Value : 0f;
+            var t = projection.Moving ? projection.Progress.Value : 0f;
             var position = Vector2.LerpUnclamped(layout.position, projection.From.position, t);
             var size = Vector2.LerpUnclamped(layout.size, projection.From.size, t);
             return new Rect(position / parentScale, size / parentScale);
@@ -299,9 +295,8 @@ namespace Velvet
             foreach (var entry in ctx.LayoutIdProjections)
             {
                 var projection = entry.Value;
-                if (!projection.Springing || entry.Key.panel?.visualTree != host) continue;
-                projection.Spring.Step(dt, 0f, projection.Stiffness, projection.Damping, projection.Mass);
-                if (projection.Spring.IsSettled(0f, projection.Rest, projection.Rest)) projection.Springing = false;
+                if (!projection.Moving || entry.Key.panel?.visualTree != host) continue;
+                if (projection.Progress.Step(dt)) projection.Moving = false;
             }
             Project(host, ctx);
 
@@ -309,7 +304,7 @@ namespace Velvet
             foreach (var entry in ctx.LayoutIdProjections)
             {
                 if (entry.Key.panel?.visualTree != host) continue;
-                if (!entry.Value.Springing && IsUnit(entry.Value.ParentScale)) s_ended.Add(entry.Key);
+                if (!entry.Value.Moving && IsUnit(entry.Value.ParentScale)) s_ended.Add(entry.Key);
                 else remaining = true;
             }
             foreach (var element in s_ended)
@@ -501,20 +496,16 @@ namespace Velvet
 
     internal sealed class LayoutIdPendingSettle
     {
-        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, float stiffness, float damping, float mass)
+        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, LayoutIdTiming timing)
         {
             From = from;
             PatchedLayout = patchedLayout;
-            Stiffness = stiffness;
-            Damping = damping;
-            Mass = mass;
+            Timing = timing;
         }
 
         public LayoutIdBox From { get; }
         public Rect PatchedLayout { get; }
-        public float Stiffness { get; }
-        public float Damping { get; }
-        public float Mass { get; }
+        public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
     }
 
@@ -528,16 +519,10 @@ namespace Velvet
             OwnScale = ownScale;
         }
 
-        // The natural box at the spring's start, relative to the parent's drawn corner in undistorted units.
+        // The natural box where the progress starts, relative to the parent's drawn corner in undistorted units.
         public Rect From;
-        // Progress from the layout (0) to From (1). SpringIntegrator is a mutable struct stepped in place, so
-        // this is a field rather than a property.
-        public SpringIntegrator Spring;
-        public bool Springing;
-        public float Stiffness;
-        public float Damping;
-        public float Mass;
-        public float Rest;
+        public LayoutIdProgress Progress = null!;
+        public bool Moving;
 
         // The pass these were last computed in: the scale the projected ancestors are drawn at, and the
         // scale this projection writes on each axis.
@@ -554,5 +539,88 @@ namespace Velvet
         public bool WritesScale;
         public StyleTranslate WrittenTranslate;
         public StyleScale WrittenScale;
+    }
+
+    // The transition a layoutId move takes: the Motion's own `transition`, or its Layout in place of it when
+    // set, as Framer reads `transition.layout`, with Framer's default layout transition when the Motion has
+    // none. Its type decides the curve, the way it does for a variant swap.
+    internal readonly struct LayoutIdTiming
+    {
+        // Framer's defaultLayoutTransition: { duration: 0.45, ease: [0.4, 0, 0.1, 1] }.
+        private static readonly StyleTransitionConfig s_default = new()
+        {
+            Type = TransitionType.Bezier, DurationSec = 0.45f, BezierX1 = 0.4f, BezierY1 = 0f, BezierX2 = 0.1f, BezierY2 = 1f,
+        };
+
+        private readonly StyleTransitionConfig _config;
+
+        private LayoutIdTiming(StyleTransitionConfig config, bool animates)
+        {
+            _config = config;
+            Animates = animates;
+        }
+
+        // False for a zero duration or a configuration the scheduler rejects, which lands the move at once.
+        public bool Animates { get; }
+        public bool IsSpring => _config.Type == TransitionType.Spring;
+        public float Stiffness => _config.Stiffness;
+        public float Damping => _config.Damping;
+        public float Mass => _config.Mass;
+        public float DurationSec => _config.DurationSec;
+        public float DelaySec => Mathf.Max(_config.DelaySec, 0f);
+
+        public static LayoutIdTiming From(StyleTransitionConfig? transition)
+        {
+            var t = transition?.Layout ?? transition ?? s_default;
+            var animates = t.Type switch
+            {
+                TransitionType.Spring => StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass),
+                TransitionType.Bezier => StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec),
+                _ => StyleAnimationScheduler.ValidateDuration(t.DurationSec, null),
+            };
+            return new LayoutIdTiming(t, animates);
+        }
+
+        // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold.
+        public LayoutIdProgress Start(float travel) => new(this, travel);
+
+        public float Ease(float t) => _config.Type == TransitionType.Bezier
+            ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
+            : StyleFilterTransitionDriver.Ease(_config.Easing, t);
+    }
+
+    // How far a projection still has to go, from 1 at the old box to 0 at the layout.
+    internal sealed class LayoutIdProgress
+    {
+        private readonly LayoutIdTiming _timing;
+        private readonly float _rest;
+        // A mutable struct stepped in place, so a field rather than a property.
+        private SpringIntegrator _spring = new(1f);
+        private float _elapsedSec;
+
+        public LayoutIdProgress(LayoutIdTiming timing, float travel)
+        {
+            _timing = timing;
+            _rest = MotionLayoutIdDriver.RestPixels / Mathf.Max(travel, MotionLayoutIdDriver.RestPixels);
+        }
+
+        public float Value { get; private set; } = 1f;
+
+        // Returns true once the progress has arrived.
+        public bool Step(float dtSec)
+        {
+            _elapsedSec += dtSec;
+            var active = _elapsedSec - _timing.DelaySec;
+            if (active <= 0f) return false;
+            if (_timing.IsSpring)
+            {
+                _spring.Step(Mathf.Min(dtSec, active), 0f, _timing.Stiffness, _timing.Damping, _timing.Mass);
+                Value = _spring.Value;
+                return _spring.IsSettled(0f, _rest, _rest);
+            }
+            var t = active / _timing.DurationSec;
+            Value = 1f - _timing.Ease(t);
+            return t >= 1f;
+        }
     }
 }
