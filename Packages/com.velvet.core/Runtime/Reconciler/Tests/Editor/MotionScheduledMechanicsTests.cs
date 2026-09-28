@@ -68,6 +68,15 @@ namespace Velvet.Tests
             s_bump = null;
             s_store = null;
             s_joinLeft = 300;
+            s_joinTransition = s_layoutSpring;
+        }
+
+        [TearDown]
+        public override void TearDown()
+        {
+            _moveMount?.Dispose();
+            _moveMount = null;
+            base.TearDown();
         }
 
         [Component]
@@ -171,6 +180,24 @@ namespace Velvet.Tests
             var replacement = Root.Q<VisualElement>("shared");
             Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword, replacement.style.scale.keyword),
                 Is.EqualTo((false, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_NoProjectionRunsOnTheReplacement()
+        {
+            // Arrange
+            s_movedLeft = 200;
+            using var mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(replacement), Is.False);
         }
 
         [Test]
@@ -1504,6 +1531,8 @@ namespace Velvet.Tests
             });
         }
 
+        private MountedTree _moveMount;
+
         // Mounts TimedMoveBoxRender on the given timing and plays step 1 up to the frame its layout settles on.
         private VisualElement MoveOn(StyleTransitionConfig transition, float? duration = null, EasingMode? easing = null, float? delay = null)
         {
@@ -1511,16 +1540,45 @@ namespace Velvet.Tests
             s_moveDuration = duration;
             s_moveEasing = easing;
             s_moveDelay = delay;
-            var mounted = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
+            _moveMount = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
-            mounted.FlushStateForTest();
+            _moveMount.FlushStateForTest();
             Tick();
             return Root.Q<VisualElement>("shared");
         }
 
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_ItMovesAgainOnAZeroDurationTransition_Then_ItLandsAtOnce()
+        {
+            // Arrange
+            var element = MoveOn(s_layoutSpring);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — the second move 200px further, on no duration at all.
+            s_moveTransition = StyleTransitionConfig.None;
+            s_setStep.Invoke(2);
+            _moveMount.FlushStateForTest();
+            Tick();
+
+            // Assert — at its new box, the running tween no longer drawing it back.
+            Assert.That(TranslateX(element), Is.EqualTo(0f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes a layoutId Motion's opacity.
+        // Only a crossfade with a follower may.
+        [Test]
+        public void Given_ALayoutIdMotionAloneUnderItsId_When_ItMoves_Then_ItsOpacityIsLeftAlone()
+        {
+            // Arrange / Act — the tween does run.
+            var element = MoveOn(s_layoutSpring);
+
+            // Assert
+            Assert.That((TranslateX(element) < -150f, element.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
 
         [Test]
         public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
@@ -1655,14 +1713,15 @@ namespace Velvet.Tests
             };
             if (step is 1 or 2)
             {
-                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_layoutSpring,
+                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_joinTransition,
                     className: $"absolute left-[{(step == 1 ? s_joinLeft : 400)}px] top-[0px] w-[100px] h-[100px]"));
             }
             return V.Div(children: children.ToArray());
         }
 
-        // Where "b" mounts in step 1.
+        // Where "b" mounts in step 1, and the transition it moves on.
         private static int s_joinLeft;
+        private static StyleTransitionConfig s_joinTransition;
 
         // Mounts SharedLiveIdRender with "b" joining at s_joinLeft, 300 unless a case sets it, and plays the given
         // steps, each up to the frame its layout settles on; a negative step lets the tweens settle.
@@ -1764,6 +1823,40 @@ namespace Velvet.Tests
             // Assert
             var opacity = Root.Q<VisualElement>("a").style.opacity;
             Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_AnotherMountsUnderItOnAZeroDurationTransition_Then_TheHolderIsHiddenAtOnce()
+        {
+            // Arrange / Act
+            s_joinTransition = StyleTransitionConfig.None;
+            using var mounted = PlaySharedLiveId(1);
+
+            // Assert
+            var opacity = Root.Q<VisualElement>("a").style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes a second holder's opacity at all.
+        // Fading and then hiding it must hand the slot back as empty as it found it.
+        [Test]
+        public void Given_AFollowerPartWayThroughItsFade_When_TheLeadMovesOnItsOwnAndThenLeaves_Then_TheFollowerShowsAtItsOwnOpacity()
+        {
+            // Arrange — past the half of the lead's move, where the follower's fade has begun.
+            using var mounted = PlaySharedLiveId(1);
+            for (var i = 0; i < 12; i++) Tick();
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            var follower = Root.Q<VisualElement>("a");
+
+            // Act
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Assert — the opacity slot handed back empty, as it was before the fade.
+            Assert.That(follower.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
@@ -1881,6 +1974,8 @@ namespace Velvet.Tests
             Assert.That(translate, Is.EqualTo(100f).Within(1f));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a tweening outer Motion alone when only an inner one moves.
+        // Settling a moved ancestor first must not restart one that did not move.
         [Test]
         public void Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheOuterTweenCarriesOn()
         {
