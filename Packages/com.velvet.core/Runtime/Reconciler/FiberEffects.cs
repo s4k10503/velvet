@@ -61,10 +61,9 @@ namespace Velvet
                 var roots = new List<(ComponentFiber Fiber, bool IsMount)>(pending.Count);
                 for (var i = 0; i < pending.Count; i++)
                 {
-                    var (fiber, mountDoubleInvoke) = pending[i];
-                    if (fiber.IsMounted && !fiber.IsDisposed) roots.Add((fiber, mountDoubleInvoke));
+                    if (pending[i].fiber.IsMounted) roots.Add(pending[i]);
                 }
-                if (roots.Count > 0) CommitLayoutBatch(ctx, null, roots);
+                CommitLayoutBatch(ctx, null, roots);
             }
             finally
             {
@@ -99,7 +98,7 @@ namespace Velvet
             }
             // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
             // delivers.
-            ctx.PendingCaughtErrorReports.RemoveAll(static report => report.Boundary.IsDisposed);
+            ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
         }
 
         private const int MaxFollowUpCommits = 100;
@@ -152,7 +151,7 @@ namespace Velvet
             ReconcilerContext ctx,
             (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report,
             ComponentFiber? scope)
-            => !report.Boundary.IsDisposed && !HasLayoutEffectsWaiting(ctx, report.Boundary)
+            => report.Boundary.IsMounted && !HasLayoutEffectsWaiting(ctx, report.Boundary)
                 && IsInScope(report.Boundary, scope);
 
         // A boundary whose own entry still waits on the stack reports in the commit that takes the entry, after its
@@ -170,13 +169,11 @@ namespace Velvet
         // lies elsewhere is another part of the tree, which the CommitStrandedLayoutWork ending the entry
         // commits after this commit.
         private static bool IsInScope(ComponentFiber fiber, ComponentFiber? scope)
-            => scope == null || ReferenceEquals(fiber, scope) || IsStrictDescendant(fiber, scope);
-
-        private static bool IsStrictDescendant(ComponentFiber fiber, ComponentFiber ancestor)
         {
-            for (var p = fiber.Parent; p != null; p = p.Parent)
+            if (scope == null) return true;
+            for (ComponentFiber? f = fiber; f != null; f = f.Parent)
             {
-                if (ReferenceEquals(p, ancestor)) return true;
+                if (ReferenceEquals(f, scope)) return true;
             }
             return false;
         }
@@ -199,17 +196,19 @@ namespace Velvet
             try
             {
                 var ordered = TakeBatch(ctx, scope, roots);
+                // A fiber a cleanup's catch unmounts in this pass has had these lists cleared by its unmount.
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
-                    if (fiber.IsDisposed) continue;
                     RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
-                    if (fiber.IsDisposed) continue;
+                    // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
+                    // must not deliver the report it still holds.
+                    if (!fiber.IsMounted) continue;
                     FiberHookCommit.RunImperativeHandleSlots(fiber);
                     HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
                     DeliverCaughtErrors(ctx, fiber, reportCutoff);
@@ -242,6 +241,10 @@ namespace Velvet
             for (var i = popped.Count - 1; i >= 0; i--)
             {
                 var entry = popped[i];
+                // MUTANT_SURVIVES(equivalent, guard removed): a fiber no longer mounted runs nothing in a batch.
+                // Its unmount cleared its effect lists and handles, the setup pass skips it, and detached, it
+                // precedes and follows nothing, so InsertAmongPeersInTreeOrder places nothing around it.
+                if (!entry.Fiber.IsMounted) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -336,13 +339,15 @@ namespace Velvet
                     break;
                 }
                 if (branchOfB == null) continue;
-                for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
+                // Both are children of parent, so the walk meets one of them.
+                for (var sibling = parent.Child; !ReferenceEquals(sibling, branchOfB); sibling = sibling!.Sibling)
                 {
                     if (ReferenceEquals(sibling, branchOfA)) return true;
-                    if (ReferenceEquals(sibling, branchOfB)) return false;
                 }
                 return false;
             }
+            // MUTANT_SURVIVES(unreachable, literal): every fiber a batch orders is mounted, and mounted fibers of one
+            // context descend from its root fiber, so two of them always meet under a common parent above.
             return false;
         }
 

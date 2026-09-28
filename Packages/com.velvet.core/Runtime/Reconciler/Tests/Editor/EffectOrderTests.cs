@@ -535,7 +535,8 @@ namespace Velvet.Tests
     /// other fibers flushed in the same batch — not a half-updated tree. Previously each fiber ran its layout
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
     /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
-    /// child before its parent, and siblings in tree order whatever order their updates were enqueued in.
+    /// child before its parent, and components in tree order whatever order their updates were enqueued in,
+    /// siblings and cousins alike.
     /// </summary>
     [TestFixture]
     internal sealed class LayoutEffectDrainPhaseTests
@@ -672,6 +673,34 @@ namespace Velvet.Tests
             // Assert
             Assert.That(string.Join(", ", s_log), Is.EqualTo("child:setup, item:setup, host:setup"));
         }
+
+        [Test]
+        public void Given_CousinsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange — each cousin sits under a parent of its own that the drain does not re-render.
+            using var mounted = V.Mount(_root, V.Component(CousinHost, key: "host"));
+            s_log.Clear();
+            s_setters["second-child"].Invoke(1);
+            s_setters["first-child"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first-child:setup, second-child:setup"));
+        }
+
+        [Component]
+        private static VNode CousinParent(string name)
+            => V.Div(children: new VNode[] { V.Component(OwnStateSibling, name + "-child", key: "child") });
+
+        [Component]
+        private static VNode CousinHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(CousinParent, "first", key: "first"),
+                V.Component(CousinParent, "second", key: "second"),
+            });
 
         private static readonly Dictionary<string, StateUpdater<int>> s_setters = new();
 

@@ -467,6 +467,37 @@ namespace Velvet.Tests
             Assert.That(s_resolvedChildLayoutRuns, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Given_APendingResourceWithoutBoundary_When_ItResolves_Then_TheComponentsOwnLayoutEffectRuns()
+        {
+            // Arrange — without a Suspense boundary the suspend is routed to Debug.LogWarning at Mount.
+            LogAssert.Expect(LogType.Warning, new Regex("Suspense"));
+            s_ownLayoutRuns = 0;
+            s_resolvingSource = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ResolvesWithOwnLayoutEffectRender, key: "async"));
+
+            // Act
+            s_resolvingSource.TrySetResult(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ownLayoutRuns, Is.EqualTo(1));
+        }
+
+        private static int s_ownLayoutRuns;
+
+        [Component]
+        private static VNode ResolvesWithOwnLayoutEffectRender()
+        {
+            _ = Hooks.Use<int>(_ => s_resolvingSource.Task, resourceKey: "resolving-own");
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_ownLayoutRuns++;
+                return null;
+            }), Array.Empty<object>());
+            return V.Label(text: "resolved");
+        }
+
         private static VelvetTaskCompletionSource<int> s_resolvingSource;
         private static int s_resolvedChildLayoutRuns;
 

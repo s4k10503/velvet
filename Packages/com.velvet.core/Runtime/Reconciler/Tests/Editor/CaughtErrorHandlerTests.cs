@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -22,7 +24,10 @@ namespace Velvet.Tests
     /// the fallback's layout effects run in that same commit when the catch came from a passive effect, a frame
     /// callback, or a <see cref="V.VirtualList{T}"/> range rendered outside a reconcile pass, and after the
     /// layout effects of an unrelated component the same drain re-rendered. A boundary that an outer boundary
-    /// replaces before its fallback commits reports nothing.</item>
+    /// replaces before its fallback commits reports nothing, including one an earlier sibling's layout effect
+    /// has replaced by the time its own place in the commit comes, and no report of such a boundary is kept.
+    /// A report waits for its fallback's layout effects when a commit scoped to a new VirtualList item runs
+    /// first, and a drain's commit that shows a fallback commits it before the drain returns.</item>
     /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
     /// the layout effects of its own fallback.</item>
     /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
@@ -549,6 +554,90 @@ namespace Velvet.Tests
             Assert.That($"{parked} | {bounded} | {string.Join(", ", s_order)}", Is.EqualTo("True | True | slow"));
         }
 
+        [Test]
+        public void Given_AFallbackWithALayoutEffect_When_ABoundaryCatchesALayoutEffectsErrorInADrainsCommit_Then_TheFallbackCommitsAndReportsBeforeTheDrainReturns()
+        {
+            // Arrange
+            s_child = () => V.Component(ThrowInLayoutEffectOnUpdateRender, key: "child");
+            _mounted = V.Mount(_root, V.Component(LayoutFallbackBoundaryRender, key: "boundary"), RecordingOrder);
+            s_setTick.Invoke(1);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
+        }
+
+        [Test]
+        public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
+        {
+            // Arrange — the inner boundary catches while the mount renders, so its report is due in the mount's
+            // commit, and the sibling ahead of it in that commit throws first.
+            s_child = () => V.Component(ThrowOnRender, new InvalidOperationException("one"), key: "child");
+
+            // Act
+            _mounted = V.Mount(
+                _root,
+                V.Component(OuterAroundSiblingAndInnerBoundaryRender, key: "outer"),
+                new MountOptions((exception, _) => _calls.Add(exception.Message)));
+
+            // Assert
+            Assert.That(string.Join(", ", _calls), Is.EqualTo("two"));
+        }
+
+        [Test]
+        public void Given_ABoundaryThatAnOuterBoundaryReplacedBeforeItsReportWasDelivered_When_TheCommitsEnd_Then_TheContextKeepsNoReportForIt()
+        {
+            // Act
+            _mounted = V.Mount(_root, V.Component(OuterBoundaryRender, key: "outer"), CaughtErrors.Unlogged);
+
+            // Assert — the catch count is read beside the kept count, because an inner boundary that never
+            // caught leaves nothing to keep either.
+            Assert.That(
+                $"{CatchesSoFar()} caught | {ReportsKept()} kept",
+                Is.EqualTo("2 caught | 0 kept"));
+        }
+
+        [Test]
+        public void Given_AMemoizedBoundaryInAPatchedVirtualListItemCatchingAChildsRender_When_ANewItemCommitsItsOwnSubtree_Then_TheReportWaitsForTheFallbacksLayoutEffect()
+        {
+            // Arrange — the boundary is memoized, so the patch re-renders only its dirty child and leaves no
+            // entry of its own waiting; the new item mounts through a mount of its own, whose commit is
+            // scoped to that item.
+            _mounted = V.Mount(_root, V.Component(PatchedRowListHostRender, key: "host"), RecordingOrder);
+            var controller = _mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>("rows")];
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, 100f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            s_setTick.Invoke(1);
+            s_setHostTick.Invoke(1);
+            s_order.Clear();
+
+            // Act
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
+        }
+
+        // -1 where the context holds no such field, so a tree without it disagrees with the assertion instead
+        // of raising out of these helpers.
+        private long CatchesSoFar()
+        {
+            var field = typeof(ReconcilerContext)
+                .GetField("NextCaughtErrorSequence", BindingFlags.NonPublic | BindingFlags.Instance);
+            return field == null ? -1 : (long)field.GetValue(_mounted.Root.Reconciler.Context);
+        }
+
+        private int ReportsKept()
+        {
+            var field = typeof(ReconcilerContext)
+                .GetField("PendingCaughtErrorReports", BindingFlags.NonPublic | BindingFlags.Instance);
+            return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
+        }
+
         // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
         // queue that now holds them must keep the second while it delivers the first.
         [Test]
@@ -602,6 +691,7 @@ namespace Velvet.Tests
         private static int s_listTick;
         private static Func<VNode> s_child;
         private static StateUpdater<int> s_setTick;
+        private static StateUpdater<int> s_setHostTick;
         private static VelvetTaskCompletionSource<string> s_source;
 
         [Component(IsErrorBoundary = true)]
@@ -869,6 +959,54 @@ namespace Velvet.Tests
                 (Func<Action>)(() => mount < RefallingChainLength ? throw new InvalidOperationException("boom") : (Action)null),
                 new object[] { mount });
             return V.Label(text: "fallback");
+        }
+
+        [Component]
+        private static VNode ThrowInLayoutEffectOnUpdateRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            Hooks.UseLayoutEffect(
+                (Func<Action>)(() => tick > 0 ? throw new InvalidOperationException("boom") : (Action)null),
+                new object[] { tick });
+            return V.Label(text: "ok");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode OuterAroundSiblingAndInnerBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer fallback"));
+            return V.Fragment(children: new VNode[]
+            {
+                V.Component(ThrowInLayoutEffectWithRender, "two", key: "sibling"),
+                V.Component(BoundaryRender, key: "inner"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PatchedRowListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setHostTick = setTick;
+            return V.VirtualList(
+                items: tick == 0 ? new[] { "a" } : new[] { "a", "b" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => item == "a"
+                    ? V.Div(key: item, children: new VNode[] { V.Component(MemoizedLayoutFallbackBoundaryRender, key: "boundary") })
+                    : V.Component(ItemLabelRender, key: item),
+                overscan: 0,
+                name: "rows");
+        }
+
+        [Component]
+        private static VNode ItemLabelRender() => V.Label(text: "item");
+
+        [Component(IsErrorBoundary = true, Memoize = true)]
+        private static VNode MemoizedLayoutFallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
+            return V.Component(ThrowOnUpdateRender, key: "child");
         }
 
         [Component]
