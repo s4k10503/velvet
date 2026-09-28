@@ -980,8 +980,9 @@ namespace Velvet
         }
 
         // True when any panel this reconciler manages (the main panel, a layer or world-space host, a panel
-        // an element-valued portal targets) currently holds a focused element. UI Toolkit focus is per panel, so "this panel's controller
-        // reads null" alone cannot distinguish focus-went-nowhere from focus-went-to-another-panel.
+        // an element-valued portal targets) currently holds a focused element. UI Toolkit focus is per panel,
+        // so "this panel's controller reads null" alone cannot distinguish focus-went-nowhere from
+        // focus-went-to-another-panel.
         internal static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
             => FocusedElementInManagedPanels(ctx) != null;
 
@@ -1003,21 +1004,8 @@ namespace Velvet
             {
                 return main;
             }
-            foreach (var host in ctx.LayerHosts.Values)
-            {
-                if (FocusedElementIn(host) is { } held)
-                {
-                    return held;
-                }
-            }
-            foreach (var record in ctx.WorldSpaceBindings.Values)
-            {
-                if (FocusedElementIn(record) is { } held)
-                {
-                    return held;
-                }
-            }
-            // An element-valued portal can target a panel no host record owns.
+            // A layer or world-space portal's target is its host's root, so this reads those hosts as well as
+            // a panel an element-valued portal targets.
             foreach (var info in ctx.PortalState.Values)
             {
                 if (info.Target?.panel?.focusController?.focusedElement is VisualElement held)
@@ -1026,16 +1014,6 @@ namespace Velvet
                 }
             }
             return null;
-        }
-
-        private static VisualElement? FocusedElementIn(PanelHostRecord host)
-        {
-            // MUTANT_SURVIVES(unreachable): a layer or world-space host holds a focusable element only while a
-            // portal targeting its root is mounted, and the portal loop in FocusedElementInManagedPanels reads
-            // that same panel through that target.
-            return host.Document != null
-                ? host.Document.rootVisualElement?.panel?.focusController?.focusedElement as VisualElement
-                : null;
         }
 
         // True when `root`'s panel currently has a focused element that is `root` itself or one of its
