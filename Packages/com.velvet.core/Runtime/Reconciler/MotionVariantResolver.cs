@@ -91,11 +91,16 @@ namespace Velvet
     {
         public readonly string[] Merged;
         public readonly string[] VariantClasses;
+        // Inline-resolved classes of an earlier pose a spring or bezier kept moving under a pose that did not name
+        // them, and left the element resting at (FiberNodePatcher.RemoveStaleInlineTokens). The next label change
+        // diffs them away as the old pose's.
+        public readonly string[] Carried;
 
-        public MotionAppliedClassSet(string[] merged, string[] variantClasses)
+        public MotionAppliedClassSet(string[] merged, string[] variantClasses, string[]? carried = null)
         {
             Merged = merged;
             VariantClasses = variantClasses;
+            Carried = carried ?? Array.Empty<string>();
         }
     }
 

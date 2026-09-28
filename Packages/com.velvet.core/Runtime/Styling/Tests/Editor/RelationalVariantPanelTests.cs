@@ -107,6 +107,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APeerHoverChildAfterAZManagedPeer_When_TheRelocatedPeerIsHovered_Then_ThePayloadIsAppliedToTheChild()
+        {
+            // Arrange — the peer is absolute with a z-* utility, so it relocates into its parent's front z-layer
+            // and only its placeholder precedes the child.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                "relative",
+                V.Label(name: "peer", className: "peer absolute z-10"),
+                V.Label(name: "child", className: "peer-hover:bg-on")));
+            var peer = _window.rootVisualElement.Q<Label>("peer");
+            var child = _window.rootVisualElement.Q<Label>("child");
+            // A peer nothing subscribes to has no callback registry, and firing on it would throw before the
+            // assertion could say the payload never arrived.
+            peer.RegisterCallback<PointerOverEvent>(_ => { });
+
+            // Act
+            Fire<PointerOverEvent>(peer);
+
+            // Assert — the relocation is a term: a peer left at its declared slot is found without the
+            // placeholder ever being read.
+            Assert.That(
+                (peer.parent != null && peer.parent.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass),
+                    child.ClassListContains("bg-on")),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_ANamedGroupHoverChild_When_TheNamedGroupSourceIsHovered_Then_ThePayloadIsApplied()
         {
             // Arrange — a child with group-hover/sidebar:bg-on under an ancestor marked `group/sidebar`.

@@ -239,5 +239,17 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
                          (REFUSED, True))
 
 
+    def test_Given_AMaintenanceLineMergedForward_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — every base reading is green, so the head's name is what refuses it.
+        pulls = {"7": pull("2.x", "main", self.head)}
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertEqual((result.returncode, "its head 2.x is a long-lived branch" in result.stderr),
+                         (REFUSED, True))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
