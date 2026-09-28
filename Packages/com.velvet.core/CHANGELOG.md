@@ -21,9 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VelvetTask` awaited on the main thread resumes there whichever thread completes it — the
   continuation is handed to Unity's main-thread synchronization context rather than run on the
   completing thread — so a route loader that returns after awaiting `ConfigureAwait(false)` hands its
-  result back on the main thread. `VelvetTask.Yield()` called off the main thread throws
-  `InvalidOperationException` naming the switch. The async guide says what code resumed off the main
-  thread may call.
+  result back on the main thread. `VelvetTask.Yield()` called off the main thread resumes where
+  `Task.Yield()` does. The async guide says what code resumed off the main thread may call.
 
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own

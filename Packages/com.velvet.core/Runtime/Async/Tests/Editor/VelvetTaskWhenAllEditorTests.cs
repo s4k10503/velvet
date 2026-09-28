@@ -458,5 +458,126 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Call, Throws.InstanceOf<ArgumentNullException>());
         }
+
+        [Test]
+        public void Given_TwoPreservedTasksOfDifferentResultTypes_When_BothComplete_Then_EachIsReadAfterTheCombination()
+        {
+            // Arrange
+            var user = new VelvetTaskCompletionSource<string>();
+            var count = new VelvetTaskCompletionSource<int>();
+            var preservedUser = user.Task.Preserve();
+            var preservedCount = count.Task.Preserve();
+            var all = VelvetTask.WhenAll(preservedUser, preservedCount);
+            var statusBeforeCompletion = all.Status;
+
+            // Act
+            count.SetResult(3);
+            user.SetResult("ada");
+            all.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(
+                (statusBeforeCompletion, preservedUser.GetAwaiter().GetResult(), preservedCount.GetAwaiter().GetResult()),
+                Is.EqualTo((VelvetTaskStatus.Pending, "ada", 3)));
+        }
+
+        [Test]
+        public void Given_OnePreservedPendingTaskPassedTwice_When_ItCompletes_Then_TheCombinationCarriesItAtBothPositions()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var preserved = source.Task.Preserve();
+            var all = VelvetTask.WhenAll(preserved, preserved);
+
+            // Act
+            source.SetResult(7);
+
+            // Assert
+            Assert.That(all.GetAwaiter().GetResult(), Is.EqualTo(new[] { 7, 7 }));
+        }
+
+        [Test]
+        public void Given_AConsumedResultTask_When_ViewedAsATaskCarryingNothing_Then_TheViewIsConsumedToo()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var task = source.Task;
+            source.SetResult(1);
+            task.GetAwaiter().GetResult();
+
+            // Act
+            VelvetTask view = task;
+            void ReadStatus() => _ = view.Status;
+
+            // Assert
+            Assert.That(Assert.Throws<InvalidOperationException>(ReadStatus)!.Message,
+                Is.EqualTo("The VelvetTask has already been consumed."));
+        }
+
+        [Test]
+        public void Given_TwoMembersFaultingOutOfOrder_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsBothInArgumentOrder()
+        {
+            // Arrange
+            var first = new VelvetTaskCompletionSource();
+            var second = new VelvetTaskCompletionSource();
+            var fromFirstArgument = new InvalidOperationException("first argument");
+            var fromSecondArgument = new ArgumentException("second argument");
+            var all = VelvetTask.WhenAll(first.Task, second.Task).AsTask();
+
+            // Act
+            second.SetException(fromSecondArgument);
+            first.SetException(fromFirstArgument);
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { fromFirstArgument, fromSecondArgument }));
+        }
+
+        [Test]
+        public void Given_TwoFaultingResultMembersBesideASucceedingOne_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsBothFaults()
+        {
+            // Arrange
+            var first = new InvalidOperationException("first");
+            var second = new ArgumentException("second");
+
+            // Act
+            var all = VelvetTask.WhenAll(
+                VelvetTask.FromException<int>(first),
+                VelvetTask.FromResult(3),
+                VelvetTask.FromException<int>(second)).AsTask();
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { first, second }));
+        }
+
+        [Test]
+        public void Given_AFaultingCombinationInsideAnother_When_TheOuterIsTakenAsATask_Then_ItsExceptionHoldsEveryFault()
+        {
+            // Arrange
+            var first = new InvalidOperationException("first");
+            var second = new ArgumentException("second");
+            var third = new FormatException("third");
+            var inner = VelvetTask.WhenAll(VelvetTask.FromException(first), VelvetTask.FromException(second));
+
+            // Act
+            var outer = VelvetTask.WhenAll(inner, VelvetTask.FromException(third)).AsTask();
+
+            // Assert
+            Assert.That(outer.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { first, second, third }));
+        }
+
+        [Test]
+        public void Given_AFaultedMemberBesideACanceledOne_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsTheFaultAlone()
+        {
+            // Arrange
+            var canceled = new VelvetTaskCompletionSource();
+            canceled.SetCanceled();
+            var fault = new InvalidOperationException("fault");
+
+            // Act
+            var all = VelvetTask.WhenAll(canceled.Task, VelvetTask.FromException(fault)).AsTask();
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { fault }));
+        }
     }
 }
