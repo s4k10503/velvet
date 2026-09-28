@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -39,6 +40,7 @@ namespace Velvet.Tests
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
+            BlurEveryPanel();
             _mounted?.Dispose();
             _mounted = null;
             _otherMounted?.Dispose();
@@ -79,23 +81,44 @@ namespace Velvet.Tests
             yield return null;
         }
 
-        private static void FocusAndAssume(VisualElement element)
+        // Each case ends with none of its panels holding focus. Without this, the case run after the
+        // element-portal one had its first Focus() dropped: its m1 was that case's p1, back from the pool and
+        // still the element remembered by the panel UI Toolkit's event system had last focused.
+        private void BlurEveryPanel()
+        {
+            var roots = new List<VisualElement>();
+            if (_panelGo != null) roots.Add(MainRoot);
+            if (_otherPanelGo != null) roots.Add(OtherRoot);
+            foreach (var mounted in new[] { _mounted, _otherMounted })
+            {
+                if (mounted == null) continue;
+                foreach (var host in mounted.Root.Reconciler.Context.LayerHosts.Values)
+                {
+                    if (host.Document != null) roots.Add(host.Document.rootVisualElement);
+                }
+            }
+            foreach (var root in roots)
+            {
+                (root?.panel?.focusController?.focusedElement as VisualElement)?.Blur();
+            }
+        }
+
+        private static Focusable FocusAndRead(VisualElement element)
         {
             element.Focus();
-            Assume.That(element.panel.focusController.focusedElement, Is.EqualTo(element),
-                "Precondition: the scope under test holds focus");
+            return element.panel.focusController.focusedElement;
         }
 
         // Reads what `panel` holds focused on two consecutive frames once the pull-back tick has had its
         // frame, so two scopes pulling focus back from each other every tick fail the comparison instead of
-        // matching it by phase.
+        // matching it by phase. readings[0] is left to the arrangement's own reading.
         private static IEnumerator ReadTwoSettledFrames(VisualElement onPanel, Focusable[] readings)
         {
             yield return null;
             yield return null;
-            readings[0] = onPanel.panel.focusController.focusedElement;
-            yield return null;
             readings[1] = onPanel.panel.focusController.focusedElement;
+            yield return null;
+            readings[2] = onPanel.panel.focusController.focusedElement;
         }
 
         // Two portals share the Overlay host: the one declared inside the modal mounts its button beside
@@ -124,17 +147,18 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return MountOnMain(V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
-            FocusAndAssume(Main("m1"));
+            var m1 = Main("m1");
             var inner = HostElement("inner");
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
 
             // Act
-            Main("m1").Blur();
+            m1.Blur();
             inner.Focus();
             yield return ReadTwoSettledFrames(inner, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { inner, inner }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, inner, inner }));
         }
 
         [UnityTest]
@@ -143,8 +167,8 @@ namespace Velvet.Tests
             // Arrange
             yield return MountOnMain(V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
             var m1 = Main("m1");
-            FocusAndAssume(m1);
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
 
             // Act
             m1.Blur();
@@ -152,7 +176,7 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(m1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, m1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, m1, m1 }));
         }
 
         // The dialog's scope is created when the portal drains, after the modal's.
@@ -180,9 +204,9 @@ namespace Velvet.Tests
             // Arrange
             yield return MountOnMain(V.Component(ModalBesideAContainedLayerDialog, key: "root"));
             var m1 = Main("m1");
-            FocusAndAssume(m1);
             var d1 = HostElement("d1");
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
 
             // Act
             m1.Blur();
@@ -190,7 +214,7 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, d1, d1 }));
         }
 
         [UnityTest]
@@ -199,8 +223,8 @@ namespace Velvet.Tests
             // Arrange
             yield return MountOnMain(V.Component(ModalBesideAContainedLayerDialog, key: "root"));
             var d1 = HostElement("d1");
-            FocusAndAssume(d1);
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(d1);
 
             // Act
             d1.Blur();
@@ -208,7 +232,7 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1, d1 }));
         }
 
         [Component]
@@ -230,8 +254,8 @@ namespace Velvet.Tests
             // Arrange
             yield return MountOnMain(V.Component(LayerModalOverTheMainPanel, key: "root"));
             var d1 = HostElement("d1");
-            FocusAndAssume(d1);
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(d1);
 
             // Act
             d1.Blur();
@@ -239,7 +263,7 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(d1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { d1, d1, d1 }));
         }
 
         [Component]
@@ -263,17 +287,18 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return MountOnMain(V.Component(ModalDeclaringAZIndexedPortalChild, key: "root"));
-            FocusAndAssume(Main("m1"));
+            var m1 = Main("m1");
             var zp = HostElement("zp");
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
 
             // Act
-            Main("m1").Blur();
+            m1.Blur();
             zp.Focus();
             yield return ReadTwoSettledFrames(zp, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { zp, zp }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, zp, zp }));
         }
 
         [Component]
@@ -296,17 +321,18 @@ namespace Velvet.Tests
             yield return CreateOtherPanel();
             s_portalTarget = OtherRoot;
             yield return MountOnMain(V.Component(ModalDeclaringAnElementPortal, key: "root"));
-            FocusAndAssume(Main("m1"));
+            var m1 = Main("m1");
             var p1 = OtherRoot.Q<VisualElement>("p1");
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
 
             // Act
-            Main("m1").Blur();
+            m1.Blur();
             p1.Focus();
             yield return ReadTwoSettledFrames(p1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { p1, p1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { m1, p1, p1 }));
         }
 
         [Component]
@@ -331,8 +357,8 @@ namespace Velvet.Tests
             yield return null;
             yield return null;
             var b1 = OtherRoot.Q<VisualElement>("b1");
-            FocusAndAssume(b1);
-            var readings = new Focusable[2];
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(b1);
 
             // Act
             b1.Blur();
@@ -340,7 +366,7 @@ namespace Velvet.Tests
             yield return ReadTwoSettledFrames(b1, readings);
 
             // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { b1, b1 }));
+            Assert.That(readings, Is.EqualTo(new Focusable[] { b1, b1, b1 }));
         }
     }
 }
