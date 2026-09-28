@@ -26,11 +26,19 @@ namespace Velvet.Editor
 
         public int callbackOrder => 0;
 
+        // Same ordering and the same read-only exemption as BundledShaderBuildInclusion.OnPreprocessBuild.
         public void OnPreprocessBuild(BuildReport report)
         {
-            RequireWritableSettings();
+            var excluded = VelvetBuildSettings.Read().ExcludeStyleSheet;
+            if (File.Exists(RecordFile) || (!excluded && Unreached()))
+            {
+                RequireWritableSettings();
+            }
             Revert();
-            Inject();
+            if (!excluded)
+            {
+                Inject();
+            }
         }
 
         public void OnPostprocessBuild(BuildReport report) => Revert();
@@ -68,7 +76,8 @@ namespace Velvet.Editor
                     $"{SettingsAsset} cannot be opened for writing, so Velvet cannot add its stylesheet to "
                     + "the preloaded assets for this build and could not take it out again afterwards. Make "
                     + "the file writable — check it out of version control if that is what holds it — and "
-                    + "build again.");
+                    + "build again, or add the holder to the preloaded assets yourself or exclude it under "
+                    + "Project Settings ▸ Velvet, after which the build writes nothing there.");
             }
         }
 
