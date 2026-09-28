@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -16,6 +17,8 @@ namespace Velvet
     // A box is a layout rect together with the parent it was read under, and its centre and size in panel
     // space. A box read under this same parent compares layout rects; any other is taken into the new parent
     // less the inverse translate every ancestor still waiting on its own layoutId settle is about to apply.
+    // A box forgets its parent when the pool takes that parent back (ForgetParent), since the pool can hand
+    // it to another Motion's element before the box is claimed.
     // Panel space throughout was rejected: an inner layoutId Motion that moves inside an outer one still
     // tweening then no longer tweens by its own move inside it
     // (Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove).
@@ -54,7 +57,7 @@ namespace Velvet
             }
 
             ctx.ElementToLayoutId[element] = layoutId;
-            ctx.LayoutIdRegistry[layoutId] = (element, oldBox?.Detached());
+            ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
 
             // A second patch before a layout settles the first replaces its wait rather than adding one.
             CancelPendingSettle(element, ctx);
@@ -164,8 +167,8 @@ namespace Velvet
         // Called from FiberElementCleaner before an element is pooled or disposed. The pending settle goes
         // too: a pooled element keeps its callbacks, so whatever the pool hands it to next would otherwise
         // play this element's tween. Torn down inside a pass, the element leaves its box for a replacement
-        // later in that pass — a same-key type flip creates it after this teardown — and the pass boundary
-        // drops what nobody claimed (ExpireSnapshots).
+        // later in that render — a same-key type flip creates it after this teardown — and ExpireSnapshots
+        // drops what nobody claimed where the render ends.
         internal static void CancelForTeardown(VisualElement element, ReconcilerContext ctx)
         {
             if (ctx.LayoutIdTicks.Remove(element, out var running))
@@ -179,13 +182,32 @@ namespace Velvet
             {
                 if (ctx.CurrentPass != null)
                 {
-                    ctx.LayoutIdRegistry[layoutId] = (null, (TryReadBox(element, out var live) ? live : current.Box)?.Detached());
+                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, out var live) ? live : current.Box);
                     ctx.LayoutIdSnapshots.Add(layoutId);
                 }
                 else
                 {
                     ctx.LayoutIdRegistry.Remove(layoutId);
                 }
+            }
+        }
+
+        // Called from FiberElementCleaner as it returns an element to the pool.
+        internal static void ForgetParent(VisualElement parent, ReconcilerContext ctx)
+        {
+            List<string>? forgotten = null;
+            foreach (var entry in ctx.LayoutIdRegistry)
+            {
+                if (entry.Value.Box is { } box && ReferenceEquals(box.Parent, parent))
+                {
+                    (forgotten ??= new List<string>()).Add(entry.Key);
+                }
+            }
+            if (forgotten == null) return;
+            foreach (var layoutId in forgotten)
+            {
+                var entry = ctx.LayoutIdRegistry[layoutId];
+                ctx.LayoutIdRegistry[layoutId] = (entry.Element, entry.Box!.Value.Detached());
             }
         }
 
@@ -211,11 +233,12 @@ namespace Velvet
         // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
         // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose Scale
         // channel animates the (averaged, uniform) size ratio back to 1 and whose TranslateX/Y channels
-        // animate back to zero the offset between the two rects' points at the transform origin — origin is
-        // in the new rect's own pixels, and the scale holds that point still, so aligning it is what starts
-        // the tween over the old rect. Empty (IsEmpty) when the rects differ by no more than PixelTolerance,
-        // so the caller can skip building spring state for a patch that didn't actually move/resize
-        // anything, and when either rect is not a resolved layout (NaN).
+        // animate back to zero the offset between the new rect's transform origin (in its own pixels) and
+        // the point at the same fraction of the old rect — the scale holds the origin still, so aligning
+        // those two points is what starts the tween over the old rect. Empty (IsEmpty) when the rects differ
+        // by no more than PixelTolerance, so the caller can skip building spring state for a patch that
+        // didn't actually move/resize anything, and when either rect is not finite: NaN before a first
+        // layout, infinite in a parent drawn at zero scale.
         internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect, Vector2 origin)
         {
             if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return default;
@@ -257,8 +280,8 @@ namespace Velvet
         public Vector2 PanelCentre { get; }
         public Vector2 PanelSize { get; }
 
-        // A box kept past the read that took it: its parent can be torn down and handed by the pool to
-        // another Motion's element meanwhile, which would then pass for the parent the box was read under
+        // Without the parent it was read under, which the pool has taken back and can hand to another
+        // Motion's element, where it would pass for that parent
         // (Given_TwoListComponentsHoldingTheCardInAPooledButton_When_TheSecondIsSelected_Then_TheCardTweensFromTheFirst).
         public LayoutIdBox Detached() => new(null, Local, PanelCentre, PanelSize);
     }

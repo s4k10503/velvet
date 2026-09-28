@@ -334,7 +334,7 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   averages the two axis scale factors rather than distorting the element on two independent axes
   — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y. The scale holds the
   element's transform origin still (its centre unless an `origin-*` class or style moves it), and the translate
-  starts that point where it stood in the old box.
+  places the element so that it starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's

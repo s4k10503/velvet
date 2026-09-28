@@ -915,6 +915,137 @@ namespace Velvet.Tests
             Assert.That(UnityEngine.Mathf.Abs(replacement.style.scale.value.value.x - 2f), Is.LessThan(0.1f));
         }
 
+        // Step 1 moves the outer layoutId Motion 200px right; step 2 flips the inner one's element type and
+        // moves it 20px right inside the outer one, still under the same outer element.
+        [Component]
+        private static VNode OuterThenInnerFlipRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "outer",
+                    layoutId: "outer-box",
+                    transition: s_layoutSpring,
+                    className: $"left-[{(step >= 1 ? 200 : 0)}px] top-[0px] w-[300px] h-[300px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            elementType: step >= 2 ? typeof(Box) : null,
+                            className: $"left-[{(step >= 2 ? 40 : 20)}px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        [Test]
+        public void Given_AnOuterLayoutIdMotionStillTweening_When_TheInnerFlipsTypeAndMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove()
+        {
+            // Arrange — the outer one's tween is a few frames in.
+            using var mounted = V.Mount(Root, V.Component(OuterThenInnerFlipRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var outer = Root.Q<VisualElement>("outer");
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the outer one is still mid-tween, and the replacement tweens only the 20px it moved.
+            var inner = Root.Q<VisualElement>("inner");
+            Assert.That((outer.style.translate.value.x.value < -50f,
+                    UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 5f),
+                Is.EqualTo((true, true)));
+        }
+
+        // Step 1 grows the outer layoutId Motion from 300px to 600px, its corner fixed, and flips the inner
+        // one's element type where it stands inside it.
+        [Component]
+        private static VNode GrowingOuterInnerFlipRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var size = step == 0 ? 300 : 600;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "outer",
+                    layoutId: "outer-box",
+                    transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            elementType: step == 0 ? null : typeof(Box),
+                            className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a Motion that flips type where it stands without a pose.
+        // The box its teardown leaves must keep the parent-relative comparison under that same parent.
+        [Test]
+        public void Given_ALayoutIdMotionInsideAGrowingOne_When_ItFlipsTypeWhereItStands_Then_ItCarriesNoInversePose()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(GrowingOuterInnerFlipRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("inner");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a new element with no inline translate of its own.
+            var replacement = Root.Q<VisualElement>("inner");
+            Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword),
+                Is.EqualTo((false, StyleKeyword.Null)));
+        }
+
+        // Step 1 grows a spacer above a plain parent by 100px, pushing it down, and flips the layoutId Motion's
+        // element type where it stands inside that parent.
+        [Component]
+        private static VNode PushedParentFlipRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "spacer", className: $"w-[10px] h-[{(step == 0 ? 0 : 100)}px]"),
+                V.Div(key: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
+                {
+                    V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                        elementType: step == 0 ? null : typeof(Box),
+                        className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
+                }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a Motion that flips type where it stands without a pose.
+        // The box its teardown leaves must keep the parent-relative comparison under that same parent.
+        [Test]
+        public void Given_ALayoutIdMotionInAPlainParentPushedDown_When_ItFlipsTypeWhereItStandsInIt_Then_ItCarriesNoInversePose()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PushedParentFlipRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a new element with no inline translate, though the parent moved 100px down.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword),
+                Is.EqualTo((false, StyleKeyword.Null)));
+        }
+
         private static StateUpdater<int> s_setStop;
 
         // Three stops along x, transition-transform so the tween takes a transition suspension.

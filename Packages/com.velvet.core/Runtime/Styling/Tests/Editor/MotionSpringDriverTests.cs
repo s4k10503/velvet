@@ -383,6 +383,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOldRectOfInfiniteSize_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange — the size a box takes into a parent drawn at zero scale.
+            var oldRect = new Rect(0f, 0f, float.PositiveInfinity, float.PositiveInfinity);
+            var newRect = new Rect(0f, 0f, 100f, 100f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(50f, 50f));
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
         public void Given_ANewRectNeverLaidOut_When_DeltaComputed_Then_ThePlanIsEmpty()
         {
             // Arrange

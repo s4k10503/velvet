@@ -37,7 +37,7 @@ namespace Velvet
         // Reclaims the slot's poolable occupant after cleanup. A wrapped inner is detached from its
         // wrapper first so a pooled widget never carries the dead wrapper as its parent — mirroring
         // the rollback-orphan path, which already unwraps before reclaiming.
-        private static void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
+        private void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
         {
             if (!ReferenceEquals(poolable, removed))
             {
@@ -100,9 +100,10 @@ namespace Velvet
         // V.Custom<T>) must never enter the shared pool — its own fields and constructor-registered
         // callbacks survive the base-type reset, so a later plain rent would resurrect them on an
         // unrelated mount.
-        private static void ReturnToPool(VisualElement element)
+        private void ReturnToPool(VisualElement element)
         {
             FiberPropApplier.ForgetRecordedDefaults(element);
+            MotionLayoutIdDriver.ForgetParent(element, _ctx);
             var type = element.GetType();
             if (type == typeof(TextField))
             {

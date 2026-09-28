@@ -691,7 +691,7 @@ namespace Velvet
 
         // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
         // back to when that element gives none. A null element marks a torn-down element's box, listed in
-        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it at the pass boundary. Keyed by the id string, not an element, so it
+        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it where the render ends. Keyed by the id string, not an element, so it
         // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
         // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
         // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
