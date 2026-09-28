@@ -156,8 +156,8 @@ namespace Velvet.Tests
             Assert.That(label.style.whiteSpace.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        [TestCase("!text-balance", TestName = "Given_ALeadingImportantTextBalance_When_Reconciled_Then_ItBalances")]
-        [TestCase("text-balance!", TestName = "Given_ATrailingImportantTextBalance_When_Reconciled_Then_ItBalances")]
+        [TestCase("!text-balance")]
+        [TestCase("text-balance!")]
         public void Given_AnImportantTextBalance_When_Reconciled_Then_ItBalances(string cls)
         {
             // Arrange
@@ -170,10 +170,10 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1));
         }
 
-        [TestCase("text-balance text-pretty", "Pretty", TestName = "Given_TextPrettyAfterTextBalance_When_Reconciled_Then_TheBoxIsNarrowedPretty")]
-        [TestCase("text-pretty", "Pretty", TestName = "Given_TextPrettyAlone_When_Reconciled_Then_TheBoxIsNarrowedPretty")]
-        [TestCase("text-balance text-wrap", "none", TestName = "Given_TextWrapAfterTextBalance_When_Reconciled_Then_NothingNarrowsTheBox")]
-        [TestCase("text-balance text-nowrap", "none", TestName = "Given_TextNowrapAfterTextBalance_When_Reconciled_Then_NothingNarrowsTheBox")]
+        [TestCase("text-balance text-pretty", "Pretty")]
+        [TestCase("text-pretty", "Pretty")]
+        [TestCase("text-balance text-wrap", "none")]
+        [TestCase("text-balance text-nowrap", "none")]
         public void Given_SeveralWrapStyleClasses_When_Reconciled_Then_TheLaterDecides(string cls, string expected)
         {
             // Arrange
@@ -316,8 +316,8 @@ namespace Velvet.Tests
                 Is.EqualTo($"{(StyleKeyword.Null, WhiteSpace.Normal)} {(StyleKeyword.Undefined, WhiteSpace.Pre)} {StyleKeyword.Null}"));
         }
 
-        [TestCase("!whitespace-pre-line", TestName = "Given_ALeadingImportantPreLine_When_Reconciled_Then_TheSpacesCollapse")]
-        [TestCase("whitespace-pre-line!", TestName = "Given_ATrailingImportantPreLine_When_Reconciled_Then_TheSpacesCollapse")]
+        [TestCase("!whitespace-pre-line")]
+        [TestCase("whitespace-pre-line!")]
         public void Given_AnImportantPreLine_When_Reconciled_Then_TheSpacesCollapse(string cls)
         {
             // Arrange

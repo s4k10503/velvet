@@ -314,11 +314,11 @@ namespace Velvet.Tests
 
         // Each available set puts the weight CSS selects on the other side of the request from the nearest
         // weight, or from the heavier of two equally near ones.
-        [TestCase(500, new[] { 400, 600 }, 400, TestName = "Given_A500RequestBetween400And600_When_Matched_Then_TheLighterIsSelected")]
-        [TestCase(400, new[] { 350, 500 }, 500, TestName = "Given_A400RequestNearerALighterFace_When_Matched_Then_TheHeavierUpTo500IsSelected")]
-        [TestCase(480, new[] { 440, 510 }, 440, TestName = "Given_A480RequestNearerAFacePast500_When_Matched_Then_TheLighterIsSelected")]
-        [TestCase(300, new[] { 250, 320 }, 250, TestName = "Given_A300RequestNearerAHeavierFace_When_Matched_Then_TheLighterIsSelected")]
-        [TestCase(600, new[] { 400, 900 }, 900, TestName = "Given_A600RequestNearerALighterFace_When_Matched_Then_TheHeavierIsSelected")]
+        [TestCase(500, new[] { 400, 600 }, 400)]
+        [TestCase(400, new[] { 350, 500 }, 500)]
+        [TestCase(480, new[] { 440, 510 }, 440)]
+        [TestCase(300, new[] { 250, 320 }, 250)]
+        [TestCase(600, new[] { 400, 900 }, 900)]
         public void Given_AFamilyWithoutTheRequestedWeight_When_Matched_Then_CssSearchOrderDecides(
             int requested, int[] available, int expected)
         {
@@ -334,16 +334,16 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): here the weight CSS selects is also the nearest one, which the
         // base already returned; these pin the order within each pass and the exact match.
-        [TestCase(300, new[] { 100, 200 }, 200, TestName = "Given_A300RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
-        [TestCase(600, new[] { 700, 900 }, 700, TestName = "Given_A600RequestWithOnlyHeavierFaces_When_Matched_Then_TheLightestIsSelected")]
-        [TestCase(450, new[] { 300, 420 }, 420, TestName = "Given_A450RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
-        [TestCase(450, new[] { 600, 700 }, 600, TestName = "Given_A450RequestWithOnlyFacesPast500_When_Matched_Then_TheLightestIsSelected")]
-        [TestCase(400, new[] { 450, 500 }, 450, TestName = "Given_A400RequestWithFacesUpTo500_When_Matched_Then_TheLightestIsSelected")]
-        [TestCase(300, new[] { 500, 700 }, 500, TestName = "Given_A300RequestWithOnlyHeavierFaces_When_Matched_Then_TheLightestIsSelected")]
-        [TestCase(700, new[] { 300, 500 }, 500, TestName = "Given_A700RequestWithOnlyLighterFaces_When_Matched_Then_TheHeaviestIsSelected")]
-        [TestCase(400, new[] { 300, 400, 500 }, 400, TestName = "Given_A400RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
-        [TestCase(300, new[] { 200, 300, 400 }, 300, TestName = "Given_A300RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
-        [TestCase(700, new[] { 600, 700, 800 }, 700, TestName = "Given_A700RequestForARegisteredWeight_When_Matched_Then_ThatWeightIsSelected")]
+        [TestCase(300, new[] { 100, 200 }, 200)]
+        [TestCase(600, new[] { 700, 900 }, 700)]
+        [TestCase(450, new[] { 300, 420 }, 420)]
+        [TestCase(450, new[] { 600, 700 }, 600)]
+        [TestCase(400, new[] { 450, 500 }, 450)]
+        [TestCase(300, new[] { 500, 700 }, 500)]
+        [TestCase(700, new[] { 300, 500 }, 500)]
+        [TestCase(400, new[] { 300, 400, 500 }, 400)]
+        [TestCase(300, new[] { 200, 300, 400 }, 300)]
+        [TestCase(700, new[] { 600, 700, 800 }, 700)]
         public void Given_AFamily_When_Matched_Then_CssSearchOrderAgreesWithTheNearestWeight(
             int requested, int[] available, int expected)
         {

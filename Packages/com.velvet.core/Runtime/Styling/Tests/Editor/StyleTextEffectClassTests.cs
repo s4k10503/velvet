@@ -366,11 +366,11 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.Null);
         }
 
-        [TestCase("leading-[1.5]", "<line-height=1.5em>hi</line-height>", TestName = "Given_LeadingBracketUnitless_When_ParsedAndApplied_Then_ProducesAnEmTagOfThatFactor")]
-        [TestCase("leading-[0]", "<line-height=0em>hi</line-height>", TestName = "Given_LeadingBracketUnitlessZero_When_ParsedAndApplied_Then_ProducesAZeroEmTag")]
-        [TestCase("leading-[1.5em]", "<line-height=1.5em>hi</line-height>", TestName = "Given_LeadingBracketEm_When_ParsedAndApplied_Then_ProducesThatEmTag")]
-        [TestCase("leading-[150%]", "<line-height=1.5em>hi</line-height>", TestName = "Given_LeadingBracketPercent_When_ParsedAndApplied_Then_ProducesAnEmTagOfThatFraction")]
-        [TestCase("leading-[2rem]", "<line-height=32px>hi</line-height>", TestName = "Given_LeadingBracketRem_When_ParsedAndApplied_Then_ProducesAPxTagAtSixteenPxARem")]
+        [TestCase("leading-[1.5]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[0]", "<line-height=0em>hi</line-height>")]
+        [TestCase("leading-[1.5em]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[150%]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[2rem]", "<line-height=32px>hi</line-height>")]
         public void Given_LeadingBracketInACssLineHeightUnit_When_ParsedAndApplied_Then_ProducesTheMatchingTag(
             string cls, string expected)
         {
@@ -387,8 +387,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base rejects every non-px bracket value; these pin what the
         // widened grammar still rejects.
-        [TestCase("leading-[2vw]", TestName = "Given_LeadingBracketWithAnUnsupportedUnit_When_Parsed_Then_LeadingIsUnsetNull")]
-        [TestCase("leading-[em]", TestName = "Given_LeadingBracketWithAnEmUnitAndNoNumber_When_Parsed_Then_LeadingIsUnsetNull")]
+        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[em]")]
         public void Given_AnUnparseableLeadingBracket_When_Parsed_Then_LeadingIsUnsetNull(string cls)
         {
             // Arrange
