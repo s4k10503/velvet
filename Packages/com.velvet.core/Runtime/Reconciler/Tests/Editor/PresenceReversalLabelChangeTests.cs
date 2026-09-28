@@ -381,6 +381,33 @@ namespace Velvet.Tests
             Assert.That(TranslateX(Root.Q<VisualElement>("item")), Is.EqualTo(20f));
         }
 
+        // The case above with the resting pose's translate class repeated by the Motion's own className, which keeps
+        // it applied through the landing: so the reversal's resting classes hold it and the classes the landing takes
+        // off do not.
+        [Test]
+        public void Given_ASpringExitReversalRunningUnderAnOwnTranslateClassItsPoseShares_When_TheLabelChangesToAZeroDurationPoseNamingTranslate_Then_TheTranslateStaysAfterTheReversalEnds()
+        {
+            // Arrange
+            var variants = new Dictionary<string, MotionVariant>
+            {
+                ["lit"] = "translate-x-[0px]",
+                ["dim"] = new MotionVariant("translate-x-[20px]", StyleTransitionConfig.None),
+                ["gone"] = "translate-x-[-40px]",
+            };
+            using var store = new PresenceStore("lit");
+            using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
+                className: "translate-x-[0px]", variants: variants, animate: state.Label, exit: "gone",
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+
+            // Act
+            store.SetLabel("dim");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(TranslateX(Root.Q<VisualElement>("item")), Is.EqualTo(20f));
+        }
+
         private static IReadOnlyDictionary<string, MotionVariant> s_initialPoses;
         private static StyleTransitionConfig s_initialTransition;
 
