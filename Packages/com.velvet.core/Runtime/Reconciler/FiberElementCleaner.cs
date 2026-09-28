@@ -103,7 +103,6 @@ namespace Velvet
         private void ReturnToPool(VisualElement element)
         {
             FiberPropApplier.ForgetRecordedDefaults(element);
-            MotionLayoutIdDriver.ForgetParent(element, _ctx);
             var type = element.GetType();
             if (type == typeof(TextField))
             {
@@ -125,6 +124,11 @@ namespace Velvet
             {
                 VNodePool.ReturnLabel((Label)element);
             }
+            else
+            {
+                return;
+            }
+            MotionLayoutIdDriver.ForgetParent(element, _ctx);
         }
 
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.

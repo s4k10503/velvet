@@ -63,6 +63,7 @@ namespace Velvet.Tests
             s_setStep = default;
             s_tabs = null;
             s_lists = null;
+            s_shared = null;
             s_bump = null;
             s_store = null;
         }
@@ -1044,6 +1045,64 @@ namespace Velvet.Tests
             var replacement = Root.Q<VisualElement>("shared");
             Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword),
                 Is.EqualTo((false, StyleKeyword.Null)));
+        }
+
+        private static TabStore s_shared;
+
+        // Grows by 100px when the second slot is selected, pushing the shared parent below it down.
+        [Component]
+        private static VNode SharedParentSpacerRender() =>
+            V.Div(className: $"w-[10px] h-[{(Hooks.UseStore(s_shared, s => s.Index) == 1 ? 100 : 0)}px]");
+
+        // Renders a pooled Label and the card while the first slot is selected; both render straight into the
+        // shared parent, having no element of their own. The Label comes first: the slot's rows are removed
+        // from the last, so the Label goes back to the pool after the card's teardown has left its box.
+        [Component]
+        private static VNode FirstSharedSlotRender() => Hooks.UseStore(s_shared, s => s.Index) == 0
+            ? V.Fragment(children: new VNode[]
+            {
+                V.Label(text: "pooled when the slot empties"),
+                V.Motion(name: "card", layoutId: "card", transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
+            })
+            : null;
+
+        [Component]
+        private static VNode SecondSharedSlotRender() => Hooks.UseStore(s_shared, s => s.Index) == 1
+            ? V.Motion(name: "card", layoutId: "card", transition: s_layoutSpring, className: "w-[100px] h-[50px]")
+            : null;
+
+        [Component]
+        private static VNode SharedParentSlotsRender() => V.Div(children: new VNode[]
+        {
+            V.Component(SharedParentSpacerRender, key: "spacer"),
+            V.Div(key: "shared", className: "w-[300px] h-[200px]", children: new VNode[]
+            {
+                V.Component(FirstSharedSlotRender, key: "first"),
+                V.Component(SecondSharedSlotRender, key: "second"),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base compares a layoutId Motion's rects within the one parent it stays in.
+        // Another element the pool takes back meanwhile must not strip the kept box of that parent.
+        [Test]
+        public void Given_TwoComponentsRenderingIntoOneParentPushedDown_When_TheCardMovesFromTheFirstToTheSecond_Then_ItCarriesNoInversePose()
+        {
+            // Arrange
+            s_shared = new TabStore(0);
+            using var mounted = V.Mount(Root, V.Component(SharedParentSlotsRender, key: "root"));
+            Tick();
+            Tick();
+            var original = Root.Q<VisualElement>("card");
+
+            // Act
+            s_shared.Select(1);
+            Tick();
+            Tick();
+
+            // Assert — a new element standing where the old one stood inside the parent, with no inline translate.
+            var card = Root.Q<VisualElement>("card");
+            Assert.That((ReferenceEquals(original, card), card.layout.y, card.style.translate.keyword),
+                Is.EqualTo((false, 0f, StyleKeyword.Null)));
         }
 
         private static StateUpdater<int> s_setStop;
