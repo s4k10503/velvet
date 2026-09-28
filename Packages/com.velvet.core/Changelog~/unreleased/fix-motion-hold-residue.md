@@ -13,8 +13,12 @@
 - A `V.Motion` label change into a pose whose transition has zero duration, such as `StyleTransitionConfig.None`,
   lands the properties that pose names within two frames. A tween swap that had already swapped went on tweening
   them on its own transition, and a spring or bezier play or reversal still running kept driving them toward its
-  own target until it settled, where a `translate-*` value went back to the earlier pose's. Properties the pose
-  does not name keep moving as before.
+  own target until it settled, where a `translate-*` value went back to the earlier pose's. A property whose
+  value the tween was already headed for lands too, and one a variant layer such as `hover:opacity-[0.3]` holds
+  shows that layer's value at once rather than after the play settles. Properties the pose does not name keep
+  moving. A bezier transition with zero duration now counts as zero duration here: it stopped the running play
+  and snapped every property. A `MotionNode` built without `V.Motion`, which carries no transition, lands a label
+  change the same way.
 
 - A `V.Motion` whose tween, spring or bezier play, or a presence child's spring exit reversal, is still running
   when a zero-duration pose lands no longer ends carrying that play's earlier pose classes beside those of the

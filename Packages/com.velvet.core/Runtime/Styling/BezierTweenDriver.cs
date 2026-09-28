@@ -254,6 +254,7 @@ namespace Velvet
             }
             state.Colors?.RemoveAll(c => MotionSpringDriver.ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
         }
 
         /// <summary>

@@ -48,24 +48,32 @@ namespace Velvet.Tests
         private static VNode PoseBox()
         {
             var label = Hooks.UseStore(s_store, s => s.Label);
-            return V.Motion(name: "m", className: s_className, variants: s_poses, animate: label,
-                transition: s_transition);
+            // V.Motion gives a Motion with no transition the Fade preset's; one built directly carries none.
+            return s_transition == null
+                ? new MotionNode { Name = "m", Variants = s_poses, Animate = label }
+                : V.Motion(name: "m", className: s_className, variants: s_poses, animate: label,
+                    transition: s_transition);
         }
 
+        // OnPoses puts Transition on the To pose and builds the Motion with none, so a Land with no LandTransition
+        // has no transition at all.
         private readonly record struct Poses(StyleTransitionConfig Transition, string From, string To, string Land,
-            int Frames = 3, string Next = null, StyleTransitionConfig NextTransition = null);
+            int Frames = 3, string Next = null, StyleTransitionConfig NextTransition = null, string Mid = null,
+            StyleTransitionConfig LandTransition = null, bool OnPoses = false);
 
         // Mounts the box at From, plays the swap to To on Transition for Frames frames, then changes the label to
         // Land, whose pose has zero duration. Returns the box, what read gave just before Land, and the mount.
         private (VisualElement box, float before, MountedTree mounted) PlayThenLand(Poses poses,
-            System.Func<VisualElement, float> read)
+            System.Func<VisualElement, float> read, System.Action<VisualElement> beforeLand = null)
         {
-            s_transition = poses.Transition;
+            s_transition = poses.OnPoses ? null : poses.Transition;
             s_poses = new Dictionary<string, MotionVariant>
             {
                 ["from"] = poses.From,
-                ["to"] = poses.To,
-                ["land"] = new MotionVariant(poses.Land, StyleTransitionConfig.None),
+                ["to"] = new MotionVariant(poses.To, poses.OnPoses ? poses.Transition : null),
+                ["land"] = new MotionVariant(poses.Land,
+                    poses.LandTransition ?? (poses.OnPoses ? null : StyleTransitionConfig.None)),
+                ["mid"] = new MotionVariant(poses.Mid ?? string.Empty, s_tween),
                 ["next"] = new MotionVariant(poses.Next ?? string.Empty, poses.NextTransition ?? s_tween),
             };
             s_store = new LabelStore();
@@ -79,6 +87,7 @@ namespace Velvet.Tests
             }
             var box = Root.Q<VisualElement>("m");
             var before = read(box);
+            beforeLand?.Invoke(box);
             s_store.Set("land");
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             return (box, before, mounted);
@@ -515,6 +524,122 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(box.ClassListContains("translate-x-[40px]"), Is.True);
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapSettledUnderAZeroDurationPoseLeavingTranslateUnnamed_When_LaterPosesMoveTranslateAndLeaveIt_Then_TheDrivenTranslateDoesNotComeBack(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "translate-x-[0px]", "translate-x-[40px]",
+                "opacity-50", Mid: "translate-x-[10px]", Next: "opacity-0", NextTransition: s_spring), InlineTranslateX);
+            using var __ = mounted;
+            AdvancePast(2f);
+            s_store.Set("mid");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(box.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityFollows_Then_OpacityLandsByTheSecondFrame()
+        {
+            // Arrange
+            var (box, before, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-100 translate-x-[20px]"), Opacity);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+            Tick();
+
+            // Assert — gated on the tween being mid-way, where landing and tweening read apart.
+            var landed = Between(before, 0.05f, 0.45f) ? Opacity(box) : float.NaN;
+            Assert.That(landed, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapRunningUnderAHoverOpacityLayer_When_AZeroDurationPoseNamingOpacityFollows_Then_TheHoverOpacityShows(
+            TransitionType type)
+        {
+            // Arrange — the landing pose repeats the play's opacity class, so the class sync leaves opacity alone.
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0", "opacity-100", "opacity-100 tag-c"),
+                Opacity,
+                element => StyleArbitraryValueResolver.ApplyClassToken(element, "opacity-[0.3]", StyleLayerPriority.Hover));
+            using var _ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert
+            var inline = box.style.opacity.keyword == StyleKeyword.Undefined ? box.style.opacity.value : float.NaN;
+            Assert.That(inline, Is.EqualTo(0.3f).Within(1e-3f));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapRunning_When_AZeroDurationBezierPoseLeavesTranslateUnnamed_Then_TranslateKeepsMoving(
+            TransitionType type)
+        {
+            // Arrange
+            var (box, before, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-50",
+                LandTransition: new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0f }),
+                InlineTranslateX);
+            using var _ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert — gated on the play having moved translate off both ends.
+            var after = Between(before, 0.2f, 38f) ? InlineTranslateX(box) : float.NaN;
+            Assert.That(after, Is.InRange(before + 1e-3f, 39.6f));
+        }
+
+        [Test]
+        public void Given_ASpringSwapRunning_When_APoseWithNoTransitionLandsAndATimedPoseFollows_Then_OnlyThatPosesClassIsCarried()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_spring, "opacity-0 translate-x-[0px] tag-a",
+                "opacity-100 translate-x-[40px] tag-b", "opacity-50 tag-c", Next: "opacity-0 tag-d", OnPoses: true),
+                Opacity);
+            using var __ = mounted;
+            Tick();
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(TagClasses(box), Is.EqualTo("tag-d"));
+        }
+
+        [Test]
+        public void Given_ATweenSwapWhosePoseSetItsDuration_When_TwoZeroDurationPosesFollow_Then_TheSecondLandsItsOpacity()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0", "opacity-100 duration-[300ms]",
+                "opacity-50", Next: "opacity-[0.3]", NextTransition: StyleTransitionConfig.None), Opacity);
+            using var _ = mounted;
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(Opacity(box), Is.EqualTo(0.3f).Within(1e-3f));
         }
     }
 }

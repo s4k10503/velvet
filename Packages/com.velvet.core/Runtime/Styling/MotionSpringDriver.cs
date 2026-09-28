@@ -331,8 +331,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Stops driving every channel that writes one of <paramref name="named"/> and releases its inline slot,
-        /// leaving the rest running.
+        /// Stops driving every channel that writes one of <paramref name="named"/> and hands its inline slot back to
+        /// the element's variant layers, as <see cref="ClearInlineOverrides"/> does, leaving the rest running.
         /// </summary>
         public static void ReleaseChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named)
         {
@@ -360,6 +360,7 @@ namespace Velvet
             }
             state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)

@@ -640,31 +640,34 @@ namespace Velvet
         // writes them as inline style without touching that list, so a label change whose swap moves none leaves
         // the old pose's there. A spring or bezier settle re-applies what the list names
         // (ReapplyMotionOwnedInlineValues), so they would come back under a later pose that leaves their property
-        // unnamed. A running driver is left alone, since its settle re-applying them is what ends a property the
-        // pose leaves unnamed at the play's target (MotionZeroDurationLandingTests); LandNamedProperties takes
-        // off what the pose names.
+        // unnamed.
         private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
             string[] oldVariantClasses, string[] appliedNew)
         {
-            if (playedTransition != null && StyleAnimationScheduler.MovesClasses(playedTransition)
-                || _ctx.StyleAnimationScheduler.IsDriving(element))
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition))
             {
                 return;
             }
+            List<string>? stale = null;
             foreach (var cls in oldVariantClasses)
             {
                 if (IsInlineResolved(cls) && Array.IndexOf(appliedNew, cls) < 0)
                 {
-                    element.RemoveFromClassList(cls);
+                    (stale ??= new List<string>()).Add(cls);
                 }
+            }
+            if (stale != null)
+            {
+                _ctx.StyleAnimationScheduler.DropStaleTokens(element, stale.ToArray());
             }
         }
 
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
             string[] oldVariantClasses, string[] newVariantClasses)
-            => swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
-                && !SequenceEqual(oldVariantClasses, newVariantClasses)
-                ? swapTransition
+            // A label change with no transition lands like one on StyleTransitionConfig.None, so a play still running
+            // on the element is handled the same way under both.
+            => !_ctx.StyleAnimationScheduler.IsExiting(element) && !SequenceEqual(oldVariantClasses, newVariantClasses)
+                ? swapTransition ?? StyleTransitionConfig.None
                 : null;
 
         // The class sets the class-driven sync diffs this render, and the onSwap that writes what it holds back.
