@@ -105,20 +105,20 @@ namespace Velvet
                 variantMode: false, propertyOverrides: null);
         }
 
-        // Config-taking overload: every production call site (a standalone Motion's mount enter, and an
-        // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
-        // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
-        // the same eight-argument unpack of the same object.
+        // Config-taking overload: every production call site holds its timing/spring knobs as a
+        // StyleTransitionConfig, so this unpacks it once here instead of each call site repeating the unpack.
         // onSwap: run at the swap, once the classes have moved. Only a play for which RunsOnSwap holds runs it,
         // and one cancelled before its swap never does.
+        // appliedClasses: the element's whole resting class set once this play lands — its own classes and the
+        // pose's — where the caller knows it (see CancelSwapAhead); the to classes stand in for it elsewhere.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
-            Action? onSwap = null)
+            Action? onSwap = null, string[]? appliedClasses = null)
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
         }
 
         // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
@@ -148,7 +148,7 @@ namespace Velvet
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
-            Action? onSwap = null)
+            Action? onSwap = null, string[]? appliedClasses = null)
         {
             if (element == null)
             {
@@ -182,6 +182,10 @@ namespace Velvet
                 return;
             }
 
+            if (!IsPlayableDuration(durationSec))
+            {
+                CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
+            }
             PlayEnterInternal(in play, durationSec, easing, variantMode: true, propertyOverrides);
         }
 
@@ -229,6 +233,8 @@ namespace Velvet
                 DelayList = delayList,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
+                SwapAhead = variantMode,
+                OnComplete = onComplete,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -316,6 +322,7 @@ namespace Velvet
                 return;
             }
 
+            pending.SwapAhead = false;
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
             RunOnSwap(pending);
@@ -966,6 +973,29 @@ namespace Velvet
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
 
+        // Reached only from PlayVariantEnter's tween path when the duration is not playable. It cancels an earlier
+        // tween variant enter whose swap has not run, which would otherwise put that enter's target classes back
+        // beside this play's. The cancel puts back restingTo, and those of the cancelled enter's to classes, which it
+        // stripped as it started, that appliedClasses still holds: a Motion's own class is among them where the
+        // interrupted pose repeats it. The cancelled enter's phase ends with the cancel, so its completion runs then,
+        // inside the call that starts this play.
+        private void CancelSwapAhead(VisualElement element, string[] restingTo, string[] appliedClasses)
+        {
+            if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
+            {
+                var resting = new List<string>(restingTo);
+                foreach (var cls in pending.ToClasses!)
+                {
+                    if (Array.IndexOf(appliedClasses, cls) >= 0)
+                    {
+                        resting.Add(cls);
+                    }
+                }
+                CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
+                pending.OnComplete?.Invoke();
+            }
+        }
+
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
 
@@ -1484,6 +1514,10 @@ namespace Velvet
             public BezierTweenState? Bezier;
             // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
             public Action? OnSwap;
+            // True from a tween variant enter's registration until its swap runs; false for every other entry.
+            public bool SwapAhead;
+            // A tween enter's completion, which CancelSwapAhead runs when it cancels the entry before its swap.
+            public Action? OnComplete;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
 

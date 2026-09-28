@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -110,6 +111,92 @@ namespace Velvet.Tests
                     transition: new StyleTransitionConfig { DurationSec = 0.35f }),
             });
         }
+
+        private static readonly Dictionary<string, MotionVariant> s_fadeWithInstantHalf = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+            ["half"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+            ["tagged"] = new MotionVariant("tag-b", StyleTransitionConfig.None),
+        };
+
+        [Component]
+        private static VNode InstantHalfBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "m", name: "m", variants: s_fadeWithInstantHalf, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+        }
+
+        private static readonly Dictionary<string, MotionVariant> s_taggedLit = new()
+        {
+            ["off"] = "opacity-0",
+            ["lit"] = "opacity-100 tagged",
+            ["dim"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+        };
+
+        // The Motion's own className repeats a class of its lit pose.
+        [Component]
+        private static VNode TaggedBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "m", name: "m", className: "tagged", variants: s_taggedLit, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+        }
+
+        private static int s_enterCompletions;
+
+        // A presence child that follows its parent's label and fades in on the classic preset.
+        [Component]
+        private static VNode FadingFollower()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(name: "parent", animate: label, children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    V.Motion(key: "a", name: "item", variants: s_fadeWithInstantHalf, transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_enterCompletions++),
+                }),
+            });
+        }
+
+        private static int s_mountEnterCompletions;
+
+        // Enters from hidden on a tween, and dim is reached on no transition at all.
+        private static readonly Dictionary<string, MotionVariant> s_enteringPoses = new()
+        {
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig { DurationSec = 0.35f }),
+            ["shown"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.35f }),
+            ["dim"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+        };
+
+        [Component]
+        private static VNode EnteringBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(name: "m", initial: "hidden", animate: label, variants: s_enteringPoses,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f },
+                onEnterComplete: () => s_mountEnterCompletions++);
+        }
+
+        [Component]
+        private static VNode EnteringPresence()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(key: key.ToString(), name: "m", initial: "hidden", animate: label,
+                    variants: s_enteringPoses, transition: new StyleTransitionConfig { DurationSec = 0.35f },
+                    onEnterComplete: () => s_mountEnterCompletions++));
+            }
+            return V.AnimatePresence(key: "presence", children: children.ToArray());
+        }
+
+        private static string OpacityClasses(VisualElement element)
+            => string.Join(" ", element.GetClasses().Where(c => c.StartsWith("opacity-")).OrderBy(c => c));
 
         [Component]
         private static VNode SpringBox()
@@ -342,6 +429,165 @@ namespace Velvet.Tests
             // asserted with it, because an exit that never had a claim to cancel finishes on time anyway.
             Assert.That((swapClaimedBeforeExit, Root.Q<VisualElement>("item-x") == null),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ATweenSwapThatHasNotSwappedYet_When_AZeroDurationSwapFollows_Then_OnlyTheLatestPosesClassIsCarried()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(InstantHalfBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert
+            Assert.That(OpacityClasses(Root.Q<VisualElement>("m")), Is.EqualTo("opacity-50"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap leaves a swapped tween's play alone.
+        // So the transition that tween's swap put on the element keeps timing a property the new pose leaves unnamed.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationSwapToAPoseNamingNoOpacityFollows_Then_TheTweensTransitionStays()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(InstantHalfBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Act
+            labels.Set("tagged");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("m")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's pending swap put its to classes back, the shared one with them.
+        // So the class a Motion's own className shares with the interrupted pose survives the zero-duration swap.
+        [Test]
+        public void Given_ATweenSwapIntoAPoseSharingTheMotionsOwnClass_When_AZeroDurationSwapFollowsBeforeItSwaps_Then_TheOwnClassStays()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set("off");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(TaggedBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("lit");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("dim");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("m").ClassListContains("tagged"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
+        // So a presence child's classic fade-in still completes when its inherited label changes before it swaps.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
+        {
+            // Arrange
+            s_enterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("visible");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_enterCompletions, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
+        // So a presence child's classic fade-in keeps its transition when its inherited label changes before it swaps.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheFadeKeepsItsTransition()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set("visible");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending mount enter to complete.
+        // So the enter's completion still runs once when a zero-duration label change lands before its swap.
+        [Test]
+        public void Given_AMountEnterNotSwappedYet_When_AZeroDurationLabelChangeFollows_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_mountEnterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("shown");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(EnteringBox, key: "root"));
+
+            // Act
+            labels.Set("dim");
+            mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_mountEnterCompletions, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending presence enter to complete.
+        // So the enter's completion still runs once when a zero-duration label change lands before its swap.
+        [Test]
+        public void Given_APresenceEnterNotSwappedYet_When_AZeroDurationLabelChangeFollows_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_mountEnterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("shown");
+            s_labelStore = labels;
+            using var keys = new SetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(EnteringPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            keys.Set("a");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("dim");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_mountEnterCompletions, Is.EqualTo(1));
         }
     }
 }
