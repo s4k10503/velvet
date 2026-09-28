@@ -412,13 +412,12 @@ provide.
 
 `autoplay` (default `true`) starts the sequence on mount; pass `false` and call `controls.Play()` (e.g.
 from an `onClick`) to start it on demand. `loop: true` wraps the cursor back to step 0 once the last
-step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. A supplied `deps` array is
-read as [§1-4 of the React migration guide](react-migration.md#1-4-what-a-dependency-list-means)
-describes, but this hook's default is the empty array rather than null, so omitting it (or passing null)
-resets the walker on **mount only**: a freshly-built `steps` array literal in the component body (the
-common case) must not restart an in-flight sequence every render. `controls.Restart()` returns to step 0
-and re-commits its effect (including firing a `Call` step 0's callback again) without implicitly
-resuming a paused sequence.
+step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. `deps` is required and
+decides when the sequence restarts from step 0, read as
+[§1-4 of the React migration guide](react-migration.md#1-4-what-a-dependency-list-means) describes: null
+restarts it on every render, so a sequence that plays once per mount passes `Array.Empty<object>()`, as
+`useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
+firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
