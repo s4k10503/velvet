@@ -20,9 +20,10 @@ namespace Velvet.Tests
     /// <item>The Blocker is consulted before the path is matched, so a path no route matches is put to it and
     /// a Guard is not asked about a path the Blocker stopped; nothing of the attempt is published while it is
     /// consulted, and a blocked attempt leaves the navigation already in flight alone.</item>
-    /// <item>A kept <c>Proceed</c> is bound to the block it was handed out for: it throws once that block is
-    /// over, and releases its own navigation while a newer one is held. A kept <c>Reset</c> returns the
-    /// Blocker to Idle whatever its status.</item>
+    /// <item>A kept <c>Proceed</c> throws while the Blocker is not Blocked, and releases its own navigation
+    /// while a newer one is held. A kept <c>Reset</c> returns the Blocker to Idle whatever its status.</item>
+    /// <item>A Blocker stays Proceeding while a navigation that took over from the one it released is under
+    /// way.</item>
     /// <item>A block stands until a navigation commits, a disposal removes the Blocker with its state, and a
     /// re-registration keeps the Blocker's place in the order.</item>
     /// <item>A component holding a Blocker re-renders when its state changes.</item>
@@ -228,6 +229,51 @@ namespace Velvet.Tests
             // Assert
             Assert.That((statusWhileLoading, state.Status),
                 Is.EqualTo((RouteBlockerStatus.Proceeding, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_ANavigationThatTookOverFromAReleasedOne_When_TheReleasedOneUnwinds_Then_TheBlockerIsStillProceeding()
+        {
+            // Arrange — the released navigation parks on its loader, and the one taking over parks on its own.
+            var released = new VelvetTaskCompletionSource<object>();
+            var takingOver = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home", Route("home"),
+                Route("a", loader: (_, _) => released.Task),
+                Route("b", loader: (_, _) => takingOver.Task));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            router.NavigateSync("/a");
+            state.Proceed();
+            router.NavigateAsync("/b").Forget();
+
+            // Act — the released navigation's loader answers, and the navigation finds it was taken over.
+            released.TrySetResult("a-data");
+
+            // Assert
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Proceeding));
+        }
+
+        [Test]
+        public void Given_AProceedKeptFromAForwardStepWhoseEntryIsGone_When_ItRunsDuringANewerBlock_Then_TheBlockerReturnsToIdle()
+        {
+            // Arrange — the Blocker blocks Forward steps and one path. The Forward step it blocks first loses
+            // its entry to a Push the Blocker lets through, and a later block is what lets the kept Proceed run.
+            var router = BuildRouter("/a", Route("a"), Route("b"), Route("c"), Route("x"));
+            router.NavigateSync("/b");
+            router.GoBackSync();
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(
+                args => args.HistoryAction == NavigationMode.Forward || args.NextLocation.Path == "/x", state);
+            router.GoForwardSync();
+            Action proceedForward = state.Proceed;
+            router.NavigateSync("/c");
+            router.NavigateSync("/x");
+
+            // Act — the Forward step it releases has no entry to land on.
+            proceedForward();
+
+            // Assert
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
         }
 
         #endregion

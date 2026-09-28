@@ -9,7 +9,7 @@ namespace Velvet
         /// <summary>
         /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is on
         /// its way. <see cref="RouteBlockerState.Location"/> still reports that navigation's destination, and
-        /// this Blocker is not consulted until that navigation settles.
+        /// this Blocker is not consulted until a navigation commits or none is left under way.
         /// </summary>
         Proceeding,
     }
