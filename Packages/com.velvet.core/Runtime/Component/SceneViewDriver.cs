@@ -7,8 +7,8 @@ namespace Velvet
     // Reconciler-side bookkeeping for one SceneView element, keyed in
     // ReconcilerContext.SceneViewBindings by the element itself. Holds the current settings (camera +
     // resolution scale), the framework-owned RenderTexture the camera renders into, the registered
-    // geometry callback (so it can be unregistered on detach), and the recurring editor-panel repaint
-    // tick (see SyncRepaintTick) so it can be paused whenever the texture is released.
+    // geometry callback (so it can be unregistered on detach), and the recurring tick (see
+    // SyncRepaintTick) so it can be paused whenever the texture is released.
     internal sealed class SceneViewBinding
     {
         public SceneViewSettings Settings;
@@ -292,31 +292,38 @@ namespace Velvet
             return (value + SizeQuantizationStep - 1) / SizeQuantizationStep * SizeQuantizationStep;
         }
 
-        // An Editor-context panel repaints only when something marks it dirty, so a live camera feed
-        // would freeze on its first frame there (nothing in UI Toolkit knows the sampled texture's
-        // CONTENTS changed). Drive a recurring repaint while a texture is live on an editor panel;
-        // runtime panels render every frame already and get no tick. The scheduled item fires only
-        // when the panel ticks its scheduler, so a headless (batch) editor panel schedules it inertly.
-        // Paused whenever the texture is released or the binding detaches.
+        // A recurring tick runs while a texture is live, on every panel type. The scheduled item fires
+        // only when the panel ticks its scheduler, so a headless (batch) editor panel schedules it
+        // inertly. Paused whenever the texture is released or the binding detaches.
         private static void SyncRepaintTick(VisualElement element, SceneViewBinding binding)
         {
-            var wantTick = binding.Texture != null && element.panel?.contextType == ContextType.Editor;
-            if (wantTick && binding.RepaintTick == null)
+            if (binding.Texture != null && binding.RepaintTick == null)
             {
                 binding.RepaintTick = element.schedule.Execute(() => OnRepaintTick(element, binding)).Every(RepaintIntervalMs);
             }
-            else if (!wantTick)
+            else if (binding.Texture == null)
             {
                 StopRepaintTick(binding);
             }
         }
 
-        // Beyond dirtying the panel, the tick doubles as the staleness probe: a pixel-density change
-        // (a monitor-DPI move, a runtime panel-scale tweak) alters the derived pixel size with NO
-        // geometry event — points are unchanged — so no other signal would ever re-derive the
-        // texture. Runtime panels have no tick and heal on their next geometry or props pass instead.
+        // Outside Play Mode the tick renders the camera. A camera user code borrowed renders where that
+        // code decides, and a disabled one is the caller's way of saying its output is unnecessary. The
+        // tick runs only while a texture is live, so the target comparison never matches a camera
+        // that targets nothing — which would render it to the screen.
+        // The tick is also the staleness probe: a pixel-density change (a monitor-DPI move, a runtime
+        // panel-scale tweak) alters the derived pixel size with NO geometry event — points are
+        // unchanged — so no other signal would ever re-derive the texture. The closing dirty is for an
+        // Editor-context panel, which repaints only when something marks it dirty (nothing in UI
+        // Toolkit knows the sampled texture's CONTENTS changed).
         private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
         {
+            var camera = binding.Settings.Camera;
+            if (!Application.isPlaying && camera != null && camera.isActiveAndEnabled
+                && camera.targetTexture == binding.Texture)
+            {
+                camera.Render();
+            }
             // This is a staleness PROBE, not a commit: only checks whether the derived size still
             // matches the live texture. The basis-axis choice this call computes is discarded — if a
             // resync turns out to be needed, SyncTexture below re-derives (and, on that path, commits)

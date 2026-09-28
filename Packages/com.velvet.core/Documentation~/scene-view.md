@@ -17,8 +17,8 @@ There is no RenderTexture in the API — the framework owns it:
   `camera.targetTexture`; the element shows it as its background image.
 - A geometry change (the element resizes) recreates the texture at the new size and re-targets
   the camera. A zero-sized or unattached element holds no texture. A pixel-density change (a
-  monitor DPI move) fires no geometry event: editor panels re-derive the texture on their
-  repaint tick, runtime panels on their next layout or props change.
+  monitor DPI move, a panel-scale change) fires no geometry event; the element's recurring tick
+  re-derives the texture on every panel type.
 - Swapping the `camera:` prop releases the old camera and targets the new one; passing `null`
   releases everything and leaves an inert box.
 - Unmounting (including a conditional `cond ? V.SceneView(...) : null` removal and whole-tree
@@ -50,10 +50,11 @@ The element samples the camera's RenderTexture at draw time — camera motion an
 appear without any Velvet re-render. A `UseState`/store update is only needed when the
 *element* changes (size, camera identity), never per frame.
 
-Runtime panels redraw continuously, so this is free. An **editor-hosted panel** repaints only
-when dirty, so a bound SceneView drives a small recurring repaint tick there; note that
-outside Play Mode a camera does not render on its own — feeding the texture (e.g. calling
-`camera.Render()` from your tool's update) is the caller's job.
+A bound SceneView drives a small recurring tick while its texture is live. It marks the element
+dirty, which an **editor-hosted panel** needs since it repaints only when dirty, and **outside
+Play Mode** it calls `camera.Render()`, so a tool previewing a scene shows it live without
+entering Play Mode. The tick renders only a camera that is enabled and still targets the
+element's texture.
 
 ## Notes
 
@@ -62,5 +63,6 @@ outside Play Mode a camera does not render on its own — feeding the texture (e
   SceneView its own camera.
 - The camera keeps rendering while targeted (its own `enabled` flag is yours to manage —
   disable cameras whose output is currently unnecessary).
-- URP is the supported pipeline (this project validates against URP; capture rides
-  `camera.targetTexture`, which is pipeline-agnostic — no Built-in-only hooks are used).
+- The render pipeline is whichever the project uses: the element sets `camera.targetTexture`
+  and calls `camera.Render()`, and calls no pipeline-specific API. Velvet's own suites run
+  under URP.

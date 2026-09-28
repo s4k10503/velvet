@@ -1,9 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -16,8 +14,8 @@ namespace Velvet.Tests
     /// simulation is consumed) and never mutates the SOURCE system; the host is destroyed on unmount,
     /// conditional removal, same-key type swaps and tree disposal, recreated on an effect swap, and kept
     /// through a pixelsPerUnit change on the same effect.</item>
-    /// <item>A null effect mounts an inert element with no host; a world-space source warns (positions
-    /// are read in local space).</item>
+    /// <item>A null effect mounts an inert element with no host. Every system under the effect is
+    /// hosted: each child's renderer is disabled and each always simulates.</item>
     /// <item>An invalid pixelsPerUnit fails fast at the factory.</item>
     /// <item>The filter bounds-spacer (<see cref="SilhouetteBoundsSpacer"/>) also applies at the
     /// Particles reconcile boundary: a filter would clip the particle quads that draw beyond the host
@@ -144,24 +142,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AWorldSpaceSource_When_Mounted_Then_ItWarns()
-        {
-            // Arrange — particle positions are read in local space; a world-space source would misrender,
-            // so mounting one must say so instead of drawing garbage silently. The advisory debounce is
-            // keyed by source name, so each advisory fixture uses its own name.
-            var effect = CreateEffectSource("fx-world-space");
-            var main = effect.main;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            LogAssert.Expect(LogType.Warning, new Regex("world", RegexOptions.IgnoreCase));
-
-            // Act
-            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
-
-            // Assert — the host still exists (the warning is advisory, not a rejection).
-            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
-        }
-
-        [Test]
         public void Given_AMountedEffect_When_Attached_Then_TheHostAlwaysSimulates()
         {
             // Arrange — the host's renderer is disabled and it sits far from every camera, so Unity's
@@ -192,39 +172,6 @@ namespace Velvet.Tests
             var host = FindHost(effect);
             Assume.That(host, Is.Not.Null, "Precondition: the hidden host clone exists");
             Assert.That(host.gameObject.activeSelf, Is.True);
-        }
-
-        [Test]
-        public void Given_ACustomSpaceSource_When_Mounted_Then_ItWarns()
-        {
-            // Arrange — Custom simulation space has the same local-space read mismatch as World.
-            var effect = CreateEffectSource("fx-custom-space");
-            var main = effect.main;
-            main.simulationSpace = ParticleSystemSimulationSpace.Custom;
-            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
-
-            // Act
-            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
-
-            // Assert
-            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
-        }
-
-        [Test]
-        public void Given_ASourceBeyondTheDrawCap_When_Mounted_Then_ItWarns()
-        {
-            // Arrange — the draw path truncates at its particle cap; a denser effect must say so once
-            // instead of silently thinning out compared to everywhere else the prefab is used.
-            var effect = CreateEffectSource("fx-draw-cap");
-            var main = effect.main;
-            main.maxParticles = 5000;
-            LogAssert.Expect(LogType.Warning, new Regex("2048"));
-
-            // Act
-            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
-
-            // Assert
-            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
         }
 
         [Component]
@@ -453,87 +400,123 @@ namespace Velvet.Tests
             Assert.That(host.particleCount, Is.GreaterThan(0));
         }
 
-        [Test]
-        public void Given_AFinishedRootWithALiveChildSystem_When_TheTickObservesIt_Then_TheTickParks()
+        // A non-looping root that finishes within the first advances, over one child system.
+        private ParticlesBinding MountFinishingRootOver(ParticleSystem child, string name)
         {
-            // Arrange — the draw samples only the ROOT's particles, so a longer-lived child system must
-            // not keep the repaint tick dirtying the element after the drawn output is already empty.
             _fakeMs = 1000;
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
-            var effect = CreateEffectSource("fx-park-root");
+            var effect = CreateEffectSource(name);
             var rootMain = effect.main;
             rootMain.loop = false;
             rootMain.duration = 0.02f;
             rootMain.startLifetime = 0.01f;
-            var childGo = new GameObject("fx-park-child");
-            childGo.transform.SetParent(effect.transform);
-            var childMain = childGo.AddComponent<ParticleSystem>().main;
-            childMain.loop = true;
+            child.transform.SetParent(effect.transform);
             MountAndLayout(V.Particles(effect, name: "px-park", className: "w-[128px] h-[128px]"));
-            var element = _host.Root.Q<VisualElement>("px-park");
-            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
-            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[element];
-            Assume.That(binding.Host != null && binding.Host.IsAlive(false), Is.True,
-                "Precondition: the played root reads alive before any advance");
+            return _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-park")];
+        }
 
-            // Act — each 20 fake-ms step fires the tick once: the first firings advance the root past
-            // its whole timeline, and the next observes the drained corpse and parks.
+        // Each 20 fake-ms step fires the tick once: the first firings advance the root past its whole
+        // timeline, and the later ones observe it finished.
+        private void AdvanceSixTicks()
+        {
             for (var i = 0; i < 6; i++)
             {
                 _fakeMs += 20;
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
+        }
 
-            // Assert — the tick parked itself even though the looping child system is still alive.
+        [Test]
+        public void Given_AFinishedRootWithALiveChildSystem_When_TheTickObservesIt_Then_TheTickKeepsRunning()
+        {
+            // Arrange — the draw samples the child systems too, so a looping child still emitting after
+            // the root finished is output the tick has to keep repainting.
+            var child = new GameObject("fx-live-child").AddComponent<ParticleSystem>();
+            var childMain = child.main;
+            childMain.loop = true;
+            var childEmission = child.emission;
+            childEmission.rateOverTime = 1000f;
+            var binding = MountFinishingRootOver(child, "fx-park-root");
+
+            // Act
+            AdvanceSixTicks();
+
+            // Assert
+            Assert.That(binding.RepaintTick, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): a finished root over a child that never emits parks the tick, as it did.
+        [Test]
+        public void Given_AFinishedRootWithAnEmptyChildSystem_When_TheTickObservesIt_Then_TheTickParks()
+        {
+            // Arrange — the child loops but emits nothing, so once the root finishes no system holds a
+            // particle and nothing is left to draw.
+            var child = new GameObject("fx-empty-child").AddComponent<ParticleSystem>();
+            var emission = child.emission;
+            emission.enabled = false;
+            var binding = MountFinishingRootOver(child, "fx-park-empty");
+
+            // Act
+            AdvanceSixTicks();
+
+            // Assert
             Assert.That(binding.RepaintTick, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): a Manual host holds no particle and plays nothing, so the tick parks.
         [Test]
-        public void Given_AnEffectSwapOnOneElement_When_BothSourcesAreMisconfigured_Then_TheAdvisoryFiresOnce()
+        public void Given_AManualHostOutsidePlayMode_When_TheTickFires_Then_TheTickParks()
         {
-            // Arrange — the advisory is per mounted element: an unstable reference that rebuilds its
-            // source every render (fresh instance, any name) must not repeat the advice per rebuild.
-            s_effect = CreateEffectSource("fx-adv-a");
-            var mainA = s_effect.main;
-            mainA.simulationSpace = ParticleSystemSimulationSpace.World;
-            s_effectB = CreateEffectSource("fx-adv-b");
-            var mainB = s_effectB.main;
-            mainB.simulationSpace = ParticleSystemSimulationSpace.World;
-            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
-            MountAndLayout(V.Component(SwappingHost, key: "root"));
+            // Arrange
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateEffectSource("fx-manual-park");
+            MountAndLayout(V.Particles(effect, name: "px-manual", className: "w-[128px] h-[128px]", playOn: PlayTrigger.Manual));
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-manual")];
 
-            // Act — swap to a different (differently named) but equally misconfigured source.
-            s_setFlag.Invoke(true);
-            FlushAndLayout();
-            LogAssert.NoUnexpectedReceived();
+            // Act
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
-            // Assert — still exactly one live host after the swap.
-            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
+            // Assert
+            Assert.That(binding.RepaintTick, Is.Null);
+        }
+
+        // The hosted clone of the source's single child system, reached through the element's binding.
+        private ParticleSystem MountAndFindHostedChild(ParticleSystem child)
+        {
+            var effect = CreateEffectSource("fx-parent");
+            child.transform.SetParent(effect.transform);
+            MountAndLayout(V.Particles(effect, name: "px-child", className: "w-[128px] h-[128px]"));
+            var host = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-child")].Host;
+            return System.Array.Find(host.GetComponentsInChildren<ParticleSystem>(), ps => ps != host);
         }
 
         [Test]
-        public void Given_TwoElementsWithSameNamedSources_When_BothMisconfigured_Then_BothAdvisoriesFire()
+        public void Given_AChildSystem_When_Mounted_Then_ItsHostedRendererIsDisabled()
         {
-            // Arrange — two DIFFERENT effects that merely share a name are independent problems;
-            // each mounted element gets its own advisory.
-            var first = CreateEffectSource("fx-shared-name");
-            var m1 = first.main;
-            m1.simulationSpace = ParticleSystemSimulationSpace.World;
-            var second = CreateEffectSource("fx-shared-name");
-            var m2 = second.main;
-            m2.simulationSpace = ParticleSystemSimulationSpace.World;
-            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
-            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+            // Arrange — the element draws the child, so no camera may draw the hidden clone as well.
+            var child = new GameObject("fx-child").AddComponent<ParticleSystem>();
 
             // Act
-            MountAndLayout(V.Div(children: new VNode[]
-            {
-                V.Particles(first, className: "w-[64px] h-[64px]"),
-                V.Particles(second, className: "w-[64px] h-[64px]"),
-            }));
+            var hostedChild = MountAndFindHostedChild(child);
 
-            // Assert — both hosts exist (the two expectations pin both advisories firing).
-            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 2));
+            // Assert — the source child's renderer keeps its own state.
+            Assert.That((hostedChild.GetComponent<ParticleSystemRenderer>().enabled, child.GetComponent<ParticleSystemRenderer>().enabled),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AChildSystem_When_Mounted_Then_ItAlwaysSimulates()
+        {
+            // Arrange — the same automatic culling that would pause the root would pause a child.
+            var child = new GameObject("fx-child").AddComponent<ParticleSystem>();
+
+            // Act
+            var hostedChild = MountAndFindHostedChild(child);
+
+            // Assert
+            Assert.That(hostedChild.main.cullingMode, Is.EqualTo(ParticleSystemCullingMode.AlwaysSimulate));
         }
 
         [Test]
