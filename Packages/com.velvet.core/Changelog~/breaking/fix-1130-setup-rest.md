@@ -10,3 +10,7 @@
   around that gap now resolve those classes.
 - A `V.Portal` into an element the app passes or registers logs the warning `V.Mount` gives for a panel
   without the utility stylesheet, when that element's panel lacks it. The warning is still made once per run.
+- The missing-sheet warning `V.Mount` gives is decided at the target panel's next update, and again at the
+  next update after the target is added to a panel, rather than when `V.Mount` is called. A sheet attached
+  after `V.Mount` but before that update no longer draws the warning, and a test asserting no unexpected log
+  sees it only when that panel updates inside the test.
