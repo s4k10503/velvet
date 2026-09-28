@@ -240,7 +240,8 @@ namespace Velvet.Tests
         public void Given_EveryEasingMode_When_FramesApplied_Then_TheBlurFollowsTheCurveAUssTransitionTakes()
         {
             // Arrange — blur 0 → 1, so a frame's parameter is the eased progress itself, compared against the
-            // curve UI Toolkit eases a USS transition by for the same mode.
+            // curve UI Toolkit eases a USS transition by for the same mode, clamped to 0..1 as the frame's
+            // Mathf.Lerp clamps it.
             var convert = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.ComputedTransitionUtils")
                 .GetMethod("ConvertTransitionFunction", BindingFlags.NonPublic | BindingFlags.Static);
             var element = new VisualElement();
@@ -256,7 +257,7 @@ namespace Velvet.Tests
                 return samples.Max(t =>
                 {
                     StyleFilterTransitionDriver.ApplyFrame(element, binding, t);
-                    return Mathf.Abs(element.style.filter.value[0].GetParameter(0).floatValue - curve(t));
+                    return Mathf.Abs(element.style.filter.value[0].GetParameter(0).floatValue - Mathf.Clamp01(curve(t)));
                 });
             }).ToArray();
 
