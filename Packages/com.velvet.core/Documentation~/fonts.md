@@ -177,14 +177,21 @@ metric.
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
-unitless number, an `em` length and a percentage are all relative to the font size and emit an em tag
-(`leading-[1.5]`, `leading-[1.5em]` and `leading-[150%]` each emit `<line-height=1.5em>`), while `px`
-and `rem` (1rem = 16px, as `w-[…]` takes it) emit an absolute `<line-height=Npx>`. A negative
-value, any other unit, or a malformed value is ignored.
+unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
+(`leading-[150%]`), and `px` or `rem` (1rem = 16px, as `w-[…]` takes it), which emit an absolute
+`<line-height=Npx>`. A negative value, any other unit, or a malformed value is ignored.
 
-`leading-*`'s em form is resolved by the **text engine itself** against whichever font size is
-actually in effect at that point in the string, so it composes correctly with any `text-*` size, or
-one inherited from further up the tree. `tracking-*` is the contrast: USS `letter-spacing` has no
+A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
+itself** resolves against whichever font size is in effect at that point in the string, so every
+text under the class multiplies its own size. An `em` or percentage value is a length CSS computes on
+the element that declares it. Text at that element's own size gets the em tag; text whose size an
+element between them changes gets the declaring element's size in pixels
+(`V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits `<line-height=30px>`). That
+size is read from the declaring element's own inline pixel font size, which a bracket form such as
+`text-[20px]` writes. **Deviation:** where the declaring element inherits its size, or takes it from a
+`text-*` scale class or a percentage `text-[…]`, Velvet does not read it, so text at a different size
+resolves the em or percentage against its own size instead.
+`tracking-*` is the contrast: USS `letter-spacing` has no
 `em` unit (see `_typography.uss`), so its em scale had to be **baked to px at Tailwind's 16px root
 font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
 size. `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
@@ -234,8 +241,13 @@ Two deviations from CSS:
   re-widens the parent, and the next pass starts over. Give such a parent a definite width.
 
 **Wrapping:** like CSS's `text-wrap: balance`, whose shorthand sets the wrap mode to `wrap`,
-`text-balance` alone makes the text wrap (`white-space: normal`). A `whitespace-*` class on the same
-element keeps its own value instead, so `whitespace-pre-wrap text-balance` still preserves spaces.
+`text-balance` alone makes the text wrap, on the element and on the text under it. It sets only the
+wrap mode: text that inherits `whitespace-pre` or `whitespace-pre-wrap` keeps preserving spaces and
+newlines (`pre-wrap`), and other text collapses them (`normal`). A white-space class
+(`whitespace-*`, `text-wrap`, `text-nowrap`, `truncate`) on the same element or on one nearer the
+text keeps its own value. Velvet writes this per text leaf as an inline `white-space`, the way it
+writes `whitespace-pre-line`. When `text-balance` and `text-pretty` meet on one element, the later
+class wins, as the two set the same CSS property.
 
 **Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
 so a width is written only when the text wraps at the width the text actually gets — the
@@ -252,7 +264,7 @@ available width is read from, closes that gap); and on the `ChangeEvent<string>`
 whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the same
 wrapped box size, and therefore raises no geometry event, from going stale).
 
-**`text-pretty`** makes the text wrap the same way `text-balance` does, and its line breaks are the
+**`text-pretty`** sets the wrap mode the same way `text-balance` does, and its line breaks are the
 engine's own: where a browser may also move a break to avoid a very short last line, Velvet does not.
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**

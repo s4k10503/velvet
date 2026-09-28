@@ -45,10 +45,13 @@ namespace Velvet
         PreLine, // whitespace-pre-line
     }
 
-    // Which unit a resolved Leading value carries: Em multiplies whatever font-size is in effect at the
-    // point the rich-text tag is generated (every named leading-* preset, and a bracket value that is
-    // unitless, em or a percentage); Pixel is an absolute length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind, this axis has
-    // deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
+    // Which unit a resolved Leading value carries, following CSS line-height's two kinds of value. Em is a
+    // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
+    // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
+    // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
+    // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
+    // length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
+    // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
     // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
     // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
     // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
@@ -57,6 +60,7 @@ namespace Velvet
     internal enum LeadingUnit
     {
         Em,
+        EmLength,
         Pixel,
     }
 
@@ -101,35 +105,37 @@ namespace Velvet
     // is PreLine, exactly like Transform/Decoration (see StyleTextEffectResolver.ResolveEffective). Leading
     // has no USS property to inherit from at all (see LeadingUnit), so — like Transform/Decoration, and for
     // the same underlying reason — it needs that identical manual walk too.
-    internal readonly struct TextEffect : IEquatable<TextEffect>
+    internal readonly struct TextEffect
     {
         public readonly TextTransformKind? Transform;
         public readonly TextDecorationKind? Decoration;
         public readonly WhitespaceCollapseKind? Whitespace;
         public readonly LeadingValue? Leading;
+        // The white-space this element's own white-space-writing classes give it, or null when it carries
+        // none. text-balance and text-pretty set only CSS's wrap mode, which UI Toolkit's single white-space
+        // cannot hold apart from the collapse, so StyleTextEffectResolver reads the collapse from here.
+        public readonly WhiteSpace? WhiteSpaceClass;
+        public readonly bool WrapsText;
 
-        public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading)
+        public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading,
+            WhiteSpace? whiteSpaceClass, bool wrapsText)
         {
             Transform = transform;
             Decoration = decoration;
             Whitespace = whitespace;
             Leading = leading;
+            WhiteSpaceClass = whiteSpaceClass;
+            WrapsText = wrapsText;
         }
 
         // True when no axis carries a token (nothing to track for this element).
-        public bool IsEmpty => Transform == null && Decoration == null && Whitespace == null && Leading == null;
-
-        public bool Equals(TextEffect other) =>
-            Transform == other.Transform && Decoration == other.Decoration && Whitespace == other.Whitespace
-            && Leading.Equals(other.Leading);
-        public override bool Equals(object obj) => obj is TextEffect o && Equals(o);
-        public override int GetHashCode() =>
-            unchecked(((((Transform?.GetHashCode() ?? -1) * 397) ^ (Decoration?.GetHashCode() ?? -1)) * 397 ^ (Whitespace?.GetHashCode() ?? -1)) * 397 ^ (Leading?.GetHashCode() ?? -1));
+        public bool IsEmpty => Transform == null && Decoration == null && Whitespace == null && Leading == null
+            && WhiteSpaceClass == null && !WrapsText;
     }
 
-    // Parses the text-transform / text-decoration / whitespace-pre-line / leading-* utilities into a
-    // TextEffect, and applies a resolved effect to a raw string. Pure and allocation-light; the reconciler
-    // owns the per-element side-tables and the cascade (walking ancestors for the nearest non-null axis).
+    // Parses the text-transform / text-decoration / white-space / leading-* utilities and text-balance /
+    // text-pretty into a TextEffect, and applies a resolved effect to a raw string. Pure and
+    // allocation-light; the reconciler owns the per-element side-tables and the cascade (walking ancestors for the nearest non-null axis).
     internal static class StyleTextEffectClass
     {
         // leading-* named presets -> em multiplier. Applied verbatim as the rich-text
@@ -162,7 +168,7 @@ namespace Velvet
             {
                 return default;
             }
-            var facets = default(TextEffectFacets);
+            var facets = new TextEffectFacets { WhiteSpaceRank = -1 };
             foreach (var cls in classNames)
             {
                 ParseToken(cls, ref facets);
@@ -183,7 +189,9 @@ namespace Velvet
             {
                 whitespace = WhitespaceCollapseKind.None;
             }
-            return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading);
+            return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
+                facets.WhiteSpaceRank < 0 ? null : WhiteSpaceClassesInSheetOrder[facets.WhiteSpaceRank].Value,
+                facets.WrapsText);
         }
 
         // The four axes plus the cross-family marker Parse folds a class array into, bundled so the
@@ -195,7 +203,24 @@ namespace Velvet
             public WhitespaceCollapseKind? Whitespace;
             public LeadingValue? Leading;
             public bool SawExplicitWhitespaceClass;
+            // Index into WhiteSpaceClassesInSheetOrder of the latest-declared white-space class seen, or -1.
+            public int WhiteSpaceRank;
+            public bool WrapsText;
         }
+
+        // The utilities that write white-space, in the order _typography.uss declares them, since among
+        // several on one element the later rule is the one UI Toolkit applies. whitespace-pre-line has no
+        // rule and is left to the Whitespace axis. StyleTextEffectClassTests reads the sheet to pin the order.
+        internal static readonly KeyValuePair<string, WhiteSpace>[] WhiteSpaceClassesInSheetOrder =
+        {
+            new("whitespace-normal", WhiteSpace.Normal),
+            new("whitespace-nowrap", WhiteSpace.NoWrap),
+            new("whitespace-pre", WhiteSpace.Pre),
+            new("whitespace-pre-wrap", WhiteSpace.PreWrap),
+            new("text-wrap", WhiteSpace.Normal),
+            new("text-nowrap", WhiteSpace.NoWrap),
+            new("truncate", WhiteSpace.NoWrap),
+        };
 
         // Returns true when cls was recognised as a text-effect utility (and folded into facets).
         private static bool ParseToken(string cls, ref TextEffectFacets facets)
@@ -213,12 +238,24 @@ namespace Velvet
                 case "overline": facets.Decoration = TextDecorationKind.Overline; return true;
                 case "no-underline": facets.Decoration = TextDecorationKind.None; return true;
                 case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
-                case "whitespace-normal":
-                case "whitespace-nowrap":
-                case "whitespace-pre":
-                case "whitespace-pre-wrap":
-                    facets.SawExplicitWhitespaceClass = true;
-                    return true;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            if (core == "text-balance" || core == "text-pretty")
+            {
+                facets.WrapsText = true;
+                return true;
+            }
+            for (var rank = 0; rank < WhiteSpaceClassesInSheetOrder.Length; rank++)
+            {
+                if (core != WhiteSpaceClassesInSheetOrder[rank].Key)
+                {
+                    continue;
+                }
+                facets.WhiteSpaceRank = Math.Max(facets.WhiteSpaceRank, rank);
+                // text-wrap / text-nowrap / truncate leave CSS's collapse alone, so only the whitespace-*
+                // four stop an ancestor's pre-line.
+                facets.SawExplicitWhitespaceClass |= core.StartsWith("whitespace-", StringComparison.Ordinal);
+                return true;
             }
             if (s_leadingPresets.TryGetValue(cls, out var em))
             {
@@ -238,7 +275,7 @@ namespace Velvet
         // ParseToken with Parse itself so the two cannot answer differently about one token.
         public static bool IsTextEffectToken(string cls)
         {
-            var facets = default(TextEffectFacets);
+            var facets = new TextEffectFacets { WhiteSpaceRank = -1 };
             return ParseToken(cls, ref facets);
         }
 
@@ -265,12 +302,12 @@ namespace Velvet
             return core.StartsWith("leading-[", StringComparison.Ordinal);
         }
 
-        // Parses leading-[<value>] with CSS line-height's grammar: a unitless number or an em length
-        // multiplies the element's font size, and a percentage is a percentage of it, so all three become
-        // an em tag; px and rem are absolute lengths, rem at the fixed 16px the other bracket utilities use
-        // (StyleArbitraryValueResolver.TryParseValue). A negative value, any other unit or a malformed value
-        // leaves Leading unset — silently, the way an unparsed w-[abc] is inert; IsArbitraryLeadingClass
-        // keeps the token out of the class list either way.
+        // Parses leading-[<value>] with CSS line-height's grammar: a unitless number is Em, an em or
+        // percentage length is EmLength (a percentage taken as its hundredth), and px and rem are Pixel, rem
+        // at the fixed 16px the other bracket utilities use (StyleArbitraryValueResolver.TryParseValue). A
+        // negative value, any other unit or a malformed value leaves Leading unset — silently, the way an
+        // unparsed w-[abc] is inert; IsArbitraryLeadingClass keeps the token out of the class list either
+        // way.
         private static bool TryParseLeadingBracket(string cls, out LeadingValue leading)
         {
             leading = default;
@@ -299,6 +336,7 @@ namespace Velvet
             {
                 return true;
             }
+            unit = LeadingUnit.EmLength;
             if (value.EndsWith("em".AsSpan(), StringComparison.Ordinal)
                 && !value.EndsWith("rem".AsSpan(), StringComparison.Ordinal))
             {

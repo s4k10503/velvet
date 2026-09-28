@@ -10,16 +10,19 @@
   upright with synthesized italic. `VelvetFontFamily.FindClosestWeight` returns the entry this order
   selects.
 
-- `text-balance` alone makes a label's text wrap, as CSS's `text-wrap: balance` sets the wrap mode to
-  `wrap`. It used to set no white-space, so on a label that did not already wrap it had no effect
-  without a wrapping `whitespace-*` or `text-wrap` beside it. A `whitespace-*` class on the same element
-  still decides the white-space.
+- `text-balance` alone makes text wrap, as CSS's `text-wrap: balance` sets the wrap mode to `wrap`.
+  It sets only the wrap mode: text that inherits `whitespace-pre` or `whitespace-pre-wrap` keeps its
+  spaces and newlines. It used to set no white-space, so on a label that did not already wrap it had no
+  effect without a wrapping `whitespace-*` or `text-wrap` beside it. A white-space class on the same
+  element, or on one nearer the text, still decides the white-space. `!text-balance` and
+  `text-balance!` balance too, and a later `text-pretty` on the same element turns balancing off.
 
-- `leading-[…]` takes CSS `line-height`'s values: a unitless number, an `em` length and a percentage
-  are relative to the font size (`leading-[1.5]`, `leading-[1.5em]` and `leading-[150%]` each set 1.5
-  times it), and `rem` is 16px. Only `px` used to be read, and every other value was ignored.
+- `leading-[…]` takes CSS `line-height`'s values. A unitless number (`leading-[1.5]`) multiplies each
+  text's own font size; an `em` length or a percentage (`leading-[1.5em]`, `leading-[150%]`) is taken
+  against the size of the element that declares it, when that element sets an inline pixel size of its
+  own (`text-[20px]`) or the text is at that size; `rem` is 16px. Only `px` used to be read, and every other value was ignored.
 
 ### Added
 
-- `text-pretty`, which makes the text wrap the way `text-balance` does and keeps the engine's own line
+- `text-pretty`, which sets the wrap mode the way `text-balance` does and keeps the engine's own line
   breaks.

@@ -9,6 +9,7 @@ namespace Velvet
     internal static class StyleTextBalanceClass
     {
         private const string ClassName = "text-balance";
+        private const string PrettyClassName = "text-pretty";
 
         // Bundled prefixes that write the `width` longhand — the slot the manipulator borrows. `basis-` is
         // excluded: flex-basis sizes the main axis, which is the HEIGHT in UI Toolkit's default column
@@ -43,22 +44,30 @@ namespace Velvet
         // resolve the family through here.
         public static bool IsTextBalanceToken(string cls) => cls == ClassName;
 
-        // Cheap early-out gate: true when classNames carries the exact `text-balance` token. No
-        // allocation — used to skip manipulator attach/lookup on the common element with no such class.
+        // Cheap early-out gate: true when the later of `text-balance` and `text-pretty` in classNames is
+        // `text-balance`, either spelled with the important modifier. The two set one CSS property,
+        // text-wrap-style, so the later wins. Used to skip manipulator attach/lookup on the common element
+        // with no such class.
         public static bool HasTextBalanceClass(string[] classNames)
         {
             if (classNames == null)
             {
                 return false;
             }
+            var balances = false;
             foreach (var cls in classNames)
             {
-                if (IsTextBalanceToken(cls))
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                if (IsTextBalanceToken(core))
                 {
-                    return true;
+                    balances = true;
+                }
+                else if (core == PrettyClassName)
+                {
+                    balances = false;
                 }
             }
-            return false;
+            return balances;
         }
 
         // The two halves of "the element's own cascade sizes its width", split by cost because the caller

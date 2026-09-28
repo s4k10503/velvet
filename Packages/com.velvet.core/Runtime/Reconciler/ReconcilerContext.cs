@@ -432,7 +432,7 @@ namespace Velvet
         // TextRawText holds the untransformed text captured at the text-set seams so the effect re-applies
         // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
         // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
-        // itself, so a later resolve that is no longer PreLine clears only what the resolver owns — never a
+        // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
         // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
         // — see RefCallbacks below). All three are pure (teardown = Remove(element)).
         public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();

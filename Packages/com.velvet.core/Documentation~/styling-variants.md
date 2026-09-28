@@ -253,7 +253,8 @@ wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-g
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
-`whitespace-pre-line`, `leading-*`. Each resolves at mount and on every toggle in both directions, and
+`whitespace-pre-line`, `leading-*`, with the wrap mode `text-balance` / `text-pretty` write onto the
+text. Each resolves at mount and on every toggle in both directions, and
 the order they compose in is preserved on a toggle just as on a render — so
 `className="gap-4 md:grid md:grid-cols-3"` is a
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`
