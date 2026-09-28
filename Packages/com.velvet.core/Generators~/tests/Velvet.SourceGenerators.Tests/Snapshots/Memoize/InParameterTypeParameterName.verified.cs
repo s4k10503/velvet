@@ -8,7 +8,7 @@ namespace MyApp.Pages
         private partial global::Velvet.VNode Build<TValue>(in int T, TValue value)
         {
             var TValue_ = T;
-            return global::Velvet.V.Memoized(() => Build_Impl<TValue>(TValue_, value), TValue_, value);
+            return global::Velvet.V.Memoized(() => Build_Impl<TValue>(TValue_, value), new object?[] { TValue_, value, typeof(TValue) });
         }
     }
 }

@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class RowViews
     {
         public static partial global::Velvet.VNode ToView(this string title)
-            => global::Velvet.V.Memoized(() => ToView_Impl(title), title);
+            => global::Velvet.V.Memoized(() => ToView_Impl(title), new object?[] { title });
     }
 }

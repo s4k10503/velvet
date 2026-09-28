@@ -31,8 +31,8 @@ namespace Velvet.SourceGenerators.Diagnostics
         public static readonly DiagnosticDescriptor Vel005RefOutParameterNotSupported = Warn(
             "VEL005",
             "[MemoizeMethod] does not support ref/out parameters",
-            "Method '{0}' has a ref or out parameter; a cached render would skip the write through it",
-            "A render served from the cache does not run the _Impl method, so a write it makes through a ref or out parameter would happen on some renders and not others. An in parameter is supported.");
+            "Method '{0}' has a ref or out parameter; the factory that calls its _Impl runs later, during reconcile, and cannot capture the parameter",
+            "The generated wrapper hands V.Memoized a factory that calls the _Impl method, and the reconciler runs that factory after the wrapper has returned, so no write through a ref or out parameter could reach the caller; a lambda cannot capture one either (CS1628). An in parameter is supported: it is copied, and the memo keys on the copy.");
 
         public static readonly DiagnosticDescriptor Vel006MissingAccessibilityModifier = Warn(
             "VEL006",
@@ -49,8 +49,8 @@ namespace Velvet.SourceGenerators.Diagnostics
         public static readonly DiagnosticDescriptor Vel008NonVNodeReturnType = Warn(
             "VEL008",
             "[MemoizeMethod] method must return Velvet.VNode",
-            "Method '{0}' return type '{1}' is not Velvet.VNode or Velvet.MemoNode",
-            "The generated body returns the MemoNode V.Memoized builds, so the declared return type must be one MemoNode converts to: VNode or MemoNode itself. To memoize any other value, call UseMemo.");
+            "Method '{0}' return type '{1}' is not Velvet.VNode or Velvet.MemoNode returned by value",
+            "The generated body returns the MemoNode V.Memoized builds, by value, so the declared return type must be one MemoNode converts to: VNode or MemoNode itself, without ref. To memoize any other value, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel009PartialMethodAlreadyHasBody = Warn(
             "VEL009",
@@ -62,7 +62,13 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL010",
             "[MemoizeMethod] does not support ref struct or pointer parameters",
             "Method '{0}' has parameter '{1}' of type '{2}', which cannot be a dependency; [MemoizeMethod] keys on every parameter",
-            "Each parameter is a dependency: it is boxed into the object?[] V.Memoized compares and read by the factory lambda. A ref struct such as Span<T> can be neither boxed nor captured, and a pointer cannot be boxed. Pass an array or a value the span or pointer was read from instead.");
+            "Each parameter is a dependency: it is stored in the object?[] V.Memoized compares and read by the factory lambda. A ref struct such as Span<T> can be neither stored nor captured, a pointer cannot be stored, and a type holding one, such as int*[], needs an unsafe context the generated code does not open. Pass an array or a value the span or pointer was read from instead.");
+
+        public static readonly DiagnosticDescriptor Vel011StructReceiverNotSupported = Warn(
+            "VEL011",
+            "[MemoizeMethod] instance member of a struct must be readonly and not of a ref struct",
+            "Method '{0}' is an instance member of '{1}'; [MemoizeMethod] supports a struct instance member only when it is readonly and the struct is not a ref struct",
+            "A lambda in a struct cannot capture this, so the generated factory calls _Impl on a copy of it: a write _Impl makes to the struct would reach the copy and be lost, so the member must be readonly. A ref struct cannot be copied into anything the factory can capture at all.");
 
         public static readonly DiagnosticDescriptor Vel100UseEffectMissingDep = HookWarn(
             "VEL100",

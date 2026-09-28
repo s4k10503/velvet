@@ -21,11 +21,16 @@ public static partial class HomePage
 }
 ```
 
-The generator emits a wrapper that calls `V.Memoized` with the parameters as the deps array, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
+The generator emits a wrapper that calls `V.Memoized` with a deps array holding each parameter and, for a generic method, each type argument, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
 
 ## What the declaration may carry
 
-The generated wrapper repeats the declaration's signature, so any number of parameters, type parameters with their constraints, `in` and `params` parameters, an extension method's `this`, and the `new`, `virtual`, `override`, `sealed` and `readonly` modifiers all carry over. An `in` parameter is copied, and the copy is what the factory reads and what the memo keys on.
+The generated wrapper repeats the declaration's signature, so any number of parameters, type parameters with their constraints, `in` and `params` parameters, an extension method's `this`, and the `new`, `virtual`, `override`, `sealed`, `readonly` and `unsafe` modifiers all carry over, and so does an interface as the containing type. How each parameter is keyed:
+
+- An `in` parameter is copied, and the copy is what the factory reads and what the memo keys on.
+- A `params` array is keyed by its length and its elements rather than by the array, which the compiler builds afresh at every call; a null array is told apart from an empty one.
+- Any other array is one dependency, compared by instance like any other reference, including when it is the only parameter.
+- A generic method's type arguments are dependencies too, so calling it at one position with another type argument rebuilds.
 
 Two rules come from C# itself, which compiles the declaration and the generated implementation as the two halves of one extended partial method:
 
@@ -34,10 +39,11 @@ Two rules come from C# itself, which compiles the declaration and the generated 
 
 The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns a `MemoNode` in place of the method's result.
 
-- The declared return type is `VNode` or `MemoNode` (VEL008). To memoize a value of any other type, call `Hooks.UseMemo`.
-- The method is not `async` and does not return `Task`, `ValueTask` or `VelvetTask` (VEL004): the node is placed synchronously, and memoizing the task itself is `Hooks.UseMemo`'s job.
-- No parameter is `ref` or `out` (VEL005): a render served from the cache does not run `_Impl`, so a write through the parameter would happen on some renders and not on others.
-- No parameter is a ref struct such as `Span<T>`, or a pointer (VEL010): each parameter is boxed into the dependency array and read by the factory lambda, and C# allows neither for a ref struct and no boxing of a pointer.
+- The declared return type is `VNode` or `MemoNode`, returned by value (VEL008). To memoize a value of any other type, call `Hooks.UseMemo`.
+- The method is not `async` and does not return a `Task`, a ValueTask or a `VelvetTask` (VEL004): the node is placed synchronously, and memoizing the task itself is `Hooks.UseMemo`'s job.
+- No parameter is `ref` or `out` (VEL005): the factory that calls `_Impl` runs later, during reconcile, after the wrapper has returned, so no write through the parameter could reach the caller; a lambda cannot capture one either (CS1628).
+- No parameter is a ref struct such as `Span<T>`, a pointer, or an array of pointers (VEL010): each parameter is stored in the dependency array and read by the factory lambda. A ref struct can be neither, a pointer cannot be stored, and an array of pointers needs an unsafe context the generated code does not open.
+- An instance member of a struct is `readonly`, and the struct is not a `ref struct` (VEL011): a lambda in a struct cannot capture `this`, so the factory calls `_Impl` on a copy, and a write to that copy would be lost; a ref struct cannot be copied anywhere the factory can reach.
 - The body lives in `<MethodName>_Impl` (VEL009 when the partial declaration carries one): the declaration with a body is the implementing half, and C# accepts only one.
 
 ## Use inside the Runtime asmdef
@@ -55,6 +61,7 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 | VEL008 | return type is neither VNode nor MemoNode |
 | VEL009 | partial method already has a body |
 | VEL010 | ref struct or pointer parameter |
+| VEL011 | struct instance member that is not readonly, or of a ref struct |
 
 For every diagnostic the package's analyzers report, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
 

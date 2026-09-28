@@ -10,6 +10,6 @@ namespace MyApp.Pages
             where TKey : notnull
             where TRow : struct
             where TCell : unmanaged
-            => global::Velvet.V.Memoized(() => Build_Impl<TItem, TKey, TRow, TCell>(item, key, row, cell), item, key, row, cell);
+            => global::Velvet.V.Memoized(() => Build_Impl<TItem, TKey, TRow, TCell>(item, key, row, cell), new object?[] { item, key, row, cell, typeof(TItem), typeof(TKey), typeof(TRow), typeof(TCell) });
     }
 }

@@ -26,6 +26,7 @@ VEL007 | Velvet.Memoize | Warning | [MemoizeMethod] containing type must be decl
 VEL008 | Velvet.Memoize | Warning | [MemoizeMethod] method must return Velvet.VNode
 VEL009 | Velvet.Memoize | Warning | [MemoizeMethod] partial method declaration must not have a body
 VEL010 | Velvet.Memoize | Warning | [MemoizeMethod] does not support ref struct or pointer parameters
+VEL011 | Velvet.Memoize | Warning | [MemoizeMethod] instance member of a struct must be readonly and not of a ref struct
 VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in the deps array (exhaustive-deps)
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep

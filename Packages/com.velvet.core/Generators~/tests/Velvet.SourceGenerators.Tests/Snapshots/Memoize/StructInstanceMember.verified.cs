@@ -9,7 +9,7 @@ namespace MyApp.Pages
         {
             var self_ = this;
             var rowValue = row;
-            return global::Velvet.V.Memoized(() => self_.Build_Impl(self, rowValue), self, rowValue);
+            return global::Velvet.V.Memoized(() => self_.Build_Impl(self, rowValue), new object?[] { self, rowValue });
         }
     }
 }

@@ -3,9 +3,9 @@
 
 namespace MyApp.Pages
 {
-    partial class StaticHost
+    partial class HomePage
     {
-        public static partial global::Velvet.VNode Build(int x)
+        private unsafe partial global::Velvet.VNode Build(int x)
             => global::Velvet.V.Memoized(() => Build_Impl(x), new object?[] { x });
     }
 }

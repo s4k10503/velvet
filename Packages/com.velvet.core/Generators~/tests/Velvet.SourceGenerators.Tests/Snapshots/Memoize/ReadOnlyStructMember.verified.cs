@@ -8,7 +8,7 @@ namespace MyApp.Pages
         public readonly partial global::Velvet.VNode Build(int x)
         {
             var self = this;
-            return global::Velvet.V.Memoized(() => self.Build_Impl(x), x);
+            return global::Velvet.V.Memoized(() => self.Build_Impl(x), new object?[] { x });
         }
     }
 }
