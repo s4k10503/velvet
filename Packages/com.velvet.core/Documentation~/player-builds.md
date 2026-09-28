@@ -23,16 +23,20 @@ themeless test host is fixed. If a shader-backed paint draws nothing in your bui
 
 **What that costs.**
 
-- All four shaders are compiled into every player build of every project that installs the package, whether
-  the project uses any of the three paints or not. Always Included Shaders has no per-shader opt-out; the
-  only way to keep one out is to delete it from the package, which takes its paint with it.
+- All four shaders are compiled into every player build unless the project opts out. **Project Settings ▸
+  Velvet** lists each one; untick a shader and the build leaves it out of Always Included Shaders. The choice
+  is saved in the project's ProjectSettings folder, so it travels with the project. A paint whose
+  shader reaches the player by no other route draws nothing there and logs the warning described at the
+  end of this section; the editor still resolves the shader, so only a player shows the difference.
 - The entries exist only while the build runs. `ProjectSettings/GraphicsSettings.asset` is written back
   byte for byte afterwards, so nothing lands in your diff, and an entry you had listed yourself is left
   alone. A build that dies before it can undo the injection leaves the entries on disk; the next time the
   editor starts, they are removed.
-- A read-only `ProjectSettings/GraphicsSettings.asset` **fails the build** before anything is written,
-  because the injection has to be undone afterwards and a write that cannot land would leave you the diff.
-  Check the file out of version control and build again.
+- A read-only `ProjectSettings/GraphicsSettings.asset` **fails the build** before anything is written when
+  the build would have to write it, because the injection has to be undone afterwards and a write that
+  cannot land would leave you the diff. Check the file out of version control and build again. A build with
+  nothing to add and nothing left over to undo writes nothing there, so a project that keeps the file
+  read-only can list the shaders in Always Included Shaders itself, or opt out of them, and build.
 - If the injection does not take for any other reason, the build **fails** and names the shaders and the
   settings file, rather than producing a player whose shader-backed paints silently draw nothing.
 
@@ -69,19 +73,24 @@ was not measured, and is not claimed here.
 
 **What it costs you.**
 
-- The sheet is in every player build of every project that installs the package, whether or not anything
-  calls `AttachTo`. There is no per-project opt-out short of deleting the holder from the package.
+- The sheet is in every player build unless the project opts out under **Project Settings ▸ Velvet**, by
+  unticking the holder. A player built without it has no sheet for `AttachTo` to find, so
+  `VelvetStyleUtilities.Sheet` throws there, naming the opt-out; opt out only when the sheet reaches your
+  panels some other way, such as the scene reference [setup.md](setup.md) describes, or not at all. Opting
+  out also silences the warning `V.Mount` gives for a panel without the sheet, in the editor as well.
 - The entry exists only while the build runs. `ProjectSettings/ProjectSettings.asset` is written back byte
   for byte afterwards, so nothing lands in your diff; an entry you added yourself is left alone, and the
   rest of your preloaded assets — including an empty slot — go back exactly as they were. A build that dies
   before it can undo the injection leaves the entry on disk; the next time the editor starts, it is removed.
 - A `ProjectSettings/ProjectSettings.asset` that cannot be opened for writing **fails the build** before
-  anything is written, because the injection has to be undone afterwards and a write that cannot land would
-  leave you the diff. Check the file out of version control and build again.
+  anything is written when the build would have to write it, for the reason given for Graphics Settings
+  above. A project that preloads the holder itself, or opts out of it, and has no leftover to undo builds
+  from a read-only file.
 - If the injection does not take for any other reason, the build **fails** and names the holder and what its
   absence would cost, rather than producing a player in which every utility the sheet declares resolves to
   nothing. The families Velvet realises from C# hold without it, so the symptom is
-  partial styling rather than none — [setup.md](setup.md) carries the command that answers it per class.
+  partial styling rather than none — [setup.md](setup.md) carries the command that answers it per class,
+  and the warning `V.Mount` raises for a panel without the sheet.
 
 **Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid, and
 it measured at more than twice the added startup. **Why not Addressables**, which is the documented
