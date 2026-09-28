@@ -67,6 +67,7 @@ namespace Velvet.Tests
             s_shared = null;
             s_bump = null;
             s_store = null;
+            s_joinLeft = 300;
         }
 
         [Component]
@@ -1485,8 +1486,11 @@ namespace Velvet.Tests
         }
 
         private static StyleTransitionConfig s_moveTransition;
+        private static float? s_moveDuration;
+        private static EasingMode? s_moveEasing;
+        private static float? s_moveDelay;
 
-        // Step 1 moves the box 200px right on s_moveTransition.
+        // Step 1 moves the box 200px right on s_moveTransition and V.Motion's timing parameters.
         [Component]
         private static VNode TimedMoveBoxRender()
         {
@@ -1495,14 +1499,18 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_moveTransition,
+                    duration: s_moveDuration, easing: s_moveEasing, delay: s_moveDelay,
                     className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]"),
             });
         }
 
-        // Mounts TimedMoveBoxRender on the given transition and plays step 1 up to the frame its layout settles on.
-        private VisualElement MoveOn(StyleTransitionConfig transition)
+        // Mounts TimedMoveBoxRender on the given timing and plays step 1 up to the frame its layout settles on.
+        private VisualElement MoveOn(StyleTransitionConfig transition, float? duration = null, EasingMode? easing = null, float? delay = null)
         {
             s_moveTransition = transition;
+            s_moveDuration = duration;
+            s_moveEasing = easing;
+            s_moveDelay = delay;
             var mounted = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
@@ -1593,6 +1601,45 @@ namespace Velvet.Tests
             Assert.That((midway, element.style.translate.keyword), Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
         }
 
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyADuration_When_ThatDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange — V.Motion's duration parameter without a transition times the Fade preset it defaults to.
+            var element = MoveOn(null, duration: 0.1f);
+
+            // Act — about 0.19s, inside Framer's 0.45s default.
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyAnEasing_When_ThePresetsDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange
+            var element = MoveOn(null, easing: EasingMode.Linear);
+
+            // Act — about 0.24s: past the Fade preset's 0.2s, inside Framer's 0.45s default.
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyADelay_When_LessThanTheDelayHasPassed_Then_ItHoldsTheOldBox()
+        {
+            // Arrange
+            var element = MoveOn(null, delay: 0.3f);
+
+            // Act
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(-200f).Within(0.01f));
+        }
+
         // "a" mounts first and stays; step 1 mounts "b" 300px right of it under the same layoutId, step 2 moves
         // "b" 100px further in a render that patches "a" before it, and step 3 removes "b".
         [Component]
@@ -1602,18 +1649,23 @@ namespace Velvet.Tests
             s_setStep = setStep;
             var children = new List<VNode>
             {
+                // The class naming the step makes every render patch "a" too.
                 V.Motion(key: "a", name: "a", layoutId: "card", transition: s_layoutSpring,
-                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+                    className: $"absolute left-[0px] top-[0px] w-[100px] h-[100px] step-{step}"),
             };
             if (step is 1 or 2)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_layoutSpring,
-                    className: $"absolute left-[{(step == 1 ? 300 : 400)}px] top-[0px] w-[100px] h-[100px]"));
+                    className: $"absolute left-[{(step == 1 ? s_joinLeft : 400)}px] top-[0px] w-[100px] h-[100px]"));
             }
             return V.Div(children: children.ToArray());
         }
 
-        // Mounts SharedLiveIdRender and plays the given steps, each up to the frame its layout settles on.
+        // Where "b" mounts in step 1.
+        private static int s_joinLeft;
+
+        // Mounts SharedLiveIdRender with "b" joining at s_joinLeft, 300 unless a case sets it, and plays the given
+        // steps, each up to the frame its layout settles on; a negative step lets the tweens settle.
         private MountedTree PlaySharedLiveId(params int[] steps)
         {
             var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
@@ -1692,6 +1744,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_AnotherMountsOverItsBoxExactly_Then_TheNewOneStillFadesIn()
+        {
+            // Arrange / Act
+            s_joinLeft = 0;
+            using var mounted = PlaySharedLiveId(1);
+
+            // Assert — nothing to move, and still the crossfade.
+            var opacity = Root.Q<VisualElement>("b").style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_TwoLiveMotionsSharingALayoutId_When_TheLeadMovesOnItsOwn_Then_TheFollowerStaysHidden()
+        {
+            // Arrange / Act
+            using var mounted = PlaySharedLiveId(1, -1, 2);
+
+            // Assert
+            var opacity = Root.Q<VisualElement>("a").style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
         public void Given_TwoLiveMotionsSharingALayoutId_When_TheLeadLeavesTheTree_Then_TheFollowerShowsAndTweensFromTheLeadsBox()
         {
             // Arrange
@@ -1705,6 +1780,126 @@ namespace Velvet.Tests
 
             // Assert — visible again, and drawn most of the way over the 400px-right box "b" left.
             Assert.That((follower.style.opacity.keyword, TranslateX(follower) > 250f), Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        // Step 1 moves "x" from layoutId "a" to "b", the same element throughout; step 2 mounts "y" under "a".
+        [Component]
+        private static VNode RenamedIdRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var children = new List<VNode>
+            {
+                V.Motion(key: "x", name: "x", layoutId: step == 0 ? "a" : "b", transition: s_layoutSpring,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+            };
+            if (step == 2)
+            {
+                children.Add(V.Motion(key: "y", name: "y", layoutId: "a", transition: s_layoutSpring,
+                    className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"));
+            }
+            return V.Div(children: children.ToArray());
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWhoseIdChanged_When_ALaterRenderMountsAnotherUnderTheOldId_Then_ItAppearsInPlace()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(RenamedIdRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — "x" left "a" in an earlier render, so "a" hands "y" nothing.
+            Assert.That(Root.Q<VisualElement>("y").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        private static bool s_takerFirst;
+
+        // Two absolute parents 200px apart vertically; the box sits in "old" and step 1 re-renders it without
+        // moving it; step 2 moves it into "new", reconciled before "old" when s_takerFirst is set.
+        [Component]
+        private static VNode ParentMovedAfterPatchRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            // A class naming the step makes each render patch the box, which is what leaves it a wait.
+            VNode Box() => V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                className: $"left-[0px] top-[0px] w-[100px] h-[100px] step-{step}");
+            var old = V.Div(key: "old", name: "old", className: "absolute left-[0px] top-[0px] w-[300px] h-[150px]",
+                children: step < 2 ? new[] { Box() } : Array.Empty<VNode>());
+            var taker = V.Div(key: "new", className: "absolute left-[0px] top-[200px] w-[300px] h-[150px]",
+                children: step < 2 ? Array.Empty<VNode>() : new[] { Box() });
+            return V.Div(children: s_takerFirst ? new VNode[] { taker, old } : new VNode[] { old, taker });
+        }
+
+        // Re-renders the box without moving it, moves its parent 100px right outside any render, then hands
+        // the box to the other parent; returns the replacement's inline translate along x.
+        private float TakeAfterParentMoved(bool takerFirst)
+        {
+            s_takerFirst = takerFirst;
+            using var mounted = V.Mount(Root, V.Component(ParentMovedAfterPatchRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            Root.Q<VisualElement>("old").style.left = 100f;
+            Tick();
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            return TranslateX(Root.Q<VisualElement>("shared"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a live holder's box off it wherever it now stands.
+        // A wait its patch left must not stand in for that box.
+        [Test]
+        public void Given_ALayoutIdMotionPatchedWithoutMoving_When_ItsParentMovesAndAnotherTakesTheId_Then_ItTweensFromWhereTheFirstIsNow()
+        {
+            // Arrange / Act — the replacement is created while the holder is still mounted.
+            var translate = TakeAfterParentMoved(takerFirst: true);
+
+            // Assert — from 100px right, where the holder is drawn now, not from where it stood at its patch.
+            Assert.That(translate, Is.EqualTo(100f).Within(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a departing holder's box off it at its teardown.
+        // A wait its patch left must not stand in for that box.
+        [Test]
+        public void Given_ALayoutIdMotionPatchedWithoutMoving_When_ItsParentMovesAndItsTeardownHandsTheIdOn_Then_TheTakerTweensFromWhereItWas()
+        {
+            // Arrange / Act — the holder is torn down before the replacement is created.
+            var translate = TakeAfterParentMoved(takerFirst: false);
+
+            // Assert
+            Assert.That(translate, Is.EqualTo(100f).Within(1f));
+        }
+
+        [Test]
+        public void Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheOuterTweenCarriesOn()
+        {
+            // Arrange — the outer one's tween is a few frames in and still closing on its box.
+            using var mounted = V.Mount(Root, V.Component(OuterThenInnerMoveRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var outer = Root.Q<VisualElement>("outer");
+            var before = TranslateX(outer);
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a frame further on; restarted from where it was drawn at the patch, it would stand still.
+            Assert.That(before - TranslateX(outer), Is.LessThan(-5f));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

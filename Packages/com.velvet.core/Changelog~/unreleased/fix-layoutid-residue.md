@@ -22,3 +22,6 @@
 
 - A `layoutId` tween whose width and height change by different factors scales each axis by its own
   factor. It averaged the two into one scale, so it started off the old box on both axes.
+
+- A `V.Motion` whose `layoutId` changes leaves the id it had. The old id stayed registered to it, so a
+  Motion mounting under the old id in a later render tweened from it.

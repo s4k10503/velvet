@@ -61,7 +61,7 @@ namespace Velvet
             // the others follow it, and a follower's own patch takes nothing from the lead
             // (Given_TwoLiveMotionsSharingALayoutId_When_TheLeadMovesInARenderThatAlsoPatchesTheFollower_Then_TheLeadTweensFromItsOwnBox).
             ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous);
-            if (!joins && previous.Element != null && !ReferenceEquals(previous.Element, element)) return;
+            if (!joins && !ReferenceEquals(previous.Element, element)) return;
             if (joins) Members(layoutId, ctx).Add(element);
 
             // The old box is read off whichever element the id is registered to — this one, or the one it
@@ -69,21 +69,14 @@ namespace Velvet
             // created element registers before its first layout, with no box to store, and a stored zero
             // rect reads as a real box at the parent's origin. The box an entry carries is the fallback for
             // an element not laid out yet, and the whole entry once teardown has taken its element.
-            // A lead promoted by its predecessor's teardown has not been drawn anywhere yet: the predecessor's
-            // box is still the one the id stands at, for the promoted lead's own patch and for a newer Motion
-            // taking the lead back from it, as Framer's promote hands a promoted node's snapshot on.
-            LayoutIdBox? oldBox;
-            var promoted = false;
-            if (previous.Element != null && ctx.LayoutIdPendingSettles.TryGetValue(previous.Element, out var handed) && handed.Promoted)
-            {
-                oldBox = handed.From;
-                promoted = ReferenceEquals(previous.Element, element);
-                if (!promoted) CancelPendingSettle(previous.Element, ctx);
-            }
-            else
-            {
-                oldBox = previous.Element != null && TryReadBox(previous.Element, ctx, out var live) ? live : previous.Box;
-            }
+            // A lead a teardown promoted stands at the box it was handed until its tween starts, having been
+            // drawn nowhere else, as Framer's promote hands a promoted node's snapshot on to the next. Any
+            // other element is read where it is: a wait a patch left can outlast a move of its ancestors
+            // (Given_ALayoutIdMotionPatchedWithoutMoving_When_ItsParentMovesAndAnotherTakesTheId_Then_ItTweensFromWhereTheFirstIsNow).
+            var promotion = previous.Element != null && ctx.LayoutIdPendingSettles.TryGetValue(previous.Element, out var wait) && wait.Promoted
+                ? wait
+                : null;
+            var oldBox = promotion != null ? promotion.From : ReadBox(previous.Element, ctx) ?? previous.Box;
 
             ctx.ElementToLayoutId[element] = layoutId;
             ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
@@ -91,8 +84,9 @@ namespace Velvet
             // A second patch before a layout settles the first replaces its wait rather than adding one.
             CancelPendingSettle(element, ctx);
             if (oldBox is not { } fromBox) return;
-            var handover = promoted || !ReferenceEquals(previous.Element, element);
-            Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing, promoted, handover), ctx);
+            var keepsPromotion = promotion != null && ReferenceEquals(previous.Element, element);
+            Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing, keepsPromotion,
+                keepsPromotion || !ReferenceEquals(previous.Element, element)), ctx);
         }
 
         private static void Wait(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
@@ -107,11 +101,7 @@ namespace Velvet
             if (!ctx.LayoutIdPendingSettles.TryGetValue(element, out var pending)) return;
             // A follower's own layout change does not animate, as a Framer node that is not its stack's lead
             // does not.
-            if (!IsLead(element, ctx))
-            {
-                CancelPendingSettle(element, ctx);
-                return;
-            }
+            if (!IsLead(element, ctx)) return;
             // An ancestor whose layout moved settles in this same layout pass, and this element's old box is
             // taken into the frame that ancestor is drawn in, so the ancestor goes first whichever event fires
             // first.
@@ -166,16 +156,18 @@ namespace Velvet
             var readScale = ReferenceEquals(pending.From.Parent, parent) ? pending.From.AncestorScale : parentScale;
             var drawnFrom = FromRect(element, pending.From, ctx);
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
-            var moves = pending.Timing.Animates && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
+            // A handover with a follower crossfades even where the boxes match, as Framer animates a node
+            // resuming from another whatever the delta.
+            var followed = Follow(element, pending.Timing.Animates && pending.Handover, ctx);
+            var moves = pending.Timing.Animates && (followed || !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty);
 
-            var followed = Follow(element, moves && pending.Handover, ctx);
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
-            if (!moves && projection == null && IsUnit(parentScale)) return;
+            if (!moves && projection == null) return;
             projection ??= CreateProjection(element, ctx);
             projection.FollowOf = null;
             projection.From = from;
             projection.Moving = moves;
-            projection.Crossfade = moves && followed;
+            projection.Crossfade = followed;
             projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
             Project(host, ctx);
             EnsureFrame(host, ctx);
@@ -506,16 +498,15 @@ namespace Velvet
 
         private static Vector2 TransformOrigin(VisualElement element) => element.resolvedStyle.transformOrigin;
 
-        private static bool TryReadBox(VisualElement element, ReconcilerContext ctx, out LayoutIdBox box)
+        // Null for an element with no parent or not laid out yet.
+        private static LayoutIdBox? ReadBox(VisualElement? element, ReconcilerContext ctx)
         {
-            box = default;
+            if (element?.hierarchy.parent is not { } parent || !IsFiniteRect(element.layout)) return null;
             var layout = element.layout;
-            if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
             var parentScale = AncestorScale(parent, ctx);
             var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
             var world = parent.worldTransform;
-            box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale);
-            return true;
+            return new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale);
         }
 
         private static void CancelPendingSettle(VisualElement element, ReconcilerContext ctx)
@@ -553,7 +544,7 @@ namespace Velvet
             {
                 var box = ctx.LayoutIdPendingSettles.TryGetValue(element, out var waiting) && waiting.Promoted
                     ? waiting.From
-                    : TryReadBox(element, ctx, out var live) ? live : current.Box;
+                    : ReadBox(element, ctx) ?? current.Box;
                 if (members.Count > 0)
                 {
                     Promote(members[members.Count - 1], layoutId, box, ctx);
@@ -712,8 +703,9 @@ namespace Velvet
             Handover = handover;
         }
 
-        // Handed the id by its predecessor's teardown rather than by a patch of its own.
+        // Handed the id by its predecessor's teardown rather than by a patch.
         public bool Promoted { get; }
+
         // From a box another Motion stood at rather than the element's own.
         public bool Handover { get; }
 
@@ -817,6 +809,9 @@ namespace Velvet
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
     internal sealed class LayoutIdProgress
     {
+        // The rest a crossfade that moves nothing settles at, on the scale opacity is measured in.
+        private const float NormalizedRest = 0.001f;
+
         private readonly LayoutIdTiming _timing;
         private readonly float _rest;
         // A mutable struct stepped in place, so a field rather than a property.
@@ -826,7 +821,7 @@ namespace Velvet
         public LayoutIdProgress(LayoutIdTiming timing, float travel)
         {
             _timing = timing;
-            _rest = MotionLayoutIdDriver.RestPixels / Mathf.Max(travel, MotionLayoutIdDriver.RestPixels);
+            _rest = Mathf.Min(MotionLayoutIdDriver.RestPixels / travel, NormalizedRest);
         }
 
         public float Value { get; private set; } = 1f;
