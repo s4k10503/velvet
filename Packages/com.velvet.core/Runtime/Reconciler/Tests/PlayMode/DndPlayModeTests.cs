@@ -12,11 +12,11 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the drag-and-drop behaviors that only a real runtime panel with the engine's own pointer
     /// dispatcher can prove: captured pointer events route to the capturing source regardless of where
-    /// they land (so a drag keeps tracking outside the source's bounds), a child that captures at its
-    /// own pointer-down blacks out distance activation (interactive capturing children are documented
-    /// non-drag zones) while its click stays intact, a real drag ending on a Clickable source does NOT
-    /// fire its click, and the DragOverlay positioner tracks the pointer on the Overlay layer panel with
-    /// picking disabled.
+    /// they land (so a drag keeps tracking outside the source's bounds), a press on a child that
+    /// captures at its own pointer-down still drags — under a distance constraint and with none —
+    /// without clicking the child, while a sub-threshold press on it stays its click, a real drag ending
+    /// on a Clickable source does NOT fire its click, and every DragOverlay positioner mounted at
+    /// activation tracks the pointer on the Overlay layer panel with picking disabled.
     /// </summary>
     internal sealed class DndPlayModeTests
     {
@@ -26,12 +26,14 @@ namespace Velvet.Tests
 
         private static readonly List<string> s_started = new();
         private static readonly List<string> s_ended = new();
+        private static DragActivation s_cardActivation;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
             s_started.Clear();
             s_ended.Clear();
+            s_cardActivation = new DragActivation(Distance: 4f);
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -72,6 +74,7 @@ namespace Velvet.Tests
         private static VNode PlainScene() => V.DndContext(
             onDragStart: e => s_started.Add(e.Active.Id),
             onDragEnd: e => s_ended.Add(e.Over?.Id),
+            activation: new DragActivation(Distance: 4f),
             className: "w-[300px] h-[300px]",
             children: new VNode[]
             {
@@ -105,10 +108,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode ClickableChildScene() => V.DndContext(
             onDragStart: e => s_started.Add(e.Active.Id),
+            onDragEnd: e => s_ended.Add(e.Over?.Id),
             className: "w-[300px] h-[300px]",
             children: new VNode[]
             {
-                V.Draggable("card", name: "card",
+                V.Draggable("card", name: "card", activation: s_cardActivation,
                     className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
                     children: new VNode[]
                     {
@@ -117,25 +121,112 @@ namespace Velvet.Tests
             });
 
         [UnityTest]
-        public IEnumerator Given_APressOnAClickableChildInsideADraggable_When_TheChildCapturesThePointer_Then_DistanceActivationNeverFires()
+        public IEnumerator Given_APressOnAClickableChildInsideADraggable_When_ItTravelsPastTheDistanceAndReleases_Then_TheDragRunsAndTheChildDoesNotClick()
         {
-            // Arrange — the engine ground truth: captured pointer events are delivered to the capturing
-            // element ONLY, so the pending phase's panel-root observers never see these moves. An
-            // interactive capturing child is a documented non-drag zone in distance mode.
+            // Arrange — captured pointer events are delivered to the capturing element ONLY, so these
+            // moves reach the Button alone, never the panel root or the card.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ClickableChildScene, key: "root"));
+            yield return null;
+            yield return null;
+            var child = (Button)Main("child");
+            var clicks = 0;
+            child.clicked += () => clicks++;
+
+            // Act — a press on the Button (whose Clickable captures at pointer-down), travel far past
+            // the activation distance, release.
+            SendPointerDown(child, new Vector2(10, 10));
+            SendPointerMove(child, new Vector2(60, 10));
+            SendPointerUp(child, new Vector2(60, 10));
+            yield return null;
+
+            // Assert
+            Assert.That((s_started.Count, s_ended.Count, clicks), Is.EqualTo((1, 1, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APressOnAClickableChildInsideADraggable_When_ItReleasesInPlace_Then_NoDragSessionLingers()
+        {
+            // Arrange — the release reaches the Button alone; a session that never saw it would stay
+            // pending until the next press discarded it.
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(ClickableChildScene, key: "root"));
             yield return null;
             yield return null;
             var child = Main("child");
 
-            // Act — a press on the Button (whose Clickable captures at pointer-down), then travel far
-            // past the activation distance.
+            // Act
             SendPointerDown(child, new Vector2(10, 10));
-            SendPointerMove(child, new Vector2(60, 10));
+            SendPointerUp(child, new Vector2(10, 10));
             yield return null;
 
             // Assert
-            Assert.That(s_started, Is.Empty);
+            Assert.That(_mounted.Root.Reconciler.Context.ActiveDrag, Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnconstrainedDraggableWithAClickableChild_When_APressOnTheChildReleasesInPlace_Then_TheDragRunsAndTheChildDoesNotClick()
+        {
+            // Arrange — the drag activates inside the pointer-down, before the Button's own handler
+            // captures, so the Button holds the pointer and the release reaches it alone.
+            s_cardActivation = DragActivation.None;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ClickableChildScene, key: "root"));
+            yield return null;
+            yield return null;
+            var child = (Button)Main("child");
+            var clicks = 0;
+            child.clicked += () => clicks++;
+
+            // Act
+            SendPointerDown(child, new Vector2(10, 10));
+            SendPointerUp(child, new Vector2(10, 10));
+            yield return null;
+
+            // Assert — dnd-kit stops the click once its sensor has activated.
+            Assert.That((s_started.Count, s_ended.Count, clicks), Is.EqualTo((1, 1, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnconstrainedDragPressedOnAClickableChild_When_ItReleasesInPlace_Then_TheChildNoLongerHoldsThePointer()
+        {
+            // Arrange
+            s_cardActivation = DragActivation.None;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ClickableChildScene, key: "root"));
+            yield return null;
+            yield return null;
+            var child = Main("child");
+
+            // Act
+            SendPointerDown(child, new Vector2(10, 10));
+            SendPointerUp(child, new Vector2(10, 10));
+            yield return null;
+
+            // Assert
+            Assert.That((s_ended.Count, child.HasPointerCapture(PointerId.mousePointerId)), Is.EqualTo((1, false)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnconstrainedDragPressedOnAClickableChild_When_ThePointerMoves_Then_TheDraggableTakesThePointer()
+        {
+            // Arrange
+            s_cardActivation = DragActivation.None;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ClickableChildScene, key: "root"));
+            yield return null;
+            yield return null;
+            var child = Main("child");
+            SendPointerDown(child, new Vector2(10, 10));
+
+            // Act
+            SendPointerMove(child, new Vector2(20, 10));
+            yield return null;
+
+            // Assert — once the card holds the pointer, a capture stolen by any other element reaches
+            // the session as a cancel.
+            Assert.That((s_started.Count, Main("card").HasPointerCapture(PointerId.mousePointerId)),
+                Is.EqualTo((1, true)));
         }
 
         [UnityTest]
@@ -195,7 +286,7 @@ namespace Velvet.Tests
             var clicks = 0;
             btn.clicked += () => clicks++;
 
-            // Act — a real drag: press, travel past the constraint, release.
+            // Act — a real drag: press, travel, release.
             SendPointerDown(btn, new Vector2(10, 10));
             SendPointerMove(btn, new Vector2(40, 10));
             SendPointerUp(btn, new Vector2(40, 10));
@@ -208,6 +299,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode OverlayScene() => V.DndContext(
             onDragStart: e => s_started.Add(e.Active.Id),
+            activation: new DragActivation(Distance: 4f),
             className: "w-[300px] h-[300px]",
             children: new VNode[]
             {
@@ -264,6 +356,86 @@ namespace Velvet.Tests
                 _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement);
             Assert.That((positioner.style.left.value.value, positioner.style.top.value.value),
                 Is.EqualTo((100f, 50f)));
+        }
+
+        [Component]
+        private static VNode TwoOverlayScene() => V.DndContext(
+            onDragStart: e => s_started.Add(e.Active.Id),
+            activation: DragActivation.None,
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", movement: DragMovement.None,
+                    className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                V.DragOverlay(key: "first", children: new VNode[] { V.Label("ghost", name: "first-ghost") }),
+                V.DragOverlay(key: "second", children: new VNode[] { V.Label("ghost", name: "second-ghost") }),
+            });
+
+        [UnityTest]
+        public IEnumerator Given_TwoDragOverlaysInOneScope_When_ADragIsActive_Then_BothShowThePreview()
+        {
+            // Arrange — every dnd-kit DragOverlay renders its children while a drag is active.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+
+            // Act
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+
+            // Assert — each ghost's parent is its overlay's positioner.
+            Assert.That(
+                (overlayRoot.Q<Label>("first-ghost").parent.style.display.value,
+                    overlayRoot.Q<Label>("second-ghost").parent.style.display.value),
+                Is.EqualTo((DisplayStyle.Flex, DisplayStyle.Flex)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TwoDragOverlaysInOneScope_When_ThePressActivatesADrag_Then_BothSitOnTheSourceBeforeAnyMove()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+
+            // Act — the press itself activates; the grab offset is (10,10) inside the source at (30,20).
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+
+            // Assert
+            var first = overlayRoot.Q<Label>("first-ghost").parent.style;
+            var second = overlayRoot.Q<Label>("second-ghost").parent.style;
+            Assert.That(new[] { first.left.value.value, first.top.value.value, second.left.value.value, second.top.value.value },
+                Is.EqualTo(new[] { 30f, 20f, 30f, 20f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hides the one overlay it showed and never shows the
+        // other; the branch shows both and must hide both.
+        [UnityTest]
+        public IEnumerator Given_TwoDragOverlaysShowingADrag_When_ItEnds_Then_BothHide()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+
+            // Act
+            SendPointerUp(item, new Vector2(40, 30));
+            yield return null;
+
+            // Assert
+            Assert.That(
+                (overlayRoot.Q<Label>("first-ghost").parent.style.display.value,
+                    overlayRoot.Q<Label>("second-ghost").parent.style.display.value),
+                Is.EqualTo((DisplayStyle.None, DisplayStyle.None)));
         }
 
         [UnityTest]

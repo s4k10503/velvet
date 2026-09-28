@@ -78,7 +78,8 @@ namespace Velvet.Tests
             => target.SendPointerUpEvent(position);
 
         // A 300x300 scene: a 50x50 draggable at (0,0), a 100x100 droppable at (150,0), and a second,
-        // disabled droppable at (150,150). Absolute placement keeps every rect deterministic.
+        // disabled droppable at (150,150). Absolute placement keeps every rect deterministic, and the
+        // scope's 4 px distance constraint lets a sub-threshold press stay a click.
         [Component]
         private static VNode Scene()
         {
@@ -89,6 +90,7 @@ namespace Velvet.Tests
                 onDragOver: e => s_overIds.Add(e.Over?.Id),
                 onDragEnd: e => s_ended.Add(e.Over?.Id),
                 onDragCancel: _ => s_cancelCount++,
+                activation: new DragActivation(Distance: 4f),
                 className: "w-[300px] h-[300px]",
                 name: "scope",
                 children: new VNode[]
@@ -105,14 +107,15 @@ namespace Velvet.Tests
                 });
         }
 
+        // GREEN_ON_BASE(characterization): a declared 4 px distance, the constraint the base applied by default.
         [Test]
-        public void Given_ADraggableWithDefaultActivation_When_APressTravelsBelowTheDistanceAndReleases_Then_NoDragEverStarts()
+        public void Given_ADraggableWithADistanceActivation_When_APressTravelsBelowTheDistanceAndReleases_Then_NoDragEverStarts()
         {
             // Arrange
             Mount(Scene);
             var item = Q("item");
 
-            // Act — 2 px of travel, below the 4 px default constraint: a plain click gesture.
+            // Act — 2 px of travel, below the scope's 4 px constraint: a plain click gesture.
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(12, 10));
             SendPointerUp(item, new Vector2(12, 10));
@@ -140,8 +143,9 @@ namespace Velvet.Tests
             Assert.That(releases, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): a declared 4 px distance, the constraint the base applied by default.
         [Test]
-        public void Given_ADraggableWithDefaultActivation_When_TravelExceedsTheDistance_Then_TheDragStartsOnceWithTheActiveId()
+        public void Given_ADraggableWithADistanceActivation_When_TravelExceedsTheDistance_Then_TheDragStartsOnceWithTheActiveId()
         {
             // Arrange
             Mount(Scene);
@@ -521,6 +525,146 @@ namespace Velvet.Tests
             {
                 V.Draggable("stray", name: "orphan", className: "w-[50px] h-[50px]"),
             });
+
+        [Component]
+        private static VNode UndeclaredActivationScene() => V.DndContext(
+            onDragStart: e => s_started.Add(e.Active.Id),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item",
+                    className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+            });
+
+        [Test]
+        public void Given_NeitherTheDraggableNorItsScopeDeclaresAnActivation_When_ThePointerGoesDown_Then_TheDragStartsAtThePress()
+        {
+            // Arrange — dnd-kit's PointerSensor with no activation constraint starts the drag on the press.
+            Mount(UndeclaredActivationScene);
+
+            // Act
+            SendPointerDown(Q("item"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "item" }));
+        }
+
+        // A draggable whose whole face is a grip child: every press lands on the grip, and both carry a
+        // whileTap class.
+        [Component]
+        private static VNode TappedGripScene() => V.DndContext(
+            onDragEnd: e => s_ended.Add(e.Over?.Id),
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", whileTapClass: "lifted",
+                    className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
+                    children: new VNode[]
+                    {
+                        V.Div(name: "grip", className: "w-[50px] h-[50px]", whileTapClass: "pressed"),
+                    }),
+            });
+
+        [Test]
+        public void Given_ADragPressedOnADescendantCarryingWhileTap_When_TheDragEnds_Then_TheDescendantsTapClassIsSettled()
+        {
+            // Arrange — the session swallows the release at the source, so the descendant's own
+            // press signal never sees it. Every position stays inside the grip, so no pointer-out ends
+            // the press on its own.
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            var pressedDuringTheDrag = grip.ClassListContains("pressed");
+
+            // Act
+            SendPointerUp(grip, new Vector2(20, 10));
+
+            // Assert
+            Assert.That((pressedDuringTheDrag, grip.ClassListContains("pressed")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ADragPressedOnADescendantCarryingWhileTap_When_EscapeCancelsIt_Then_TheDescendantsTapClassIsSettled()
+        {
+            // Arrange
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            var pressedDuringTheDrag = grip.ClassListContains("pressed");
+
+            // Act
+            using (var evt = KeyDownEvent.GetPooled('\0', KeyCode.Escape, EventModifiers.None))
+            {
+                evt.target = grip;
+                grip.SendEvent(evt);
+            }
+
+            // Assert
+            Assert.That((pressedDuringTheDrag, grip.ClassListContains("pressed")), Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the draggable's own whileTap settle, which the base already
+        // performs and the descendant settle must not displace.
+        [Test]
+        public void Given_ADragPressedThroughADescendant_When_TheDragEnds_Then_TheDraggablesOwnTapClassIsSettled()
+        {
+            // Arrange
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            var item = Q("item");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            var liftedDuringTheDrag = item.ClassListContains("lifted");
+
+            // Act
+            SendPointerUp(grip, new Vector2(20, 10));
+
+            // Assert
+            Assert.That((liftedDuringTheDrag, item.ClassListContains("lifted")), Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a closed session leaves no move listener behind, which the
+        // base already holds for the draggable and the branch extends to the press path.
+        [Test]
+        public void Given_ADragPressedThroughADescendantThatEnded_When_ANewPressMovesBelowTheDistance_Then_TheDraggableStaysUntranslated()
+        {
+            // Arrange
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            SendPointerUp(grip, new Vector2(20, 10));
+
+            // Act — a fresh press whose 2 px of travel stays under the constraint.
+            SendPointerDown(grip, new Vector2(20, 10));
+            SendPointerMove(grip, new Vector2(22, 10));
+
+            // Assert
+            Assert.That(Q("item").style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Undefined));
+        }
+
+        // GREEN_ON_BASE(characterization): a closed session leaves no release listener behind, which the
+        // base already holds for the draggable and the branch extends to the press path.
+        [Test]
+        public void Given_ADragPressedThroughADescendantThatEnded_When_ALaterPressReleasesInPlace_Then_NoSecondDropIsReported()
+        {
+            // Arrange
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            SendPointerUp(grip, new Vector2(20, 10));
+
+            // Act
+            SendPointerDown(grip, new Vector2(20, 10));
+            SendPointerUp(grip, new Vector2(20, 10));
+
+            // Assert
+            Assert.That(s_ended.Count, Is.EqualTo(1));
+        }
 
         #region Collision strategies (pure functions, no panel)
 

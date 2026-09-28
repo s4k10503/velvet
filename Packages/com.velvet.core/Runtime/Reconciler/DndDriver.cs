@@ -162,17 +162,8 @@ namespace Velvet
     // element's binding lifecycle and the panel-space conversion.
     internal static class DndOverlayDriver
     {
-        public static DndOverlayBinding Attach(VisualElement positioner, ReconcilerContext ctx)
+        public static DndOverlayBinding Attach(VisualElement positioner)
         {
-            // Dictionary enumeration order is unspecified once entries have churned, so which of several
-            // overlays a session picks is not deterministic — surface that at mount instead of letting
-            // the ghost jump between containers across drags.
-            if (ctx.DragOverlayBindings.Count > 0)
-            {
-                FiberLogger.LogWarning("Dnd",
-                    "More than one V.DragOverlay is mounted in this tree; which one shows the drag "
-                    + "preview is unspecified. Keep a single overlay per mounted tree.");
-            }
             // Forced inline for the same reason AnchoredDriver forces absolute: dynamic left/top has no
             // other way to work. PickingMode.Ignore keeps the ghost from intercepting the drop or waking
             // the cross-panel pointer router.
@@ -192,19 +183,6 @@ namespace Velvet
             positioner.style.top = StyleKeyword.Null;
             positioner.style.width = StyleKeyword.Null;
             positioner.style.height = StyleKeyword.Null;
-        }
-
-        // One overlay per mounted tree: the first registered positioner wins — several in one
-        // Velvet tree would fight over one pointer.
-        public static DndOverlayBinding? FindOverlay(ReconcilerContext ctx, out VisualElement? positioner)
-        {
-            foreach (var (element, binding) in ctx.DragOverlayBindings)
-            {
-                positioner = element;
-                return binding;
-            }
-            positioner = null;
-            return null;
         }
 
         public static void BeginSession(VisualElement positioner, Vector2 sourceSize)
@@ -263,15 +241,20 @@ namespace Velvet
 
     // Settles the press-derived styling state after the session swallowed the real PointerUp
     // (StopImmediatePropagation runs before the bubble-phase signal callbacks, and captured delivery
-    // hides it from ancestors entirely): every manipulator holding an ElementLocalVariantSignals on the
-    // source OR any of its ancestors is told to observe a synthetic release — the press's own
-    // PointerDown BUBBLED, so ancestors' whileTap / active: (and stacked forms) lit too and would
-    // otherwise stick on.
+    // hides it from every other element entirely): every manipulator holding an ElementLocalVariantSignals
+    // on the press path below the source, on the source, OR on any of its ancestors is told to observe a
+    // synthetic release, since the press's own PointerDown may have lit its whileTap / active: (and
+    // stacked forms). The path comes from the session's list, not from the press target's parents: a
+    // descendant unmounted mid-drag no longer has the source above it.
     internal static class DndPressVariantSettler
     {
-        public static void Settle(VisualElement element, ReconcilerContext ctx)
+        public static void Settle(VisualElement source, System.Collections.Generic.List<VisualElement> pressPath, ReconcilerContext ctx)
         {
-            for (var current = element; current != null; current = current.parent)
+            foreach (var element in pressPath)
+            {
+                SettleOn(element, ctx);
+            }
+            for (var current = source; current != null; current = current.parent)
             {
                 SettleOn(current, ctx);
             }

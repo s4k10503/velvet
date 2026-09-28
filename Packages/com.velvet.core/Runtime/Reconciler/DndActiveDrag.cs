@@ -12,10 +12,10 @@ namespace Velvet
     // source and pinned by the DnD PlayMode tests):
     //
     //   1. CAPTURED pointer events are delivered to the capturing element ONLY — no trickle through
-    //      ancestors. So the PENDING phase observes moves on the panel root (nothing is captured yet;
-    //      a child that captures at its own pointer-down blacks the moves out, which makes interactive
-    //      capturing children documented non-drag zones in distance mode), while the ACTIVE phase
-    //      captures on the source and registers its drag-lifetime callbacks on the source itself.
+    //      ancestors. So the PENDING phase observes moves on the panel root, and on every element from
+    //      the source down to the press target, since a child that captures at its own pointer-down
+    //      (a button inside a draggable card) receives the moves alone; the ACTIVE phase captures on the
+    //      source and registers its drag-lifetime callbacks on that path without the root.
     //   2. TrickleDown-registered callbacks on the capturing element run before bubble-phase ones on the
     //      same element, so the post-drag PointerUp can be swallowed (StopImmediatePropagation) before
     //      UI Toolkit's own Clickable fires `clicked` — a real drag ending on a draggable Button must
@@ -46,6 +46,9 @@ namespace Velvet
         private readonly VisualElement _panelRoot;
         private readonly DragActivation _activation;
         private readonly int _pointerId;
+        // The press target and its ancestors below the source, deepest first: any of them may take the
+        // pointer at its own pointer-down, after the source's trickle-phase armer has run.
+        private readonly List<VisualElement> _pressPath = new();
 
         private bool _active;
         private bool _closed;
@@ -80,8 +83,7 @@ namespace Velvet
         private VisualElement? _overElement;
         private string[]? _appliedOverClasses;
         private readonly List<(VisualElement Element, string[] Classes)> _appliedActiveClasses = new();
-        private VisualElement? _overlayPositioner;
-        private DndOverlayBinding? _overlay;
+        private readonly List<(VisualElement Positioner, DndOverlayBinding Binding)> _overlays = new();
         private EventCallback<PointerMoveEvent>? _onDragMove;
         private EventCallback<PointerUpEvent>? _onDragUp;
         private EventCallback<PointerDownEvent>? _onDragDown;
@@ -120,9 +122,9 @@ namespace Velvet
             {
                 return;
             }
-            // A lingering PENDING session yields to a fresh press: a press whose release was delivered
-            // capture-only to a child (the non-drag-zone case) leaves its pending observers blind to the
-            // up, and without this hand-off the dead session would block every future drag. An ACTIVE
+            // A lingering PENDING session yields to a fresh press: a release delivered where none of its
+            // pending observers sees it leaves the session open, and without this hand-off the dead
+            // session would block every future drag. An ACTIVE
             // session never yields — extra pointer-downs during a drag do not arm.
             if (ctx.ActiveDrag != null)
             {
@@ -180,6 +182,7 @@ namespace Velvet
             _draggable = origin.Draggable;
             _panelRoot = origin.PanelRoot;
             _pointerId = evt.pointerId;
+            CollectPressPath(origin.Source, evt.target as VisualElement, _pressPath);
             _pressPosition = evt.position;
             _lastPointerPosition = _pressPosition;
             _activation = origin.Draggable.Settings.Activation
@@ -206,13 +209,12 @@ namespace Velvet
             RegisterPendingObservers();
         }
 
-        // Pending observers live on BOTH the panel root and the source: uncaptured moves flow through
+        // Pending observers live on the panel root AND the press path: uncaptured moves flow through
         // the root (covering fast travel that leaves the source's bounds before activation), while a
-        // press whose Clickable SOURCE captured at pointer-down delivers target-only — reaching the
-        // source's own callbacks but never the root's (a draggable V.Button must still activate). An
-        // uncaptured move over the source hits both registrations; OnPendingMove's state guards make
-        // the second invocation a no-op. A CHILD that captured keeps blacking out both — the documented
-        // non-drag zone.
+        // press whose Clickable captured at pointer-down — the source's own (a draggable V.Button) or a
+        // child's — delivers target-only, reaching the capturer's callbacks but never the root's. An
+        // uncaptured move hits several registrations; OnPendingMove's state guards make the repeats a
+        // no-op.
         private void RegisterPendingObservers()
         {
             _onPendingMove = OnPendingMove;
@@ -221,9 +223,9 @@ namespace Velvet
             _panelRoot.RegisterCallback(_onPendingMove, TrickleDown.TrickleDown);
             _panelRoot.RegisterCallback(_onPendingUp, TrickleDown.TrickleDown);
             _panelRoot.RegisterCallback(_onPendingCancel, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onPendingMove, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onPendingUp, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onPendingCancel, TrickleDown.TrickleDown);
+            RegisterOnPressPath(_onPendingMove);
+            RegisterOnPressPath(_onPendingUp);
+            RegisterOnPressPath(_onPendingCancel);
         }
 
         private void OnPendingMove(PointerMoveEvent evt)
@@ -344,8 +346,11 @@ namespace Velvet
         }
 
         // Steals the pointer from a child that captured at its own pointer-down (its
-        // PointerCaptureOutEvent aborts its click — "it's a drag now"); from here every pointer event
-        // of this id is delivered to the source only, so the drag-lifetime callbacks live there.
+        // PointerCaptureOutEvent aborts its click — "it's a drag now"). The drag-lifetime callbacks sit
+        // on the whole press path, not the source alone: an activation inside the pointer-down itself
+        // (DragActivation.None) captures before the child's own pointer-down handler does, so a child
+        // that captures there holds the pointer until OnDragMove takes it back, and a release with no
+        // move between reaches that child alone.
         private void RegisterActiveObservers()
         {
             _source.CapturePointer(_pointerId);
@@ -355,10 +360,10 @@ namespace Velvet
             _onDragCancel = _ => Cancel();
             _onCaptureOut = OnCaptureOut;
             _onEscape = OnEscapeKey;
-            _source.RegisterCallback(_onDragMove, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onDragUp, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onDragDown, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onDragCancel, TrickleDown.TrickleDown);
+            RegisterOnPressPath(_onDragMove);
+            RegisterOnPressPath(_onDragUp);
+            RegisterOnPressPath(_onDragDown);
+            RegisterOnPressPath(_onDragCancel);
             _source.RegisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
             // dispatch through the FOCUSED panel, which need not be the source's.
@@ -401,13 +406,23 @@ namespace Velvet
             ApplyDragActiveClasses();
         }
 
+        // Every overlay mounted at activation shows the preview, as every dnd-kit DragOverlay renders its
+        // children while a drag is active.
         private void BeginOverlaySession()
         {
-            _overlay = DndOverlayDriver.FindOverlay(_ctx, out _overlayPositioner);
-            if (_overlay != null && _overlayPositioner != null)
+            foreach (var (positioner, binding) in _ctx.DragOverlayBindings)
             {
-                DndOverlayDriver.BeginSession(_overlayPositioner, _originRect.size);
-                DndOverlayDriver.SyncPosition(_overlayPositioner, _overlay, _source.panel, _lastPointerPosition, _grabOffset);
+                _overlays.Add((positioner, binding));
+                DndOverlayDriver.BeginSession(positioner, _originRect.size);
+            }
+            SyncOverlays();
+        }
+
+        private void SyncOverlays()
+        {
+            foreach (var (positioner, binding) in _overlays)
+            {
+                DndOverlayDriver.SyncPosition(positioner, binding, _source.panel, _lastPointerPosition, _grabOffset);
             }
         }
 
@@ -470,16 +485,19 @@ namespace Velvet
                 Cancel();
                 return;
             }
+            // A child still holding the pointer from its own pointer-down (see RegisterActiveObservers)
+            // gives it up to the source here; the child's PointerCaptureOutEvent aborts a Clickable's click.
+            if (!_source.HasPointerCapture(_pointerId))
+            {
+                _source.CapturePointer(_pointerId);
+            }
             _lastPointerPosition = evt.position;
             _delta = _lastPointerPosition - _origin;
             if (_activeMovement == DragMovement.Translate)
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
-            if (_overlay != null && _overlayPositioner != null)
-            {
-                DndOverlayDriver.SyncPosition(_overlayPositioner, _overlay, _source.panel, _lastPointerPosition, _grabOffset);
-            }
+            SyncOverlays();
             UpdateCollision();
             evt.StopPropagation();
         }
@@ -557,7 +575,7 @@ namespace Velvet
             // commit) — the cleaner would then find a live session mid-teardown and cancel-scrub what the
             // drop already owned. With the session closed first, that path sees idle and does nothing.
             Close();
-            DndPressVariantSettler.Settle(_source, _ctx);
+            DndPressVariantSettler.Settle(_source, _pressPath, _ctx);
             // Swallowed before bubble-phase listeners on this same element run, so a Clickable on the
             // source (a draggable V.Button) does not fire `clicked` after a REAL drag. A sub-threshold
             // press never reaches here (it discards in Pending) — clicks stay intact.
@@ -616,7 +634,7 @@ namespace Velvet
             }
             var args = new DragCancelArgs(ActiveInfo());
             Close();
-            DndPressVariantSettler.Settle(_source, _ctx);
+            DndPressVariantSettler.Settle(_source, _pressPath, _ctx);
             FireDiscrete(() => _scope.Settings.OnDragCancel?.Invoke(args));
         }
 
@@ -645,7 +663,7 @@ namespace Velvet
             {
                 return;
             }
-            DndPressVariantSettler.Settle(_source, _ctx);
+            DndPressVariantSettler.Settle(_source, _pressPath, _ctx);
             if (!deferUserCallback)
             {
                 InvokeCancelGuarded(scope, args);
@@ -731,13 +749,7 @@ namespace Velvet
             => _anchoredFocus && (element == _source || _source.Contains(element));
 
         internal void OnOverlayInvalidated(VisualElement positioner)
-        {
-            if (ReferenceEquals(_overlayPositioner, positioner))
-            {
-                _overlay = null;
-                _overlayPositioner = null;
-            }
-        }
+            => _overlays.RemoveAll(overlay => ReferenceEquals(overlay.Positioner, positioner));
 
         // Restores everything this session ever wrote and returns the context to idle. Ordering note:
         // the drag-lifetime callbacks unregister BEFORE ReleasePointer, so our own release's
@@ -768,10 +780,10 @@ namespace Velvet
 
         private void UnregisterActiveObservers()
         {
-            if (_onDragMove != null) _source.UnregisterCallback(_onDragMove, TrickleDown.TrickleDown);
-            if (_onDragUp != null) _source.UnregisterCallback(_onDragUp, TrickleDown.TrickleDown);
-            if (_onDragDown != null) _source.UnregisterCallback(_onDragDown, TrickleDown.TrickleDown);
-            if (_onDragCancel != null) _source.UnregisterCallback(_onDragCancel, TrickleDown.TrickleDown);
+            UnregisterFromPressPath(_onDragMove);
+            UnregisterFromPressPath(_onDragUp);
+            UnregisterFromPressPath(_onDragDown);
+            UnregisterFromPressPath(_onDragCancel);
             if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             if (_onEscape != null)
             {
@@ -790,6 +802,13 @@ namespace Velvet
             if (_source.HasPointerCapture(_pointerId))
             {
                 _source.ReleasePointer(_pointerId);
+            }
+            // A child that took the pointer at its own pointer-down and never gave it back (a release
+            // with no move between, see RegisterActiveObservers) would otherwise keep it, and its
+            // Clickable its pressed state, after the drag ends.
+            foreach (var element in _pressPath)
+            {
+                element.ReleasePointer(_pointerId);
             }
         }
 
@@ -849,12 +868,10 @@ namespace Velvet
 
         private void EndOverlaySession()
         {
-            if (_overlayPositioner != null)
+            foreach (var (positioner, _) in _overlays)
             {
-                DndOverlayDriver.EndSession(_overlayPositioner);
+                DndOverlayDriver.EndSession(positioner);
             }
-            _overlay = null;
-            _overlayPositioner = null;
         }
 
         private void UnregisterPendingObservers()
@@ -862,21 +879,53 @@ namespace Velvet
             if (_onPendingMove != null)
             {
                 _panelRoot.UnregisterCallback(_onPendingMove, TrickleDown.TrickleDown);
-                _source.UnregisterCallback(_onPendingMove, TrickleDown.TrickleDown);
             }
             if (_onPendingUp != null)
             {
                 _panelRoot.UnregisterCallback(_onPendingUp, TrickleDown.TrickleDown);
-                _source.UnregisterCallback(_onPendingUp, TrickleDown.TrickleDown);
             }
             if (_onPendingCancel != null)
             {
                 _panelRoot.UnregisterCallback(_onPendingCancel, TrickleDown.TrickleDown);
-                _source.UnregisterCallback(_onPendingCancel, TrickleDown.TrickleDown);
             }
+            UnregisterFromPressPath(_onPendingMove);
+            UnregisterFromPressPath(_onPendingUp);
+            UnregisterFromPressPath(_onPendingCancel);
             _onPendingMove = null;
             _onPendingUp = null;
             _onPendingCancel = null;
+        }
+
+        private void RegisterOnPressPath<TEvent>(EventCallback<TEvent> callback)
+            where TEvent : EventBase<TEvent>, new()
+        {
+            _source.RegisterCallback(callback, TrickleDown.TrickleDown);
+            foreach (var element in _pressPath)
+            {
+                element.RegisterCallback(callback, TrickleDown.TrickleDown);
+            }
+        }
+
+        private void UnregisterFromPressPath<TEvent>(EventCallback<TEvent>? callback)
+            where TEvent : EventBase<TEvent>, new()
+        {
+            if (callback == null)
+            {
+                return;
+            }
+            _source.UnregisterCallback(callback, TrickleDown.TrickleDown);
+            foreach (var element in _pressPath)
+            {
+                element.UnregisterCallback(callback, TrickleDown.TrickleDown);
+            }
+        }
+
+        private static void CollectPressPath(VisualElement source, VisualElement? target, List<VisualElement> path)
+        {
+            for (var current = target; current != null && current != source; current = current.parent)
+            {
+                path.Add(current);
+            }
         }
 
         // Key events dispatch through whichever panel holds keyboard focus, which need not be the
