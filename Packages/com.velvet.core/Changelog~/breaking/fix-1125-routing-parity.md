@@ -28,9 +28,10 @@
   predicate over `BlockerFunctionArgs` (`CurrentLocation`, `NextLocation`, `HistoryAction`), which
   replaces the NavigationAttempt type; the asynchronous predicate overloads of `Hooks.UseBlocker` and
   `RouteBlockerManager.Register` are gone. `RouteBlockerState.Location` replaces `Attempt`, and
-  `Proceed` and `Reset` are delegates, null unless the Blocker is `Blocked` and bound to the block
-  they were handed out for: a kept `Proceed` throws once that block is over. The component calling
-  `UseBlocker` re-renders when its Blocker's state changes.
+  `Proceed` and `Reset` are delegates, null unless the Blocker is `Blocked`. A kept `Proceed` throws
+  unless the Blocker is `Blocked`, and run while the Blocker holds a newer block it releases the
+  navigation it was handed out for; a kept `Reset` returns the Blocker to `Idle` whatever it holds. The
+  component calling `UseBlocker` re-renders when its Blocker's state changes.
 
 - A router consults only the Blocker registered last, and warns each time it does so with more than one
   registered. Every registered Blocker used to be consulted.

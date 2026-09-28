@@ -35,10 +35,10 @@ to disarm itself. It hands nothing back; the navigation's outcome arrives throug
 `Reset` abandons the navigation instead. The router is already where it was by the time any UI can call
 it, so this returns the Blocker to `Idle` and nothing else.
 
-Both are delegates bound to the block they were handed out for, as React Router's `proceed` and `reset`
-are. A `Proceed` kept past its block throws `InvalidOperationException` naming the state transition,
-and one kept while the Blocker holds a newer navigation releases the navigation it was handed out for. A
-kept `Reset` returns the Blocker to `Idle` whatever its state.
+Both are handed out with the block, as React Router's `proceed` and `reset` are. A kept `Proceed` throws
+`InvalidOperationException` naming the state transition while the Blocker is not `Blocked`, and one kept
+while the Blocker holds a newer navigation releases the navigation it was handed out for. A kept `Reset`
+returns the Blocker to `Idle` whatever its state.
 
 ## When a Blocker starts over
 
