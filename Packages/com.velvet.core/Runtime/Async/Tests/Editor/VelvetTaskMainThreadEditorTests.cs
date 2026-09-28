@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -51,6 +52,76 @@ namespace Velvet.Tests
 #endif
         }
 
+        sealed class RecordingSynchronizationContext : SynchronizationContext
+        {
+            readonly List<(SendOrPostCallback Callback, object State)> _posted = new();
+
+            public override void Post(SendOrPostCallback callback, object state)
+            {
+                lock (_posted)
+                {
+                    _posted.Add((callback, state));
+                }
+            }
+
+            internal int RunPosted()
+            {
+                (SendOrPostCallback Callback, object State)[] posted;
+                lock (_posted)
+                {
+                    posted = _posted.ToArray();
+                    _posted.Clear();
+                }
+
+                foreach (var (callback, state) in posted)
+                {
+                    callback(state);
+                }
+
+                return posted.Length;
+            }
+        }
+
+        sealed class RecordingTaskScheduler : TaskScheduler
+        {
+            readonly List<Task> _queued = new();
+
+            protected override void QueueTask(Task task)
+            {
+                lock (_queued)
+                {
+                    _queued.Add(task);
+                }
+            }
+
+            protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+
+            protected override IEnumerable<Task> GetScheduledTasks()
+            {
+                lock (_queued)
+                {
+                    return _queued.ToArray();
+                }
+            }
+
+            internal int RunQueued()
+            {
+                Task[] queued;
+                lock (_queued)
+                {
+                    queued = _queued.ToArray();
+                    _queued.Clear();
+                }
+
+                foreach (var task in queued)
+                {
+                    TryExecuteTask(task);
+                }
+
+                return queued.Length;
+            }
+        }
+
         static void OnAnotherThread(Action action)
         {
             var thread = new Thread(() => action());
@@ -62,6 +133,12 @@ namespace Velvet.Tests
         {
             await VelvetTask.SwitchToMainThread();
             return Thread.CurrentThread.ManagedThreadId;
+        }
+
+        static async VelvetTask<bool> YieldThenReadWhetherOnAPoolThread()
+        {
+            await VelvetTask.Yield();
+            return Thread.CurrentThread.IsThreadPoolThread;
         }
 
         static async VelvetTask<int> ResumeOffTheMainThread(Task<int> gate)
@@ -205,26 +282,88 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnotherThread_When_ItCallsYield_Then_ItIsRefusedWithTheWayBack()
+        public void Given_AnAsyncMethodOnAnotherThread_When_ItAwaitsYield_Then_ItResumesOnAPoolThread()
         {
             // Arrange
-            Exception? thrown = null;
+            VelvetTask<bool> task = default;
+            OnAnotherThread(() => task = YieldThenReadWhetherOnAPoolThread());
+            SpinWait.SpinUntil(() => task.Status != VelvetTaskStatus.Pending, (int)SettleTimeoutMilliseconds);
 
             // Act
-            OnAnotherThread(() =>
-            {
-                try
-                {
-                    VelvetTask.Yield();
-                }
-                catch (Exception exception)
-                {
-                    thrown = exception;
-                }
-            });
+            var resumedOnAPoolThread = task.GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(thrown, Is.TypeOf<InvalidOperationException>().And.Message.Contains("VelvetTask.SwitchToMainThread()"));
+            Assert.That(resumedOnAPoolThread, Is.True);
+        }
+
+        [Test]
+        public void Given_AnotherThreadHoldingASynchronizationContext_When_AnAsyncMethodThereAwaitsYield_Then_ItResumesThroughThatContext()
+        {
+            // Arrange
+            var context = new RecordingSynchronizationContext();
+            VelvetTask<bool> task = default;
+            OnAnotherThread(() =>
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                task = YieldThenReadWhetherOnAPoolThread();
+            });
+            var statusBeforeThePost = task.Status;
+
+            // Act
+            var posted = context.RunPosted();
+
+            // Assert
+            Assert.That((statusBeforeThePost, posted, task.Status),
+                Is.EqualTo((VelvetTaskStatus.Pending, 1, VelvetTaskStatus.Succeeded)));
+        }
+
+        [Test]
+        public void Given_AnAsyncMethodRunByATaskSchedulerOnAnotherThread_When_ItAwaitsYield_Then_ItResumesThroughThatScheduler()
+        {
+            // Arrange
+            var scheduler = new RecordingTaskScheduler();
+            VelvetTask<bool> task = default;
+            OnAnotherThread(() =>
+            {
+                Task.Factory.StartNew(
+                    () => task = YieldThenReadWhetherOnAPoolThread(),
+                    CancellationToken.None,
+                    TaskCreationOptions.None,
+                    scheduler);
+                scheduler.RunQueued();
+            });
+            var statusBeforeTheSchedulerRuns = task.Status;
+
+            // Act
+            var queued = scheduler.RunQueued();
+
+            // Assert
+            Assert.That((statusBeforeTheSchedulerRuns, queued, task.Status),
+                Is.EqualTo((VelvetTaskStatus.Pending, 1, VelvetTaskStatus.Succeeded)));
+        }
+
+        [Test]
+        public void Given_AThreadHoldingTheBaseSynchronizationContext_When_ATaskSchedulerRunsAnAsyncMethodThereThatAwaitsYield_Then_ItResumesThroughThatScheduler()
+        {
+            // Arrange
+            var scheduler = new RecordingTaskScheduler();
+            VelvetTask<bool> task = default;
+            OnAnotherThread(() =>
+            {
+                SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+                Task.Factory.StartNew(
+                    () => task = YieldThenReadWhetherOnAPoolThread(),
+                    CancellationToken.None,
+                    TaskCreationOptions.None,
+                    scheduler);
+                scheduler.RunQueued();
+            });
+
+            // Act
+            var queued = scheduler.RunQueued();
+
+            // Assert
+            Assert.That((queued, task.Status), Is.EqualTo((1, VelvetTaskStatus.Succeeded)));
         }
 
         [Test]
