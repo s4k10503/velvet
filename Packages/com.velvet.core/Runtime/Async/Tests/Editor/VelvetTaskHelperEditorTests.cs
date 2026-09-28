@@ -232,20 +232,20 @@ namespace Velvet.Tests
             Assert.That(logged, Is.EqualTo("InvalidOperationException: first | ArgumentException: second"));
         }
 
-        // GREEN_ON_BASE(characterization): Forget logging a cancelled task's cancellation is the base's behaviour.
         [Test]
-        public void Given_ACancelledTask_When_Forgotten_Then_ItsCancellationIsLogged()
+        public void Given_ACancelledTask_When_Forgotten_Then_NothingIsLogged()
         {
             // Arrange
             LogAssert.ignoreFailingMessages = true;
             var source = new VelvetTaskCompletionSource();
             source.SetCanceled();
+            var status = source.Task.Status;
 
             // Act
             var logged = ExceptionsLoggedDuring(() => source.Task.Forget());
 
             // Assert
-            Assert.That(logged, Does.StartWith("OperationCanceledException:"));
+            Assert.That((status, logged), Is.EqualTo((VelvetTaskStatus.Canceled, "")));
         }
 
         [Test]

@@ -23,17 +23,15 @@ namespace Velvet
 
         static void PublishUnobserved(VelvetTask task)
         {
-            var outcome = VelvetTaskOutcome.Consume(task);
-            if (outcome.Faults != null)
+            var faults = VelvetTaskOutcome.Consume(task).Faults;
+            if (faults == null)
             {
-                foreach (var fault in outcome.Faults)
-                {
-                    VelvetTaskScheduler.PublishUnobservedException(fault.SourceException);
-                }
+                return;
             }
-            else if (outcome.Cancellation != null)
+
+            foreach (var fault in faults)
             {
-                VelvetTaskScheduler.PublishUnobservedException(outcome.Cancellation);
+                VelvetTaskScheduler.PublishUnobservedException(fault.SourceException);
             }
         }
 

@@ -76,7 +76,7 @@ whichever arrived first. The combination keeps every member's fault in argument 
 itself a faulted combination contributing all of its own, and a cancelled member contributing none.
 `AsTask()` hands them to the `Task`'s `Exception` as `Task.WhenAll` holds them, so await
 `VelvetTask.WhenAll(…).AsTask()` where each failure matters. `AttachExternalCancellation` keeps all of them,
-as Task.WaitAsync does, and `Forget()` logs each one.
+as Task.WaitAsync does, and `Forget()` logs each one. `Forget()` logs nothing for a cancelled task.
 
 The combination consumes each member, and a `VelvetTask` carrying a source allows one consume, the rule
 .NET's ValueTask carries — unless `Preserve()` returned it. So a member that was not preserved must not
