@@ -47,19 +47,66 @@ namespace Velvet
         // The loop each element runs, for ReassertLoop.
         private static readonly ConditionalWeakTable<VisualElement, StyleAnimateBinding> s_running = new();
 
+        // The slots each driver on the element writes over its loop, by driver.
+        private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_held = new();
+
+        // The slots a Motion driver keeps from a loop while it drives them. Framer Motion hands opacity to
+        // the browser's own animation engine, whose animations outrank a CSS animation; the transform
+        // shorthands it writes as inline style on the main thread, which a CSS animation outranks.
+        private const MotionTransitionSlots MotionHeldSlots = MotionTransitionSlots.Opacity;
+
         /// <summary>
-        /// Writes the element's running loop over whatever a per-frame driver just wrote or released, so a loop
-        /// holds its slot the way a CSS animation outranks an inline style. The spring and bezier drivers and
-        /// the filter tween call this after each of their writes; the loop's own tick runs on a separate
-        /// scheduled item, so without it the slot would show whichever of the two ran last in a frame.
+        /// Records which of <paramref name="drivenSlots"/> <paramref name="owner"/> keeps from the element's loop
+        /// until it calls this again: a Motion driver passes what it drives when it starts or drops channels,
+        /// and <see cref="MotionTransitionSlots.None"/> when it lets go.
+        /// </summary>
+        public static void HoldAgainstLoop(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            var held = s_held.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
+            held.Remove(owner);
+            var kept = drivenSlots & MotionHeldSlots;
+            if (kept != MotionTransitionSlots.None)
+            {
+                held[owner] = kept;
+            }
+        }
+
+        /// <summary>
+        /// Forgets every hold on an element being torn down or returned to a pool — the backstop for a teardown
+        /// that pre-empts a driver's own release, on the terms of <see cref="MotionNativeTransitionGuard.ReleaseAll"/>.
+        /// </summary>
+        public static void ForgetHolds(VisualElement element) => s_held.Remove(element);
+
+        /// <summary>
+        /// Writes the element's running loop over whatever a per-frame driver just wrote or released, unless a
+        /// driver holds the loop's slot (see <see cref="HoldAgainstLoop"/>) — so a loop keeps its slot the way a
+        /// CSS animation outranks an inline style. The spring and bezier drivers and the filter tween call this
+        /// after each of their writes; the loop's own tick runs on a separate scheduled item, so without it the
+        /// slot would show whichever of the two ran last in a frame.
         /// </summary>
         public static void ReassertLoop(VisualElement element)
         {
             if (s_running.TryGetValue(element, out var binding))
             {
-                var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-                ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
+                ApplyCurrentFrame(element, binding);
             }
+        }
+
+        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding)
+        {
+            if (s_held.TryGetValue(element, out var held))
+            {
+                var slot = GuardedSlots(binding.Spec.Mode);
+                foreach (var slots in held.Values)
+                {
+                    if ((slots & slot) != MotionTransitionSlots.None)
+                    {
+                        return;
+                    }
+                }
+            }
+            var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
+            ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
         }
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
@@ -325,8 +372,7 @@ namespace Velvet
             var host = element.panel.visualTree;
             binding.Scheduled = host.schedule.Execute(() =>
             {
-                var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-                ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
+                ApplyCurrentFrame(element, binding);
             }).Every(TickMs);
         }
     }

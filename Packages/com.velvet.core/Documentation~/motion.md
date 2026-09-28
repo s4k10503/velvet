@@ -360,9 +360,12 @@ name leaves the one before it standing. A bracketed time overrides the loop: `an
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
 filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. A static utility writing that
-slot is shadowed, and so is a `Spring` or `Bezier` Motion channel or a `transition-filter` tween
-driving it — the mode's frame is written over each of their writes. Detaching restores the slot and
-the reconciler re-asserts whatever class was under it.
+slot is shadowed, and so are a `transition-filter` tween and a `Spring` or `Bezier` Motion `rotate`
+channel driving it — the mode's frame is written over each of their writes. A `Spring` or `Bezier`
+Motion `opacity` channel is the exception: it shows over `animate-pulse` for as long as its play drives
+it, and the pulse takes the slot back when the play lets go, as Framer Motion runs opacity on the
+browser's own animation engine, whose animations outrank a CSS animation. Detaching restores the slot
+and the reconciler re-asserts whatever class was under it.
 
 A native transition covering a mode's slot would animate each of the mode's writes, so every mode
 suspends one for the length of its run, the way Motion's own drivers do. The pan modes also set
@@ -395,10 +398,10 @@ A step is exactly one of:
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
   defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
-  `DelaySec` plus the time its spring takes to settle, simulated from `Stiffness` / `Damping` / `Mass`
-  across 100px (or opacity's whole 0→1), and at most 20 seconds. A label does not tell the sequence how
-  far anything moves, and Framer Motion's sequence times a spring whose distance it cannot read the same
-  way, over 100 and within 20 seconds.
+  `DelaySec` plus the duration Framer Motion's sequence gives the same spring: a travel of 100,
+  sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
+  at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
+  Framer takes when it cannot read the distance.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances

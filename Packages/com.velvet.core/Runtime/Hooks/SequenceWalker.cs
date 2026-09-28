@@ -226,7 +226,7 @@ namespace Velvet
             if (transition.Type == TransitionType.Spring)
             {
                 return Math.Max(0f, transition.DelaySec)
-                    + MotionSpringDriver.SettleSec(transition.Stiffness, transition.Damping, transition.Mass);
+                    + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
@@ -254,6 +254,42 @@ namespace Velvet
                 }
             }
             return hold;
+        }
+
+        // Framer Motion's sequence gives a spring segment the duration its generator reports done at: sampled
+        // every 50ms, travelling 0→100 when the keyframes carry no distance of their own — as a label carries
+        // none — resting within 0.5 of the target at a speed of at most 2 per second, and at most 20 seconds.
+        private const double SpringTravel = 100.0;
+        private const double SpringRestDelta = 0.5;
+        private const double SpringRestSpeed = 2.0;
+        private const int SpringSampleMs = 50;
+        private const int MaxSpringDurationMs = 20000;
+
+        // Zero for parameters a play refuses to tick, since that play completes at once.
+        private static float SpringDurationSec(float stiffness, float damping, float mass)
+        {
+            if (!SpringIntegrator.AreValidParameters(stiffness, damping, mass))
+            {
+                return 0f;
+            }
+            // MUTANT_SURVIVES(equivalent): a sample at the ceiling that rests returns the ceiling, as one that does
+            // not rest falls through to it, so `<=` changes nothing.
+            for (var ms = 0; ms < MaxSpringDurationMs; ms += SpringSampleMs)
+            {
+                if (SpringRestsAt(ms / 1000.0, stiffness, damping, mass))
+                {
+                    return ms / 1000f;
+                }
+            }
+            return MaxSpringDurationMs / 1000f;
+        }
+
+        private static bool SpringRestsAt(double t, float stiffness, float damping, float mass)
+        {
+            var (displacement, velocity) = SpringIntegrator.Solve(SpringTravel, 0.0, t, (stiffness, damping, mass));
+            // MUTANT_SURVIVES(equivalent): `<` differs only on a sample landing exactly on 0.5 or on 2, and no
+            // sample of the springs the sequence cases time lands on either.
+            return Math.Abs(displacement) <= SpringRestDelta && Math.Abs(velocity) <= SpringRestSpeed;
         }
     }
 }

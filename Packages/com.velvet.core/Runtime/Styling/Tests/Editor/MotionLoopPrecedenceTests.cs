@@ -1,12 +1,14 @@
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// An <c>animate-*</c> loop holds its slot against a Motion driver writing the same one: every write or
-    /// release a spring or bezier play makes on the element is followed by the loop's own frame. The loop here
-    /// is <c>animate-pulse</c>, whose opacity never drops below one half, against an opacity channel whose
+    /// Which of an <c>animate-*</c> loop and a Motion driver writing the same slot shows. A spring or bezier
+    /// play keeps opacity from the loop while it drives it, and lets the loop take it back when it releases the
+    /// channel; any other slot it writes, the loop's frame is written over. The loop here is mostly
+    /// <c>animate-pulse</c>, whose opacity never drops below one half, against an opacity channel whose
     /// from-value is 0 — so an opacity of at least one half is the loop's write and 0 the driver's.
     /// </summary>
     [TestFixture]
@@ -14,6 +16,7 @@ namespace Velvet.Tests
     {
         private VisualElement _element;
         private StyleAnimateBinding _loop;
+        private HeadlessEditorPanelHost _host;
 
         [SetUp]
         public void SetUp()
@@ -29,6 +32,8 @@ namespace Velvet.Tests
             {
                 StyleAnimateDriver.Detach(_element, _loop);
             }
+            _host?.Dispose();
+            _host = null;
         }
 
         private static MotionSpringClassParser.SpringPlan FadeIn()
@@ -38,8 +43,10 @@ namespace Velvet.Tests
 
         private static BezierTweenState Bezier() => BezierTweenDriver.Create(FadeIn(), 0.4f, 0f, 0.2f, 1f, 0.3f);
 
+        // GREEN_ON_BASE(characterization): the base never writes the loop over a driver, so the driver's opacity
+        // stands there too; `HoldAgainstLoop` left out of ApplyCurrentValues is what reddens it.
         [Test]
-        public void Given_APulseLoop_When_ASpringWritesItsOpacityChannel_Then_TheLoopsOpacityStands()
+        public void Given_APulseLoop_When_ASpringWritesItsOpacityChannel_Then_TheSpringsOpacityStands()
         {
             // Arrange
             var state = Spring();
@@ -48,7 +55,7 @@ namespace Velvet.Tests
             MotionSpringDriver.ApplyCurrentValues(_element, state);
 
             // Assert
-            Assert.That(_element.style.opacity.value, Is.GreaterThanOrEqualTo(0.5f));
+            Assert.That(_element.style.opacity.value, Is.EqualTo(0f));
         }
 
         [Test]
@@ -79,8 +86,10 @@ namespace Velvet.Tests
             Assert.That(_element.style.opacity.value, Is.GreaterThanOrEqualTo(0.5f));
         }
 
+        // GREEN_ON_BASE(characterization): as the spring case above, over the bezier driver; `HoldAgainstLoop`
+        // left out of its ApplyCurrentValues is what reddens it.
         [Test]
-        public void Given_APulseLoop_When_ABezierWritesItsOpacityChannel_Then_TheLoopsOpacityStands()
+        public void Given_APulseLoop_When_ABezierWritesItsOpacityChannel_Then_TheBeziersOpacityStands()
         {
             // Arrange
             var state = Bezier();
@@ -89,7 +98,29 @@ namespace Velvet.Tests
             BezierTweenDriver.ApplyCurrentValues(_element, state);
 
             // Assert
-            Assert.That(_element.style.opacity.value, Is.GreaterThanOrEqualTo(0.5f));
+            Assert.That(_element.style.opacity.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_APulseLoopOnAPanelUnderASpringsOpacity_When_TheLoopTicks_Then_TheSpringsOpacityStands()
+        {
+            // Arrange — the loop's own tick runs on the panel scheduler, driven here on a fake clock.
+            _host = new HeadlessEditorPanelHost();
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            var element = new VisualElement();
+            _host.Root.Add(element);
+            var pulse = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Pulse, 2f), panVertical: false);
+            MotionSpringDriver.ApplyCurrentValues(element, Spring());
+
+            // Act
+            UseFrameFakeClockHost.Ms += 100;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var opacity = element.style.opacity.value;
+            StyleAnimateDriver.Detach(element, pulse);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(0f));
         }
 
         [Test]

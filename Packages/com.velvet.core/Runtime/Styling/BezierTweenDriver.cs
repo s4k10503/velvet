@@ -170,6 +170,7 @@ namespace Velvet
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state, CurrentEased(state));
         }
 
@@ -222,6 +223,7 @@ namespace Velvet
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
             StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
         }
@@ -256,6 +258,7 @@ namespace Velvet
             state.Colors?.RemoveAll(c => MotionSpringDriver.ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element);
         }
 
