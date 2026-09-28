@@ -16,8 +16,8 @@ that head — what a cancelled run followed by a push leaves behind — and read
 running" is how a pull request sat unnoticed for 7h45m.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
-whose required workflows last failed on push, a head behind the base's newest release commit, and a
-head on another repository; `merge_without_branch_deletion.py` for the flag;
+whose required workflows last failed on push, a head behind the base's newest release commit, a
+head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
 `merge_branch_held_by_worktree.py` for a branch git will refuse to delete;
 `merge_onto_unpublished_release.py` for a base holding a release nobody dispatched.
 `scripts/pr/settle.py` reports these together with one more it holds alone — a draft head — and that
