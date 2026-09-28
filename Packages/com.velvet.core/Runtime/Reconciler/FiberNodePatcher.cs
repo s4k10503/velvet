@@ -609,8 +609,7 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew);
             }
-            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
-                new MotionAppliedClassSet(appliedNew, newVariantClasses));
+            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses, appliedNew);
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion never renders skew (the animation node never attaches a sheared
@@ -645,17 +644,16 @@ namespace Velvet
         // pose leaves unnamed at the play's target (MotionZeroDurationLandingTests); LandNamedProperties takes
         // off what the pose names.
         private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
-            string[] oldVariantClasses, MotionAppliedClassSet next)
+            string[] oldVariantClasses, string[] appliedNew)
         {
             if (playedTransition != null && StyleAnimationScheduler.MovesClasses(playedTransition)
-                || SequenceEqual(oldVariantClasses, next.VariantClasses)
                 || _ctx.StyleAnimationScheduler.IsDriving(element))
             {
                 return;
             }
             foreach (var cls in oldVariantClasses)
             {
-                if (IsInlineResolved(cls) && Array.IndexOf(next.Merged, cls) < 0)
+                if (IsInlineResolved(cls) && Array.IndexOf(appliedNew, cls) < 0)
                 {
                     element.RemoveFromClassList(cls);
                 }

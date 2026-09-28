@@ -1018,7 +1018,7 @@ namespace Velvet
             {
                 foreach (var cls in removed ?? Array.Empty<string>())
                 {
-                    if (Array.IndexOf(appliedClasses, cls) >= 0 && !resting.Contains(cls))
+                    if (Array.IndexOf(appliedClasses, cls) >= 0)
                     {
                         resting.Add(cls);
                     }

@@ -499,5 +499,22 @@ namespace Velvet.Tests
             // Assert
             Assert.That(box.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
+
+        // GREEN_ON_BASE(characterization): the base took no token off the class list at a label change.
+        // So one the landing pose repeats from the pose before it stays there.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsTranslateFollows_Then_TheTranslateTokenStaysOnTheClassList()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "translate-x-[0px] opacity-0",
+                "translate-x-[40px] opacity-100", "translate-x-[40px] opacity-50"), Opacity);
+            using var __ = mounted;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(box.ClassListContains("translate-x-[40px]"), Is.True);
+        }
     }
 }
