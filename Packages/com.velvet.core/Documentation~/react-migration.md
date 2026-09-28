@@ -223,7 +223,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | React (JSX) | Velvet | Notes |
 |-------------|--------|------|
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
-| `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
+| `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("Hello <b>world</b>")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
 | `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |

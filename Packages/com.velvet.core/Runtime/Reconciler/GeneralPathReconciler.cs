@@ -58,15 +58,17 @@ namespace Velvet
             // OldOwners names from the map build on.
             public List<ChildKey> OldKeys = null!;
             public Dictionary<ChildKey, (int index, VNode? node)> OldKeyMap = null!;
-            public HashSet<ChildKey> UsedKeys = null!;
-            public HashSet<ChildKey> ReplacedKeys = null!;
-            public HashSet<int> OrphanedOldIndices = null!;
+            // The old leaves a new leaf has taken, patched or replaced, by index: two leaves sharing a key can
+            // both be taken. FinalizeGeneralCommit narrows it to the ones patched.
+            public HashSet<int> UsedOldIndices = null!;
+            public HashSet<ChildKey> NewKeys = null!;
             public List<(VisualElement? element, bool isExisting)> NewElements = null!;
             // The fiber whose output emitted each OldNodes entry, index-aligned with it.
             public List<ComponentFiber?> OldOwners = null!;
-            // Key committed for each NewElements entry (parallel list), so a
-            // speculative subtree (Suspense primary) can be rolled back on suspend.
-            public List<ChildKey> CommittedKeys = null!;
+            // One entry per NewElements entry (parallel list), truncated with it when a speculative subtree
+            // (Suspense primary) rolls back: the old leaf it took (-1 for none), and whether it and every entry
+            // before it took the old leaf at their own index.
+            public List<CommittedLeaf> Committed = null!;
             // The component fibers whose expansion this walk completed, each with the NewElements index its
             // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
             // places the rows. RollbackCommitTo leaves the entries of a suspended primary's fibers in place, so
@@ -75,6 +77,8 @@ namespace Velvet
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
         }
+
+        internal readonly record struct CommittedLeaf(int OldIndex, bool Linear);
 
         // Runs effect cleanups for fibers present on the old side but absent on the new side
         // (orphans), before any DOM removal. Scoped to this reconcile call's expansion.
@@ -143,19 +147,16 @@ namespace Velvet
                 OldNodes = oldNodes,
                 OldKeys = pairing.OldKeys,
                 OldKeyMap = pool.RentOldKeyMap(),
-                UsedKeys = pool.RentKeySet(),
-                ReplacedKeys = pool.RentReplacedKeySet(),
-                OrphanedOldIndices = pool.RentOrphanedIndexSet(),
+                UsedOldIndices = pool.RentOrphanedIndexSet(),
+                NewKeys = pool.RentKeySet(),
                 NewElements = pool.RentElementList(),
                 OldOwners = pairing.OldOwners,
-                CommittedKeys = new List<ChildKey>(),
+                Committed = new List<CommittedLeaf>(),
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
             try
             {
-                // Build the old-key → (domIndex, node) map. Duplicate keys register the earlier index
-                // as orphaned (it will be removed) — mirrors ReconcileKeyedSync's Pass 2 BuildMap.
                 if (commit.OldKeys.Count == 0)
                 {
                     for (var i = 0; i < oldNodes.Length; i++) commit.OldKeys.Add(_keying.ReconcileKey(oldNodes[i], i));
@@ -163,8 +164,7 @@ namespace Velvet
                 for (var i = 0; i < oldNodes.Length; i++)
                 {
                     commit.OldKeys[i] = commit.OldKeys[i].OwnedBy(commit.OldOwners[i]);
-                    ReconcileKeying.RegisterOldKey(
-                        commit.OldKeys[i], oldNodes[i], i, commit.OldKeyMap, commit.OrphanedOldIndices);
+                    commit.OldKeyMap[commit.OldKeys[i]] = (i, oldNodes[i]);
                 }
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
@@ -215,9 +215,8 @@ namespace Velvet
             {
                 pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
-                pool.ReturnKeySet(commit.UsedKeys);
-                pool.ReturnReplacedKeySet(commit.ReplacedKeys);
-                pool.ReturnOrphanedIndexSet(commit.OrphanedOldIndices);
+                pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
+                pool.ReturnKeySet(commit.NewKeys);
                 pool.Return(commit.NewElements);
             }
         }
@@ -281,63 +280,70 @@ namespace Velvet
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
+            var oldNodes = commit.OldNodes!;
 
-            // Old leaf i is committed at parent.children[slotStart + i] (the previous render placed
-            // leaves in expansion order; patches stay in place and creates are orphans, so the bound
-            // holds throughout the walk). The childCount guard degrades a stale oldNodes/DOM mismatch
-            // (e.g. after a prior aborted/suspended commit) to a fresh create instead of throwing
-            // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
-            // can be re-entered mid-suspend so it guards defensively.
-            var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
-                && LogicalChildSlots.TryGetPhysical(parent, slotStart + old.index, out _);
-            if (oldMatched && commit.UsedKeys.Contains(key))
+            if (!commit.NewKeys.Add(key))
             {
-                // A second new-side sibling resolved the same old entry its first occurrence already
-                // claimed: re-matching would alias two rows onto one element or retroactively remove
-                // the patched one via ReplacedKeys. Mirror the old-side duplicate guard: warn and
-                // fall through to a fresh create so every declared row commits.
                 FiberLogger.LogWarning("GeneralPathReconciler",
                     $"Duplicate key detected among new siblings: {key}. " +
-                    "The repeated sibling mounts a fresh element; give each sibling a unique key.");
-                oldMatched = false;
+                    "Both siblings render; give each sibling a unique key.");
             }
-            if (oldMatched)
+            var ordinal = commit.NewElements.Count;
+            var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
+            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear);
+            if (oldIndex >= 0)
             {
-                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
-                if (ReconcileKeying.CanPatch(old.node, node))
+                var oldNode = oldNodes[oldIndex];
+                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
+                if (ReconcileKeying.CanPatch(oldNode, node))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
-                    _patcher.PatchNode(actual, old.node, node);
+                    _patcher.PatchNode(actual, oldNode, node);
                     if (_ctx.IsAborted) return;
                     // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
+                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
                     commit.NewElements.Add((existingDom, true));
-                    // Mark the old key consumed only AFTER the patch succeeds. PatchNode can re-enter a
-                    // child reconcile that throws FiberSuspendSignal (a suspending descendant) or set
-                    // IsAborted; recording UsedKeys before that would leave a stale entry that survives
-                    // RollbackCommitTo (which un-uses only keys recorded in CommittedKeys) and wrongly
-                    // suppress the old element's removal, leaving primary content beside the fallback.
-                    commit.UsedKeys.Add(key);
                 }
                 else
                 {
-                    var newElement = _factory.CreateElement(node);
-                    commit.NewElements.Add((newElement, false));
-                    // Type-swap (old element removed, new created). Recorded after CreateElement
-                    // succeeds, for the same suspend/abort safety as the patch branch above.
-                    commit.UsedKeys.Add(key);
-                    commit.ReplacedKeys.Add(key);
+                    commit.NewElements.Add((_factory.CreateElement(node), false));
                 }
+                commit.UsedOldIndices.Add(oldIndex);
             }
             else
             {
                 var newElement = _factory.CreateElement(node);
                 commit.NewElements.Add((newElement, false));
             }
-            // Parallel to the single NewElements entry added on every committed (non-throwing,
-            // non-aborted) path, so a speculative subtree (Suspense primary) can roll its commits
-            // back on suspend.
-            commit.CommittedKeys.Add(key);
+            commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal));
+        }
+
+        // React's reconcileChildrenArray: while each leaf so far took the old leaf at its own index, a leaf
+        // whose key that old leaf carries takes it too, so siblings repeating a key in an unchanged order keep
+        // their elements. After the first that does not, a key resolves to its last old leaf, and to none once
+        // that leaf is taken.
+        //
+        // Old leaf i is committed at parent.children[slotStart + i] (the previous render placed leaves in
+        // expansion order; patches stay in place and creates are orphans, so the bound holds throughout the
+        // walk). The slot check degrades a stale oldNodes/DOM mismatch (e.g. after a prior aborted/suspended
+        // commit) to a fresh create instead of throwing IndexOutOfRange — the time-sliced keyed path asserts
+        // this invariant; the general path can be re-entered mid-suspend so it guards defensively.
+        private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
+        {
+            int oldIndex;
+            if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key))
+            {
+                oldIndex = ordinal;
+            }
+            else if (commit.OldKeyMap.TryGetValue(key, out var old) && !commit.UsedOldIndices.Contains(old.index))
+            {
+                oldIndex = old.index;
+            }
+            else
+            {
+                return -1;
+            }
+            return LogicalChildSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context
@@ -404,11 +410,11 @@ namespace Velvet
                 }
                 _ctx.ComponentRegistry.DisposeFibersUnder(orphanContainers);
             }
+            // What the rolled-back leaves put in UsedOldIndices and NewKeys stays there unread: a Suspense
+            // primary's leaves are keyed under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of
+            // the walk carries, and the other rollbacks end the walk.
             for (var i = commit.NewElements.Count - 1; i >= preCount; i--)
             {
-                var key = commit.CommittedKeys[i];
-                commit.UsedKeys.Remove(key);
-                commit.ReplacedKeys.Remove(key);
                 var (element, isExisting) = commit.NewElements[i];
                 if (!isExisting)
                 {
@@ -416,7 +422,7 @@ namespace Velvet
                 }
             }
             commit.NewElements.RemoveRange(preCount, commit.NewElements.Count - preCount);
-            commit.CommittedKeys.RemoveRange(preCount, commit.CommittedKeys.Count - preCount);
+            commit.Committed.RemoveRange(preCount, commit.Committed.Count - preCount);
         }
 
         // A created container orphan (e.g. V.Div) reconciled its declared children during CreateElement, so
@@ -505,8 +511,8 @@ namespace Velvet
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
-        // ReconcileKeyedSync with linearEnd == 0 (the live-context walk performs
-        // no linear prefix pass — all matching happened in CommitLeaf).
+        // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
+        // matched linearly are placed with the rest rather than ahead of them.
         private void FinalizeGeneralCommit(GeneralCommitState commit)
         {
             var parent = commit.Parent!;
@@ -514,20 +520,23 @@ namespace Velvet
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
+            // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
+            var patched = commit.UsedOldIndices;
+            patched.Clear();
+            for (var j = 0; j < newElements.Count; j++)
+            {
+                if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
+            }
             // Removal (reverse so not-yet-visited indices stay valid).
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
-                var key = commit.OldKeys[i];
-                if (commit.OrphanedOldIndices.Contains(i)
-                    || !commit.UsedKeys.Contains(key)
-                    || commit.ReplacedKeys.Contains(key))
+                if (!patched.Contains(i))
                 {
                     _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 }
             }
 
-            // LIS reorder over the post-removal DOM positions. linearEnd == 0 here (the live-context
-            // walk performs no linear prefix pass), so the region begins at slotStart.
+            // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
             {
                 SlotStart = slotStart,
