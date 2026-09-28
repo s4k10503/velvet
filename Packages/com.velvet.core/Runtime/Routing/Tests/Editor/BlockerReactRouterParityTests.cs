@@ -253,6 +253,34 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Proceeding));
         }
 
+        // GREEN_ON_BASE(characterization): the base returns the Blocker to Idle here as well.
+        // It did so as the released navigation unwound; the change leaves it Proceeding until the navigation
+        // that took over ends, which is the settle this pins.
+        [Test]
+        public void Given_ANavigationThatTookOverFromAReleasedOne_When_ItIsCancelledWithNoneLeftUnderWay_Then_TheBlockerReturnsToIdle()
+        {
+            // Arrange — as above, and the navigation taking over is one its caller can cancel.
+            var released = new VelvetTaskCompletionSource<object>();
+            var takingOver = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home", Route("home"),
+                Route("a", loader: (_, _) => released.Task),
+                Route("b", loader: (_, _) => takingOver.Task));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            router.NavigateSync("/a");
+            state.Proceed();
+            using var cancellation = new System.Threading.CancellationTokenSource();
+            router.NavigateAsync("/b", NavigationMode.Push, cancellation.Token).Forget();
+            released.TrySetResult("a-data");
+            cancellation.Cancel();
+
+            // Act — the cancelled navigation's loader answers, and the navigation finds it was cancelled.
+            takingOver.TrySetResult("b-data");
+
+            // Assert
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
+        }
+
         [Test]
         public void Given_AProceedKeptFromAForwardStepWhoseEntryIsGone_When_ItRunsDuringANewerBlock_Then_TheBlockerReturnsToIdle()
         {
