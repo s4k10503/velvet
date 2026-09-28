@@ -13,7 +13,7 @@ namespace Velvet
         {
             var router = p.Router;
             var enclosing = Hooks.UseContext(RouterContext.Router);
-            var (location, setLocation) = Hooks.UseState(router.CurrentLocation);
+            var (_, setLocation) = Hooks.UseState(router.CurrentLocation);
 
             Hooks.UseEffect(() =>
             {
@@ -35,14 +35,14 @@ namespace Velvet
                     "You cannot render a V.RouterProvider inside another V.RouterProvider.");
             }
 
-            // Loader data and errors are read from the router at render rather than held in state of their
-            // own: what re-renders this component is the location above, and
-            // Router.RepublishCurrentLocation is what gives a loader resolving after the commit a location
-            // identity to re-render on.
+            // The location, loader data and errors are read from the router at render, so the render in which
+            // the router prop changes publishes the new router's rather than the location last held from the
+            // old one. The state above only schedules re-renders, and Router.RepublishCurrentLocation is what
+            // gives a loader resolving after the commit a location identity to re-render on.
             return V.Provider(RouterContext.Router, router,
                 children: new VNode[]
                 {
-                    V.Provider(RouterContext.Location, location,
+                    V.Provider(RouterContext.Location, router.CurrentLocation,
                         children: new VNode[]
                         {
                             V.Provider(

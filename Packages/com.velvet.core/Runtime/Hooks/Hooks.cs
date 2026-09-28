@@ -640,7 +640,10 @@ namespace Velvet
         {
             _ = Resolve("UseNavigation");
             var router = UseRouterOrThrow("UseNavigation");
-            var (state, setState) = UseState(ReadNavigationState(router));
+            // The state only schedules the re-render: what is returned is read from the router at render, so the
+            // render in which the provider's router changes reads the new router rather than the old one's
+            // last state.
+            var (_, setState) = UseState(ReadNavigationState(router));
 
             UseEffect(() =>
             {
@@ -659,7 +662,7 @@ namespace Velvet
                 };
             }, new object[] { router });
 
-            return state;
+            return ReadNavigationState(router);
         }
 
         private static NavigationState ReadNavigationState(Router router)

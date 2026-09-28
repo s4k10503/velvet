@@ -19,6 +19,7 @@ namespace Velvet.Tests
     /// router throw, naming themselves.</item>
     /// <item><c>UseParams</c>, <c>UseOutletContext</c> and <c>V.Outlet</c> answer there instead, as React
     /// Router's do.</item>
+    /// <item>When a provider's router changes, the render of that change reads the new router.</item>
     /// <item>A <c>V.RouterProvider</c> beneath another throws, as React Router's <c>Router</c> does.</item>
     /// </list>
     /// </summary>
@@ -34,6 +35,8 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             Probe.Reset();
+            s_hostRouter = null;
+            s_setHostRouter = null;
         }
 
         [TearDown]
@@ -51,12 +54,14 @@ namespace Velvet.Tests
             public static Func<string, VelvetTask<NavigationResult>>? Navigate;
             public static SearchParamsSetter? SetSearchParams;
             public static NavigationState Navigation;
+            public static string? LocationPath;
 
             public static void Reset()
             {
                 Navigate = null;
                 SetSearchParams = null;
                 Navigation = default;
+                LocationPath = null;
             }
 
             public static ComponentNode For(string hook)
@@ -84,7 +89,7 @@ namespace Velvet.Tests
             [Component]
             private static VNode Location()
             {
-                _ = Hooks.UseLocation();
+                LocationPath = Hooks.UseLocation()?.Path;
                 return Rendered();
             }
 
@@ -285,6 +290,61 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((caught?.Message, _root.FindLabelByText("probe") != null), Is.EqualTo(((string?)null, true)));
+        }
+
+        #endregion
+
+        #region A provider whose router changes
+
+        private static Router? s_hostRouter;
+        private static StateUpdater<Router>? s_setHostRouter;
+
+        [Component]
+        private static VNode SwitchingHost()
+        {
+            var (router, setRouter) = Hooks.UseState(s_hostRouter!);
+            s_setHostRouter = setRouter;
+            return V.RouterProvider(router);
+        }
+
+        [Test]
+        public void Given_AProviderWhoseRouterChangesToOneThatIsLoading_When_TheChangeRenders_Then_UseNavigationReportsLoading()
+        {
+            // Arrange
+            var pending = new VelvetTaskCompletionSource<object>();
+            var probe = Probe.For("UseNavigation");
+            _provided = BuildRouter("/start", Route("start", element: probe));
+            _other = BuildRouter("/start", Route("start", element: probe), Route("next", loader: (_, _) => pending.Task));
+            _other.NavigateAsync("/next").Forget();
+            s_hostRouter = _provided;
+            using var mounted = V.Mount(_root, V.Component(SwitchingHost, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act — no passive effect runs between the change and the reading.
+            s_setHostRouter!.Invoke(_other);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Probe.Navigation.State, Is.EqualTo(NavigationLifecycle.Loading));
+        }
+
+        [Test]
+        public void Given_AProviderWhoseRouterChanges_When_TheChangeRenders_Then_UseLocationReadsTheNewRoutersLocation()
+        {
+            // Arrange
+            var probe = Probe.For("UseLocation");
+            _provided = BuildRouter("/start", Route("start", element: probe));
+            _other = BuildRouter("/start?from=other", Route("start", element: probe));
+            s_hostRouter = _provided;
+            using var mounted = V.Mount(_root, V.Component(SwitchingHost, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act — no passive effect runs between the change and the reading.
+            s_setHostRouter!.Invoke(_other);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Probe.LocationPath, Is.EqualTo("/start?from=other"));
         }
 
         #endregion
