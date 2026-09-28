@@ -1058,6 +1058,16 @@ namespace Velvet
         // cleanup + setup once, not twice.
         public Stack<(ComponentFiber Fiber, bool IsMount)> DeferredInlineLayoutEffectFibers { get; } = new();
 
+        // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
+        // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // NextCaughtErrorSequence at the catch.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
+        internal long NextCaughtErrorSequence;
+
+        // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
+        // it (FiberEffects.CommitStrandedLayoutWork).
+        internal int EffectCommitDepth;
+
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
         // asynchronously after paint — but they must still observe the tree-ordered 2-phase

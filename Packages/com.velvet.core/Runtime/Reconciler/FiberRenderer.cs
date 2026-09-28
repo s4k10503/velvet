@@ -67,8 +67,10 @@ namespace Velvet
             Action<Exception, ErrorInfo>? onCaughtError = null)
         {
             SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
+            var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
+            FiberEffects.CommitStrandedLayoutWork(context);
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
             // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
             // before the caller regains control, exactly as a drain-driven flush loops until quiet —
@@ -765,6 +767,8 @@ namespace Velvet
             // boundary to reuse; a faulted child's Use<T> throws a real exception that routes to the error
             // boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps the
             // fallback. Without a boundary (plain async) the child commits its own slot directly.
+            // Read before the render, which can dispose this fiber when an error boundary above it catches.
+            var context = fiber.Reconciler!.Context;
             try
             {
                 RenderAndReconcile(fiber, deferReconcile: underBoundary);
@@ -776,11 +780,11 @@ namespace Velvet
             if (!underBoundary && fiber.Reconciler?.HasPendingWork != true)
             {
                 // Plain async (no Suspense boundary): the resolved child commits its own slot in the
-                // call above, so its UseImperativeHandle factory must run here. Under a boundary the
-                // child's commit is driven by the boundary's re-render below (Mount path = Run is
-                // invoked there); skipping the call avoids committing a handle that the boundary's
-                // re-render is about to discard.
-                FiberHookCommit.RunImperativeHandleSlots(fiber);
+                // call above, so its effects, its UseImperativeHandle factory and the inline children that
+                // render mounted commit here. Under a boundary the child's commit is driven by the
+                // boundary's re-render below (Mount path = Run is invoked there); skipping the call avoids
+                // committing what the boundary's re-render is about to discard.
+                FiberEffects.CommitSubtreeEffects(fiber);
             }
             if (underBoundary)
             {
@@ -789,6 +793,7 @@ namespace Velvet
                 boundary!.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(boundary);
             }
+            FiberEffects.CommitStrandedLayoutWork(context);
         }
 
         #endregion

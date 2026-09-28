@@ -156,15 +156,16 @@ namespace Velvet
             if (result)
             {
                 fiber.Reconciler.SetAborted();
-                ReportCaughtError(fiber.Reconciler.Context, exception, info!);
+                var ctx = fiber.Reconciler.Context;
+                ctx.PendingCaughtErrorReports.Add((fiber, exception, info!, ctx.NextCaughtErrorSequence++));
+                FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;
             }
             return false;
         }
 
-        // A throw out of the handler would escape the catch block of whichever render, effect or callback
-        // containment called PropagateException.
-        private static void ReportCaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)
+        // A throw out of the handler would escape the commit delivering the report.
+        internal static void ReportCaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)
         {
             try
             {
