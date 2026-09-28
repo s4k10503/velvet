@@ -1150,6 +1150,255 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
+        // Set before a mount of GrowingOuterThenInnerRender: whether step 2 flips the inner layoutId Motion's
+        // element type where it stands, and the classes of a second one step 2 mounts beside it, if any.
+        private static bool s_flipInnerLate;
+        private static string s_lateClasses;
+
+        // Step 1 grows the outer layoutId Motion as GrowingOuterRender does; step 2 comes while it is still growing.
+        [Component]
+        private static VNode GrowingOuterThenInnerRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var size = step == 0 ? 300 : 600;
+            var children = new List<VNode>
+            {
+                V.Motion(key: "inner", name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                    elementType: s_flipInnerLate && step == 2 ? typeof(Box) : null,
+                    className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
+            };
+            if (s_lateClasses != null && step == 2)
+            {
+                children.Add(V.Motion(key: "late", name: "late", layoutId: "late-box", transition: s_layoutSpring,
+                    className: $"left-[20px] top-[40px] w-[50px] h-[50px] {s_lateClasses}"));
+            }
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px]", children: children.ToArray()),
+            });
+        }
+
+        // Mounts GrowingOuterThenInnerRender and plays step 1 and the four frames after it.
+        private MountedTree GrowOuterPartWay(bool flipInnerLate, string lateClasses)
+        {
+            s_flipInnerLate = flipInnerLate;
+            s_lateClasses = lateClasses;
+            var mounted = V.Mount(Root, V.Component(GrowingOuterThenInnerRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+            return mounted;
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionInsideOneStillGrowing_When_ItFlipsTypeWhereItStands_Then_ItIsDrawnOverItsOldBoxOnTheFrameItSettles()
+        {
+            // Arrange
+            using var mounted = GrowOuterPartWay(flipInnerLate: true, lateClasses: null);
+            var original = Root.Q<VisualElement>("inner");
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a new element, 20px inside the outer one's drawn corner at its own 50px, though the outer
+            // one is still drawn short of its layout.
+            var outerBox = DrawnBox(Root.Q<VisualElement>("outer"));
+            var replacement = Root.Q<VisualElement>("inner");
+            Assert.That((ReferenceEquals(original, replacement), outerBox.width < 550f,
+                    Near(DrawnBox(replacement), new Rect(outerBox.position + new Vector2(20f, 20f), new Vector2(50f, 50f)))),
+                Is.EqualTo((false, true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMountedInsideOneStillGrowing_When_TheStylesheetScalesIt_Then_ItIsDrawnAtThatScale()
+        {
+            // Arrange — the scale comes from the bundled stylesheet rather than an inline value.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = GrowOuterPartWay(flipInnerLate: false, lateClasses: "scale-150");
+
+            // Act — the frame it is first laid out on, and the next.
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+
+            // Assert — its own one and a half, drawn inside an outer one whose scale its own undoes.
+            var late = Root.Q<VisualElement>("late");
+            var outer = Root.Q<VisualElement>("outer");
+            Assert.That(late.style.scale.value.value.x * outer.style.scale.value.value.x, Is.EqualTo(1.5f).Within(0.01f));
+        }
+
+        private static readonly StyleTransitionConfig s_slowTween = new() { DurationSec = 1f, Easing = EasingMode.Linear };
+        private static readonly StyleTransitionConfig s_quickTween = new() { DurationSec = 0.1f, Easing = EasingMode.Linear };
+
+        // Stop 1 grows the outer layoutId Motion on a slow tween and moves the inner one 100px right inside it on
+        // a quick one; a bump patches the inner one where it stands.
+        [Component]
+        private static VNode GrowingOuterBumpedInnerRender()
+        {
+            var (stop, setStop) = Hooks.UseState(0);
+            var (bump, setBump) = Hooks.UseState(0);
+            s_setStop = setStop;
+            s_setBump = setBump;
+            var size = stop == 0 ? 300 : 600;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_slowTween,
+                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_quickTween,
+                            className: $"left-[{20 + stop * 100}px] top-[20px] w-[50px] h-[50px] bump-{bump}"),
+                    }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionPatchedMidTweenInsideOneStillGrowing_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereItsTweenDrewItThen()
+        {
+            // Arrange — patched where it stands two frames into its move, which then ends while the outer one grows on.
+            using var mounted = V.Mount(Root, V.Component(GrowingOuterBumpedInnerRender, key: "root"));
+            Tick();
+            s_setStop.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            Tick();
+            Tick();
+            s_setBump.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 9; i++) Tick();
+            var inner = Root.Q<VisualElement>("inner");
+
+            // Act — a layout change no render made.
+            inner.style.marginLeft = 50f;
+            Tick();
+
+            // Assert — from its layout when patched, 120px inside the outer one's drawn corner, rather than from
+            // where its move drew it then.
+            var outerBox = DrawnBox(Root.Q<VisualElement>("outer"));
+            Assert.That(outerBox.width < 550f ? DrawnBox(inner).x - outerBox.x : float.NaN, Is.EqualTo(120f).Within(1f));
+        }
+
+        // Step 1 moves the outer layoutId Motion 100px right and doubles it, and moves the card out of the tray
+        // beside it into it, in the same render.
+        [Component]
+        private static VNode CardIntoMovingOuterRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode[] Card() => new[]
+            {
+                V.Motion(key: "card", name: "card", layoutId: "card", transition: s_layoutSpring,
+                    className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
+            };
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "tray", className: "left-[400px] top-[0px] w-[100px] h-[100px]",
+                    children: step == 0 ? Card() : Array.Empty<VNode>()),
+                V.Motion(key: "outer", name: "outer", layoutId: "outer-box", transition: s_layoutSpring,
+                    className: $"left-[{step * 100}px] top-[0px] w-[{200 + step * 200}px] h-[{200 + step * 200}px]",
+                    children: step == 0 ? Array.Empty<VNode>() : Card()),
+            });
+        }
+
+        [Test]
+        public void Given_ACardMovingIntoALayoutIdMotionThatMovesAndGrows_When_BothSettle_Then_TheCardIsDrawnOverItsOldBox()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(CardIntoMovingOuterRender, key: "root"));
+            Tick();
+            var before = DrawnBox(Root.Q<VisualElement>("card"));
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert
+            Assert.That(Near(DrawnBox(Root.Q<VisualElement>("card")), before), Is.True);
+        }
+
+        // Stop 1 moves the inner layoutId Motion 100px right inside the outer one, which is patched where it stands
+        // in the same render.
+        [Component]
+        private static VNode BumpedOuterRender()
+        {
+            var (stop, setStop) = Hooks.UseState(0);
+            s_setStop = setStop;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[300px] h-[300px] bump-{stop}",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: $"left-[{20 + stop * 100}px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the wait a patch that moved nothing leaves past a move inside it.
+        // Settling an ancestor that moved before its descendant must not settle one that did not.
+        [Test]
+        public void Given_ALayoutIdMotionPatchedWhereItStandsAsTheOneInsideItMoves_When_ALaterLayoutChangeMovesIt_Then_ItTweens()
+        {
+            // Arrange — the inner one's move played out.
+            using var mounted = V.Mount(Root, V.Component(BumpedOuterRender, key: "root"));
+            Tick();
+            s_setStop.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            AdvancePast(3f);
+            var outer = Root.Q<VisualElement>("outer");
+
+            // Act — a layout change no render made.
+            outer.style.marginLeft = 50f;
+            Tick();
+
+            // Assert — pinned near where it stood, 50px back.
+            Assert.That(TranslateX(outer), Is.LessThan(-25f));
+        }
+
+        // Step 1 moves the box a pixel right and a pixel down, 500px right of the panel's corner and 400px below it.
+        [Component]
+        private static VNode FarPixelMoveRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                    className: $"left-[{500 + step}px] top-[{400 + step}px] w-[100px] h-[100px]"),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base rests a one-pixel layoutId spring within a tenth of a pixel.
+        // Scaling the rest threshold by the move's travel must take that travel from how far each edge moved.
+        [Test]
+        public void Given_ALayoutIdSpringMovingAPixelFarFromThePanelsCorner_When_AlmostASecondHasPassed_Then_ItHasEnded()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(FarPixelMoveRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            var start = TranslateX(element);
+
+            // Act — sixty frames.
+            for (var i = 0; i < 60; i++) Tick();
+
+            // Assert — it rests within a tenth of the one pixel it moves; had any edge's travel been taken as the
+            // sum of its two positions, the spring would rest within a ten-thousandth and still be running.
+            Assert.That((start, element.style.translate.keyword), Is.EqualTo((-1f, StyleKeyword.Null)));
+        }
+
         // Step 1 grows a spacer above a plain parent by 100px, pushing it down, and flips the layoutId Motion's
         // element type where it stands inside that parent.
         [Component]
@@ -1405,6 +1654,25 @@ namespace Velvet.Tests
             // Assert — the layout moved 200px right, so the slot holds its own 30px less 200.
             var element = Root.Q<VisualElement>("shared");
             Assert.That(Mathf.Abs(element.style.translate.value.x.value + 170f), Is.LessThan(1f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionTranslatedByAStylesheetClass_When_ItMoves_Then_TheTweenAddsToThatTranslate()
+        {
+            // Arrange — anim-slide-up-exit-to translates the box 20px up from the bundled stylesheet rather than inline.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_ownClasses = "anim-slide-up-exit-to";
+            using var mounted = V.Mount(Root, V.Component(OwnTranslateBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — its own 20px up, and the 200px back to where it stood.
+            var translate = Root.Q<VisualElement>("shared").style.translate.value;
+            Assert.That(new[] { translate.x.value, translate.y.value }, Is.EqualTo(new[] { -200f, -20f }).Within(1f));
         }
 
         private static string s_ownClasses;
@@ -2058,15 +2326,13 @@ namespace Velvet.Tests
 
         private static VisualElement s_otherRoot;
 
-        private static readonly StyleTransitionConfig s_linearTween = new() { DurationSec = 0.64f, Easing = EasingMode.Linear };
-
         // Step 1 moves two boxes 200px right: "here" on this panel, and "there" portalled onto s_otherRoot's.
         [Component]
         private static VNode TwoPanelBoxRender()
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            VNode Box(string id) => V.Motion(key: id, name: id, layoutId: id, transition: s_linearTween,
+            VNode Box(string id) => V.Motion(key: id, name: id, layoutId: id, transition: s_layoutSpring,
                 className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]");
             return V.Div(children: new VNode[] { Box("here"), V.Portal(s_otherRoot, new[] { Box("there") }, key: "portal") });
         }
@@ -2085,18 +2351,18 @@ namespace Velvet.Tests
             s_setStep.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Act
-            for (var i = 0; i < 8; i++)
+            // Act — each settles in the first round of both panels' frames and is stepped in the next two.
+            for (var i = 0; i < 3; i++)
             {
                 Tick();
                 other.FrameUpdateMs(16);
             }
 
-            // Assert — within a frame's travel of each other: stepped by both panels' frames, "there" would be
-            // twice as far on, and ended by this panel's, back at its box.
+            // Assert — each is still drawn well back of its box. Stepped by both panels' frames, each would have
+            // run twice as long; ended by either panel's frame, each would be back at its box.
             var here = TranslateX(Root.Q<VisualElement>("here"));
             var there = TranslateX(other.rootVisualElement.Q<VisualElement>("there"));
-            Assert.That(Mathf.Abs(here - there), Is.LessThan(20f));
+            Assert.That(new[] { here, there }, Is.All.LessThan(-140f));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

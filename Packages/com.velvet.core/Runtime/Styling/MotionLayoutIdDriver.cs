@@ -94,7 +94,7 @@ namespace Velvet
             for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent)
             {
                 if (ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)
-                    && IsFiniteRect(ancestor.layout) && !SameRect(ancestor.layout, pending.PatchedLayout))
+                    && IsFiniteRect(ancestor.layout) && ancestor.layout != pending.PatchedLayout)
                 {
                     (moved ??= new List<VisualElement>()).Add(ancestor);
                 }
@@ -470,8 +470,6 @@ namespace Velvet
         private static float EdgeTravel(Rect a, Rect b) => Mathf.Max(
             Mathf.Max(Mathf.Abs(a.xMin - b.xMin), Mathf.Abs(a.xMax - b.xMax)),
             Mathf.Max(Mathf.Abs(a.yMin - b.yMin), Mathf.Abs(a.yMax - b.yMax)));
-
-        private static bool SameRect(Rect a, Rect b) => IsFiniteRect(b) && EdgeTravel(a, b) <= PixelTolerance;
 
         // MUTANT_SURVIVES(equivalent): no float s puts |s - 1| at exactly 1e-5f. Near 1, s - 1 is exact and a
         // whole number of s's spacing, 2^-23 or 2^-24, and 1e-5f is a whole number of neither.

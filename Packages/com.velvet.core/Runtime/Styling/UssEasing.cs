@@ -41,6 +41,8 @@ namespace Velvet
         public static float Evaluate(EasingMode mode, float t)
         {
             var index = (int)mode;
+            // MUTANT_SURVIVES(equivalent, boundary): `index > 0` parts from `index >= 0` at index 0 alone.
+            // Both reach s_curves[0] there.
             var curve = index >= 0 && index < s_curves.Length ? s_curves[index] : s_curves[0];
             return curve(Mathf.Clamp01(t));
         }
