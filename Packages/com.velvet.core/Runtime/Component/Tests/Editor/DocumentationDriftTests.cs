@@ -490,10 +490,12 @@ namespace Velvet.Tests
         // one that hides: the entry suppresses nothing while the source spelling it is there, and becomes
         // load-bearing the day that source is deleted, with no review in between.
         //
-        // GREEN_ON_BASE(characterization): the list this reads is declared above, in a file the base run
-        // carries from the branch along with the case, so the base answers over the branch's own entries
-        // whatever it holds. What stands in for the base run is each dropped entry put back and the case
-        // run, measured: ContinuousIntegrationBuild names the first arm, SIGTERM the second.
+        // GREEN_ON_BASE(characterization): the list this reads is carried onto the base from the branch
+        // with the case, so the base answers over the branch's own entries, and dropping one cannot turn it
+        // red. What stands in for the base run is a dropped entry put back and the case run, measured for
+        // two: ContinuousIntegrationBuild names the first arm, SIGTERM the second. RoslynAdditionalFileImporter,
+        // dropped with the README sentence that wrote it, is written in no scanned span now, so put back it
+        // falls to the first arm; that one is read off the spans, not run.
         [Test]
         public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheSpansAndTheSources_Then_EveryEntrySuppressesAReport()
         {
