@@ -12,11 +12,13 @@ namespace Velvet.Tests.Performance
         private const int WarmupCount = 5;
         private const int MeasurementCount = 20;
 
+        // GREEN_ON_BASE(characterization): this benchmark asserts nothing, so the base runs it green.
+        // This change only moves its probe warm-up onto three windows.
         [Test, Performance]
         public void NavigateAsync_LoaderAndBlocker()
         {
             Action instrumentCanary = static () => GC.KeepAlive(new byte[16]);
-            GCAllocationProbe.SampleBlocksDuring(instrumentCanary);
+            GCAllocationProbe.MedianBlocksDuring(instrumentCanary);
 
             for (var i = 0; i < 64; i++)
             {

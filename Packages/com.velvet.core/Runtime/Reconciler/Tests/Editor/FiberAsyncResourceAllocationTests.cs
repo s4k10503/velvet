@@ -19,6 +19,8 @@ namespace Velvet.Tests
             resource.Start(SyncFactory);
         }
 
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // This change reads it over three windows.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
@@ -27,12 +29,14 @@ namespace Velvet.Tests
             canary();
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(canary);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmSyncFactory_When_StartingResource_Then_StartAllocatesNoHeapBlocks()
         {
@@ -42,10 +46,12 @@ namespace Velvet.Tests
                 StartWarmResource();
             }
 
-            var resource = new FiberAsyncResource<int>(ResourceKey);
+            FiberAsyncResource<int> resource = null;
 
-            // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(() => resource.Start(SyncFactory));
+            // Act — a started resource returns from Start at once, so each window starts a fresh one.
+            var blocks = GCAllocationProbe.MedianBlocksDuring(
+                () => resource = new FiberAsyncResource<int>(ResourceKey),
+                () => resource.Start(SyncFactory));
 
             // Assert — a synchronously completed factory must not charge heap blocks on Start after warmup.
             Assert.That(blocks, Is.EqualTo(0));

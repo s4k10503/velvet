@@ -32,6 +32,8 @@ namespace Velvet.Tests
             SharedRunner.EmptyRound();
         }
 
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // This change reads it over three windows.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
@@ -40,12 +42,14 @@ namespace Velvet.Tests
             canary();
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(canary);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmSyncCompletedLoader_When_BothModesRun_Then_AllocationMatchesPinnedExpectation()
         {
@@ -57,14 +61,16 @@ namespace Velvet.Tests
             }
 
             // Act
-            var awaitBlocks = GCAllocationProbe.SampleBlocksDuring(RunAwaitLoader);
-            var suspendBlocks = GCAllocationProbe.SampleBlocksDuring(RunSuspendLoader);
+            var awaitBlocks = GCAllocationProbe.MedianBlocksDuring(RunAwaitLoader);
+            var suspendBlocks = GCAllocationProbe.MedianBlocksDuring(RunSuspendLoader);
 
             // Assert — both are pinned rather than ordered, and an assertion with a slack constant would
             // move with whichever path grew.
             Assert.That((awaitBlocks, suspendBlocks), Is.EqualTo((18, 19)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_AWarmRunner_When_ARoundRunningNoLoadersIsOpened_Then_AllocationMatchesPinnedExpectation()
         {
@@ -75,7 +81,7 @@ namespace Velvet.Tests
             }
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(OpenEmptyRound);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(OpenEmptyRound);
 
             // Assert
             Assert.That(blocks, Is.EqualTo(3));
