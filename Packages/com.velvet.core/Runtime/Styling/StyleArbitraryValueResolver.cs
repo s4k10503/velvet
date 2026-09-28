@@ -25,13 +25,14 @@ namespace Velvet
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
         // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*, z-*)
         // do NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn,
-        // resolved to inline that already wins, or (z-*) a physical relocation — so the bang never has a
-        // cascade effect anywhere in this family; use the plain form (adding it would be a no-op elevation
-        // by definition). font-*, leading-*, and z-* still route their own classification gate through this
+        // resolved to inline that already wins, or (z-*) a physical relocation — so outside z-* the bang never
+        // has a cascade effect in this family; use the plain form (adding it would be a no-op elevation by
+        // definition). font-*, leading-*, and z-* still route their own classification gate through this
         // method (StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass.IsArbitraryLeadingClass /
         // StyleZIndexClass.TryParse), so a bang'd token still classifies as the family instead of silently
-        // falling through; gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not recognize the
-        // bang at all.
+        // falling through, and z-*'s bang then arbitrates among the element's own z-* tokens
+        // (StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not
+        // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
             important = false;
