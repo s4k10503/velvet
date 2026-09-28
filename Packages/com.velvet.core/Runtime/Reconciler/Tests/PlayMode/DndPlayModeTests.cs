@@ -326,6 +326,10 @@ namespace Velvet.Tests
             Assert.That((s_ended.Count, clicks), Is.EqualTo((1, 0)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already activates an explicit DragActivation.None on
+        // the press and swallows the release at the source; here the Clickable sits on the source itself,
+        // so the press path this branch adds is empty. Pins the unconstrained draggable Button the new
+        // default produces.
         [UnityTest]
         public IEnumerator Given_AnUnconstrainedDraggableClickableButton_When_APressReleasesInPlace_Then_TheDragRunsAndTheClickDoesNotFire()
         {
