@@ -1018,7 +1018,7 @@ namespace Velvet
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
 
-        private static bool ValidateDuration(float durationSec, Action? onComplete)
+        internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
             {
@@ -1044,7 +1044,7 @@ namespace Velvet
         // would never fire. Mass gets its own numeric safety clamp inside SpringIntegrator.Step (a non-positive
         // mass would otherwise divide by zero or flip the restoring force's sign), but that clamp has no way to
         // warn the caller, so it is still validated here for the same failure modes.
-        private static bool ValidateSpringParameters(float stiffness, float damping, float mass)
+        internal static bool ValidateSpringParameters(float stiffness, float damping, float mass)
         {
             if (float.IsFinite(stiffness) && stiffness > 0f
                 && float.IsFinite(damping) && damping > 0f
@@ -1068,7 +1068,7 @@ namespace Velvet
         // ghost — would never fire. The control points' x range ([0,1], a monotone timing function) is validated
         // downstream in CubicBezierEvaluator instead: it degrades an out-of-range value to the default curve
         // rather than the forever-tick failure mode this method exists to catch, so it is not re-checked here.
-        private static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
+        internal static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
         {
             if (durationSec == 0f)
             {

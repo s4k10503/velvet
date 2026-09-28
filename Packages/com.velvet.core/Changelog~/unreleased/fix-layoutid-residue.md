@@ -1,3 +1,8 @@
+### Added
+
+- `StyleTransitionConfig.Layout`: the transition a `layoutId` move takes in place of the Motion's own,
+  Framer's `transition.layout`.
+
 ### Fixed
 
 - A `layoutId` tween composes with the element's own `scale-*` and `translate-*` instead of replacing
@@ -14,3 +19,6 @@
 
 - A `layoutId` handed to a new element no longer keeps the parent the old element stood in alive, which it
   did until the Motion patched again or left the tree even when that parent had been removed.
+
+- A `layoutId` tween whose width and height change by different factors scales each axis by its own
+  factor. It averaged the two into one scale, so it started off the old box on both axes.

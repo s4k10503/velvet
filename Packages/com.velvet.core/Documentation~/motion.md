@@ -333,10 +333,12 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
-  also changed variants. Its spring knobs come off the Motion's own `transition:` rather than an
-  active pose's — a rect delta is not a swap into a pose — and fall back to
-  `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
-  Motion declares no `Transition`.
+  also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
+  rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
+  (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
+  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing`, a bezier by its control points,
+  each after `DelaySec`, and a zero duration lands the move at once. A Motion with no `Transition`
+  moves on Framer's default layout transition, a 0.45 s tween eased by `cubic-bezier(0.4, 0, 0.1, 1)`.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
   the stretch as for any change of size. The scale holds the element's transform origin still (its

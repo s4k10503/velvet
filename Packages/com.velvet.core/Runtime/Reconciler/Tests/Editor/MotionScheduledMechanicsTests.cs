@@ -1484,6 +1484,113 @@ namespace Velvet.Tests
             Assert.That(Mathf.Abs(replacement.style.scale.value.value.x - Mathf.Sqrt(2.5f)), Is.LessThan(0.01f));
         }
 
+        private static StyleTransitionConfig s_moveTransition;
+
+        // Step 1 moves the box 200px right on s_moveTransition.
+        [Component]
+        private static VNode TimedMoveBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_moveTransition,
+                    className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]"),
+            });
+        }
+
+        // Mounts TimedMoveBoxRender on the given transition and plays step 1 up to the frame its layout settles on.
+        private VisualElement MoveOn(StyleTransitionConfig transition)
+        {
+            s_moveTransition = transition;
+            var mounted = V.Mount(Root, V.Component(TimedMoveBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            return Root.Q<VisualElement>("shared");
+        }
+
+        private static float TranslateX(VisualElement element) =>
+            element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
+
+        [Test]
+        public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
+        {
+            // Arrange / Act — the Motion's own transition has no duration; its Layout is a spring.
+            var element = MoveOn(new StyleTransitionConfig { Layout = s_layoutSpring });
+
+            // Assert
+            Assert.That(TranslateX(element), Is.LessThan(-50f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithAZeroDurationTransition_When_ItMoves_Then_ItLandsAtOnce()
+        {
+            // Arrange / Act
+            var element = MoveOn(StyleTransitionConfig.None);
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithATweenTransition_When_ItsDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange — pinned at the old box on the frame the layout settles.
+            var element = MoveOn(new StyleTransitionConfig { DurationSec = 0.2f });
+            var start = TranslateX(element);
+
+            // Act — past 0.2s, far short of the time a spring on the config's default knobs needs to settle.
+            for (var i = 0; i < 20; i++) Tick();
+
+            // Assert
+            Assert.That((start < -150f, element.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithADelayedTween_When_LessThanTheDelayHasPassed_Then_ItHoldsTheOldBox()
+        {
+            // Arrange
+            var element = MoveOn(new StyleTransitionConfig { DurationSec = 0.2f, DelaySec = 0.3f });
+
+            // Act
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(-200f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithALinearBezierTransition_When_HalfItsDurationHasPassed_Then_ItIsHalfWay()
+        {
+            // Arrange
+            var element = MoveOn(new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.32f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            });
+
+            // Act — ten 16ms frames.
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — half of the 200px left, give or take a frame.
+            Assert.That(TranslateX(element), Is.EqualTo(-100f).Within(15f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithNoTransition_When_FramersDefaultDurationHasPassed_Then_TheTweenHasEnded()
+        {
+            // Arrange
+            var element = MoveOn(null);
+            var start = TranslateX(element);
+
+            // Act — past the 0.45s default tween.
+            for (var i = 0; i < 34; i++) Tick();
+
+            // Assert — pinned at first, done by now; a spring on StyleTransitionConfig's defaults is still moving.
+            Assert.That((start < -150f, element.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +
         // `transition` — the orchestration must key off the label it PROPAGATES, not off its own resolved
         // class, since a coordinator like this never gets a MotionAppliedClasses entry) with two inheriting
