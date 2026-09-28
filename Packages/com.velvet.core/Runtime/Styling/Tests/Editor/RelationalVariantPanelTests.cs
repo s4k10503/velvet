@@ -117,6 +117,9 @@ namespace Velvet.Tests
                 V.Label(name: "child", className: "peer-hover:bg-on")));
             var peer = _window.rootVisualElement.Q<Label>("peer");
             var child = _window.rootVisualElement.Q<Label>("child");
+            // A peer nothing subscribes to has no callback registry, and firing on it would throw before the
+            // assertion could say the payload never arrived.
+            peer.RegisterCallback<PointerOverEvent>(_ => { });
 
             // Act
             Fire<PointerOverEvent>(peer);
