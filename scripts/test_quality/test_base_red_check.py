@@ -4146,6 +4146,110 @@ class BranchReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual([case.name for case in cases], ["N.ProbeTests.Given_A_When_B_Then_C"])
 
+    def shared(self, member, first, second, using=""):
+        """A fixture whose two cases read `first` and `second`, with `member` declared beside them."""
+        return (using + "namespace N\n{\n    class ProbeTests\n    {\n" + member +
+                "        [Test]\n        public void Given_A_When_B_Then_C() => " + first + ";\n\n"
+                "        [Test]\n        public void Given_D_When_E_Then_F() => " + second + ";\n"
+                "    }\n}\n")
+
+    def promoted(self, before, after):
+        root = self.repository(before, after)
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+        return sorted(case.name.rsplit(".", 1)[-1] for case in cases)
+
+    def test_Given_ATableOneCaseReads_When_OnlyTheTableChanged_Then_OnlyThatCaseIsPromoted(self):
+        # Arrange -- the allowlist shape: an entry dropped from a set two of a fixture's cases read put
+        # every case of the file on trial, and each one that does not read it failed as deciding nothing.
+        table = '        static readonly string[] Rows = { "one", "two" };\n\n'
+
+        # Act
+        promoted = self.promoted(self.shared(table, "Assert.That(Rows, Is.Not.Empty)", "Assert.Pass()"),
+                                 self.shared(table.replace(', "two"', ""),
+                                             "Assert.That(Rows, Is.Not.Empty)", "Assert.Pass()"))
+
+        # Assert
+        self.assertEqual(promoted, ["Given_A_When_B_Then_C"])
+
+    def test_Given_ATableAHelperReads_When_OnlyTheTableChanged_Then_TheCaseCallingTheHelperIsPromoted(self):
+        # Arrange -- the drift fixture's backticked-identifier case reaches its allowlist through a
+        # helper, so a reading that stops at the case's own lines misses the case the change reddens.
+        member = ('        static readonly string[] Rows = { "one", "two" };\n\n'
+                  "        static int Count() => Rows.Length;\n\n")
+
+        # Act
+        promoted = self.promoted(self.shared(member, "Assert.Pass()", "Assert.That(Count(), Is.EqualTo(2))"),
+                                 self.shared(member.replace(', "two"', ""),
+                                             "Assert.Pass()", "Assert.That(Count(), Is.EqualTo(2))"))
+
+        # Assert
+        self.assertEqual(promoted, ["Given_D_When_E_Then_F"])
+
+    def test_Given_ATableACaseNamesInAString_When_OnlyTheTableChanged_Then_ThatCaseIsPromoted(self):
+        # Arrange -- CommitGuardParsingTests' shape, where the rows reach a case through the name its
+        # source attribute spells: a reading of code with the strings blanked finds no reader at all.
+        def fixture(rows):
+            return ("namespace N\n{\n    class ProbeTests\n    {\n"
+                    "        static readonly string[] Rows = { " + rows + " };\n\n"
+                    '        [TestCaseSource("Rows")]\n'
+                    "        public void Given_A_When_B_Then_C(string row) => Assert.Pass();\n\n"
+                    "        [Test]\n        public void Given_D_When_E_Then_F() => Assert.Pass();\n"
+                    "    }\n}\n")
+
+        # Act
+        promoted = self.promoted(fixture('"one", "two"'), fixture('"one"'))
+
+        # Assert
+        self.assertEqual(promoted, ["Given_A_When_B_Then_C"])
+
+    # GREEN_ON_BASE(characterization): the base promotes every case of a file whose shared line moved.
+    # This is the reach the narrowing has to keep where a SetUp reads what moved. Measured: taking the
+    # SetUp out of what every case reads reddens this case and no other in this class.
+    def test_Given_AFieldTheSetUpReads_When_OnlyTheFieldChanged_Then_EveryCaseIsPromoted(self):
+        # Arrange -- one case names the field and the other only runs the SetUp that does. A reading of
+        # the cases' own lines alone takes the first and leaves out the second, which the change reaches
+        # just as surely.
+        member = ("        static int Seed = 1;\n        int _count;\n\n"
+                  "        [SetUp]\n        public void SetUp()\n        {\n            _count = Seed;\n        }\n\n")
+
+        # Act
+        promoted = self.promoted(self.shared(member, "Assert.That(Seed, Is.EqualTo(1))", "Assert.Pass()"),
+                                 self.shared(member.replace("Seed = 1", "Seed = 2"),
+                                             "Assert.That(Seed, Is.EqualTo(1))", "Assert.Pass()"))
+
+        # Assert
+        self.assertEqual(promoted, ["Given_A_When_B_Then_C", "Given_D_When_E_Then_F"])
+
+    # GREEN_ON_BASE(characterization): the base promotes every case of a file whose shared line moved.
+    # This is the reach the narrowing has to keep for a using. Measured: reading a using's last word as a
+    # member reddens this case and no other in this class.
+    def test_Given_AUsingChanged_When_NoCaseChanged_Then_EveryCaseIsPromoted(self):
+        # Arrange -- a using reaches every case, and the word after it is no member: read as one, the
+        # case that happens to spell `System` would be promoted alone.
+        # Act
+        first = "Assert.That(System.Linq.Enumerable.Count(new[] { 1 }), Is.EqualTo(1))"
+        promoted = self.promoted(self.shared("", first, "Assert.Pass()", using="using System;\n"),
+                                 self.shared("", first, "Assert.Pass()", using="using System.Linq;\n"))
+
+        # Assert
+        self.assertEqual(promoted, ["Given_A_When_B_Then_C", "Given_D_When_E_Then_F"])
+
+    def test_Given_AModuleConstantOneTestReads_When_OnlyTheConstantChanged_Then_OnlyThatTestIsPromoted(self):
+        # Arrange -- the Python lane takes the same promotion, and its shared data sits at module level,
+        # shallower than any case.
+        def module(rows):
+            return ("import unittest\n\nROWS = " + rows + "\n\n\nclass ProbeTests(unittest.TestCase):\n"
+                    "    def test_Given_A_When_B_Then_C(self):\n        self.assertTrue(ROWS)\n\n"
+                    "    def test_Given_D_When_E_Then_F(self):\n        self.assertTrue(True)\n")
+        root, _ = two_commit_repo(self, {"scripts/test_probe.py": module("[1, 2]")},
+                                  {"scripts/test_probe.py": module("[1]")})
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "python")
+
+        # Assert
+        self.assertEqual([case.name for case in cases], ["ProbeTests.test_Given_A_When_B_Then_C"])
+
     def test_Given_ABranchThatChangedASetUp_When_ItIsRead_Then_ItsOtherCasesAreNotControls(self):
         # Arrange -- the untouched case is not the base's own text any more: what it shares with the
         # case beside it moved. Reading the tree by it converts the sharpest red-on-base evidence

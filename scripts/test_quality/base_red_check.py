@@ -2288,6 +2288,115 @@ def changed_test_files(project, by_file, lane):
             yield relative, lines, source.read_text()
 
 
+# What a line outside every case declares, read off the first line at or above it that sits no deeper
+# than a case does. C#: the identifier a field, property or method declaration names before its `=`,
+# `;`, `(`, `{` or `=>`. Python: a `def`, a `class` or an assignment's target.
+MEMBER_NAME = {
+    "csharp": re.compile(r"([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*(?:=>|=(?!=)|;|\(|\{)"),
+    "python": re.compile(r"^\s*(?:async\s+)?def\s+(\w+)|^\s*class\s+(\w+)|^\s*(\w+)\s*(?::[^=]*)?=(?!=)"),
+}
+# Continuations a walk upwards passes over: braces, attributes, decorators, closing brackets.
+NOT_A_DECLARATION = tuple("{}[@)],")
+# Lines whose reach is every case of the file however few name them: a using, a namespace, a type
+# header, an import. A declaration read off one of these is not one member a case can be traced to.
+REACHES_EVERY_CASE = {
+    "csharp": re.compile(r"^\s*(?:global\s+)?(?:using|namespace)\b|\b(?:class|struct|interface|record|enum)\s+\w"),
+    "python": re.compile(r"^\s*(?:import|from|class)\b"),
+}
+# Scaffolding every case runs without naming it.
+IMPLICIT_ATTRIBUTE = re.compile(r"\b(?:OneTime|Unity)?(?:SetUp|TearDown)\b")
+IMPLICIT_PYTHON = {"setUp", "tearDown", "setUpClass", "tearDownClass", "asyncSetUp", "asyncTearDown",
+                   "setUpModule", "tearDownModule"}
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+
+
+def member_name(kind, blanked, number, depth):
+    """The member the line `number` belongs to, or None where no declaration above it can be read."""
+    for index in range(number - 1, -1, -1):
+        line = blanked[index]
+        stripped = line.strip()
+        if not stripped or len(line) - len(line.lstrip()) > depth:
+            continue
+        if stripped.startswith(NOT_A_DECLARATION):
+            continue
+        if REACHES_EVERY_CASE[kind].search(line):
+            return None
+        found = MEMBER_NAME[kind].search(line)
+        return next((group for group in found.groups() if group), None) if found else None
+    return None
+
+
+def case_readers(relative, cases, lines, text):
+    """The names of the cases whose code reads what a change outside every case changed, or None.
+
+    A case reads a member where its own lines name it, or name a member that does, following that
+    to a fixed point, or where the member is scaffolding every case runs (a `[SetUp]`, a `setUp`)
+    that does. Strings count: `nameof` and `TestCaseSource("Rows")` reach a table that way. None
+    wherever this cannot say: a changed line whose declaration it cannot name (a `using`, a class
+    header), and a member no case is found to read, which reflection could still reach.
+    """
+    kind = kind_of(relative)
+    if kind not in MEMBER_NAME:
+        return None
+    blanked = outside_comments(relative, text)
+    in_case = set()
+    for case in cases:
+        in_case |= set(range(case.first_line, case.last_line + 1))
+    # The indentation a case opens at, from its first line that is not blank once comments are.
+    depth = min(len(line) - len(line.lstrip())
+                for case in cases
+                for line in [next((candidate for candidate in blanked[case.first_line - 1:case.last_line]
+                                   if candidate.strip()), "")])
+
+    changed = set()
+    for number in lines:
+        if number in in_case or number > len(blanked) or not blanked[number - 1].strip():
+            continue
+        name = member_name(kind, blanked, number, depth)
+        if name is None:
+            return None
+        changed.add(name)
+
+    members, implicit, current = {}, set(), None
+    for number, line in enumerate(blanked, 1):
+        if number in in_case:
+            current = None
+            continue
+        stripped = line.strip()
+        if stripped and len(line) - len(line.lstrip()) <= depth and not stripped.startswith(NOT_A_DECLARATION):
+            found = MEMBER_NAME[kind].search(line)
+            current = next((group for group in found.groups() if group), None) if found else None
+            if current is not None:
+                above = [blanked[index].strip() for index in range(number - 2, -1, -1)]
+                attributes = []
+                for earlier in above:
+                    if earlier.startswith("[") or earlier.startswith("@"):
+                        attributes.append(earlier)
+                    elif earlier:
+                        break
+                if (kind == "csharp" and any(IMPLICIT_ATTRIBUTE.search(a) for a in attributes)) or (
+                        kind == "python" and current in IMPLICIT_PYTHON):
+                    implicit.add(current)
+        if current is not None:
+            members.setdefault(current, set()).update(IDENTIFIER.findall(line))
+
+    found = set()
+    for case in cases:
+        reached = set(implicit)
+        for line in blanked[case.first_line - 1:case.last_line]:
+            reached.update(IDENTIFIER.findall(line))
+        grown = True
+        while grown:
+            grown = False
+            for name, read in members.items():
+                if name in reached and not read <= reached:
+                    reached |= read
+                    grown = True
+        if reached & changed:
+            found.add(case.name)
+    return found or None
+
+
 def in_scope(relative, cases, lines, before, text):
     """(the names of the cases the branch poses in one file, the ones its plan keeps out).
 
@@ -2306,9 +2415,16 @@ def in_scope(relative, cases, lines, before, text):
     # Only where nothing was selected. Widening it to every file with a shared line was tried
     # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
     # that instead. What is left here is the state where reporting it is all that happens.
-    if (cases and lines is not None and not wanted and outside(cases, lines)
+    #
+    # And only the cases that read what moved, where `case_readers` can say which. Promoting the
+    # file whole put all 28 cases of DocumentationDriftTests on trial for one entry dropped from its
+    # identifier allowlist, and the 27 green on the base failed the lane; two of the 28 read the
+    # allowlist. Where `case_readers` cannot say, the file is promoted whole as before.
+    loose = outside(cases, lines) if lines is not None else set()
+    if (cases and lines is not None and not wanted and loose
             and shared_material_differs(relative, before, text)):
-        wanted = {case.name for case in cases}
+        readers = case_readers(relative, cases, loose, text)
+        wanted = readers if readers is not None else {case.name for case in cases}
     return wanted, [case for case in standing if case.name not in wanted]
 
 
