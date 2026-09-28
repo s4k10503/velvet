@@ -21,7 +21,6 @@ import types
 import unittest
 from pathlib import Path
 from unittest import mock
-from urllib.parse import parse_qs, urlparse
 
 GREEN = "a" * 40
 MOVED = "b" * 40
@@ -242,7 +241,7 @@ def base_state(held, base, red=(RED,), releasing=(RELEASING,)):
 
 
 @contextlib.contextmanager
-def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), targeted=()):
+def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -266,15 +265,11 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), targeted=())
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
                 else sha in by_branch[branch].holds)),
-            ("targeted_as_base", lambda _project, branch: branch in targeted),
             ("project_state", lambda _project, base: base_state(
                 {state.branch for state in states.values() if state.held}, base, red,
                 releasing)),
         ):
-            # `create` for the one reading the merge base has not got, so a case carried there
-            # answers about the base's decision instead of stopping at the patch.
-            stack.enter_context(mock.patch.object(settle, name, answer,
-                                                  create=name == "targeted_as_base"))
+            stack.enter_context(mock.patch.object(settle, name, answer))
         yield stack
 
 
@@ -733,9 +728,9 @@ LONG_LIVED_REASON = ("its head {} is a long-lived branch: squashed, it drops out
                      "maintenance-line section says")
 
 
-def merge_reasons(branch, targeted=()):
+def merge_reasons(branch):
     """What `settle.py merge` would refuse a pull request for whose head is `branch`, green otherwise."""
-    with fabricated_readings({7: fabricate(7, branch=branch)}, targeted=targeted):
+    with fabricated_readings({7: fabricate(7, branch=branch)}):
         return settle.blocking_reasons(Path("."), 7).reasons
 
 
@@ -764,51 +759,20 @@ class LongLivedHeadTests(unittest.TestCase):
         self.assertEqual(decided, [LONG_LIVED_REASON.format("2.x")])
 
     def test_Given_TheMirrorBranchAsHead_When_TheMergeIsDecided_Then_ItIsRefused(self):
-        # Act — nothing is based on `upm`, so its name is all that holds it.
+        # Act
         decided = merge_reasons("upm")
 
         # Assert
         self.assertEqual(decided, [LONG_LIVED_REASON.format("upm")])
 
-    def test_Given_AHeadAnotherPullRequestIsBasedOn_When_TheMergeIsDecided_Then_ItIsRefused(self):
-        # Act
-        decided = merge_reasons("stack", targeted={"stack"})
-
-        # Assert
-        self.assertEqual(decided, [LONG_LIVED_REASON.format("stack")])
-
     # GREEN_ON_BASE(characterization): the base holds no long-lived rule, so this holds there too.
     # What it pins is that a line's name is matched whole: reading the pattern with `search` reddens it.
     def test_Given_ABranchNamedLikeALineButLonger_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
-        # Act — `fix/2.x` names a line without being one, and nothing is based on it.
+        # Act — `fix/2.x` names a line without being one.
         decided = merge_reasons("fix/2.x")
 
         # Assert
         self.assertEqual(decided, [])
-
-    def test_Given_ABranchOnlyClosedPullRequestsWereBasedOn_When_TargetingIsRead_Then_ItIsNotLongLived(self):
-        # Arrange — the API filters by the state the listing asks for, which this answers the same way.
-        based_on = [{"base": {"ref": "stack"}, "state": "closed"}]
-
-        def listing(path):
-            query = parse_qs(urlparse(path).query)
-            return [pull for pull in based_on if query["base"] == [pull["base"]["ref"]]
-                    and query["state"][0] in ("all", pull["state"])]
-
-        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
-                mock.patch.object(settle, "rest_json", listing):
-            # Act
-            targeted = settle.targeted_as_base(Path("."), "stack")
-
-        # Assert
-        self.assertFalse(targeted)
-
-    def test_Given_ABranchWithQuerySyntaxInItsName_When_ItsTargetingIsAsked_Then_ItStaysOneValue(self):
-        # Act
-        path = settle.long_lived.targeted_path("fix/a&b")
-
-        # Assert
-        self.assertEqual(path, "pulls?state=open&base=fix%2Fa%26b&per_page=1")
 
 
 class ReadyStateTests(unittest.TestCase):
@@ -1092,8 +1056,6 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
-    # GREEN_ON_BASE(characterization): the decision this case pins is the base's own.
-    # What the branch changed in it is a stub for the long-lived reading, which the base does not take.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -1107,11 +1069,9 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("checks", lambda *_: PASSING),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
-                ("targeted_as_base", lambda *_: False),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
-                stack.enter_context(mock.patch.object(settle, name, answer,
-                                                      create=name == "targeted_as_base"))
+                stack.enter_context(mock.patch.object(settle, name, answer))
 
             # Act
             decided = settle.blocking_reasons(Path("."), 1).reasons

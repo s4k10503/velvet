@@ -7,9 +7,7 @@ removes the line. `settle.py` and `refuse/merge_unchecked_against_base.py` both 
 """
 
 import re
-from urllib.parse import quote
 
-# Held by name, whatever targets them: `upm` is the published mirror, which no pull request targets.
 NAMED = frozenset({"main", "upm"})
 
 # The naming CONTRIBUTING.md's maintenance-line section owns, read the way
@@ -17,20 +15,8 @@ NAMED = frozenset({"main", "upm"})
 LINE = re.compile(r"[0-9]+\.x")
 
 
-def by_name(branch):
-    """Whether the name alone makes the branch long-lived, so no listing needs reading."""
+def is_long_lived(branch):
     return branch in NAMED or bool(LINE.fullmatch(branch))
-
-
-def targeted_path(branch):
-    """The listing, below `repos/<owner>/<name>/`, of an open pull request based on `branch`.
-
-    Open only: a branch some pull request was once based on would otherwise be refused for good,
-    and a maintenance line is held by its name whatever targets it.
-
-    One entry is enough to answer, so one is asked for.
-    """
-    return f"pulls?state=open&base={quote(branch, safe='')}&per_page=1"
 
 
 def reason(branch):

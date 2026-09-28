@@ -11,6 +11,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,9 @@ from unittest import mock
 
 TESTED = "a" * 40
 NEWER = "b" * 40
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
 
 def load_module():
@@ -32,9 +36,20 @@ def load_module():
 automerge = load_module()
 
 
-def completed_run(event="pull_request", conclusion="success", numbers=(7,), head=TESTED):
-    return {"event": event, "conclusion": conclusion, "head_sha": head,
-            "pull_requests": [{"number": number} for number in numbers]}
+def completed_run(event="pull_request", conclusion="success", numbers=(7,), head=TESTED,
+                  name="Test", branch="topic"):
+    return {"name": name, "event": event, "conclusion": conclusion, "head_sha": head,
+            "head_branch": branch, "pull_requests": [{"number": number} for number in numbers]}
+
+
+def base_push(head=NEWER, name="Test"):
+    """A push run on the default branch, which tested no pull request."""
+    return completed_run(event="push", numbers=(), head=head, name=name, branch="main")
+
+
+def completed(run):
+    """The workflow_run event GitHub hands the job, for a repository whose default branch is main."""
+    return {"workflow_run": run, "repository": {"default_branch": "main"}}
 
 
 def pull(number=7, head=TESTED, labels=("automerge",), state="open"):
@@ -83,33 +98,103 @@ class Invocation:
         self.merged = [number for number, _, _ in self.calls]
 
 
-class CompletedRunTests(unittest.TestCase):
-    def test_Given_APushRunOfTheBase_When_ItCompletes_Then_ItStartsNoMerge(self):
+class RunSelectionTests(unittest.TestCase):
+    def select(self, run):
+        return automerge.run_selection(run, "main")
+
+    def test_Given_APullRequestRunThatPassed_When_Selected_Then_ItAsksAboutThePullRequestsItTested(self):
+        # Act
+        selection = self.select(completed_run())
+
+        # Assert
+        self.assertEqual(selection, (automerge.TESTED_PULLS, None))
+
+    def test_Given_APullRequestRunThatFailed_When_Selected_Then_ItAsksAboutNothing(self):
+        # Act
+        selection = self.select(completed_run(conclusion="failure"))
+
+        # Assert
+        self.assertEqual(selection, (None, "the run concluded failure"))
+
+    def test_Given_APullRequestRunOfAWorkflowNotSubscribedTo_When_Selected_Then_ItAsksAboutNothing(self):
+        # Act
+        selection = self.select(completed_run(name="Docs"))
+
+        # Assert
+        self.assertEqual(selection, (None, "a pull_request run of Docs on topic clears no refusal"))
+
+    def test_Given_APushRunOfTheDefaultBranchThatPassed_When_Selected_Then_ItSweeps(self):
+        # Act
+        selection = self.select(base_push())
+
+        # Assert
+        self.assertEqual(selection, (automerge.SWEEP, None))
+
+    def test_Given_APushRunOfAnotherBranch_When_Selected_Then_ItAsksAboutNothing(self):
+        # Act
+        selection = self.select(completed_run(event="push", numbers=(), branch="2.x"))
+
+        # Assert
+        self.assertEqual(selection, (None, "a push run of Test on 2.x clears no refusal"))
+
+    def test_Given_AReleaseDispatchOfThePublishWorkflowThatPassed_When_Selected_Then_ItSweeps(self):
+        # Act
+        selection = self.select(completed_run(event="workflow_dispatch", numbers=(), name="UPM",
+                                              branch="main"))
+
+        # Assert
+        self.assertEqual(selection, (automerge.SWEEP, None))
+
+    def test_Given_APushRunOfThePublishWorkflow_When_Selected_Then_ItAsksAboutNothing(self):
+        # Act — a push run splits the mirror and tags no release.
+        selection = self.select(base_push(name="UPM"))
+
+        # Assert
+        self.assertEqual(selection, (None, "a push run of UPM on main clears no refusal"))
+
+
+class WorkflowNameTests(unittest.TestCase):
+    """The names automerge.py selects on against the ones automerge.yml subscribes to and tests."""
+
+    def automerge_yml(self):
+        return (WORKFLOWS / "automerge.yml").read_text(encoding="utf-8")
+
+    def subscribed(self):
+        listed = re.search(r"^\s*workflows:\s*\[(.*)\]\s*$", self.automerge_yml(), re.MULTILINE)
+        return sorted(name.strip() for name in listed.group(1).split(","))
+
+    def test_Given_TheSubscription_When_Read_Then_ItNamesTheWorkflowsSelectedOn(self):
+        # Act
+        subscribed = self.subscribed()
+
+        # Assert
+        self.assertEqual(subscribed,
+                         sorted(automerge.CHECK_WORKFLOWS | {automerge.PUBLISH_WORKFLOW}))
+
+    def test_Given_TheSubscription_When_Read_Then_EachNameIsOneAWorkflowDeclares(self):
         # Arrange
-        run = completed_run(event="push", numbers=())
+        declared = set()
+        for path in WORKFLOWS.glob("*.y*ml"):
+            declared.update(re.findall(r"^name:\s*(.+?)\s*$", path.read_text(encoding="utf-8"),
+                                       re.MULTILINE))
 
         # Act
-        reason = automerge.run_skip_reason(run)
+        undeclared = [name for name in self.subscribed() if name not in declared]
 
         # Assert
-        self.assertEqual(reason, "the run was started by push, not by a pull request")
+        self.assertEqual(undeclared, [])
 
-    def test_Given_APullRequestRunThatFailed_When_ItCompletes_Then_ItStartsNoMerge(self):
-        # Arrange
-        run = completed_run(conclusion="failure")
+    def test_Given_TheJobConditions_When_Read_Then_TheyNameTheWorkflowsSelectedOn(self):
+        # Arrange — the merge job and the sweep each list the check workflows, and the sweep names
+        # the publish workflow.
+        text = self.automerge_yml()
 
         # Act
-        reason = automerge.run_skip_reason(run)
+        named = ([sorted(json.loads(listed)) for listed in re.findall(r"fromJSON\('(\[.*?\])'\)", text)],
+                 re.findall(r"workflow_run\.name == '([^']+)'", text))
 
         # Assert
-        self.assertEqual(reason, "the run concluded failure")
-
-    def test_Given_APullRequestRunThatPassed_When_ItCompletes_Then_NothingAboutTheRunHoldsItBack(self):
-        # Act
-        reason = automerge.run_skip_reason(completed_run())
-
-        # Assert
-        self.assertIsNone(reason)
+        self.assertEqual(named, ([sorted(automerge.CHECK_WORKFLOWS)] * 2, [automerge.PUBLISH_WORKFLOW]))
 
 
 class PullRequestResolutionTests(unittest.TestCase):
@@ -135,7 +220,7 @@ class PullRequestResolutionTests(unittest.TestCase):
 
     def test_Given_APayloadNamingNoneAndNoHead_When_Resolved_Then_NoPullRequestIsAsked(self):
         # Arrange — a missing head must not match a pull request whose head also reads as missing.
-        run = {"event": "pull_request", "conclusion": "success", "pull_requests": []}
+        run = {"name": "Test", "event": "pull_request", "conclusion": "success", "pull_requests": []}
 
         # Act
         numbers = automerge.run_pull_requests(run, [{"number": 3, "head": {}}])
@@ -185,28 +270,28 @@ class PullRequestSkipTests(unittest.TestCase):
 class MergeInvocationTests(unittest.TestCase):
     def test_Given_NoToken_When_Run_Then_NothingIsReadOrMerged(self):
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run()}, token="")
+        ran = Invocation({7: pull()}, event=completed(completed_run()), token="")
 
         # Assert
         self.assertEqual((ran.code, ran.read, ran.merged), (0, [], []))
 
     def test_Given_ACompletedRunForALabelledPullRequest_When_Run_Then_SettleMergesItForReal(self):
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run()})
+        ran = Invocation({7: pull()}, event=completed(completed_run()))
 
         # Assert — its own base, and not a dry run.
         self.assertEqual(ran.calls, [(7, None, False)])
 
     def test_Given_ACompletedRunForAnUnlabelledPullRequest_When_Run_Then_SettleIsNotAsked(self):
         # Act
-        ran = Invocation({7: pull(labels=())}, event={"workflow_run": completed_run()})
+        ran = Invocation({7: pull(labels=())}, event=completed(completed_run()))
 
         # Assert
         self.assertEqual((ran.code, ran.merged), (0, []))
 
     def test_Given_AFailedRun_When_Run_Then_NoPullRequestIsRead(self):
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run(conclusion="failure")})
+        ran = Invocation({7: pull()}, event=completed(completed_run(conclusion="failure")))
 
         # Assert
         self.assertEqual((ran.code, ran.read), (0, []))
@@ -214,21 +299,21 @@ class MergeInvocationTests(unittest.TestCase):
     def test_Given_APayloadNamingNone_When_Run_Then_TheOpenPullRequestOnTheTestedHeadIsMerged(self):
         # Act
         ran = Invocation({5: pull(number=5, head=NEWER), 6: pull(number=6)},
-                         event={"workflow_run": completed_run(numbers=())})
+                         event=completed(completed_run(numbers=())))
 
         # Assert
         self.assertEqual(ran.merged, [6])
 
     def test_Given_SettleRefuses_When_Run_Then_TheRunStillSucceeds(self):
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run()}, merge_code=1)
+        ran = Invocation({7: pull()}, event=completed(completed_run()), merge_code=1)
 
         # Assert — the refusal reached settle and is not the job failing.
         self.assertEqual((ran.merged, ran.code), ([7], 0))
 
     def test_Given_AReadingThatFails_When_Run_Then_TheRunFails(self):
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run()}, reading_fails=True)
+        ran = Invocation({7: pull()}, event=completed(completed_run()), reading_fails=True)
 
         # Assert
         self.assertEqual(ran.code, 1)
@@ -238,7 +323,7 @@ class MergeInvocationTests(unittest.TestCase):
         argv = ["--number", "", "--after-run", ""]
 
         # Act
-        ran = Invocation({7: pull()}, event={"workflow_run": completed_run()}, argv=argv)
+        ran = Invocation({7: pull()}, event=completed(completed_run()), argv=argv)
 
         # Assert
         self.assertEqual(ran.merged, [7])
@@ -249,6 +334,41 @@ class MergeInvocationTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(ran.merged, [7])
+
+
+class SweepTests(unittest.TestCase):
+    def test_Given_ABasePushThatPassed_When_Run_Then_EachLabelledOpenPullRequestIsReadAndMerged(self):
+        # Arrange — the pull requests' heads are the run's own, so no head comparison can decline one.
+        pulls = {3: pull(number=3, head=NEWER), 4: pull(number=4, head=NEWER, labels=()),
+                 5: pull(number=5, head=NEWER)}
+
+        # Act
+        ran = Invocation(pulls, event=completed(base_push()))
+
+        # Assert — the unlabelled one is not even read, which is the listing's filter rather than
+        # settle_one's.
+        self.assertEqual((ran.merged, ran.read[1:]),
+                         ([3, 5], ["repos/owner/name/pulls/3", "repos/owner/name/pulls/5"]))
+
+    def test_Given_ABasePush_When_Run_Then_APullRequestIsNotHeldToTheBasesHead(self):
+        # Arrange — a push run's head is the default branch's commit, which no pull request's head is.
+        pulls = {3: pull(number=3, head=TESTED)}
+
+        # Act
+        ran = Invocation(pulls, event=completed(base_push(head=NEWER)))
+
+        # Assert
+        self.assertEqual(ran.merged, [3])
+
+    def test_Given_AReleaseDispatchThatPassed_When_Run_Then_TheLabelledPullRequestIsMerged(self):
+        # Arrange
+        run = completed_run(event="workflow_dispatch", numbers=(), name="UPM", branch="main")
+
+        # Act
+        ran = Invocation({3: pull(number=3)}, event=completed(run))
+
+        # Assert
+        self.assertEqual(ran.merged, [3])
 
 
 class AfterRunTests(unittest.TestCase):

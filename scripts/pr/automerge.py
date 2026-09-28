@@ -3,9 +3,8 @@
 
 `.github/workflows/automerge.yml` runs this from a checkout of the default branch, never of the
 pull request. Settle decides the merge; what this adds is which pull request to ask it about. A
-refusal is an ordinary outcome here — the next completed run, a fresh label or a manual dispatch
-asks again — so it exits 0, where a reading that failed or a hand-off run that never finished
-exits 1.
+refusal is an ordinary outcome here — CONTRIBUTING.md's "Merging a pull request" section says what
+asks again — so it exits 0, where a reading that failed or a hand-off run that never finished exits 1.
 
 Run: python3 scripts/pr/automerge.py                      (the workflow_run event GitHub hands a job)
      python3 scripts/pr/automerge.py --number <n> [--after-run <run id>]
@@ -39,15 +38,34 @@ def load_settle():
 settle = load_settle()
 
 
-def run_skip_reason(run):
-    """Why a completed workflow run starts no merge, or None."""
-    event = run.get("event")
-    if event != "pull_request":
-        return f"the run was started by {event or 'no named event'}, not by a pull request"
-    conclusion = run.get("conclusion")
+# The workflows automerge.yml subscribes to, by the `name:` each declares. test_automerge.py fails
+# when the subscription and these stop being the same names.
+CHECK_WORKFLOWS = frozenset({"Test", "Source generators"})
+PUBLISH_WORKFLOW = "UPM"
+
+# What a completed run asks about: the pull requests it tested, or the labelled ones.
+TESTED_PULLS = "tested"
+SWEEP = "sweep"
+
+
+def run_selection(run, default_branch):
+    """(what a completed run asks about, None), or (None, why it asks about nothing).
+
+    The sweeps are for the refusals about the base: a push run passing on the default branch is what
+    turns a red base green, and a release dispatch of UPM is what publishes a release the base had
+    closed.
+    """
+    name, event, conclusion = run.get("name"), run.get("event"), run.get("conclusion")
     if conclusion != "success":
-        return f"the run concluded {conclusion or 'without a conclusion'}"
-    return None
+        return None, f"the run concluded {conclusion or 'without a conclusion'}"
+    if name in CHECK_WORKFLOWS and event == "pull_request":
+        return TESTED_PULLS, None
+    if name in CHECK_WORKFLOWS and event == "push" and run.get("head_branch") == default_branch:
+        return SWEEP, None
+    if name == PUBLISH_WORKFLOW and event == "workflow_dispatch":
+        return SWEEP, None
+    return None, (f"a {event or 'no named event'} run of {name or 'an unnamed workflow'} on "
+                  f"{run.get('head_branch') or 'no branch'} clears no refusal")
 
 
 def run_pull_requests(run, open_pulls):
@@ -100,20 +118,31 @@ def settle_one(project, number, tested=None):
     if reason:
         print(f"PR#{number} left alone: {reason}")
     elif settle.merge(project, number, None, dry_run=False):
-        print(f"PR#{number} not merged: settle refused it, above. Nothing retries until another run "
-              f"completes, the label is added again, or the workflow is dispatched for it.")
+        print(f"PR#{number} not merged: settle refused it, above. CONTRIBUTING.md's \"Merging a pull "
+              f"request\" section says what asks again.")
+
+
+def list_open_pulls(project):
+    return settle.rest_json(f"repos/{settle.repository(project)}/pulls?state=open&per_page=100")
 
 
 def numbers_from_event(project, event):
-    """(numbers, the head the run tested), the numbers empty after saying why nothing merges."""
+    """(numbers, the head the run tested), the numbers empty after saying why nothing merges.
+
+    A sweep tested no pull request's head, so it names none to compare against.
+    """
     run = event.get("workflow_run") or {}
-    reason = run_skip_reason(run)
+    selection, reason = run_selection(run, (event.get("repository") or {}).get("default_branch"))
     if reason:
         print(f"Nothing to merge: {reason}.")
         return [], None
-    open_pulls = ([] if run.get("pull_requests") else
-                  settle.rest_json(f"repos/{settle.repository(project)}/pulls?state=open&per_page=100"))
-    numbers = run_pull_requests(run, open_pulls)
+    if selection == SWEEP:
+        numbers = sorted(pull["number"] for pull in list_open_pulls(project)
+                         if not pull_skip_reason(pull))
+        if not numbers:
+            print(f"Nothing to merge: no open pull request carries the {LABEL} label.")
+        return numbers, None
+    numbers = run_pull_requests(run, [] if run.get("pull_requests") else list_open_pulls(project))
     if not numbers:
         print(f"Nothing to merge: no open pull request has {(run.get('head_sha') or '')[:7]} as its head.")
     return numbers, run.get("head_sha")

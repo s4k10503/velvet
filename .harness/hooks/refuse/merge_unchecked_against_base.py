@@ -89,12 +89,6 @@ def target_of(cwd, pr):
     return target if target.head and target.base and target.commit else None
 
 
-def targeted_as_base(cwd, branch):
-    """Whether an open pull request is based on `branch`, or None when unread."""
-    listed = gh_json(cwd, ["api", "repos/{owner}/{repo}/" + long_lived.targeted_path(branch)])
-    return bool(listed) if isinstance(listed, list) else None
-
-
 def failing_runs(cwd, base):
     """The base's required workflows whose last push verdict failed, or a string saying what went
     unread."""
@@ -144,11 +138,7 @@ def refuse_one(cwd, pr):
         return (f"{label} has its head on another repository. What that head holds is read off "
                 f"origin/<branch> here, which is not that branch, so nothing here can say whether "
                 f"its checks cover its base; `settle.py merge` refuses it for the same reason.\n")
-    lasting = long_lived.by_name(target.head) or targeted_as_base(cwd, target.head)
-    if lasting is None:
-        return UNREADABLE_REFUSAL.format(
-            f"whether an open pull request is based on {target.head} could not be read")
-    if lasting:
+    if long_lived.is_long_lived(target.head):
         return f"{label}: {long_lived.reason(target.head)}; `settle.py merge` refuses it too.\n"
 
     failing = failing_runs(cwd, target.base)

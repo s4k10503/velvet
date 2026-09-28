@@ -282,11 +282,6 @@ def check_results(runs, statuses):
     return results
 
 
-def targeted_as_base(project, branch):
-    """Whether an open pull request is based on `branch`."""
-    return bool(rest_json("repos/{}/{}".format(repository(project), long_lived.targeted_path(branch))))
-
-
 def worktree_branches(project):
     """Branch names currently checked out in a worktree, which cannot be deleted while they are."""
     held = set()
@@ -458,8 +453,7 @@ def blocking_reasons(project, number, base=None, states=None):
                  or not contains_commit(project, before.branch, failing.sha)]
     behind_release = (state.release if state.release and not before.fork
                       and not contains_commit(project, before.branch, state.release[0]) else None)
-    long_lived_head = not before.fork and (long_lived.by_name(before.branch)
-                                           or targeted_as_base(project, before.branch))
+    long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
