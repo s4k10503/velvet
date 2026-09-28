@@ -41,7 +41,7 @@ namespace Velvet
     // TextEffect (inherit an ancestor's collapse, if any).
     internal enum WhitespaceCollapseKind
     {
-        None,    // whitespace-normal / whitespace-nowrap / whitespace-pre / whitespace-pre-wrap
+        None,    // whitespace-normal / whitespace-nowrap / whitespace-pre / whitespace-pre-wrap / truncate
         PreLine, // whitespace-pre-line
     }
 
@@ -112,25 +112,27 @@ namespace Velvet
         public readonly WhitespaceCollapseKind? Whitespace;
         public readonly LeadingValue? Leading;
         // The white-space this element's own white-space-writing classes give it, or null when it carries
-        // none. text-balance and text-pretty set only CSS's wrap mode, which UI Toolkit's single white-space
-        // cannot hold apart from the collapse, so StyleTextEffectResolver reads the collapse from here.
+        // none. text-wrap, text-nowrap, text-balance and text-pretty set CSS's wrap mode and leave the
+        // collapse alone, which UI Toolkit's single white-space cannot hold apart, so StyleTextEffectResolver
+        // reads the collapse from here.
         public readonly WhiteSpace? WhiteSpaceClass;
-        public readonly bool WrapsText;
+        // The wrap mode those four set: true to wrap, false for text-nowrap.
+        public readonly bool? Wraps;
 
         public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading,
-            WhiteSpace? whiteSpaceClass, bool wrapsText)
+            WhiteSpace? whiteSpaceClass, bool? wraps)
         {
             Transform = transform;
             Decoration = decoration;
             Whitespace = whitespace;
             Leading = leading;
             WhiteSpaceClass = whiteSpaceClass;
-            WrapsText = wrapsText;
+            Wraps = wraps;
         }
 
         // True when no axis carries a token (nothing to track for this element).
         public bool IsEmpty => Transform == null && Decoration == null && Whitespace == null && Leading == null
-            && WhiteSpaceClass == null && !WrapsText;
+            && WhiteSpaceClass == null && Wraps == null;
     }
 
     // Parses the text-transform / text-decoration / white-space / leading-* utilities and text-balance /
@@ -174,8 +176,8 @@ namespace Velvet
                 ParseToken(cls, ref facets);
             }
             var whitespace = facets.Whitespace;
-            // An explicit whitespace-{normal,nowrap,pre,pre-wrap} class on the SAME element always wins over
-            // that element's own whitespace-pre-line token, regardless of which appears earlier/later in the
+            // An explicit whitespace-{normal,nowrap,pre,pre-wrap} or truncate class on the SAME element always
+            // wins over that element's own whitespace-pre-line token, regardless of which appears earlier/later in the
             // class list — order-dependent "last wins" (the rule every other case in ParseToken uses) is not a
             // meaningful concept across two independently-authored utility families, so the choice is made
             // unconditionally instead. This is the least-surprising option: pre-line mutates the displayed
@@ -185,16 +187,16 @@ namespace Velvet
             // pre-line request from a FARTHER ancestor from still reaching this element through the normal
             // cascade — the same explicit-reset semantics normal-case / no-underline already give
             // Transform/Decoration.
-            if (facets.SawExplicitWhitespaceClass)
+            if (facets.WhiteSpaceRank >= 0)
             {
                 whitespace = WhitespaceCollapseKind.None;
             }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
                 facets.WhiteSpaceRank < 0 ? null : WhiteSpaceClassesInSheetOrder[facets.WhiteSpaceRank].Value,
-                facets.WrapsText);
+                facets.Wraps);
         }
 
-        // The four axes plus the cross-family marker Parse folds a class array into, bundled so the
+        // The axes Parse folds a class array into, bundled so the
         // per-token step can be shared with IsTextEffectToken. Mirrors StyleFontClass.FontFacets.
         private struct TextEffectFacets
         {
@@ -202,23 +204,20 @@ namespace Velvet
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
             public LeadingValue? Leading;
-            public bool SawExplicitWhitespaceClass;
             // Index into WhiteSpaceClassesInSheetOrder of the latest-declared white-space class seen, or -1.
             public int WhiteSpaceRank;
-            public bool WrapsText;
+            public bool? Wraps;
         }
 
         // The utilities that write white-space, in the order _typography.uss declares them, since among
         // several on one element the later rule is the one UI Toolkit applies. whitespace-pre-line has no
-        // rule and is left to the Whitespace axis. StyleTextEffectClassTests reads the sheet to pin the order.
+        // rule and is left to the Whitespace axis. WhiteSpaceSheetOrderTests reads the sheet to pin the order.
         internal static readonly KeyValuePair<string, WhiteSpace>[] WhiteSpaceClassesInSheetOrder =
         {
             new("whitespace-normal", WhiteSpace.Normal),
             new("whitespace-nowrap", WhiteSpace.NoWrap),
             new("whitespace-pre", WhiteSpace.Pre),
             new("whitespace-pre-wrap", WhiteSpace.PreWrap),
-            new("text-wrap", WhiteSpace.Normal),
-            new("text-nowrap", WhiteSpace.NoWrap),
             new("truncate", WhiteSpace.NoWrap),
         };
 
@@ -237,13 +236,17 @@ namespace Velvet
                 case "line-through": facets.Decoration = TextDecorationKind.LineThrough; return true;
                 case "overline": facets.Decoration = TextDecorationKind.Overline; return true;
                 case "no-underline": facets.Decoration = TextDecorationKind.None; return true;
-                case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
             }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            if (core == "text-balance" || core == "text-pretty")
+            switch (core)
             {
-                facets.WrapsText = true;
-                return true;
+                case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
+                case "text-wrap":
+                case "text-balance":
+                case "text-pretty":
+                    facets.Wraps = true;
+                    return true;
+                case "text-nowrap": facets.Wraps = false; return true;
             }
             for (var rank = 0; rank < WhiteSpaceClassesInSheetOrder.Length; rank++)
             {
@@ -252,9 +255,6 @@ namespace Velvet
                     continue;
                 }
                 facets.WhiteSpaceRank = Math.Max(facets.WhiteSpaceRank, rank);
-                // text-wrap / text-nowrap / truncate leave CSS's collapse alone, so only the whitespace-*
-                // four stop an ancestor's pre-line.
-                facets.SawExplicitWhitespaceClass |= core.StartsWith("whitespace-", StringComparison.Ordinal);
                 return true;
             }
             if (s_leadingPresets.TryGetValue(cls, out var em))

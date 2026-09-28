@@ -67,9 +67,7 @@ namespace Velvet.SourceGenerators.Tests
                 "truncate sits where the reference cascade puts it, after the overflow and white-space utilities it contains",
                 broad: name => name == "truncate",
                 narrow: name => name.StartsWith("overflow-", StringComparison.Ordinal)
-                    || name.StartsWith("whitespace-", StringComparison.Ordinal)
-                    || name == "text-wrap"
-                    || name == "text-nowrap"),
+                    || name.StartsWith("whitespace-", StringComparison.Ordinal)),
 
             // transition-none sits between transition-all and the property-specific utilities, so it precedes
             // only these four of the six that contain it. Moving it ahead of transition-all to match the

@@ -32,9 +32,9 @@ namespace Velvet
     // side-table sweep — see the Overline remarks below ApplyToElement and the table's own comment on
     // ReconcilerContext.
     //
-    // text-balance / text-pretty drive the same per-leaf inline write, of the white-space that wraps while
-    // keeping the inherited collapse (see ResolveEffective), for the same reason and under the same
-    // ownership as PreLine's below.
+    // text-wrap / text-nowrap / text-balance / text-pretty drive the same per-leaf inline write, of the
+    // white-space that pairs their wrap mode with the inherited collapse (see ResolveEffective), for the
+    // same reason and under the same ownership as PreLine's below.
     //
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
@@ -121,6 +121,7 @@ namespace Velvet
         {
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
+            LeadingLengthProbe.Sync(ctx, element, own.Leading?.Unit == LeadingUnit.EmLength);
             if (own.IsEmpty)
             {
                 ctx.TextEffects.Remove(element);
@@ -159,14 +160,13 @@ namespace Velvet
         {
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
             {
-                var (transform, decoration, whitespace, leading, wrapped) = ResolveEffective(ctx, te);
+                var (transform, decoration, whitespace, leading, write) = ResolveEffective(ctx, te);
                 te.text = StyleTextEffectClass.Apply(raw, transform, decoration, whitespace, leading);
                 // Per-leaf inline white-space write, off the SAME resolved values that just drove the string
                 // collapse above, so the two can never disagree for this leaf. Ownership-gated (see the type
                 // comment / TextWhitespaceOwned): a write marks; a resolve that writes nothing clears ONLY
                 // when this element is currently marked, so a leaf this resolver never wrote to — including
                 // one a consumer's refCallback wrote style.whiteSpace on directly — is never touched either way.
-                var write = whitespace == WhitespaceCollapseKind.PreLine ? WhiteSpace.PreWrap : wrapped;
                 if (write != null)
                 {
                     te.style.whiteSpace = write.Value;
@@ -241,10 +241,12 @@ namespace Velvet
         // Feeds BOTH the string rewrite and the inline white-space write in ApplyToElement — one resolve,
         // N writes off the same values, so they can never disagree.
         //
-        // wrapped is the white-space text-balance / text-pretty ask for: CSS's text-wrap sets only the wrap
-        // mode, so the collapse comes from the nearest white-space class above the one that asked, and a
-        // white-space class nearer than the ask (or on the same element) decides the white-space itself.
-        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading, WhiteSpace? wrapped) ResolveEffective(
+        // write is the inline white-space this leaf gets, or null to leave its own cascade alone. CSS splits
+        // white-space into a collapse and a wrap mode; UI Toolkit holds one value for both, so where
+        // text-wrap / text-nowrap / text-balance / text-pretty set the mode nearer the text than any
+        // white-space class does, the value written pairs that mode with the collapse inherited from above
+        // it. A white-space class on the same element as one of the four decides on its own.
+        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading, WhiteSpace? write) ResolveEffective(
             ReconcilerContext ctx, VisualElement element)
         {
             TextTransformKind? transform = null;
@@ -253,7 +255,8 @@ namespace Velvet
             LeadingValue? leading = null;
             VisualElement? leadingOwner = null;
             bool? wraps = null;
-            WhiteSpace? collapse = null;
+            var modeDecided = false;
+            WhiteSpace? collapseClass = null;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (!ctx.TextEffects.TryGetValue(e, out var eff))
@@ -263,83 +266,59 @@ namespace Velvet
                 transform ??= eff.Transform;
                 decoration ??= eff.Decoration;
                 whitespace ??= eff.Whitespace;
+                collapseClass ??= eff.WhiteSpaceClass;
                 if (leading == null)
                 {
                     leading = eff.Leading;
                     leadingOwner = e;
                 }
-                if (wraps == null)
+                if (!modeDecided)
                 {
-                    if (eff.WhiteSpaceClass != null)
-                    {
-                        wraps = false;
-                    }
-                    else if (eff.WrapsText)
-                    {
-                        wraps = true;
-                    }
-                }
-                else if (wraps.Value)
-                {
-                    collapse ??= eff.WhiteSpaceClass;
+                    wraps = eff.Whitespace == null ? eff.Wraps : null;
+                    modeDecided = eff.Whitespace != null || eff.Wraps != null;
                 }
             }
             if (leading?.Unit == LeadingUnit.EmLength)
             {
-                leading = ResolveEmLength(leading.Value, element, leadingOwner!);
+                leading = ResolveEmLength(ctx, leading.Value, leadingOwner!);
             }
-            WhiteSpace? wrapped = null;
-            if (wraps == true)
+            var preserves = whitespace == WhitespaceCollapseKind.PreLine
+                || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
+            WhiteSpace? write = null;
+            if (wraps != null)
             {
-                wrapped = collapse == WhiteSpace.Pre || collapse == WhiteSpace.PreWrap ? WhiteSpace.PreWrap : WhiteSpace.Normal;
+                write = wraps.Value
+                    ? preserves ? WhiteSpace.PreWrap : WhiteSpace.Normal
+                    : preserves ? WhiteSpace.Pre : WhiteSpace.NoWrap;
             }
-            return (transform, decoration, whitespace, leading, wrapped);
+            else if (whitespace == WhitespaceCollapseKind.PreLine)
+            {
+                write = WhiteSpace.PreWrap;
+            }
+            return (transform, decoration, whitespace, leading, write);
         }
 
-        // CSS computes an em or percentage line-height to a length on the element that declares it. The
-        // rich-text tag's em resolves at the text itself, which is the same length only while nothing
-        // between the two sets a font size; otherwise the declaring element's size is needed in pixels,
-        // which this takes from that element's own inline pixel font-size (text-[20px]). A size it
-        // inherits, one a text-* scale class sets and a percentage are not read; under any of these the em
-        // is left to the text's own size.
-        private static LeadingValue ResolveEmLength(LeadingValue leading, VisualElement text, VisualElement owner)
+        // CSS computes an em or percentage line-height to a length on the element that declares it, from
+        // that element's computed font size. LeadingLengthProbe reads that size once UI Toolkit has resolved
+        // it; until then the em is left to the text's own size.
+        private static LeadingValue ResolveEmLength(ReconcilerContext ctx, LeadingValue leading, VisualElement owner)
         {
-            if (!SizeChangesBetween(text, owner))
+            if (!ctx.LeadingLengthProbes.TryGetValue(owner, out var probe))
             {
                 return leading;
             }
-            var inline = owner.style.fontSize;
-            return inline.keyword == StyleKeyword.Undefined && inline.value.unit == LengthUnit.Pixel
-                ? new LeadingValue(LeadingUnit.Pixel, leading.Value * inline.value.value)
-                : leading;
+            if (float.IsNaN(probe.FontSize))
+            {
+                return leading;
+            }
+            return new LeadingValue(LeadingUnit.Pixel, leading.Value * probe.FontSize);
         }
 
-        private static bool SizeChangesBetween(VisualElement text, VisualElement owner)
+        // Re-resolves the element and every text under it, for LeadingLengthProbe.
+        internal static void Reapply(ReconcilerContext ctx, VisualElement element)
         {
-            for (var e = text; e != owner; e = e.hierarchy.parent)
-            {
-                if (e.style.fontSize.keyword != StyleKeyword.Null || DeclaresFontSizeClass(e))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static bool DeclaresFontSizeClass(VisualElement element)
-        {
-            foreach (var cls in element.GetClasses())
-            {
-                if (!StyleUtilityProperties.TryGet(cls, out var rule))
-                {
-                    continue;
-                }
-                if (rule.Properties.Contains(StyleLonghand.FontSize))
-                {
-                    return true;
-                }
-            }
-            return false;
+            ApplyToElement(ctx, element);
+            ApplyToDescendants(ctx, element);
         }
     }
 }

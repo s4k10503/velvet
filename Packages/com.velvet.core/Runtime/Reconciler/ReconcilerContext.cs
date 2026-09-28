@@ -478,6 +478,11 @@ namespace Velvet
         // the pool, mirroring exactly how those three paint bindings are swept.
         public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
 
+        // Elements declaring an em or percentage leading-[…], each with the probe reading its font size. Not
+        // pure for the reason TextOverlineBindings is not: an entry owns live callbacks, which
+        // FiberElementCleaner detaches.
+        public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
+
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
         // manipulator to detach and no resource (a shader Material, a baked VectorImage, an event subscription,

@@ -162,7 +162,7 @@ The write is per-leaf rather than once on the class-bearing element: `Label`/`Te
 its own element-level `white-space` rule from the default theme/USS, and an element's own matching
 rule always beats an INHERITED value in the cascade, so a write on an ancestor alone would never
 reach a descendant Label. It inherits and cascades the same way text-transform / text-decoration
-do: an explicit `whitespace-*` class always wins on the SAME element, and — exactly like how
+do: an explicit `whitespace-*` or `truncate` class always wins on the SAME element, and — exactly like how
 `normal-case` / `no-underline` stop an inherited transform / decoration — it also blocks a farther
 ancestor's `whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the
 collapse unapplied on that one element.
@@ -184,14 +184,13 @@ unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percent
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
 itself** resolves against whichever font size is in effect at that point in the string, so every
 text under the class multiplies its own size. An `em` or percentage value is a length CSS computes on
-the element that declares it. Text at that element's own size gets the em tag; text whose size an
-element between them changes gets the declaring element's size in pixels
-(`V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits `<line-height=30px>`). That
-size is read from the declaring element's own inline pixel font size, which a bracket form such as
-`text-[20px]` writes. **Deviation:** where the declaring element inherits its size, or takes it from a
-`text-*` scale class or a percentage `text-[…]`, Velvet does not read it, so text at a different size
-resolves the em or percentage against its own size instead.
-`tracking-*` is the contrast: USS `letter-spacing` has no
+the element that declares it, from that element's computed font size, and every text under it gets
+that length in pixels: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
+`<line-height=30px>`, whether the declaring element's size is inline, inherited or a `text-*` scale
+class. Velvet reads the size UI Toolkit resolves for the declaring element
+(`LeadingLengthProbe`, which the bundled stylesheet's `velvet-leading-length` rule arms) and
+re-resolves the text whenever that size changes. Until the panel has resolved it — a tree that is
+not yet on a panel — the text carries the em tag. `tracking-*` is the contrast: USS `letter-spacing` has no
 `em` unit (see `_typography.uss`), so its em scale had to be **baked to px at Tailwind's 16px root
 font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
 size. `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
@@ -240,14 +239,16 @@ Two deviations from CSS:
   (`max-w-[50%]`) it oscillates — the bound decays until the box is released, the release
   re-widens the parent, and the next pass starts over. Give such a parent a definite width.
 
-**Wrapping:** like CSS's `text-wrap: balance`, whose shorthand sets the wrap mode to `wrap`,
-`text-balance` alone makes the text wrap, on the element and on the text under it. It sets only the
-wrap mode: text that inherits `whitespace-pre` or `whitespace-pre-wrap` keeps preserving spaces and
-newlines (`pre-wrap`), and other text collapses them (`normal`). A white-space class
-(`whitespace-*`, `text-wrap`, `text-nowrap`, `truncate`) on the same element or on one nearer the
-text keeps its own value. Velvet writes this per text leaf as an inline `white-space`, the way it
-writes `whitespace-pre-line`. When `text-balance` and `text-pretty` meet on one element, the later
-class wins, as the two set the same CSS property.
+**Wrapping:** `text-wrap`, `text-nowrap`, `text-balance` and `text-pretty` are CSS's `text-wrap`
+shorthand, which sets the wrap mode (`wrap`, or `nowrap` for `text-nowrap`) and leaves the collapse
+alone. So text that inherits `whitespace-pre`, `whitespace-pre-wrap` or `whitespace-pre-line` keeps
+its spaces or newlines: it wraps as `pre-wrap`, or under `text-nowrap` stays on its lines as `pre`,
+while other text collapses as `normal` or `nowrap`. A white-space class (`whitespace-*` or
+`truncate`, whose `white-space: nowrap` resets the collapse as the CSS shorthand does) on the same
+element or on one nearer the text keeps its own value. Velvet writes this per text leaf as an inline
+`white-space`, the way it writes `whitespace-pre-line`. When several of the four meet on one element,
+the later class wins, as they set the same CSS properties; the later of them decides whether the box
+is balanced, narrowed by `text-pretty`, or left alone.
 
 **Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
 so a width is written only when the text wraps at the width the text actually gets — the
@@ -264,8 +265,12 @@ available width is read from, closes that gap); and on the `ChangeEvent<string>`
 whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the same
 wrapped box size, and therefore raises no geometry event, from going stale).
 
-**`text-pretty`** sets the wrap mode the same way `text-balance` does, and its line breaks are the
-engine's own: where a browser may also move a break to avoid a very short last line, Velvet does not.
+**`text-pretty`** avoids a short last line the way Chromium does: when the last line would hold a
+single word narrower than a third of the line, the same manipulator narrows the box until a word from
+the line above joins it, keeping the line count. It uses Chromium's trigger (`ScoreLineBreaker`'s
+`ShouldOptimize`: a last line with no break opportunity and under a third of the available width);
+where Chromium then re-breaks the last lines, Velvet narrows the box, as `text-balance` does. A word
+here is a run between whitespace.
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 

@@ -11,18 +11,33 @@
   selects.
 
 - `text-balance` alone makes text wrap, as CSS's `text-wrap: balance` sets the wrap mode to `wrap`.
-  It sets only the wrap mode: text that inherits `whitespace-pre` or `whitespace-pre-wrap` keeps its
-  spaces and newlines. It used to set no white-space, so on a label that did not already wrap it had no
-  effect without a wrapping `whitespace-*` or `text-wrap` beside it. A white-space class on the same
-  element, or on one nearer the text, still decides the white-space. `!text-balance` and
-  `text-balance!` balance too, and a later `text-pretty` on the same element turns balancing off.
+  It used to set no white-space, so on a label that did not already wrap it had no effect without a
+  wrapping `whitespace-*` or `text-wrap` beside it. `!text-balance` and `text-balance!` balance too.
+
+- `text-wrap` and `text-nowrap` set the wrap mode and leave the collapse alone, as CSS's
+  `text-wrap: wrap | nowrap` does, so
+  text that inherits `whitespace-pre`, `whitespace-pre-wrap` or `whitespace-pre-line` keeps its spaces
+  and newlines under them. They used to be `white-space: normal | nowrap`, which collapsed those too. The
+  same holds for `text-balance` and `text-pretty`, and a white-space class on the same element, or on one
+  nearer the text, still decides the white-space. Among `text-wrap`, `text-nowrap`, `text-balance` and
+  `text-pretty` on one element, the later class wins.
+
+- `truncate` now stops an ancestor's `whitespace-pre-line`, as its `white-space: nowrap` resets the
+  collapse; the ancestor's pre-line used to override it on the text.
 
 - `leading-[…]` takes CSS `line-height`'s values. A unitless number (`leading-[1.5]`) multiplies each
-  text's own font size; an `em` length or a percentage (`leading-[1.5em]`, `leading-[150%]`) is taken
-  against the size of the element that declares it, when that element sets an inline pixel size of its
-  own (`text-[20px]`) or the text is at that size; `rem` is 16px. Only `px` used to be read, and every other value was ignored.
+  text's own font size; an `em` length or a percentage (`leading-[1.5em]`, `leading-[150%]`) is a length
+  computed from the font size of the element that declares it, which every text under it inherits, and
+  it follows that size when it changes; `rem` is 16px. Only `px` used to be read, and every other value
+  was ignored.
+
+### Fixed
+
+- `!whitespace-pre-line` and `whitespace-pre-line!` collapse spaces like `whitespace-pre-line`; the
+  important modifier used to leave the class unread.
 
 ### Added
 
-- `text-pretty`, which sets the wrap mode the way `text-balance` does and keeps the engine's own line
-  breaks.
+- `text-pretty`, which sets the wrap mode the way `text-balance` does and avoids a last line holding a
+  single short word, on Chromium's rule: when that word is narrower than a third of the line, the box
+  narrows until a word joins it, without adding a line.

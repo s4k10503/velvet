@@ -80,13 +80,14 @@
 .whitespace-pre { white-space: pre; }
 .whitespace-pre-wrap { white-space: pre-wrap; }
 
-/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). text-balance / text-pretty have no rule here:
-   they set only CSS's wrap mode, which white-space cannot hold apart from the collapse, so
-   StyleTextEffectResolver writes it per text leaf, and StyleTextBalanceManipulator narrows the box for
-   text-balance. StyleTextEffectClass.WhiteSpaceClassesInSheetOrder lists the white-space rules in this
-   file's order. */
-.text-wrap { white-space: normal; }
-.text-nowrap { white-space: nowrap; }
+/* text-wrap / text-nowrap / text-balance / text-pretty have no rule here: they set CSS's wrap mode and
+   leave the collapse alone, which white-space cannot hold apart, so StyleTextEffectResolver writes the
+   white-space per text leaf, and StyleTextBalanceManipulator narrows the box for text-balance and text-pretty.
+   StyleTextEffectClass.WhiteSpaceClassesInSheetOrder lists the white-space rules in this file's order. */
+
+/* Gives an element declaring an em or percentage leading-[…] the custom property that makes UI Toolkit
+   send it CustomStyleResolvedEvent; see LeadingLengthProbe. */
+.velvet-leading-length { --velvet-leading-length: 1; }
 
 /* Text Overflow (Tailwind: truncate / text-ellipsis / text-clip).
    `truncate` needs all three declarations together; the ellipsis only renders with hidden overflow and

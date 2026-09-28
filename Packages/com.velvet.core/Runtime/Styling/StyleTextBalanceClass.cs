@@ -6,6 +6,13 @@ namespace Velvet
     // Recognizes the `text-balance` utility for StyleTextBalanceManipulator, plus the one question about
     // OTHER classes its behavior depends on (DeclaresOwnWidth). text-balance carries no scale or
     // arbitrary-value form, so its own classifier is an exact match rather than a prefix + TryExtract pair.
+    internal enum TextWrapStyle
+    {
+        None,
+        Balance,
+        Pretty,
+    }
+
     internal static class StyleTextBalanceClass
     {
         private const string ClassName = "text-balance";
@@ -39,35 +46,33 @@ namespace Velvet
             return false;
         }
 
-        // Single-token half of HasTextBalanceClass. Its own predicate so the token name has ONE
-        // definition — both the array scan below and the variant-payload gate (StyleVariantPayload)
-        // resolve the family through here.
+        // The variant-payload gate's check (StyleVariantPayload), sharing ReadWrapStyle's token name.
         public static bool IsTextBalanceToken(string cls) => cls == ClassName;
 
-        // Cheap early-out gate: true when the later of `text-balance` and `text-pretty` in classNames is
-        // `text-balance`, either spelled with the important modifier. The two set one CSS property,
-        // text-wrap-style, so the later wins. Used to skip manipulator attach/lookup on the common element
-        // with no such class.
-        public static bool HasTextBalanceClass(string[] classNames)
+        // Which box-narrowing the class list asks for: the later of text-balance, text-pretty, text-wrap and
+        // text-nowrap decides, either spelled with the important modifier, since all four set CSS's
+        // text-wrap-style (text-wrap and text-nowrap back to auto). Cheap enough to skip manipulator
+        // attach/lookup on the common element carrying none of them.
+        public static TextWrapStyle ReadWrapStyle(string[] classNames)
         {
             if (classNames == null)
             {
-                return false;
+                return TextWrapStyle.None;
             }
-            var balances = false;
+            var style = TextWrapStyle.None;
             foreach (var cls in classNames)
             {
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-                if (IsTextBalanceToken(core))
+                switch (StyleArbitraryValueResolver.StripImportant(cls, out _))
                 {
-                    balances = true;
-                }
-                else if (core == PrettyClassName)
-                {
-                    balances = false;
+                    case ClassName: style = TextWrapStyle.Balance; break;
+                    case PrettyClassName: style = TextWrapStyle.Pretty; break;
+                    case "text-wrap":
+                    case "text-nowrap":
+                        style = TextWrapStyle.None;
+                        break;
                 }
             }
-            return balances;
+            return style;
         }
 
         // The two halves of "the element's own cascade sizes its width", split by cost because the caller

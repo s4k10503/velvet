@@ -121,7 +121,7 @@ namespace Velvet.Tests
             // Act
             var label = MountAndFindLabel(scope,
                 V.Div(className: "whitespace-pre",
-                    V.Div(className: "text-nowrap", V.Label(className: "text-balance", text: "a  b"))));
+                    V.Div(className: "truncate", V.Label(className: "text-balance", text: "a  b"))));
 
             // Assert
             Assert.That(InlineWhiteSpace(label), Is.EqualTo((StyleKeyword.Undefined, WhiteSpace.Normal)));
@@ -170,17 +170,20 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1));
         }
 
-        [Test]
-        public void Given_TextPrettyAfterTextBalance_When_Reconciled_Then_NothingBalances()
+        [TestCase("text-balance text-pretty", "Pretty", TestName = "Given_TextPrettyAfterTextBalance_When_Reconciled_Then_TheBoxIsNarrowedPretty")]
+        [TestCase("text-pretty", "Pretty", TestName = "Given_TextPrettyAlone_When_Reconciled_Then_TheBoxIsNarrowedPretty")]
+        [TestCase("text-balance text-wrap", "none", TestName = "Given_TextWrapAfterTextBalance_When_Reconciled_Then_NothingNarrowsTheBox")]
+        [TestCase("text-balance text-nowrap", "none", TestName = "Given_TextNowrapAfterTextBalance_When_Reconciled_Then_NothingNarrowsTheBox")]
+        public void Given_SeveralWrapStyleClasses_When_Reconciled_Then_TheLaterDecides(string cls, string expected)
         {
             // Arrange
             using var scope = new ReconcilerScope();
 
             // Act
-            MountAndFindLabel(scope, V.Label(className: "text-balance text-pretty", text: "hello"));
+            var label = MountAndFindLabel(scope, V.Label(className: cls, text: "hello"));
 
             // Assert
-            Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(0));
+            Assert.That(NarrowingOf(scope, label), Is.EqualTo(expected));
         }
 
         // GREEN_ON_BASE(characterization): the base balances whenever text-balance is present.
@@ -191,25 +194,140 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            MountAndFindLabel(scope, V.Label(className: "text-pretty text-balance", text: "hello"));
+            var label = MountAndFindLabel(scope, V.Label(className: "text-pretty text-balance", text: "hello"));
 
             // Assert
-            Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1));
+            Assert.That(NarrowingOf(scope, label), Is.EqualTo("Balance"));
         }
 
         [Test]
-        public void Given_ADarkTextPrettyOverTextBalance_When_TheThemeTurnsDark_Then_TheBalanceStops()
+        public void Given_ADarkTextPrettyOverTextBalance_When_TheThemeTurnsDark_Then_TheBoxIsNarrowedPretty()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            MountAndFindLabel(scope, V.Label(className: "text-balance dark:text-pretty", text: "hello"));
-            var before = scope.Reconciler.Context.TextBalanceManipulators.Count;
+            var label = MountAndFindLabel(scope, V.Label(className: "text-balance dark:text-pretty", text: "hello"));
+            var before = NarrowingOf(scope, label);
 
             // Act
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That((before, scope.Reconciler.Context.TextBalanceManipulators.Count), Is.EqualTo((1, 0)));
+            Assert.That((before, NarrowingOf(scope, label)), Is.EqualTo(("Balance", "Pretty")));
+        }
+
+        // Which narrowing the label's manipulator runs, or "none" without one. A manipulator without the
+        // style field is a balancing one, the only kind there was before text-pretty narrowed.
+        private static string NarrowingOf(ReconcilerScope scope, VisualElement element)
+        {
+            if (!scope.Reconciler.Context.TextBalanceManipulators.TryGetValue(element, out var manipulator))
+            {
+                return "none";
+            }
+            var field = typeof(StyleTextBalanceManipulator).GetField("_style",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            return field?.GetValue(manipulator)?.ToString() ?? "Balance";
+        }
+
+        [Test]
+        public void Given_TextWrapUnderPre_When_Reconciled_Then_TheLabelKeepsPreservingAndWraps()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre", V.Label(className: "text-wrap", text: "a\n  b")));
+
+            // Assert
+            Assert.That(InlineWhiteSpace(label), Is.EqualTo((StyleKeyword.Undefined, WhiteSpace.PreWrap)));
+        }
+
+        [Test]
+        public void Given_TextNowrapUnderPreWrap_When_Reconciled_Then_TheLabelKeepsPreservingAndStopsWrapping()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre-wrap", V.Label(className: "text-nowrap", text: "a\n  b")));
+
+            // Assert
+            Assert.That(InlineWhiteSpace(label), Is.EqualTo((StyleKeyword.Undefined, WhiteSpace.Pre)));
+        }
+
+        [Test]
+        public void Given_TextNowrapAlone_When_Reconciled_Then_TheLabelCollapsesAndStopsWrapping()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope, V.Label(className: "text-nowrap", text: "a  b"));
+
+            // Assert
+            Assert.That(InlineWhiteSpace(label), Is.EqualTo((StyleKeyword.Undefined, WhiteSpace.NoWrap)));
+        }
+
+        [Test]
+        public void Given_TextNowrapUnderPreLine_When_Reconciled_Then_TheLabelKeepsItsBreaksAndStopsWrapping()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre-line", V.Label(className: "text-nowrap", text: "a\n  b")));
+
+            // Assert
+            Assert.That(InlineWhiteSpace(label), Is.EqualTo((StyleKeyword.Undefined, WhiteSpace.Pre)));
+        }
+
+        [Test]
+        public void Given_TruncateUnderPreLine_When_Reconciled_Then_TruncateDecidesTheWhiteSpace()
+        {
+            // Arrange — truncate's white-space: nowrap resets the collapse, as the shorthand does in CSS.
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre-line", V.Label(className: "truncate", text: "a\n  b")));
+
+            // Assert
+            Assert.That(label.style.whiteSpace.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ADarkTextNowrapUnderPreWrap_When_TheThemeTurnsDarkAndBack_Then_TheWriteFollowsIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre-wrap", V.Label(className: "dark:text-nowrap", text: "a\n  b")));
+            var light = InlineWhiteSpace(label);
+
+            // Act
+            VelvetTheme.IsDark = true;
+            var dark = InlineWhiteSpace(label);
+            VelvetTheme.IsDark = false;
+
+            // Assert
+            Assert.That($"{light} {dark} {InlineWhiteSpace(label).Item1}",
+                Is.EqualTo($"{(StyleKeyword.Null, WhiteSpace.Normal)} {(StyleKeyword.Undefined, WhiteSpace.Pre)} {StyleKeyword.Null}"));
+        }
+
+        [TestCase("!whitespace-pre-line", TestName = "Given_ALeadingImportantPreLine_When_Reconciled_Then_TheSpacesCollapse")]
+        [TestCase("whitespace-pre-line!", TestName = "Given_ATrailingImportantPreLine_When_Reconciled_Then_TheSpacesCollapse")]
+        public void Given_AnImportantPreLine_When_Reconciled_Then_TheSpacesCollapse(string cls)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var label = MountAndFindLabel(scope, V.Label(className: cls, text: "a   b"));
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo("a b"));
         }
 
         // GREEN_ON_BASE(characterization): the base's text-balance claims no USS longhand, so no payload can
