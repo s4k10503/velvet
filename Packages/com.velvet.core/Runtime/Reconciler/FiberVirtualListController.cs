@@ -218,6 +218,7 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
+                _reconciler.CommitStrandedLayoutWorkForController();
                 return;
             }
 
@@ -225,6 +226,7 @@ namespace Velvet
             // whatever took its place, and after the container rebuild, so a setup reads an item that is
             // already in the list.
             _reconciler.DrainRefAttachesForController();
+            _reconciler.CommitStrandedLayoutWorkForController();
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch

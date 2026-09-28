@@ -64,6 +64,9 @@ namespace Velvet
                     var (fiber, mountDoubleInvoke) = pending[i];
                     if (fiber.IsMounted && !fiber.IsDisposed) roots.Add((fiber, mountDoubleInvoke));
                 }
+                // They were added in the order the drain flushed them, which is FiberBatchScheduler's order rather
+                // than tree order.
+                SortInTreeOrder(roots);
                 if (roots.Count > 0) CommitLayoutBatch(ctx, null, roots);
             }
             finally
@@ -90,6 +93,7 @@ namespace Velvet
                 // than a hang.
                 if (commits++ == MaxFollowUpCommits)
                 {
+                    DropStrandedWork(ctx);
                     throw new InvalidOperationException(
                         $"Velvet: layout effects kept leaving work for a follow-up commit, {MaxFollowUpCommits} follow-up"
                         + " commits in a row.");
@@ -121,9 +125,24 @@ namespace Velvet
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
             {
-                if (IsDue(reports[i], null)) return true;
+                if (IsDue(ctx, reports[i], null)) return true;
             }
             return false;
+        }
+
+        // Keeps what a parked pass holds and drops the rest, which the bound gave up on: left in place, it would
+        // run the next entry to end with CommitStrandedLayoutWork into the same chain.
+        private static void DropStrandedWork(ReconcilerContext ctx)
+        {
+            var stack = ctx.DeferredInlineLayoutEffectFibers;
+            var held = new List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)>(stack.Count);
+            while (stack.Count > 0)
+            {
+                var entry = stack.Pop();
+                if (IsHeld(entry.Pass)) held.Add(entry);
+            }
+            for (var i = held.Count - 1; i >= 0; i--) stack.Push(held[i]);
+            ctx.PendingCaughtErrorReports.RemoveAll(report => IsDue(ctx, report, null));
         }
 
         // A parked pass holds back what it pushed, as DrainRefAttaches holds back the ref setups it queued: its
@@ -133,15 +152,19 @@ namespace Velvet
         // A boundary an ancestor boundary replaced before its report was delivered is gone before its fallback
         // commits, and its report is dropped with it.
         private static bool IsDue(
-            (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report, ComponentFiber? scope)
-            => !report.Boundary.IsDisposed && !IsInParkedPass(report.Boundary) && IsInScope(report.Boundary, scope);
+            ReconcilerContext ctx,
+            (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report,
+            ComponentFiber? scope)
+            => !report.Boundary.IsDisposed && !IsHeldByAParkedPass(ctx, report.Boundary)
+                && IsInScope(report.Boundary, scope);
 
-        // A boundary a parked pass has reached reports in the commit that completes the pass.
-        private static bool IsInParkedPass(ComponentFiber boundary)
+        // A boundary a parked pass mounted or re-rendered reports in the commit that completes the pass, after its
+        // own layout effects, which the pass holds.
+        private static bool IsHeldByAParkedPass(ReconcilerContext ctx, ComponentFiber boundary)
         {
-            for (ComponentFiber? fiber = boundary; fiber != null; fiber = fiber.Parent)
+            foreach (var entry in ctx.DeferredInlineLayoutEffectFibers)
             {
-                if (IsHeld(fiber.Reconciler)) return true;
+                if (ReferenceEquals(entry.Fiber, boundary) && IsHeld(entry.Pass)) return true;
             }
             return false;
         }
@@ -254,7 +277,7 @@ namespace Velvet
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
             {
-                if (IsDue(reports[i], scope) && pushedSet.Add(reports[i].Boundary))
+                if (IsDue(ctx, reports[i], scope) && pushedSet.Add(reports[i].Boundary))
                 {
                     InsertAmongPeersInTreeOrder(deduped, pushedSet, reports[i].Boundary);
                 }
@@ -284,6 +307,22 @@ namespace Velvet
             }
             deduped.Insert(slot, (boundary, false));
         }
+
+        // Stable, so two entries for one fiber keep the order TakeBatch's dedup reads.
+        private static void SortInTreeOrder(List<(ComponentFiber Fiber, bool IsMount)> roots)
+        {
+            for (var i = 1; i < roots.Count; i++)
+            {
+                var entry = roots[i];
+                var j = i - 1;
+                for (; j >= 0 && PrecedesInPreOrder(entry.Fiber, roots[j].Fiber); j--) roots[j + 1] = roots[j];
+                roots[j + 1] = entry;
+            }
+        }
+
+        private static bool PrecedesInPreOrder(ComponentFiber a, ComponentFiber b)
+            => !ReferenceEquals(a, b) && !IsStrictDescendant(a, b)
+                && (IsStrictDescendant(b, a) || PrecedesInTreeOrder(a, b));
 
         private static ComponentFiber? NearestAncestorIn(ComponentFiber fiber, HashSet<ComponentFiber> batch)
         {
@@ -327,7 +366,8 @@ namespace Velvet
             for (var i = 0; i < reports.Count; i++)
             {
                 var report = reports[i];
-                if (ReferenceEquals(report.Boundary, boundary) && report.Sequence < reportCutoff && !IsInParkedPass(boundary))
+                if (ReferenceEquals(report.Boundary, boundary) && report.Sequence < reportCutoff
+                    && !IsHeldByAParkedPass(ctx, boundary))
                 {
                     due ??= new List<(Exception Error, ErrorInfo Info)>();
                     due.Add((report.Error, report.Info));

@@ -534,7 +534,7 @@ namespace Velvet.Tests
     /// other fibers flushed in the same batch — not a half-updated tree. Previously each fiber ran its layout
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
     /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
-    /// child before its parent.
+    /// child before its parent, and siblings in tree order whatever order their updates were enqueued in.
     /// </summary>
     [TestFixture]
     internal sealed class LayoutEffectDrainPhaseTests
@@ -629,6 +629,43 @@ namespace Velvet.Tests
                 string.Join(", ", s_log),
                 Is.EqualTo("A-child:cleanup, A:cleanup, B-child:cleanup, B:cleanup, A-child:setup, A:setup, B-child:setup, B:setup"));
         }
+
+        [Test]
+        public void Given_TwoSiblingsWhoseUpdatesAreEnqueuedInReverseTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OwnStateHost, key: "host"));
+            s_log.Clear();
+            s_setSecond.Invoke(1);
+            s_setFirst.Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:setup, second:setup"));
+        }
+
+        private static StateUpdater<int> s_setFirst;
+        private static StateUpdater<int> s_setSecond;
+
+        [Component]
+        private static VNode OwnStateSibling(string name)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            if (name == "first") s_setFirst = setTick;
+            else s_setSecond = setTick;
+            Hooks.UseLayoutEffect(() => { s_log.Add(name + ":setup"); return (Action)null; }, new object[] { tick });
+            return V.Label(text: name);
+        }
+
+        [Component]
+        private static VNode OwnStateHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "first", key: "first"),
+                V.Component(OwnStateSibling, "second", key: "second"),
+            });
 
         // Each parent re-renders on the store tick on its own, and hands the tick to its inline child, so one bump
         // puts both parents in the drain and each re-render reaches its child.

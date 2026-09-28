@@ -28,7 +28,8 @@ namespace Velvet.Tests
     /// the renderer set on that row's own node does not change that: the selector's key is the identity
     /// the range diff runs on.</item>
     /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
-    /// driven from a scroll rather than from a reconcile pass.</item>
+    /// driven from a scroll rather than from a reconcile pass, and so have the layout effects of a component
+    /// inside an item.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
     /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
@@ -211,6 +212,37 @@ namespace Velvet.Tests
 
             // Assert — the last item the window rendered is the one the shared capture holds.
             Assert.That(captured, Is.SameAs(visibleContainer.ElementAt(visibleContainer.childCount - 1)));
+        }
+
+        private static int s_itemLayoutEffectRuns;
+
+        [Component]
+        private static VNode LayoutEffectItemRender()
+        {
+            Hooks.UseLayoutEffect(() => { s_itemLayoutEffectRuns++; return (Action)null; }, Array.Empty<object>());
+            return V.Label(text: "row");
+        }
+
+        [Test]
+        public void Given_AnItemHoldingAComponentWithALayoutEffect_When_ARangeIsRenderedOutsideAPass_Then_TheLayoutEffectHasRunWhenTheUpdateReturns()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no item until the range
+            // update below.
+            s_itemLayoutEffectRuns = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(key: item, children: new VNode[] { V.Component(LayoutEffectItemRender, key: "row") }),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Assert
+            Assert.That(s_itemLayoutEffectRuns, Is.EqualTo(1));
         }
 
         [Test]
