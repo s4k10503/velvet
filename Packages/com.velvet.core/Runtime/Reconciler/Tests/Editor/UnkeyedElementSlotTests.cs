@@ -16,9 +16,11 @@ namespace Velvet.Tests
     /// <item>An unkeyed Fragment or a component written before it rendering more elements leaves it on its
     /// own element.</item>
     /// <item>An unkeyed Fragment coming to enclose it among siblings remounts it, the Fragment taking its
-    /// slot; one coming to enclose it as its parent's only child leaves it on its own element, the Fragment
-    /// being reconciled as its children, and a component under it re-rendering alone still reads the
-    /// Provider enclosing it there.</item>
+    /// slot, and one taken away from around it remounts it too; one coming to enclose it as its parent's
+    /// only child leaves it on its own element, the Fragment being reconciled as its children, and a
+    /// component under it re-rendering alone still reads the Provider enclosing it there.</item>
+    /// <item>A keyed Fragment as its parent's only child is not reconciled as its children: its key changing
+    /// remounts the element under it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -122,6 +124,66 @@ namespace Velvet.Tests
             Assert.That(
                 (Names(host), ReferenceEquals(host.Q<VisualElement>("a"), a)),
                 Is.EqualTo(("a,z", false)));
+        }
+
+        [TestCase(0d)]
+        [TestCase(double.Epsilon)]
+        public void Given_AnUnkeyedElementInAnUnkeyedFragmentBesideASibling_When_TheFragmentIsTakenAway_Then_ItIsRemounted(
+            double frameBudgetMs)
+        {
+            // Arrange — the case above in reverse. The new side holds no wrapper, so this is the flat diff
+            // rather than the walk.
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode?[]
+            {
+                V.Fragment(new VNode?[] { V.Div(name: "a") }),
+                V.Div(name: "z"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), oldTree);
+            var a = scope.Root.Q<VisualElement>("a");
+
+            // Act
+            scope.Reconciler.Reconcile(
+                scope.Root, oldTree, new VNode?[] { V.Div(name: "a"), V.Div(name: "z") }, frameBudgetMs);
+            while (scope.Reconciler.HasPendingWork) scope.Reconciler.ContinueReconcile();
+
+            // Assert
+            Assert.That(
+                (Names(scope.Root), ReferenceEquals(scope.Root.Q<VisualElement>("a"), a)),
+                Is.EqualTo(("a,z", false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base remounts a keyed Fragment's children on a key change.
+        // Drop `lone.Key == null` from `FiberKeying.UnwrapLoneFragment` and this reddens.
+        [Test]
+        public void Given_AKeyedFragmentAsItsParentsOnlyChild_When_ItsKeyChanges_Then_ItsElementIsRemounted()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode?[]
+            {
+                V.Div(name: "host", children: new VNode?[]
+                {
+                    V.Fragment(new VNode?[] { V.Div(name: "a") }, key: "first"),
+                }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), oldTree);
+            var host = scope.Root.Q<VisualElement>("host");
+            var a = host.Q<VisualElement>("a");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode?[]
+            {
+                V.Div(name: "host", children: new VNode?[]
+                {
+                    V.Fragment(new VNode?[] { V.Div(name: "a") }, key: "second"),
+                }),
+            });
+
+            // Assert
+            Assert.That(
+                (Names(host), ReferenceEquals(host.Q<VisualElement>("a"), a)),
+                Is.EqualTo(("a", false)));
         }
 
         // GREEN_ON_BASE(characterization): the base matched the element by its flat index, which a lone

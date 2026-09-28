@@ -38,7 +38,8 @@ namespace Velvet.Tests
     /// disposed.</item>
     /// <item>Of two items sharing a key, both render, and the second keeps its state across a range change
     /// that keeps it in range, one that takes the first out of the range, and one that brings the first
-    /// back, the first then rendering afresh; each one's cleanup runs when both leave the range; and where
+    /// back, the first then rendering afresh; each one's cleanup runs when both leave the range, and the
+    /// second comes back as a new element; and where
     /// the first renders nothing, the second takes the key with no warning.</item>
     /// <item>An update that reorders and shrinks the list leaves each keyed row still in range with its
     /// state, wherever its item moved.</item>
@@ -756,6 +757,34 @@ namespace Velvet.Tests
                 scrollView.Q<Label>("row-item-1")?.text + "," + scrollView.Q<Label>("row-item-2")?.text
                     + " via " + (captured ? "captured" : "missing") + " setters",
                 Is.EqualTo("a,b via captured setters"));
+        }
+
+        [Test]
+        public void Given_TwoItemsSharingAKey_When_BothAreScrolledAwayAndBack_Then_TheSecondReturnsAsANewElement()
+        {
+            // Arrange — items 0..4, then 10..14, then 0..4 again, with item-2 taking item-1's key. The sweep
+            // that takes both out of range disposes their rows. A plain element is never pooled, so the
+            // returning row is the disposed one exactly when it is the same instance.
+            var node = V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => item.Id == "item-2" ? "item-1" : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Div(name: "row-" + item.Id),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var first = scrollView.Q<VisualElement>("row-item-2");
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            var returned = scrollView.Q<VisualElement>("row-item-2");
+            Assert.That(
+                (first != null, returned != null, ReferenceEquals(returned, first)),
+                Is.EqualTo((true, true, false)));
         }
 
         [Test]
