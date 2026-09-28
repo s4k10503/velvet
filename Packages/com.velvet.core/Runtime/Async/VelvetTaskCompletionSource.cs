@@ -7,7 +7,11 @@ namespace Velvet
     {
         readonly VelvetTaskSource _source = new();
 
-        public VelvetTask Task => new(_source);
+        // Built once: a view built per read would carry the source's version after a consume, and so could
+        // be consumed again.
+        public VelvetTaskCompletionSource() => Task = new(_source);
+
+        public VelvetTask Task { get; }
 
         public void SetResult()
         {
@@ -49,7 +53,9 @@ namespace Velvet
     {
         readonly VelvetTaskSource<T> _source = new();
 
-        public VelvetTask<T> Task => new(_source);
+        public VelvetTaskCompletionSource() => Task = new(_source);
+
+        public VelvetTask<T> Task { get; }
 
         public void SetResult(T result)
         {

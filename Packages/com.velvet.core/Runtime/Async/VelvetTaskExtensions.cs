@@ -12,66 +12,34 @@ namespace Velvet
             var awaiter = task.GetAwaiter();
             if (awaiter.IsCompleted)
             {
-                try
-                {
-                    awaiter.GetResult();
-                }
-                catch (Exception ex)
-                {
-                    VelvetTaskScheduler.PublishUnobservedException(ex);
-                }
-
+                PublishUnobserved(task);
                 return;
             }
 
-            var captured = awaiter;
-            awaiter.OnCompleted(() =>
-            {
-                try
-                {
-                    captured.GetResult();
-                }
-                catch (Exception ex)
-                {
-                    VelvetTaskScheduler.PublishUnobservedException(ex);
-                }
-            });
+            awaiter.OnCompleted(() => PublishUnobserved(task));
         }
 
-        public static void Forget<T>(this VelvetTask<T> task)
+        public static void Forget<T>(this VelvetTask<T> task) => ((VelvetTask)task).Forget();
+
+        static void PublishUnobserved(VelvetTask task)
         {
-            var awaiter = task.GetAwaiter();
-            if (awaiter.IsCompleted)
+            var outcome = VelvetTaskOutcome.Consume(task);
+            if (outcome.Faults != null)
             {
-                try
+                foreach (var fault in outcome.Faults)
                 {
-                    awaiter.GetResult();
+                    VelvetTaskScheduler.PublishUnobservedException(fault.SourceException);
                 }
-                catch (Exception ex)
-                {
-                    VelvetTaskScheduler.PublishUnobservedException(ex);
-                }
-
-                return;
             }
-
-            var captured = awaiter;
-            awaiter.OnCompleted(() =>
+            else if (outcome.Cancellation != null)
             {
-                try
-                {
-                    captured.GetResult();
-                }
-                catch (Exception ex)
-                {
-                    VelvetTaskScheduler.PublishUnobservedException(ex);
-                }
-            });
+                VelvetTaskScheduler.PublishUnobservedException(outcome.Cancellation);
+            }
         }
 
         public static VelvetTask AttachExternalCancellation(this VelvetTask task, CancellationToken cancellationToken)
         {
-            if (!cancellationToken.CanBeCanceled)
+            if (!cancellationToken.CanBeCanceled || task.Status.IsCompleted())
             {
                 return task;
             }
@@ -82,17 +50,12 @@ namespace Velvet
                 return FromCanceled(cancellationToken);
             }
 
-            if (task.Status.IsCompleted())
-            {
-                return task;
-            }
-
             return new VelvetTask(new AttachExternalCancellationVelvetTaskSource(task, cancellationToken));
         }
 
         public static VelvetTask<T> AttachExternalCancellation<T>(this VelvetTask<T> task, CancellationToken cancellationToken)
         {
-            if (!cancellationToken.CanBeCanceled)
+            if (!cancellationToken.CanBeCanceled || task.Status.IsCompleted())
             {
                 return task;
             }
@@ -101,11 +64,6 @@ namespace Velvet
             {
                 task.Forget();
                 return FromCanceled<T>(cancellationToken);
-            }
-
-            if (task.Status.IsCompleted())
-            {
-                return task;
             }
 
             return new VelvetTask<T>(new AttachExternalCancellationVelvetTaskSource<T>(task, cancellationToken));

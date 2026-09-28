@@ -75,7 +75,8 @@ carrying the token of the first cancelled member in argument order, so a fault o
 whichever arrived first. The combination keeps every member's fault in argument order, a member that is
 itself a faulted combination contributing all of its own, and a cancelled member contributing none.
 `AsTask()` hands them to the `Task`'s `Exception` as `Task.WhenAll` holds them, so await
-`VelvetTask.WhenAll(…).AsTask()` where each failure matters.
+`VelvetTask.WhenAll(…).AsTask()` where each failure matters. `AttachExternalCancellation` keeps all of them,
+as Task.WaitAsync does, and `Forget()` logs each one.
 
 The combination consumes each member, and a `VelvetTask` carrying a source allows one consume, the rule
 .NET's ValueTask carries — unless `Preserve()` returned it. So a member that was not preserved must not
@@ -83,7 +84,8 @@ also be awaited elsewhere, and must not be passed twice into a single call: that
 rather than out of the await. A task that carries a value instead — `VelvetTask.FromResult`,
 `VelvetTask.CompletedTask`, and an `async` method that returned without suspending — has no version to
 consume, so the same one may sit at two argument positions, as a preserved one may. Consume what the
-combination returns once as well.
+combination returns once as well. `VelvetTaskCompletionSource.Task` is the same task on every read, so a
+read after it was consumed is consumed too.
 
 Where a task has to be consumed more than once, `Preserve()` — the counterpart of
 ValueTask.Preserve() — consumes it and returns one that any number of awaiters may await and read, a

@@ -37,6 +37,38 @@ namespace Velvet.Tests
 
         static async VelvetTask<int> AsyncFromResult() => await VelvetTask.FromResult(42);
         [Test]
+        public void Given_ACompletionSourceWhoseTaskWasConsumed_When_ItsTaskIsReadAgainAndConsumed_Then_ThrowsAlreadyConsumed()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource();
+            source.SetResult();
+            source.Task.GetAwaiter().GetResult();
+
+            // Act
+            void ConsumeAgain() => source.Task.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(Assert.Throws<InvalidOperationException>(ConsumeAgain)!.Message,
+                Is.EqualTo("The VelvetTask has already been consumed."));
+        }
+
+        [Test]
+        public void Given_AResultCompletionSourceWhoseTaskWasConsumed_When_ItsTaskIsReadAgainAndConsumed_Then_ThrowsAlreadyConsumed()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            source.SetResult(5);
+            source.Task.GetAwaiter().GetResult();
+
+            // Act
+            void ConsumeAgain() => source.Task.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(Assert.Throws<InvalidOperationException>(ConsumeAgain)!.Message,
+                Is.EqualTo("The VelvetTask has already been consumed."));
+        }
+
+        [Test]
         public void Given_SyncCompletedVelvetTask_When_PeekStatusThenGetResultOnce_Then_ReturnsValue()
         {
             // Arrange

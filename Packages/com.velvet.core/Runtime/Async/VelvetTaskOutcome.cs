@@ -52,7 +52,7 @@ namespace Velvet
         }
 
         // The faults are read ahead of GetResult, which retires the version they are read under.
-        static VelvetTaskOutcome<AsyncUnit> Consume(VelvetTask task)
+        internal static VelvetTaskOutcome<AsyncUnit> Consume(VelvetTask task)
         {
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try
@@ -74,7 +74,7 @@ namespace Velvet
             }
         }
 
-        static VelvetTaskOutcome<T> Consume<T>(VelvetTask<T> task)
+        internal static VelvetTaskOutcome<T> Consume<T>(VelvetTask<T> task)
         {
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try
