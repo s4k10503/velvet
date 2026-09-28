@@ -28,7 +28,8 @@ MERGE = "gh pr merge 7 --squash --delete-branch"
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 HOME_REPOSITORY = "s4k10503/velvet"
 
-# Answers the pull request, the runs listings and the check runs from `VELVET_UNCHECKED_TABLE`, and
+# Answers the pull request, the listing of pull requests based on a branch, the runs listings and
+# the check runs from `VELVET_UNCHECKED_TABLE`, and
 # appends every call to `VELVET_UNCHECKED_CALLS` so an allow can be told from a guard that asked
 # nothing.
 STUB_GH = '''#!/usr/bin/env python3
@@ -41,6 +42,13 @@ with open(os.environ["VELVET_UNCHECKED_CALLS"], "a", encoding="utf-8") as calls:
 table = json.loads(os.environ["VELVET_UNCHECKED_TABLE"])
 if argv[:1] != ["api"]:
     sys.exit(1)
+if "/pulls?" in argv[1]:
+    if table.get("targets_unreadable"):
+        sys.stderr.write("gh: HTTP 502\\n")
+        sys.exit(1)
+    base = parse_qs(urlparse(argv[1]).query)["base"][0]
+    print(json.dumps(table.get("targeted", {}).get(base, [])))
+    sys.exit(0)
 if "/pulls/" in argv[1]:
     pull = table["pulls"].get(argv[1].rsplit("/", 1)[1])
     if pull is None:
@@ -125,7 +133,8 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         (self.binaries / "gh").chmod(0o755)
         self.calls = self.root / "calls"
 
-    def ask(self, runs, command=MERGE, runs_unreadable=False, pulls=None, checks=SUITES_RAN):
+    def ask(self, runs, command=MERGE, runs_unreadable=False, pulls=None, checks=SUITES_RAN,
+            targeted=None, targets_unreadable=False):
         """What the guard does with `command`, against runs on each base as given."""
         pulls = pulls or {"7": pull("topic", "main", self.head)}
         environment = dict(os.environ)
@@ -134,7 +143,8 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         environment.pop("CLAUDE_PROJECT_DIR", None)
         environment["VELVET_UNCHECKED_CALLS"] = str(self.calls)
         environment["VELVET_UNCHECKED_TABLE"] = json.dumps(
-            {"pulls": pulls, "runs": runs, "runs_unreadable": runs_unreadable, "checks": checks})
+            {"pulls": pulls, "runs": runs, "runs_unreadable": runs_unreadable, "checks": checks,
+             "targeted": targeted or {}, "targets_unreadable": targets_unreadable})
         event = {"tool_name": "Bash", "cwd": str(self.project), "tool_input": {"command": command}}
         return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
                               capture_output=True, text=True, env=environment, timeout=120)
@@ -237,6 +247,37 @@ class UncheckedAgainstBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, "would merge onto 2.x" in result.stderr),
                          (REFUSED, True))
+
+
+    def test_Given_AMaintenanceLineMergedForward_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange — every base reading is green, so the head's name is what refuses it.
+        pulls = {"7": pull("2.x", "main", self.head)}
+
+        # Act
+        result = self.ask(self.green(), pulls=pulls)
+
+        # Assert
+        self.assertEqual((result.returncode, "its head 2.x is a long-lived branch" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_AHeadAnotherPullRequestIsBasedOn_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange
+        targeted = {"topic": [{"number": 9}]}
+
+        # Act
+        result = self.ask(self.green(), targeted=targeted)
+
+        # Assert
+        self.assertEqual((result.returncode, "its head topic is a long-lived branch" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_PullRequestsBasedOnTheHeadThatCannotBeRead_When_TheMergeIsAsked_Then_ItIsRefusedAsUnread(self):
+        # Act
+        result = self.ask(self.green(), targets_unreadable=True)
+
+        # Assert
+        self.assertEqual((result.returncode, "whether any pull request is based on topic could not "
+                          "be read" in result.stderr), (REFUSED, True))
 
 
 if __name__ == "__main__":

@@ -109,6 +109,10 @@ def main():
         sys.stdout.write(json.dumps({"total_count": 1, "workflow_runs": [
             {"run_number": 1, "status": "completed", "conclusion": conclusion, "head_sha": sha}]}))
         return 0
+    # No world's head is a branch anything is based on.
+    if argv[0] == "api" and "/pulls?" in argv[1] and "--jq" not in argv:
+        sys.stdout.write("[]")
+        return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
         number = argv[1].rsplit("/", 1)[1]

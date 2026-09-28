@@ -9,7 +9,8 @@ own checks to have seen them:
 - the base's newest release commit, which `published_check.release_commit` finds, and
   CONTRIBUTING.md's continuous-integration section owns why it is asked;
 - which branch the head is at all: a head on another repository names a branch `origin/<it>` does
-  not hold, or holds as a different branch of the same name, so neither containment can be read.
+  not hold, or holds as a different branch of the same name, so neither containment can be read;
+  and a long-lived head, which `scripts/pr/long_lived.py` names, is not to be squashed or deleted.
 
 `lib/merge_target.py` owns which pull request a command would land.
 """
@@ -27,6 +28,7 @@ from shell_commands import NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, comma
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
 sys.path.insert(0, str(SCRIPTS / "pr"))
 sys.path.insert(0, str(SCRIPTS / "release"))
+import long_lived
 import published_check
 import red_base
 
@@ -87,6 +89,12 @@ def target_of(cwd, pr):
     return target if target.head and target.base and target.commit else None
 
 
+def targeted_as_base(cwd, branch):
+    """Whether any pull request, in any state, is based on `branch`, or None when unread."""
+    listed = gh_json(cwd, ["api", "repos/{owner}/{repo}/" + long_lived.targeted_path(branch)])
+    return bool(listed) if isinstance(listed, list) else None
+
+
 def failing_runs(cwd, base):
     """The base's required workflows whose last push verdict failed, or a string saying what went
     unread."""
@@ -136,6 +144,12 @@ def refuse_one(cwd, pr):
         return (f"{label} has its head on another repository. What that head holds is read off "
                 f"origin/<branch> here, which is not that branch, so nothing here can say whether "
                 f"its checks cover its base; `settle.py merge` refuses it for the same reason.\n")
+    lasting = long_lived.by_name(target.head) or targeted_as_base(cwd, target.head)
+    if lasting is None:
+        return UNREADABLE_REFUSAL.format(
+            f"whether any pull request is based on {target.head} could not be read")
+    if lasting:
+        return f"{label}: {long_lived.reason(target.head)}; `settle.py merge` refuses it too.\n"
 
     failing = failing_runs(cwd, target.base)
     if isinstance(failing, str):

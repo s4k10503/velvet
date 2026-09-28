@@ -918,6 +918,11 @@ under `[Unreleased]`, a clean merge can file that entry inside the section the r
 push. So a head behind a release takes its base in with `settle.py update`, and its pull request checks
 run again over the result. A head behind only commits that date nothing is not refused.
 
+And they refuse a head that has to outlive its merge — `main`, `upm`, a maintenance line, or a branch
+any pull request, open or closed, has been based on — because `settle.py merge` squashes the head and
+deletes it. `scripts/pr/long_lived.py` decides which heads those are, and `settle.py` and
+`merge_unchecked_against_base.py` both ask it; the maintenance-line section says how a line lands.
+
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
@@ -1148,6 +1153,13 @@ owed a release. The first is not optional: a fix that stays on the line is one a
 three days. Merging forward is also what makes it checkable, because git then records the ancestry
 and `merge-base --is-ancestor` answers it without anyone reading a pull request;
 `unreleased_maintenance_line.py` reports both at session start.
+
+**Merging forward takes a merge commit, and the line outlives it.** A squash records no ancestry,
+and `settle.py merge` squashes and then deletes the head, so it refuses a pull request whose head is
+the line, as the `gh pr merge` guards do. Land it from the web interface with *Create a merge commit*,
+and if GitHub's delete-on-merge setting removes the line afterwards, restore it with the pull
+request's *Restore branch* button. The continuous-integration section says which other heads are
+refused the same way.
 
 **A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
 entries; a maintenance line holding them is a backport nobody shipped, and the release readings do
