@@ -106,6 +106,7 @@ namespace Velvet
                         finally
                         {
                             _ctx.EndStoreSnapshotWave();
+                            MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                         }
                     });
             }
@@ -240,6 +241,10 @@ namespace Velvet
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
+                // After the portal drain, whose reconciles can create the element that claims one. Inside a
+                // batch drain the drain's end expires them instead: its passes are one render, and a box one
+                // fiber's pass leaves is claimed by a later fiber's.
+                if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
