@@ -36,7 +36,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             Probe.Reset();
             s_hostRouter = null;
-            s_setHostRouter = null;
+            s_setHostRouter = default;
         }
 
         [TearDown]
@@ -297,7 +297,7 @@ namespace Velvet.Tests
         #region A provider whose router changes
 
         private static Router? s_hostRouter;
-        private static StateUpdater<Router>? s_setHostRouter;
+        private static StateUpdater<Router> s_setHostRouter;
 
         [Component]
         private static VNode SwitchingHost()
@@ -323,7 +323,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Act — no passive effect runs between the change and the reading.
-            s_setHostRouter!.Invoke(_other);
+            s_setHostRouter.Invoke(_other);
             mounted.FlushStateForTest();
 
             // Assert
@@ -342,7 +342,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Act — no passive effect runs between the change and the reading.
-            s_setHostRouter!.Invoke(_other);
+            s_setHostRouter.Invoke(_other);
             mounted.FlushStateForTest();
 
             // Assert
