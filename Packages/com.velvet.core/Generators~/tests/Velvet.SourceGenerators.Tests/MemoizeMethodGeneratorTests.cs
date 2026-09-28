@@ -161,14 +161,258 @@ namespace MyApp
                 snapshotFile: "GenericContainerT2.verified.cs");
         }
 
+        [Fact]
+        public void Memoize_Arity9_GeneratesMemoCallWithNineDeps()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build(int a, int b, int c, int d, int e, int f, int g, int h, int i);
+
+        private global::Velvet.VNode Build_Impl(int a, int b, int c, int d, int e, int f, int g, int h, int i) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "Arity9.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_GenericMethod_RepeatsTypeParametersAndConstraints()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+#nullable enable
+namespace MyApp.Pages
+{
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build<TItem, TKey, TRow, TCell>(TItem item, TKey key, TRow row, TCell cell)
+            where TItem : class?, global::System.IComparable<TItem>, new()
+            where TKey : notnull
+            where TRow : struct
+            where TCell : unmanaged;
+
+        private global::Velvet.VNode Build_Impl<TItem, TKey, TRow, TCell>(TItem item, TKey key, TRow row, TCell cell)
+            where TItem : class?, global::System.IComparable<TItem>, new()
+            where TKey : notnull
+            where TRow : struct
+            where TCell : unmanaged => null!;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "GenericMethod.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_InParameter_MemoizesOnACopy()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public readonly struct Row { public readonly int Id; }
+
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build(in Row row, string title, in int rowValue);
+
+        private global::Velvet.VNode Build_Impl(in Row row, string title, int rowValue) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "InParameter.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_InParameterNamedLikeATypeParameter_CopiesUnderAnotherName()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build<TValue>(in int T, TValue value);
+
+        private global::Velvet.VNode Build_Impl<TValue>(int T, TValue value) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "InParameterTypeParameterName.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_ParamsParameter_IsRepeated()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build(string title, params string[] items);
+
+        private global::Velvet.VNode Build_Impl(string title, string[] items) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "ParamsParameter.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_KeywordNamedParameter_IsEscaped()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial class HomePage
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build(string @class);
+
+        private global::Velvet.VNode Build_Impl(string @class) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "KeywordNamedParameter.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_ExtensionMethod_RepeatsThis()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public static partial class RowViews
+    {
+        [global::Velvet.MemoizeMethod]
+        public static partial global::Velvet.VNode ToView(this string title);
+
+        private static global::Velvet.VNode ToView_Impl(string title) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.RowViews.Memoize.g.cs",
+                snapshotFile: "ExtensionMethod.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_GenericOverride_RepeatsModifiersWithoutConstraints()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public abstract class PageBase
+    {
+        public abstract global::Velvet.VNode Header<T>(T title) where T : global::System.IComparable<T>;
+    }
+
+    public partial class HomePage : PageBase
+    {
+        [global::Velvet.MemoizeMethod]
+        public sealed override partial global::Velvet.VNode Header<T>(T title);
+
+        private global::Velvet.VNode Header_Impl<T>(T title) where T : global::System.IComparable<T> => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "GenericOverride.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_NewVirtual_RepeatsModifiers()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public class PageBase
+    {
+        public global::Velvet.VNode Footer(int count) => null;
+    }
+
+    public partial class HomePage : PageBase
+    {
+        [global::Velvet.MemoizeMethod]
+        public new virtual partial global::Velvet.VNode Footer(int count);
+
+        private global::Velvet.VNode Footer_Impl(int count) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.HomePage.Memoize.g.cs",
+                snapshotFile: "NewVirtual.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_StructInstanceMember_CallsImplOnACopyOfThis()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial struct RowView
+    {
+        [global::Velvet.MemoizeMethod]
+        public partial global::Velvet.VNode Build(int self, in int row);
+
+        private global::Velvet.VNode Build_Impl(int self, int row) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.RowView.Memoize.g.cs",
+                snapshotFile: "StructInstanceMember.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_ReadOnlyStructMember_RepeatsReadOnly()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.Pages
+{
+    public partial struct RowView
+    {
+        [global::Velvet.MemoizeMethod]
+        public readonly partial global::Velvet.VNode Build(int x);
+
+        private readonly global::Velvet.VNode Build_Impl(int x) => null;
+    }
+}",
+                expectedHintName: "MyApp.Pages.RowView.Memoize.g.cs",
+                snapshotFile: "ReadOnlyStructMember.verified.cs");
+        }
+
+        [Fact]
+        public void Memoize_VNodeSubtypeOtherThanMemoNode_ReportsVel008()
+        {
+            AssertOnlyDiagnostic(
+                inputSource: @"
+namespace MyApp
+{
+    public sealed class Card : global::Velvet.VNode { }
+
+    public partial class Page
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial Card Build(int x);
+    }
+}",
+                expectedId: "VEL008");
+        }
+
         [Theory]
-        // VEL001 (arity 0) is exercised separately by the dedicated Memoize_Arity0_* tests: VEL001 still generates
-        // a wrapper alongside the warning, which AssertOnlyDiagnostic's "no generated sources" precondition rejects.
-        [InlineData("VEL002", "private partial global::Velvet.VNode Build(int a, int b, int c, int d, int e, int f, int g, int h, int i);", "public partial class Page")]
-        [InlineData("VEL003", "private partial global::Velvet.VNode Build<T>(T value);", "public partial class Page")]
         [InlineData("VEL004", "private partial global::System.Threading.Tasks.Task<global::Velvet.VNode> Build(int x);", "public partial class Page")]
         [InlineData("VEL005", "private partial global::Velvet.VNode Build(ref int x);", "public partial class Page")]
-        [InlineData("VEL005", "private partial global::Velvet.VNode Build(in int x);", "public partial class Page")]
+        [InlineData("VEL005", "private partial global::Velvet.VNode Build(out int x);", "public partial class Page")]
         [InlineData("VEL006", "partial global::Velvet.VNode Build(int x);", "public partial class Page")]
         [InlineData("VEL007", "private partial global::Velvet.VNode Build(int x);", "public class Page")]
         [InlineData("VEL008", "private partial string Build(int x);", "public partial class Page")]
@@ -212,44 +456,24 @@ namespace MyApp.Pages
         }
 
         [Fact]
-        public void Memoize_Arity0_ImpureImpl_WarnsButGenerates()
+        public void Memoize_Arity0_ImpureImpl_GeneratesWithoutDiagnostic()
         {
-            // Deps-less memoization warns but allows: VEL001 fires, yet the wrapper is still generated
-            // so callers compile. The user is trusted to fix the impure _Impl or accept the stale cache.
+            // The same as useMemo(factory, []): an empty dependency list is a complete declaration whatever the
+            // factory does, so nothing is reported about it.
             var result = GeneratorTestHelper.Run(@"
 namespace MyApp.Pages
 {
     public partial class HomePage
     {
+        private static int _renders;
+
         [global::Velvet.MemoizeMethod]
         private static partial global::Velvet.VNode BuildBanner();
 
-        private static global::Velvet.VNode BuildBanner_Impl() { throw new System.Exception(); }
+        private static global::Velvet.VNode BuildBanner_Impl() { _renders++; return null; }
     }
 }");
-            Assert.Contains(result.Diagnostics, d => d.Id == "VEL001");
-            Assert.Single(result.GeneratedSources);
-            Assert.Contains(
-                "V.Memoized(() => BuildBanner_Impl(), global::System.Array.Empty<object>());",
-                result.GeneratedSources[0].Source);
-        }
-
-        [Fact]
-        public void Memoize_Arity0_MissingImpl_WarnsButGenerates()
-        {
-            // arity 0 with no _Impl member: cannot prove purity → VEL001. Wrapper is still generated; the missing
-            // _Impl call is surfaced as a regular C# compile error in user code.
-            var result = GeneratorTestHelper.Run(@"
-namespace MyApp.Pages
-{
-    public partial class HomePage
-    {
-        [global::Velvet.MemoizeMethod]
-        private static partial global::Velvet.VNode BuildBanner();
-    }
-}");
-            Assert.Contains(result.Diagnostics, d => d.Id == "VEL001");
-            Assert.Single(result.GeneratedSources);
+            Assert.Empty(result.Diagnostics);
         }
 
         [Fact]

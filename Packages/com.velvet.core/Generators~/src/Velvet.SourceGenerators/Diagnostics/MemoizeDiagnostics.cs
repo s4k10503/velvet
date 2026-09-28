@@ -22,35 +22,17 @@ namespace Velvet.SourceGenerators.Diagnostics
         private static DiagnosticDescriptor Info(string id, string title, string messageFormat, string description) =>
             new(id, title, messageFormat, Category, DiagnosticSeverity.Info, isEnabledByDefault: true, description);
 
-        public static readonly DiagnosticDescriptor Vel001ArityZeroCannotProvePurity = Warn(
-            "VEL001",
-            "[MemoizeMethod] arity 0 cannot prove purity",
-            "Method '{0}' has no parameters and the corresponding _Impl method is not provably Pure; the deps-less cache may serve a stale VNode forever",
-            "[MemoizeMethod] with no parameters (arity 0) caches a deps-less value — generation proceeds, but PurityAnalyzer could not statically prove the _Impl method has no side effects. Either annotate the _Impl with [Pure], remove the [MemoizeMethod] attribute, or accept the warning if you trust the body is deterministic.");
-
-        public static readonly DiagnosticDescriptor Vel002ArityExceedsLimit = Warn(
-            "VEL002",
-            "[MemoizeMethod] supports only 1-8 parameters",
-            "Method '{0}' has {1} parameters; [MemoizeMethod] supports 1-8 parameters",
-            "Arity 9+ is not supported. If needed, future expansion to params object[] is planned.");
-
-        public static readonly DiagnosticDescriptor Vel003GenericMethodNotSupported = Warn(
-            "VEL003",
-            "[MemoizeMethod] does not support generic methods",
-            "Method '{0}' is generic; [MemoizeMethod] does not support generic methods",
-            "[MemoizeMethod] on generic methods is not supported. Future support is planned.");
-
         public static readonly DiagnosticDescriptor Vel004AsyncMethodNotSupported = Warn(
             "VEL004",
             "[MemoizeMethod] does not support async methods",
             "Method '{0}' is async or returns Task; [MemoizeMethod] does not support async methods",
-            "[MemoizeMethod] on async methods is not supported. Future support is planned.");
+            "V.Memoized places a node synchronously, so there is nothing to place until a task completes. To memoize the task itself, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel005RefOutParameterNotSupported = Warn(
             "VEL005",
-            "[MemoizeMethod] does not support ref/out/in parameters",
-            "Method '{0}' has a ref/out/in parameter; [MemoizeMethod] does not support by-reference parameters",
-            "ref/out/in parameters cannot be safely used as deps and are not supported.");
+            "[MemoizeMethod] does not support ref/out parameters",
+            "Method '{0}' has a ref or out parameter; a cached render would skip the write through it",
+            "A render served from the cache does not run the _Impl method, so a write it makes through a ref or out parameter would happen on some renders and not others. An in parameter is supported.");
 
         public static readonly DiagnosticDescriptor Vel006MissingAccessibilityModifier = Warn(
             "VEL006",
@@ -66,9 +48,9 @@ namespace Velvet.SourceGenerators.Diagnostics
 
         public static readonly DiagnosticDescriptor Vel008NonVNodeReturnType = Warn(
             "VEL008",
-            "[MemoizeMethod] method must return Velvet.VNode or a derived type",
-            "Method '{0}' return type '{1}' is not Velvet.VNode or a derived type",
-            "V.Memo returns a MemoNode (which derives from VNode), so the target method's return type must derive from VNode.");
+            "[MemoizeMethod] method must return Velvet.VNode",
+            "Method '{0}' return type '{1}' is not Velvet.VNode or Velvet.MemoNode",
+            "The generated body returns the MemoNode V.Memoized builds, so the declared return type must be one MemoNode converts to: VNode or MemoNode itself. To memoize any other value, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel009PartialMethodAlreadyHasBody = Warn(
             "VEL009",

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Rebuild the source generators and redeploy their committed DLLs.
 
-Release only, and not by omission: what makes the deployed pair reproducible is declared per configuration
--- each deployed project drops its Release PDB and keeps its Debug one -- so a Debug build deployed here
-carries a debug directory pointing at a PDB nothing ships, and scripts/generators/deployed_dll_check.py
-cannot say whether it corresponds to its sources. This used to take the configuration from the environment.
+Release only, and not by omission: scripts/generators/deployed_dll_check.py rebuilds the committed pair
+through build_command below and compares byte for byte, so a pair deployed from another configuration
+cannot be said to correspond to its sources. This used to take the configuration from the environment.
 """
 
 import shutil
@@ -39,13 +38,21 @@ DEPLOYMENTS = (
 
 
 def build_command(project):
-    """--no-incremental because MSBuild decides whether to recompile from source timestamps, while
+    """DebugType=none because a PDB records the .NET runtime the compiler ran on and the assembly
+    carries the PDB's checksum, so a deployed pair built with one differs between machines; README.md
+    ▸ CI owns the measurement. It is set here rather than in the projects so that every other Release
+    build keeps its PDB, and a Release build of a generator can be debugged with line numbers.
+
+    --no-incremental because MSBuild decides whether to recompile from source timestamps, while
     what makes the deployed pair reproducible is a set of properties. A bin/ left by a build that
-    passed different ones -- `-p:DebugType=portable` to get a Release PDB, say -- is newer than every
-    source, so an incremental build keeps it and the deployment below copies it out unchanged.
-    scripts/generators/deployed_dll_check.py builds through this, and its tests pin the flag.
+    passed different ones -- a plain `dotnet build -c Release`, which keeps its PDB, say -- is newer
+    than every source, so an incremental build keeps it and the deployment below copies it out
+    unchanged. scripts/generators/deployed_dll_check.py builds through this, and its tests pin both
+    flags.
     """
-    return ["dotnet", "build", project, "-c", CONFIGURATION, "--no-incremental", "--nologo"]
+    return [
+        "dotnet", "build", project, "-c", CONFIGURATION, "--no-incremental", "--nologo", "-p:DebugType=none",
+    ]
 
 
 def run(command, failure):

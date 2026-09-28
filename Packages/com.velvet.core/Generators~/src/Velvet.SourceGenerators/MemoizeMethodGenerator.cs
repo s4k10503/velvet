@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Velvet.SourceGenerators.Diagnostics;
@@ -28,8 +29,6 @@ namespace Velvet.SourceGenerators
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
         private const string ImplSuffix = "_Impl";
-        internal const int MinArity = 0;
-        internal const int MaxArity = 8;
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -71,28 +70,10 @@ namespace Velvet.SourceGenerators
             var containingType = method.ContainingType;
 
             var declarationValid = ValidateDeclaration(decl, method, containingType, diagnostics, cancellationToken);
-
-            // Between the two halves rather than after both, because the warning is suppressed on a declaration
-            // already rejected — it would be a second complaint about a body the user has not been told to write
-            // yet — while a rejected signature says nothing about whether the _Impl is pure.
-            if (declarationValid && method.Parameters.Length == 0)
-            {
-                ReportUnprovablePurity(ctx, decl, method, containingType, diagnostics, cancellationToken);
-            }
-
-            var signatureValid = ValidateSignature(decl, method, diagnostics);
+            var signatureValid = ValidateSignature(ctx.SemanticModel.Compilation, decl, method, diagnostics);
             var isValid = declarationValid && signatureValid;
 
-            MethodInfo? info = isValid
-                ? new MethodInfo(
-                    name: method.Name,
-                    accessibility: RenderAccessibility(method.DeclaredAccessibility),
-                    isStatic: method.IsStatic,
-                    returnTypeDisplay: method.ReturnType.ToDisplayString(FullyQualifiedFormat),
-                    parameters: method.Parameters
-                        .Select(p => new ParameterInfo(p.Name, p.Type.ToDisplayString(FullyQualifiedFormat)))
-                        .ToImmutableArray())
-                : (MethodInfo?)null;
+            MethodInfo? info = isValid ? BuildMethodInfo(decl, method) : (MethodInfo?)null;
 
             if (containingType is null)
             {
@@ -162,30 +143,12 @@ namespace Velvet.SourceGenerators
         /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual.
         /// </summary>
         private static bool ValidateSignature(
+            Compilation compilation,
             MethodDeclarationSyntax decl,
             IMethodSymbol method,
             ImmutableArray<DiagnosticInfo>.Builder diagnostics)
         {
             var isValid = true;
-
-            if (method.Parameters.Length > MaxArity)
-            {
-                diagnostics.Add(new DiagnosticInfo(
-                    MemoizeDiagnostics.Vel002ArityExceedsLimit,
-                    decl.Identifier.GetLocation(),
-                    method.Name,
-                    method.Parameters.Length.ToString(CultureInfo.InvariantCulture)));
-                isValid = false;
-            }
-
-            if (method.TypeParameters.Length > 0)
-            {
-                diagnostics.Add(new DiagnosticInfo(
-                    MemoizeDiagnostics.Vel003GenericMethodNotSupported,
-                    decl.Identifier.GetLocation(),
-                    method.Name));
-                isValid = false;
-            }
 
             var isAsyncOrTaskLike = method.IsAsync || IsTaskLikeReturnType(method.ReturnType);
             if (isAsyncOrTaskLike)
@@ -197,8 +160,9 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            if (method.Parameters.Any(p =>
-                    p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly or RefKind.In))
+            // An in parameter is read-only, so the wrapper copies it and memoizes on the copy. A write through
+            // ref or out is an output a cached render would skip, so no copy can stand in for it.
+            if (method.Parameters.Any(p => p.RefKind is RefKind.Ref or RefKind.Out))
             {
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel005RefOutParameterNotSupported,
@@ -209,7 +173,7 @@ namespace Velvet.SourceGenerators
 
             // For async / Task-like cases, VEL004 already conveys the cause clearly, so suppress VEL008
             // (Task<VNode> is not a VNode-derived type, but it is clearer to surface VEL004 first).
-            if (!isAsyncOrTaskLike && !IsVNodeOrDerived(method.ReturnType))
+            if (!isAsyncOrTaskLike && !IsMemoNodeAssignableTo(compilation, method.ReturnType))
             {
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel008NonVNodeReturnType,
@@ -220,29 +184,6 @@ namespace Velvet.SourceGenerators
             }
 
             return isValid;
-        }
-
-        /// <summary>
-        /// Generation proceeds either way. The arity-0 V.Memoized cache returns the same VNode forever, so an
-        /// impure factory leaks stale state with nothing else in the compile objecting.
-        /// </summary>
-        private static void ReportUnprovablePurity(
-            GeneratorAttributeSyntaxContext ctx,
-            MethodDeclarationSyntax decl,
-            IMethodSymbol method,
-            INamedTypeSymbol? containingType,
-            ImmutableArray<DiagnosticInfo>.Builder diagnostics,
-            CancellationToken cancellationToken)
-        {
-            if (IsImplMethodPure(ctx.SemanticModel.Compilation, containingType, method.Name, cancellationToken))
-            {
-                return;
-            }
-
-            diagnostics.Add(new DiagnosticInfo(
-                MemoizeDiagnostics.Vel001ArityZeroCannotProvePurity,
-                decl.Identifier.GetLocation(),
-                method.Name));
         }
 
         private static void Emit(SourceProductionContext spc, ImmutableArray<MemoizeCandidate> candidates)
@@ -321,59 +262,189 @@ namespace Velvet.SourceGenerators
             }
         }
 
+        private static MethodInfo BuildMethodInfo(MethodDeclarationSyntax decl, IMethodSymbol method)
+        {
+            var taken = new HashSet<string>(
+                method.Parameters.Select(p => p.Name).Concat(method.TypeParameters.Select(tp => tp.Name)),
+                StringComparer.Ordinal);
+            var parameters = BuildParameters(method, taken);
+            var typeArguments = method.TypeParameters.IsEmpty
+                ? string.Empty
+                : $"<{string.Join(", ", method.TypeParameters.Select(tp => EscapeKeyword(tp.Name)))}>";
+
+            var signature = new StringBuilder()
+                .Append(RenderAccessibility(method.DeclaredAccessibility)).Append(' ')
+                .Append(method.IsStatic ? "static " : string.Empty)
+                .Append(MatchingModifiers(decl))
+                .Append("partial ")
+                .Append(method.ReturnType.ToDisplayString(FullyQualifiedFormat)).Append(' ')
+                .Append(EscapeKeyword(method.Name)).Append(typeArguments)
+                .Append('(')
+                .Append(string.Join(", ", parameters.Select(p => $"{p.Modifier}{p.TypeDisplay} {p.Name}")))
+                .Append(')');
+            foreach (var clause in ConstraintClauses(method))
+            {
+                signature.Append('\n').Append("    ").Append(clause);
+            }
+
+            // A lambda inside a struct cannot capture this (CS1673), so an instance member of one calls
+            // _Impl on a copy.
+            var receiver = method.ContainingType is { IsValueType: true } && !method.IsStatic
+                ? UniqueName("self", taken)
+                : string.Empty;
+
+            return new MethodInfo(method.Name, signature.ToString(), typeArguments, receiver, parameters);
+        }
+
         private static void AppendMethod(SourceBuilder sb, MethodInfo info)
         {
-            var paramList = string.Join(", ", info.Parameters.Select(p => $"{p.TypeDisplay} {p.Name}"));
-            var nameList = string.Join(", ", info.Parameters.Select(p => p.Name));
-            var staticModifier = info.IsStatic ? "static " : string.Empty;
-            sb.AppendLine($"{info.Accessibility} {staticModifier}partial {info.ReturnTypeDisplay} {info.Name}({paramList})");
-            if (info.Parameters.Length == 0)
+            foreach (var line in info.Signature.Split('\n'))
             {
-                // arity 0: there are no parameters to key on, and the whole point of the attribute is that the
-                // result is computed once. Omitting the argument would instead ask V.Memoized for no dependency
-                // array at all, which rebuilds every render; the empty array is what says "no dependencies".
-                sb.AppendLine(
-                    $"    => global::Velvet.V.Memoized(() => {info.Name}{ImplSuffix}(), global::System.Array.Empty<object>());");
+                sb.AppendLine(line);
             }
-            else
+
+            var argumentList = string.Join(", ", info.Parameters.Select(p => p.ArgumentName));
+            // arity 0: there are no parameters to key on, and the whole point of the attribute is that the
+            // result is computed once. Omitting the argument would instead ask V.Memoized for no dependency
+            // array at all, which rebuilds every render; the empty array is what says "no dependencies".
+            var deps = info.Parameters.IsEmpty ? "global::System.Array.Empty<object>()" : argumentList;
+            var target = info.Receiver.Length > 0 ? info.Receiver + "." : string.Empty;
+            var memoCall =
+                $"global::Velvet.V.Memoized(() => {target}{EscapeKeyword(info.Name + ImplSuffix)}{info.TypeArguments}({argumentList}), {deps})";
+
+            var copies = info.Parameters.Where(p => p.ArgumentName != p.Name).ToImmutableArray();
+            if (copies.IsEmpty && info.Receiver.Length == 0)
             {
-                sb.AppendLine($"    => global::Velvet.V.Memoized(() => {info.Name}{ImplSuffix}({nameList}), {nameList});");
+                sb.AppendLine($"    => {memoCall};");
+                return;
+            }
+
+            // A lambda cannot capture an in parameter either, so each one is read into a local the factory
+            // captures.
+            using (sb.Block())
+            {
+                if (info.Receiver.Length > 0)
+                {
+                    sb.AppendLine($"var {info.Receiver} = this;");
+                }
+                foreach (var copy in copies)
+                {
+                    sb.AppendLine($"var {copy.ArgumentName} = {copy.Name};");
+                }
+                sb.AppendLine($"return {memoCall};");
             }
         }
 
-        /// <summary>
-        /// Returns true when the &lt;methodName&gt;_Impl member exists on <paramref name="containingType"/> and
-        /// <see cref="PurityAnalysis.PurityAnalyzer"/> classifies it as Pure. Unknown / Impure / missing yields false
-        /// (caller treats this as "cannot relax the arity 0 restriction").
-        /// </summary>
-        private static bool IsImplMethodPure(
-            Compilation compilation,
-            INamedTypeSymbol? containingType,
-            string methodName,
-            CancellationToken cancellationToken)
+        private static ImmutableArray<ParameterInfo> BuildParameters(IMethodSymbol method, HashSet<string> taken)
         {
-            if (containingType is null)
+            var parameters = ImmutableArray.CreateBuilder<ParameterInfo>(method.Parameters.Length);
+            foreach (var parameter in method.Parameters)
             {
-                return false;
+                var name = EscapeKeyword(parameter.Name);
+                var argumentName = parameter.RefKind == RefKind.In
+                    ? UniqueName(parameter.Name + "Value", taken)
+                    : name;
+
+                parameters.Add(new ParameterInfo(
+                    name,
+                    argumentName,
+                    ParameterModifier(method, parameter),
+                    parameter.Type.ToDisplayString(FullyQualifiedFormat)));
             }
-
-            var implName = methodName + ImplSuffix;
-            foreach (var member in containingType.GetMembers(implName))
-            {
-                if (member is not IMethodSymbol implMethod || implMethod.Parameters.Length != 0)
-                {
-                    continue;
-                }
-
-                var purity = PurityAnalysis.PurityAnalyzer.Analyze(implMethod, compilation, cancellationToken);
-                if (purity.Purity == PurityAnalysis.Purity.Pure)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return parameters.MoveToImmutable();
         }
+
+        private static string UniqueName(string candidate, HashSet<string> taken)
+        {
+            while (!taken.Add(candidate))
+            {
+                candidate += "_";
+            }
+            return candidate;
+        }
+
+        // CS0755 and CS0758 require the implementing declaration to repeat `this` and `params`.
+        private static string ParameterModifier(IMethodSymbol method, IParameterSymbol parameter)
+        {
+            if (parameter.Ordinal == 0 && method.IsExtensionMethod)
+            {
+                return "this ";
+            }
+            if (parameter.IsParams)
+            {
+                return "params ";
+            }
+            return parameter.RefKind == RefKind.In ? "in " : string.Empty;
+        }
+
+        // CS8800 and CS8663 require the implementing declaration to repeat these.
+        private static string MatchingModifiers(MethodDeclarationSyntax decl)
+        {
+            var modifiers = new StringBuilder();
+            foreach (var modifier in decl.Modifiers)
+            {
+                if (modifier.IsKind(SyntaxKind.NewKeyword) ||
+                    modifier.IsKind(SyntaxKind.VirtualKeyword) ||
+                    modifier.IsKind(SyntaxKind.OverrideKeyword) ||
+                    modifier.IsKind(SyntaxKind.SealedKeyword) ||
+                    modifier.IsKind(SyntaxKind.ReadOnlyKeyword))
+                {
+                    modifiers.Append(modifier.Text).Append(' ');
+                }
+            }
+            return modifiers.ToString();
+        }
+
+        // CS0761 requires the implementing declaration to repeat each constraint, and CS0460 forbids an
+        // override from restating the ones it inherits.
+        private static ImmutableArray<string> ConstraintClauses(IMethodSymbol method)
+        {
+            if (method.IsOverride)
+            {
+                return ImmutableArray<string>.Empty;
+            }
+
+            var clauses = ImmutableArray.CreateBuilder<string>();
+            foreach (var typeParameter in method.TypeParameters)
+            {
+                var constraints = new List<string>();
+                if (typeParameter.HasReferenceTypeConstraint)
+                {
+                    constraints.Add(
+                        typeParameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated
+                            ? "class?"
+                            : "class");
+                }
+                else if (typeParameter.HasUnmanagedTypeConstraint)
+                {
+                    constraints.Add("unmanaged");
+                }
+                else if (typeParameter.HasValueTypeConstraint)
+                {
+                    constraints.Add("struct");
+                }
+                else if (typeParameter.HasNotNullConstraint)
+                {
+                    constraints.Add("notnull");
+                }
+
+                constraints.AddRange(typeParameter.ConstraintTypes.Select(t => t.ToDisplayString(FullyQualifiedFormat)));
+
+                if (typeParameter.HasConstructorConstraint)
+                {
+                    constraints.Add("new()");
+                }
+
+                if (constraints.Count > 0)
+                {
+                    clauses.Add($"where {EscapeKeyword(typeParameter.Name)} : {string.Join(", ", constraints)}");
+                }
+            }
+            return clauses.ToImmutable();
+        }
+
+        private static string EscapeKeyword(string identifier) =>
+            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None ? identifier : "@" + identifier;
 
         private static string RenderAccessibility(Accessibility accessibility) => accessibility switch
         {
@@ -423,6 +494,26 @@ namespace Velvet.SourceGenerators
             var unbound = named.IsGenericType ? named.ConstructedFrom : named;
             return unbound is { Name: "Task" or "ValueTask" } &&
                    IsNamespace(unbound.ContainingNamespace, "System.Threading.Tasks");
+        }
+
+        // The wrapper returns the MemoNode V.Memoized builds, so the declared type has to be one MemoNode
+        // converts to; another VNode subtype is CS0029 in the emitted body.
+        private static bool IsMemoNodeAssignableTo(Compilation compilation, ITypeSymbol returnType)
+        {
+            if (!IsVNodeOrDerived(returnType))
+            {
+                return false;
+            }
+            for (ITypeSymbol? current = compilation.GetTypeByMetadataName("Velvet.MemoNode");
+                 current is not null;
+                 current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, returnType))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static bool IsVNodeOrDerived(ITypeSymbol type)
@@ -661,29 +752,33 @@ namespace Velvet.SourceGenerators
         {
             public MethodInfo(
                 string name,
-                string accessibility,
-                bool isStatic,
-                string returnTypeDisplay,
+                string signature,
+                string typeArguments,
+                string receiver,
                 ImmutableArray<ParameterInfo> parameters)
             {
                 Name = name;
-                Accessibility = accessibility;
-                IsStatic = isStatic;
-                ReturnTypeDisplay = returnTypeDisplay;
+                Signature = signature;
+                TypeArguments = typeArguments;
+                Receiver = receiver;
                 Parameters = parameters;
             }
 
             public string Name { get; }
-            public string Accessibility { get; }
-            public bool IsStatic { get; }
-            public string ReturnTypeDisplay { get; }
+
+            /// <summary>The declaration line and its constraint clauses, one per line, as emitted.</summary>
+            public string Signature { get; }
+            public string TypeArguments { get; }
+
+            /// <summary>The local <c>this</c> is copied into, or empty where the factory can capture <c>this</c>.</summary>
+            public string Receiver { get; }
             public ImmutableArray<ParameterInfo> Parameters { get; }
 
             public bool Equals(MethodInfo other) =>
                 string.Equals(Name, other.Name, StringComparison.Ordinal) &&
-                string.Equals(Accessibility, other.Accessibility, StringComparison.Ordinal) &&
-                IsStatic == other.IsStatic &&
-                string.Equals(ReturnTypeDisplay, other.ReturnTypeDisplay, StringComparison.Ordinal) &&
+                string.Equals(Signature, other.Signature, StringComparison.Ordinal) &&
+                string.Equals(TypeArguments, other.TypeArguments, StringComparison.Ordinal) &&
+                string.Equals(Receiver, other.Receiver, StringComparison.Ordinal) &&
                 Parameters.SequenceEqual(other.Parameters);
 
             public override bool Equals(object? obj) => obj is MethodInfo other && Equals(other);
@@ -694,17 +789,26 @@ namespace Velvet.SourceGenerators
 
         internal readonly struct ParameterInfo : IEquatable<ParameterInfo>
         {
-            public ParameterInfo(string name, string typeDisplay)
+            public ParameterInfo(string name, string argumentName, string modifier, string typeDisplay)
             {
                 Name = name;
+                ArgumentName = argumentName;
+                Modifier = modifier;
                 TypeDisplay = typeDisplay;
             }
 
             public string Name { get; }
+
+            /// <summary>What the factory and the dependency list read: the parameter itself, or the local an
+            /// <c>in</c> parameter is copied into.</summary>
+            public string ArgumentName { get; }
+            public string Modifier { get; }
             public string TypeDisplay { get; }
 
             public bool Equals(ParameterInfo other) =>
                 string.Equals(Name, other.Name, StringComparison.Ordinal) &&
+                string.Equals(ArgumentName, other.ArgumentName, StringComparison.Ordinal) &&
+                string.Equals(Modifier, other.Modifier, StringComparison.Ordinal) &&
                 string.Equals(TypeDisplay, other.TypeDisplay, StringComparison.Ordinal);
 
             public override bool Equals(object? obj) => obj is ParameterInfo other && Equals(other);
