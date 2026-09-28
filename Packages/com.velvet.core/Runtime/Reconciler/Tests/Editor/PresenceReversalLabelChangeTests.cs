@@ -38,6 +38,7 @@ namespace Velvet.Tests
             s_store = null;
             s_child = null;
             s_followerTransition = StyleTransitionConfig.None;
+            s_initialTransition = null;
         }
 
         [Component]
@@ -355,7 +356,7 @@ namespace Velvet.Tests
             // Assert — with the reversal writing opacity before, so a release is what clears the slot.
             Assert.That((drivenBefore, item.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
-    
+
         [Test]
         public void Given_ASpringExitReversalRunning_When_TheLabelChangesToAZeroDurationPoseNamingTranslate_Then_TheTranslateStaysAfterTheReversalEnds()
         {
@@ -381,6 +382,7 @@ namespace Velvet.Tests
         }
 
         private static IReadOnlyDictionary<string, MotionVariant> s_initialPoses;
+        private static StyleTransitionConfig s_initialTransition;
 
         // A presence child with its own label and an initial pose, whose removal a descendant's timed exit holds.
         [Component]
@@ -391,7 +393,7 @@ namespace Velvet.Tests
             foreach (var key in state.Keys)
             {
                 children.Add(V.Motion(key: key.ToString(), name: "item", initial: "start", animate: state.Label,
-                    variants: s_initialPoses,
+                    variants: s_initialPoses, transition: s_initialTransition,
                     children: new VNode[]
                     {
                         V.Motion(name: "inner", variants: new Dictionary<string, MotionVariant>
@@ -435,5 +437,34 @@ namespace Velvet.Tests
             // Assert
             Assert.That(TranslateX(Root.Q<VisualElement>("item")), Is.EqualTo(40f));
         }
-}
+
+        [Test]
+        public void Given_ASpringExitReversalUnderALandedZeroDurationPose_When_ATimedPoseFollows_Then_OnlyThatPosesClassIsCarried()
+        {
+            // Arrange — the reversal still moves a translate the zero-duration pose leaves unnamed.
+            var variants = new Dictionary<string, MotionVariant>
+            {
+                ["lit"] = "opacity-100 translate-x-[0px] tag-lit",
+                ["dim"] = new MotionVariant("opacity-50 tag-dim", StyleTransitionConfig.None),
+                ["next"] = "opacity-0 tag-next",
+                ["gone"] = "opacity-0 translate-x-[-40px]",
+            };
+            using var store = new PresenceStore("lit");
+            using var mounted = MountRemoveAndReAdd(store, (state, key) => V.Motion(key: key, name: "item",
+                variants: variants, animate: state.Label, exit: "gone",
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring }));
+            store.SetLabel("dim");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+
+            // Act
+            store.SetLabel("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            var tags = Root.Q<VisualElement>("item").GetClasses().Where(c => c.StartsWith("tag-")).OrderBy(c => c);
+            Assert.That(string.Join(" ", tags), Is.EqualTo("tag-next"));
+        }
+    }
 }

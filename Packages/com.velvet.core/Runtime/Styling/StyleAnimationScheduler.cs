@@ -185,6 +185,7 @@ namespace Velvet
             if (!IsPlayableDuration(durationSec))
             {
                 CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
+                RestPendingAt(element, resolvedTo, appliedClasses ?? resolvedTo);
             }
             PlayEnterInternal(in play, durationSec, easing, variantMode: true, propertyOverrides);
         }
@@ -975,25 +976,49 @@ namespace Velvet
 
         // Reached only from PlayVariantEnter's tween path when the duration is not playable. It cancels an earlier
         // tween variant enter whose swap has not run, which would otherwise put that enter's target classes back
-        // beside this play's. The cancel puts back restingTo, and those of the cancelled enter's to classes, which it
-        // stripped as it started, that appliedClasses still holds: a Motion's own class is among them where the
-        // interrupted pose repeats it. The cancelled enter's phase ends with the cancel, so its completion runs then,
-        // inside the call that starts this play.
+        // beside this play's. The cancel puts back what RestingAt gives. The cancelled enter's phase ends with the
+        // cancel, so its completion runs then, inside the call that starts this play.
         private void CancelSwapAhead(VisualElement element, string[] restingTo, string[] appliedClasses)
         {
             if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
             {
-                var resting = new List<string>(restingTo);
-                foreach (var cls in pending.ToClasses!)
+                CancelPending(_pendingEnters, element, restingOverride: RestingAt(pending, restingTo, appliedClasses));
+                pending.OnComplete?.Invoke();
+            }
+        }
+
+        // The play a zero-duration swap leaves running rests at the new pose from here on: a later cancel of it puts
+        // back that pose rather than the one the play was started toward, and keeps what the element's applied set
+        // holds. A play with no resting classes — a classic enter, a preset exit's reversal — puts nothing back.
+        private void RestPendingAt(VisualElement element, string[] restingTo, string[] appliedClasses)
+        {
+            if (!_pendingEnters.TryGetValue(element, out var pending) || pending.RestingClasses == null)
+            {
+                return;
+            }
+            pending.RestingClasses = RestingAt(pending, restingTo, appliedClasses);
+            if (pending.KeptClasses != null)
+            {
+                pending.KeptClasses = appliedClasses;
+            }
+        }
+
+        // restingTo, and those of the play's own classes, which its cancel removes, that appliedClasses still holds:
+        // a Motion's own class is among them where the play's poses repeat it.
+        private static string[] RestingAt(PendingAnimation pending, string[] restingTo, string[] appliedClasses)
+        {
+            var resting = new List<string>(restingTo);
+            foreach (var removed in new[] { pending.FromClasses, pending.ToClasses })
+            {
+                foreach (var cls in removed ?? Array.Empty<string>())
                 {
-                    if (Array.IndexOf(appliedClasses, cls) >= 0)
+                    if (Array.IndexOf(appliedClasses, cls) >= 0 && !resting.Contains(cls))
                     {
                         resting.Add(cls);
                     }
                 }
-                CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
-                pending.OnComplete?.Invoke();
             }
+            return resting.ToArray();
         }
 
         // A zero-duration pose lands the properties it names: the enter or reversal still running on the element

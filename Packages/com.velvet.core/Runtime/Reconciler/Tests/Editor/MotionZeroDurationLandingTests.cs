@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -52,7 +53,7 @@ namespace Velvet.Tests
         }
 
         private readonly record struct Poses(StyleTransitionConfig Transition, string From, string To, string Land,
-            int Frames = 3);
+            int Frames = 3, string Next = null);
 
         // Mounts the box at From, plays the swap to To on Transition for Frames frames, then changes the label to
         // Land, whose pose has zero duration. Returns the box, what read gave just before Land, and the mount.
@@ -65,6 +66,7 @@ namespace Velvet.Tests
                 ["from"] = poses.From,
                 ["to"] = poses.To,
                 ["land"] = new MotionVariant(poses.Land, StyleTransitionConfig.None),
+                ["next"] = new MotionVariant(poses.Next ?? string.Empty, s_tween),
             };
             s_store = new LabelStore();
             var mounted = V.Mount(Root, V.Component(PoseBox, key: "root"));
@@ -451,6 +453,33 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Read(box, undriven.Property), Is.EqualTo(undriven.Value).Within(1e-3f));
+        }
+
+        private static string TagClasses(VisualElement element)
+            => string.Join(" ", element.GetClasses().Where(c => c.StartsWith("tag-")).OrderBy(c => c));
+
+        // Each play still moves the translate the landing pose leaves unnamed when the next label arrives, so the
+        // next pose's swap cancels it.
+        [TestCase(TransitionType.Tween)]
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_APlayStillRunningUnderALandedZeroDurationPose_When_ATimedPoseFollows_Then_OnlyThatPosesClassIsCarried(
+            TransitionType type)
+        {
+            // Arrange
+            var transition = type == TransitionType.Tween ? s_tween : Driver(type);
+            var (box, _, mounted) = PlayThenLand(new Poses(transition, "opacity-0 translate-x-[0px] tag-a",
+                "opacity-100 translate-x-[40px] tag-b", "opacity-50 tag-c", Next: "opacity-0 tag-d"), Opacity);
+            using var __ = mounted;
+            Tick();
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(TagClasses(box), Is.EqualTo("tag-d"));
         }
     }
 }
