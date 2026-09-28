@@ -20,3 +20,6 @@
 
 - VEL010 reports a `[MemoizeMethod]` parameter of a ref struct type such as `Span<T>`, or of a pointer type.
   Neither can be a dependency, and the generated wrapper failed to compile with nothing naming the parameter.
+
+- A `[MemoizeMethod]` method returning `VelvetTask<VNode>` is reported as VEL004, as one returning
+  `Task<VNode>` is, rather than as VEL008.

@@ -507,8 +507,9 @@ namespace Velvet.SourceGenerators
                 return false;
             }
             var unbound = named.IsGenericType ? named.ConstructedFrom : named;
-            return unbound is { Name: "Task" or "ValueTask" } &&
-                   IsNamespace(unbound.ContainingNamespace, "System.Threading.Tasks");
+            return (unbound is { Name: "Task" or "ValueTask" } &&
+                    IsNamespace(unbound.ContainingNamespace, "System.Threading.Tasks")) ||
+                   (unbound is { Name: "VelvetTask" } && IsNamespace(unbound.ContainingNamespace, "Velvet"));
         }
 
         // The wrapper returns the MemoNode V.Memoized builds, so the declared type has to be one MemoNode

@@ -25,7 +25,7 @@ namespace Velvet.SourceGenerators.Diagnostics
         public static readonly DiagnosticDescriptor Vel004AsyncMethodNotSupported = Warn(
             "VEL004",
             "[MemoizeMethod] does not support async methods",
-            "Method '{0}' is async or returns Task; [MemoizeMethod] does not support async methods",
+            "Method '{0}' is async or returns a task; [MemoizeMethod] does not support async methods",
             "V.Memoized places a node synchronously, so there is nothing to place until a task completes. To memoize the task itself, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel005RefOutParameterNotSupported = Warn(
