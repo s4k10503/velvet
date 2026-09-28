@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using Velvet.TestUtilities;
 
@@ -8,7 +9,8 @@ namespace Velvet.Tests
     /// <see cref="UseFrameFakeClockHost"/>'s shared Ms/ReadFakeClock harness, since the hook is itself built on
     /// <c>UseFrame</c>): a <c>To</c> step's label/transition take effect the moment the walker arrives at it and
     /// hold until the next step's turn, a <c>Wait</c> step holds the current label with no effect of its own, a
-    /// <c>Call</c> step fires synchronously on arrival, and <c>controls</c> / <c>loop</c> behave as documented.
+    /// <c>Call</c> step fires synchronously on arrival, a null dependency list restarts the sequence on every render,
+    /// and <c>controls</c> / <c>loop</c> behave as documented.
     /// </summary>
     internal sealed class UseAnimationSequenceTests
     {
@@ -18,6 +20,7 @@ namespace Velvet.Tests
         private static AnimationSequenceStep[] s_steps;
         private static bool s_autoplay;
         private static bool s_loop;
+        private static object[] s_deps;
         private static AnimationSequenceState s_state;
         private static AnimationSequenceControls s_controls;
         private static int s_callCount;
@@ -30,6 +33,7 @@ namespace Velvet.Tests
             UseFrameFakeClockHost.Reset();
             s_autoplay = true;
             s_loop = false;
+            s_deps = System.Array.Empty<object>();
             s_callCount = 0;
             s_renderCount = 0;
         }
@@ -47,18 +51,28 @@ namespace Velvet.Tests
         private static VNode SequenceHost()
         {
             s_renderCount++;
-            var (state, controls) = Hooks.UseAnimationSequence(s_steps, autoplay: s_autoplay, loop: s_loop);
+            var (state, controls) = Hooks.UseAnimationSequence(s_steps, deps: s_deps, autoplay: s_autoplay, loop: s_loop);
             s_state = state;
             s_controls = controls;
             return V.Div(className: "w-[10px] h-[10px]");
         }
 
+        [Component]
+        private static VNode DefaultsSequenceHost()
+        {
+            var (state, _) = Hooks.UseAnimationSequence(s_steps, deps: s_deps);
+            s_state = state;
+            return V.Div(className: "w-[10px] h-[10px]");
+        }
+
         // Mounts on the fake clock, flushes the mount effect (Reset + the resulting re-render) and arms
         // UseFrame's own tick, mirroring UseFrameDispatcherBehaviorTests' per-frame-contract arm sequence.
-        private void Mount()
+        private void Mount() => Mount(SequenceHost);
+
+        private void Mount(Func<VNode> host)
         {
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
-            _mounted = V.Mount(_host.Root, V.Component(SequenceHost, key: "root"));
+            _mounted = V.Mount(_host.Root, V.Component(host, key: "root"));
             _mounted.FlushEffectsForTest();
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
@@ -169,6 +183,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): autoplay on and loop off by default, which the base has and
+        // the reordered parameters keep.
+        [Test]
+        public void Given_AutoplayAndLoopLeftToTheirDefaults_When_TheOnlyStepsHoldElapses_Then_IsCompleteBecomesTrue()
+        {
+            // Arrange
+            s_steps = new[] { AnimationSequenceStep.To("a", new StyleTransitionConfig { DurationSec = 0.1f }) };
+            Mount(DefaultsSequenceHost);
+
+            // Act
+            AdvancePast(0.1f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_ANullDependencyList_When_ARenderAfterTheWalkerLeftStepZeroCommitsItsEffects_Then_TheSequenceIsBackAtStepZero()
+        {
+            // Arrange — the advance into step 1 is itself a render, and with no list the reset effect is staged
+            // on every render.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.To("a", new StyleTransitionConfig { DurationSec = 0.3f }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.2f }),
+            };
+            s_deps = null;
+            Mount();
+            AdvancePast(0.3f);
+
+            // Act
+            _mounted.FlushEffectsForTest();
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
         }
 
         [Test]

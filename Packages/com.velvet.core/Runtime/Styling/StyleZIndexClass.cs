@@ -40,9 +40,9 @@ namespace Velvet
             return false;
         }
 
-        // Scans classNames for the last z-* utility (later classes win, matching CSS cascade order) and
-        // returns its resolved value. Returns false when no z utility is present or every z-looking token
-        // failed to parse (e.g. a user class that merely starts with "z-").
+        // Resolves the z-* value the cascade would: an important token (!z-10 / z-10!) beats every plain one
+        // wherever it sits, and within either group the later class wins. Returns false when no z utility is
+        // present or every z-looking token failed to parse (e.g. a user class that merely starts with "z-").
         public static bool TryExtract(string[] classNames, out int z)
         {
             z = 0;
@@ -51,38 +51,40 @@ namespace Velvet
                 return false;
             }
 
-            var found = false;
+            int? plain = null;
+            int? important = null;
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var parsed))
+                if (!TryParse(cls, out var parsed, out var bang))
                 {
-                    z = parsed;
-                    found = true;
+                    continue;
+                }
+                if (bang)
+                {
+                    important = parsed;
+                }
+                else
+                {
+                    plain = parsed;
                 }
             }
-            return found;
+            var winner = important ?? plain;
+            z = winner.GetValueOrDefault();
+            return winner.HasValue;
         }
+
+        public static bool TryParse(string cls, out int z) => TryParse(cls, out z, out _);
 
         // z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
         // z-[<int>] (arbitrary, the bracket's own sign — z-[-5] is how a negative arbitrary value is spelled,
         // not -z-[5]). Anything else (including a non-numeric bracket, or a bare "z-" prefix that is not one
         // of these three shapes) returns false.
-        public static bool TryParse(string cls, out int z)
+        private static bool TryParse(string cls, out int z, out bool important)
         {
             z = 0;
-            if (string.IsNullOrEmpty(cls))
-            {
-                return false;
-            }
-            // Stripped first (house convention — see StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass's
-            // own leading-* parse / MotionSpringClassParser.TryParseAxisValue): "!z-10", "z-10!", "!z-[5]", and
-            // "z-[5]!" all classify like their bare form. The bang itself stays a no-op here regardless — z-index
-            // is a physical relocation, not a style-cascade layer !important arbitrates (StripImportant's own
-            // Scope comment already documents this for the array-scanned utility families) — this only makes the
-            // parser recognize the four bang'd spellings instead of silently dropping the element from z
-            // management. A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant
-            // recognizes (it only strips a bang at the very first or very last character), so that stays rejected.
-            cls = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            // A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant recognizes (it
+            // only strips a bang at the very first or very last character), so that stays rejected.
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             if (string.IsNullOrEmpty(cls))
             {
                 return false;

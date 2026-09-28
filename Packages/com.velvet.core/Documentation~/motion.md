@@ -412,13 +412,12 @@ provide.
 
 `autoplay` (default `true`) starts the sequence on mount; pass `false` and call `controls.Play()` (e.g.
 from an `onClick`) to start it on demand. `loop: true` wraps the cursor back to step 0 once the last
-step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. A supplied `deps` array is
-read as [§1-4 of the React migration guide](react-migration.md#1-4-what-a-dependency-list-means)
-describes, but this hook's default is the empty array rather than null, so omitting it (or passing null)
-resets the walker on **mount only**: a freshly-built `steps` array literal in the component body (the
-common case) must not restart an in-flight sequence every render. `controls.Restart()` returns to step 0
-and re-commits its effect (including firing a `Call` step 0's callback again) without implicitly
-resuming a paused sequence.
+step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. `deps` is required and
+decides when the sequence restarts from step 0, read as
+[§1-4 of the React migration guide](react-migration.md#1-4-what-a-dependency-list-means) describes: null
+restarts it on every render, so a sequence that plays once per mount passes `Array.Empty<object>()`, as
+`useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
+firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
@@ -472,7 +471,11 @@ Three consequences worth knowing:
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal is held as an
   exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`.
+  the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
+  duration, while an earlier swap is still moving the Motion lands the properties that pose names
+  within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
+  tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as
+  `opacity-100` against `opacity-[1]` — finishes that tween.
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured
