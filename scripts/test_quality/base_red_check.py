@@ -1125,7 +1125,8 @@ def scaffolded(case):
     if match is None:
         return False
     trace = case.find("./failure/stack-trace")
-    name = (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1]
+    name = (case.get("methodname")
+            or (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1])
     body = re.search(r"(?:\.|<){}(?:\s*\(|>)".format(re.escape(name)),
                      (trace.text or "") if trace is not None else "")
     return body is None
@@ -1157,10 +1158,23 @@ def reading_of(case):
     return label
 
 
-def as_read(name):
-    """A reported case name with the `+` the runner writes before a nested class taken as the dot
-    `csharp_cases` writes there, as `assert_results_from_this_tree.py` reads one in a classname."""
-    head, opened, arguments = name.partition("(")
+def as_read(case):
+    """A reported case's name, spelled the way `csharp_cases` names the method that wrote it.
+
+    A row whose name is its method's, or opens with it and an argument list -- `Method`, `Method(1)`
+    -- keeps the runner's name. Any other row, as a `TestName` or a `SetName` can give, is spelled as
+    its `methodname` with its own name where the argument list goes, so that `outcome_for` takes it
+    with the method's other rows. The fixture is the full name less the row's own name rather than
+    the `classname`; `TestNamedRowTests` fails when it is read from `classname`.
+
+    The `+` the runner writes before a nested class is taken as the dot `csharp_cases` writes there,
+    as `assert_results_from_this_tree.py` reads one in a classname.
+    """
+    full = case.get("fullname") or case.get("name")
+    name, method = case.get("name"), case.get("methodname")
+    if name and method and name != method and not name.startswith(method + "("):
+        full = "{}.{}({})".format(full[:-len(name) - 1], method, name)
+    head, opened, arguments = full.partition("(")
     return head.replace("+", ".") + opened + arguments
 
 
@@ -1173,8 +1187,7 @@ def unity_results(results):
         root = ET.parse(str(results)).getroot()
     except ET.ParseError:
         return {}
-    return {as_read(case.get("fullname") or case.get("name")): reading_of(case)
-            for case in root.iter("test-case")}
+    return {as_read(case): reading_of(case) for case in root.iter("test-case")}
 
 
 def python_outcome(output):
