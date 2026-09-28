@@ -234,6 +234,7 @@ namespace Velvet
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
                 SwapAhead = variantMode,
+                OnComplete = onComplete,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -975,10 +976,11 @@ namespace Velvet
         // What a variant play that does not tween cancels: an earlier tween variant enter whose swap has not run,
         // which would otherwise put that enter's target classes back beside this play's. A swap that has run, a
         // reversal a cancelled exit parked, and a classic enter, whose classes are transient overlays, are left
-        // running, so a property this play does not name keeps moving on them. A classic play that does not tween
+        // running, so a property this play does not name keeps moving on them. A classic zero-duration tween play
         // cancels nothing: it adds no class that a pending swap could land beside. The cancel puts back restingTo,
         // and those of the cancelled enter's to classes, which it stripped as it started, that appliedClasses still
-        // holds: a Motion's own class is among them where the interrupted pose repeats it.
+        // holds: a Motion's own class is among them where the interrupted pose repeats it. The cancelled enter's
+        // phase ends with the cancel, so its completion runs then, inside the call that starts this play.
         private void CancelSwapAhead(VisualElement element, string[] restingTo, string[] appliedClasses)
         {
             if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
@@ -992,6 +994,7 @@ namespace Velvet
                     }
                 }
                 CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
+                pending.OnComplete?.Invoke();
             }
         }
 
@@ -1515,6 +1518,8 @@ namespace Velvet
             public Action? OnSwap;
             // True from a tween variant enter's registration until its swap runs; false for every other entry.
             public bool SwapAhead;
+            // A tween enter's completion, which CancelSwapAhead runs in place of the timeout it cancels.
+            public Action? OnComplete;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
 

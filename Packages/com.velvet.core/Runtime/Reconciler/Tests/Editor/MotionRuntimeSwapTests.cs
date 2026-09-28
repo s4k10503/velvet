@@ -161,6 +161,40 @@ namespace Velvet.Tests
             });
         }
 
+        private static int s_mountEnterCompletions;
+
+        // Enters from hidden on a tween, and dim is reached on no transition at all.
+        private static readonly Dictionary<string, MotionVariant> s_enteringPoses = new()
+        {
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig { DurationSec = 0.35f }),
+            ["shown"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.35f }),
+            ["dim"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+        };
+
+        [Component]
+        private static VNode EnteringBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(name: "m", initial: "hidden", animate: label, variants: s_enteringPoses,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f },
+                onEnterComplete: () => s_mountEnterCompletions++);
+        }
+
+        [Component]
+        private static VNode EnteringPresence()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(key: key.ToString(), name: "m", initial: "hidden", animate: label,
+                    variants: s_enteringPoses, transition: new StyleTransitionConfig { DurationSec = 0.35f },
+                    onEnterComplete: () => s_mountEnterCompletions++));
+            }
+            return V.AnimatePresence(key: "presence", children: children.ToArray());
+        }
+
         private static string OpacityClasses(VisualElement element)
             => string.Join(" ", element.GetClasses().Where(c => c.StartsWith("opacity-")).OrderBy(c => c));
 
@@ -486,6 +520,74 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_enterCompletions, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
+        // So a presence child's classic fade-in keeps its transition when its inherited label changes before it swaps.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheFadeKeepsItsTransition()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set("visible");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending mount enter to complete.
+        // So the enter's completion still runs once when a zero-duration label change lands before its swap.
+        [Test]
+        public void Given_AMountEnterNotSwappedYet_When_AZeroDurationLabelChangeFollows_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_mountEnterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("shown");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(EnteringBox, key: "root"));
+
+            // Act
+            labels.Set("dim");
+            mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_mountEnterCompletions, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending presence enter to complete.
+        // So the enter's completion still runs once when a zero-duration label change lands before its swap.
+        [Test]
+        public void Given_APresenceEnterNotSwappedYet_When_AZeroDurationLabelChangeFollows_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_mountEnterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("shown");
+            s_labelStore = labels;
+            using var keys = new SetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(EnteringPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            keys.Set("a");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("dim");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_mountEnterCompletions, Is.EqualTo(1));
         }
     }
 }
