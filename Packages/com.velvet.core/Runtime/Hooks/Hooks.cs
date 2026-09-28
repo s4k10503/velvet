@@ -1086,21 +1086,19 @@ namespace Velvet
         /// <see cref="AnimationSequenceStep.Transition"/> — there is no separate multi-target API.
         /// </summary>
         /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="deps">
+        /// When the sequence restarts from step 0, read as <see cref="UseEffect(Func{Action},object[])"/> reads
+        /// its list: on a changed entry, or on every render for null. A sequence meant to play once per mount
+        /// passes an empty array.
+        /// </param>
         /// <param name="autoplay">Starts advancing on mount when true (default). When false, call
-        /// <c>controls.Play()</c> — e.g. from an <c>onClick</c> handler — to start it on demand. Only read on
-        /// mount / a <paramref name="deps"/> change, not on every render, so a later <c>controls.Pause()</c>
-        /// is not fought by a re-render that keeps passing <c>autoplay: true</c>.</param>
+        /// <c>controls.Play()</c> — e.g. from an <c>onClick</c> handler — to start it on demand. Read only
+        /// where <paramref name="deps"/> restarts the sequence, so a later <c>controls.Pause()</c> is not fought
+        /// by a re-render that keeps passing <c>autoplay: true</c>.</param>
         /// <param name="loop">When true, the cursor wraps to step 0 after the last step's hold elapses and
         /// <see cref="AnimationSequenceState.IsComplete"/> never latches.</param>
-        /// <param name="deps">
-        /// Unlike <see cref="UseEffect(Func{Action},object[])"/>, omitting this (or passing null) resets the
-        /// walker on MOUNT ONLY, not on every render — a freshly-built <paramref name="steps"/> array literal
-        /// in the component body (the common case) must not restart an in-flight sequence every render. Pass
-        /// an explicit array to restart the sequence when one of its entries changes, same convention as every
-        /// other deps-taking hook.
-        /// </param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
-            IReadOnlyList<AnimationSequenceStep> steps, bool autoplay = true, bool loop = false, object?[]? deps = null)
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
         {
             if (steps == null) throw new ArgumentNullException(nameof(steps));
             var fiber = Resolve("UseAnimationSequence");
@@ -1123,7 +1121,7 @@ namespace Velvet
                 walker.Current.IsPaused = !autoplay;
                 bumpRenderVersion.Invoke(v => v + 1);
                 return (Action)null;
-            }, deps ?? Array.Empty<object>());
+            }, deps);
 
             UseFrame(dt =>
             {
@@ -1632,10 +1630,9 @@ namespace Velvet
                 {
 #if UNITY_EDITOR
                     // Footgun: when the caller omits resourceKey, the factory delegate identity
-                    // becomes the key — and a fresh inline lambda on every render restarts the
-                    // resource permanently (never-resolving suspense). Only warn when the user did
-                    // NOT pass an explicit resourceKey, so a deliberate method-group key (e.g.
-                    // `Hooks.Use(store.LoadAsync)`) is not flagged.
+                    // becomes the key — and a delegate built afresh on every render restarts the
+                    // resource permanently (never-resolving suspense). A key the caller passed changes
+                    // only where the caller changed it, so that change is not flagged.
                     if (!resourceKeyExplicit && existing is FiberAsyncResource<T>)
                     {
                         FiberLogger.LogWarning(hookName,
