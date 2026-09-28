@@ -969,15 +969,16 @@ namespace Velvet.Tests
         // outer one recreates the inner one with it, under the new outer element.
         private static bool s_flipOuter;
         private static bool s_flipInner;
+        private static Vector2Int s_grownSize;
 
-        // Step 1 grows the outer layoutId Motion from 300px to 600px, its corner fixed; the inner one stands
-        // where it was inside it.
+        // Step 1 grows the outer layoutId Motion from 300px square to s_grownSize, its corner fixed; the inner
+        // one stands where it was inside it.
         [Component]
         private static VNode GrowingOuterRender()
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            var size = step == 0 ? 300 : 600;
+            var size = step == 0 ? new Vector2Int(300, 300) : s_grownSize;
             return V.Div(children: new VNode[]
             {
                 V.Motion(
@@ -985,7 +986,7 @@ namespace Velvet.Tests
                     layoutId: "outer-box",
                     elementType: s_flipOuter && step != 0 ? typeof(Box) : null,
                     transition: s_layoutSpring,
-                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px]",
+                    className: $"left-[0px] top-[0px] w-[{size.x}px] h-[{size.y}px]",
                     children: new VNode[]
                     {
                         V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
@@ -995,10 +996,11 @@ namespace Velvet.Tests
             });
         }
 
-        private MountedTree MountGrowingOuter(bool flipOuter, bool flipInner)
+        private MountedTree MountGrowingOuter(bool flipOuter, bool flipInner, int grownWidth = 600, int grownHeight = 600)
         {
             s_flipOuter = flipOuter;
             s_flipInner = flipInner;
+            s_grownSize = new Vector2Int(grownWidth, grownHeight);
             var mounted = V.Mount(Root, V.Component(GrowingOuterRender, key: "root"));
             Tick();
             return mounted;
@@ -1023,8 +1025,8 @@ namespace Velvet.Tests
                 var translate = e.style.translate.keyword == StyleKeyword.Null
                     ? Vector2.zero
                     : new Vector2(e.style.translate.value.x.value, e.style.translate.value.y.value);
-                var scale = e.style.scale.keyword == StyleKeyword.Null ? 1f : e.style.scale.value.value.x;
-                point = e.layout.position + translate + origin + scale * (point - origin);
+                var scale = e.style.scale.keyword == StyleKeyword.Null ? Vector2.one : (Vector2)e.style.scale.value.value;
+                point = e.layout.position + translate + origin + Vector2.Scale(scale, point - origin);
             }
             return point;
         }
@@ -1069,6 +1071,19 @@ namespace Velvet.Tests
             Assert.That((outerBox.width < 550f,
                     Near(DrawnBox(Root.Q<VisualElement>("inner")), new Rect(outerBox.position + new Vector2(20f, 20f), new Vector2(50f, 50f)))),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionStandingInsideOneWhoseHeightDoubles_When_TheOuterStartsItsTween_Then_TheInnerIsDrawnOverItsOldBox()
+        {
+            // Arrange
+            using var mounted = MountGrowingOuter(flipOuter: false, flipInner: false, grownWidth: 300, grownHeight: 600);
+
+            // Act
+            GrowTheOuter(mounted);
+
+            // Assert — where it stood, square, though the outer one is drawn squashed to half its new height.
+            Assert.That(Near(DrawnBox(Root.Q<VisualElement>("inner")), new Rect(20f, 20f, 50f, 50f)), Is.True);
         }
 
         [Test]
@@ -1284,6 +1299,37 @@ namespace Velvet.Tests
             // Assert — every tween has settled and both inline slots are back with the classes.
             Assert.That((element.style.translate.keyword, element.style.transitionProperty.keyword),
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotion_When_OnlyItsHeightDoubles_Then_ItStartsAtItsOldHeightAndItsOwnWidth()
+        {
+            // Arrange
+            s_ownClasses = "";
+            using var mounted = V.Mount(Root, V.Component(TallerBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the width untouched and the height halved, not both averaged.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That((Vector2)element.style.scale.value.value, Is.EqualTo(new Vector2(1f, 0.5f)));
+        }
+
+        // Step 1 doubles the box's height in place, its top edge fixed.
+        [Component]
+        private static VNode TallerBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[100px] h-[{(step == 0 ? 100 : 200)}px] {s_ownClasses}"),
+            });
         }
 
         [Test]

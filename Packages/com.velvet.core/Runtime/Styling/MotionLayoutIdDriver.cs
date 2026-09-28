@@ -10,7 +10,7 @@ namespace Velvet
     // physical element entirely, e.g. after a same-key type flip or a move to a different parent — it
     // tweens from the old box to the new one instead of jump-cutting: capture the OLD box, let this
     // frame's layout settle at the NEW one, and draw the element over the old box with an inline translate
-    // and uniform scale that a spring then carries back to its layout.
+    // and scale that a spring then carries back to its layout.
     //
     // A projection draws the element at its natural box divided by the scale its projected ancestors are
     // drawn at, about the parent's corner, so a layoutId Motion inside a growing or shrinking one keeps its
@@ -32,9 +32,6 @@ namespace Velvet
     // inflates
     // (Given_ALayoutIdMotionInARotatedBoard_When_ItMovesToTheOtherColumn_Then_ItTweensFromItsOldPlaceAtItsOwnSize).
     //
-    // Scope: uniform scale only. A non-uniform rect change (width and height scale by different factors)
-    // averages the two axis scale factors into one uniform factor instead of distorting the element on two
-    // independent axes.
     internal static class MotionLayoutIdDriver
     {
         // An edge this close to its layout, in pixels, and moving this slowly ends a projection's spring.
@@ -133,7 +130,7 @@ namespace Velvet
             var readScale = ReferenceEquals(pending.From.Parent, parent) ? pending.From.AncestorScale : parentScale;
             var drawnFrom = FromRect(element, pending.From, ctx);
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
-            var moves = !ComputeDeltaPlan(from, layout, TransformOrigin(element)).IsEmpty;
+            var moves = !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
@@ -195,9 +192,9 @@ namespace Velvet
         }
 
         // The product of the scales the projections on this element and its ancestors are drawn at in this pass.
-        private static float ProjectedScale(VisualElement element, int pass, ReconcilerContext ctx)
+        private static Vector2 ProjectedScale(VisualElement element, int pass, ReconcilerContext ctx)
         {
-            var scale = 1f;
+            var scale = Vector2.one;
             for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
             {
                 if (ctx.LayoutIdProjections.TryGetValue(e, out var projection)) scale *= Compute(e, projection, pass, ctx);
@@ -206,9 +203,9 @@ namespace Velvet
         }
 
         // The same product, as last drawn.
-        private static float AncestorScale(VisualElement element, ReconcilerContext ctx)
+        private static Vector2 AncestorScale(VisualElement element, ReconcilerContext ctx)
         {
-            var scale = 1f;
+            var scale = Vector2.one;
             for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
             {
                 if (ctx.LayoutIdProjections.TryGetValue(e, out var projection)) scale *= projection.Scale;
@@ -216,7 +213,7 @@ namespace Velvet
             return scale;
         }
 
-        private static float Compute(VisualElement element, LayoutIdProjection projection, int pass, ReconcilerContext ctx)
+        private static Vector2 Compute(VisualElement element, LayoutIdProjection projection, int pass, ReconcilerContext ctx)
         {
             if (projection.Pass == pass) return projection.Scale;
             projection.Pass = pass;
@@ -224,13 +221,13 @@ namespace Velvet
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
-            var plan = ComputeDeltaPlan(Drawn(projection, layout, projection.ParentScale), layout, TransformOrigin(element));
-            projection.Scale = plan.Scale?.from ?? 1f;
-            Write(element, projection, new Vector2(plan.TranslateX?.from ?? 0f, plan.TranslateY?.from ?? 0f));
+            var delta = ComputeDelta(Drawn(projection, layout, projection.ParentScale), layout, TransformOrigin(element));
+            projection.Scale = delta.Scale;
+            Write(element, projection, delta.Translate);
             return projection.Scale;
         }
 
-        private static Rect Drawn(LayoutIdProjection projection, Rect layout, float parentScale)
+        private static Rect Drawn(LayoutIdProjection projection, Rect layout, Vector2 parentScale)
         {
             var t = projection.Springing ? projection.Spring.Value : 0f;
             var position = Vector2.LerpUnclamped(layout.position, projection.From.position, t);
@@ -262,7 +259,7 @@ namespace Velvet
                     MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                 }
                 var own = projection.OwnScale;
-                element.style.scale = new Scale(new Vector3(own.x * projection.Scale, own.y * projection.Scale, own.z));
+                element.style.scale = new Scale(new Vector3(own.x * projection.Scale.x, own.y * projection.Scale.y, own.z));
                 projection.WrittenScale = element.style.scale;
             }
         }
@@ -428,35 +425,27 @@ namespace Velvet
         // A power of two, so a rect off by exactly this much is representable and the boundary testable.
         internal const float PixelTolerance = 1f / 128f;
 
-        // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
-        // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose Scale
-        // channel animates the (averaged, uniform) size ratio back to 1 and whose TranslateX/Y channels
-        // animate back to zero the offset between the new rect's transform origin (in its own pixels) and
-        // the point at the same fraction of the old rect — the scale holds the origin still, so aligning
-        // those two points is what starts the tween over the old rect. Empty (IsEmpty) when the rects differ
-        // by no more than PixelTolerance, so the caller can skip building spring state for a patch that
-        // didn't actually move/resize anything, and when either rect is not finite: NaN before a first
-        // layout, infinite in a parent drawn at zero scale.
-        internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect, Vector2 origin)
+        // Pure mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for testing the
+        // spring math directly): resolves an old→new rect pair into the scale on each axis that takes the new
+        // rect's size to the old one's, and the translate that then moves the new rect's transform origin (in
+        // its own pixels) onto the point at the same fraction of the old rect — the scale holds the origin
+        // still, so aligning those two points is what starts the tween over the old rect. Empty (IsEmpty) when
+        // the rects differ by no more than PixelTolerance, and when either rect is not finite: NaN before a
+        // first layout, infinite in a parent drawn at zero scale.
+        internal static LayoutIdDelta ComputeDelta(Rect oldRect, Rect newRect, Vector2 origin)
         {
-            if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return default;
+            if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return LayoutIdDelta.None;
 
-            var scaleX = newRect.width > 0.01f ? oldRect.width / newRect.width : 1f;
-            var scaleY = newRect.height > 0.01f ? oldRect.height / newRect.height : 1f;
-            var scale = (scaleX + scaleY) / 2f;
-            var oldOrigin = oldRect.position + new Vector2(origin.x * scaleX, origin.y * scaleY);
+            var scale = new Vector2(newRect.width > 0.01f ? oldRect.width / newRect.width : 1f,
+                newRect.height > 0.01f ? oldRect.height / newRect.height : 1f);
+            var oldOrigin = oldRect.position + Vector2.Scale(origin, scale);
             var delta = oldOrigin - (newRect.position + origin);
 
             // In pixels, not float equality: a box mapped through a rotated parent carries float noise.
             var translateChanged = Mathf.Abs(delta.x) > PixelTolerance || Mathf.Abs(delta.y) > PixelTolerance;
-            var scaleChanged = Mathf.Abs(scale - 1f) * Mathf.Max(newRect.width, newRect.height) > PixelTolerance;
-
-            return new MotionSpringClassParser.SpringPlan
-            {
-                TranslateX = translateChanged ? (delta.x, 0f) : null,
-                TranslateY = translateChanged ? (delta.y, 0f) : null,
-                Scale = scaleChanged ? (scale, 1f) : null,
-            };
+            var scaleChanged = Mathf.Abs(scale.x - 1f) * newRect.width > PixelTolerance
+                || Mathf.Abs(scale.y - 1f) * newRect.height > PixelTolerance;
+            return new LayoutIdDelta(translateChanged ? delta : Vector2.zero, scaleChanged ? scale : Vector2.one);
         }
 
         // The farthest any edge of one rect lies from the same edge of the other.
@@ -466,15 +455,30 @@ namespace Velvet
 
         private static bool SameRect(Rect a, Rect b) => IsFiniteRect(b) && EdgeTravel(a, b) <= PixelTolerance;
 
-        private static bool IsUnit(float scale) => Mathf.Abs(scale - 1f) <= 1e-5f;
+        private static bool IsUnit(Vector2 scale) => Mathf.Abs(scale.x - 1f) <= 1e-5f && Mathf.Abs(scale.y - 1f) <= 1e-5f;
 
         private static bool IsFiniteRect(Rect r) =>
             float.IsFinite(r.x) && float.IsFinite(r.y) && float.IsFinite(r.width) && float.IsFinite(r.height);
     }
 
+    internal readonly struct LayoutIdDelta
+    {
+        public static readonly LayoutIdDelta None = new(Vector2.zero, Vector2.one);
+
+        public LayoutIdDelta(Vector2 translate, Vector2 scale)
+        {
+            Translate = translate;
+            Scale = scale;
+        }
+
+        public Vector2 Translate { get; }
+        public Vector2 Scale { get; }
+        public bool IsEmpty => Translate == Vector2.zero && Scale == Vector2.one;
+    }
+
     internal readonly struct LayoutIdBox
     {
-        public LayoutIdBox(VisualElement? parent, Rect local, Vector2 panelCentre, Vector2 panelSize, float ancestorScale)
+        public LayoutIdBox(VisualElement? parent, Rect local, Vector2 panelCentre, Vector2 panelSize, Vector2 ancestorScale)
         {
             Parent = parent;
             Local = local;
@@ -487,7 +491,7 @@ namespace Velvet
         public Rect Local { get; }
         public Vector2 PanelCentre { get; }
         public Vector2 PanelSize { get; }
-        public float AncestorScale { get; }
+        public Vector2 AncestorScale { get; }
 
         // Without the parent it was read under, which the pool has taken back and can hand to another
         // Motion's element, where it would pass for that parent
@@ -536,10 +540,10 @@ namespace Velvet
         public float Rest;
 
         // The pass these were last computed in: the scale the projected ancestors are drawn at, and the
-        // uniform scale this projection writes.
+        // scale this projection writes on each axis.
         public int Pass;
-        public float ParentScale = 1f;
-        public float Scale = 1f;
+        public Vector2 ParentScale = Vector2.one;
+        public Vector2 Scale = Vector2.one;
 
         public StyleTranslate OwnInlineTranslate;
         public StyleScale OwnInlineScale;
