@@ -243,11 +243,12 @@ See [Packages/com.velvet.core/README.md](Packages/com.velvet.core/README.md#desi
 the full rationale — the three pillars, and what Velvet intentionally does not do (no new UXML/USS
 authoring, no runtime-object control).
 
-**A known trade-off, stated honestly.** Reproducing React faithfully *without* JSX means the
-`new VNode[] { ... }` scaffolding can take up roughly 15–30% of a file as structural noise — the
-necessary friction of "React-faithful × C# constraints." The practical mitigation is the same as
-in React: split by component — extract each section into its own `[Component]` (or a private
-`static VNode` helper) so the entry render lists sections instead of nesting them.
+**Children without JSX.** A child list is a C# array, so a long-form factory takes
+`children: new VNode?[] { ... }`. The shorthand overloads take their children as `params` arguments
+instead, with no array written out: `V.Div`, `V.Button`, `V.ScrollView` and `V.Custom<T>` after a
+class string, and `V.Fragment(a, b)` for `<>{a}{b}</>`. Deep nesting is split the way it is in React:
+extract each section into its own `[Component]` (or a private `static VNode` helper) so the entry
+render lists sections instead of nesting them.
 
 ## Documentation
 

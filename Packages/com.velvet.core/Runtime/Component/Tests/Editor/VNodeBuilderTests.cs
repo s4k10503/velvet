@@ -31,6 +31,8 @@ namespace Velvet.Tests
     /// as the className and the trailing params arguments as the children, in order; an empty children array
     /// produces an element node with the className applied and no children; and <c>V.Custom&lt;T&gt;</c>
     /// preserves its generic type argument as the element type under the same shape.</item>
+    /// <item><c>V.Fragment</c>'s params overload takes its arguments as the Fragment's children, in order,
+    /// under no key.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -499,6 +501,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That((node.ElementType, node.Children.Length), Is.EqualTo((typeof(Button), 2)));
             Assert.That(node.ClassNames, Is.EqualTo(new[] { "btn" }));
+        }
+
+        [Test]
+        public void Given_ParamsChildren_When_Fragment_Then_TheyAreItsChildrenInOrderUnderNoKey()
+        {
+            // Arrange
+            var first = V.Label(text: "a");
+            var second = V.Label(text: "b");
+
+            // Act
+            var node = V.Fragment(first, second);
+
+            // Assert
+            Assert.That(
+                (node.Key == null, node.Children.Length,
+                    ReferenceEquals(node.Children[0], first), ReferenceEquals(node.Children[1], second)),
+                Is.EqualTo((true, 2, true, true)));
         }
 
         [Test]
