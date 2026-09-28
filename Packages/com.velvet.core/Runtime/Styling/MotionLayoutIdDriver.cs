@@ -575,12 +575,13 @@ namespace Velvet
         public static LayoutIdTiming From(StyleTransitionConfig? transition)
         {
             var t = transition?.Layout ?? transition ?? s_default;
-            var animates = t.Type switch
-            {
-                TransitionType.Spring => StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass),
-                TransitionType.Bezier => StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec),
-                _ => StyleAnimationScheduler.ValidateDuration(t.DurationSec, null),
-            };
+            // Not a switch naming each type: its catch-all would have to throw, where LayoutIdProgress, Ease and
+            // StyleAnimationScheduler time a type neither a spring nor a bezier as a tween.
+            var animates = t.Type == TransitionType.Spring
+                ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
+                : t.Type == TransitionType.Bezier
+                    ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
+                    : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
             return new LayoutIdTiming(t, animates);
         }
 

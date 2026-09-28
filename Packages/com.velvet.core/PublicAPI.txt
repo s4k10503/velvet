@@ -906,6 +906,7 @@
 [Velvet] property Velvet.StyleTransitionConfig.DurationSec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Easing: UnityEngine.UIElements.EasingMode
 [Velvet] property Velvet.StyleTransitionConfig.ExitEasing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
+[Velvet] property Velvet.StyleTransitionConfig.Layout: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.StyleTransitionConfig.Mass: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.PropertyOverrides: System.Collections.Generic.IReadOnlyList`1[Velvet.StylePropertyTransition]?
 [Velvet] property Velvet.StyleTransitionConfig.StaggerChildrenSec: System.Single
