@@ -313,9 +313,11 @@ namespace Velvet.Tests
             // Arrange
             var pending = new VelvetTaskCompletionSource<object>();
             var probe = Probe.For("UseNavigation");
-            _provided = BuildRouter("/start", Route("start", element: probe));
+            // The loading router is built first, so a hook reading Router.Current rather than the provider's
+            // router reads the idle one.
             _other = BuildRouter("/start", Route("start", element: probe), Route("next", loader: (_, _) => pending.Task));
             _other.NavigateAsync("/next").Forget();
+            _provided = BuildRouter("/start", Route("start", element: probe));
             s_hostRouter = _provided;
             using var mounted = V.Mount(_root, V.Component(SwitchingHost, key: "host"));
             mounted.FlushEffectsForTest();
