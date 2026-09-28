@@ -145,18 +145,18 @@ namespace Velvet
 
         /// <summary>
         /// Delay interval (seconds) applied sequentially to each child Motion that inherits its active
-        /// label from this Motion (it declares <c>variants</c> but no own <c>animate</c> — see
+        /// label from this Motion (it declares <c>variants</c> and none of <c>animate</c>, <c>initial</c> and <c>exit</c> — see
         /// <see cref="Velvet.MotionNode.Animate"/>) when that label changes or this Motion's mount enter plays:
         /// the i-th such child, in document order, is delayed an additional <c>DelayChildrenSec + StaggerChildrenSec
         /// * i</c> on top of its OWN <see cref="DelaySec"/>. 0 (default) means no stagger (every inheriting
         /// child responds at the same time). Unlike AnimatePresence's own per-child enter/exit stagger
         /// (<c>V.AnimatePresence(staggerSec:)</c>), this orchestrates a PLAIN parent → child label propagation —
         /// no AnimatePresence boundary is required; toggling this Motion's <c>animate</c> prop is enough. A
-        /// descendant with its OWN explicit <c>animate</c> opts out of both the label inheritance and this
-        /// stagger — it is driven by its own render, not this propagation. As Framer Motion's
-        /// <c>staggerChildren</c> does, the index counts this Motion's own children: a child with variants
-        /// numbers its own inheriting children from zero, starting them with itself, and only a Motion with
-        /// neither variants nor an own <c>animate</c> hands this sequence on to the children below it.
+        /// descendant naming a label of its own opts out of both the label inheritance and this stagger, as
+        /// Framer's controlling variant nodes do. As Framer Motion's <c>staggerChildren</c> does, the index counts
+        /// this Motion's own children: a child with variants numbers its own inheriting children from zero,
+        /// starting them with itself, and only a Motion with neither variants nor a label of its own hands this
+        /// sequence on to the children below it.
         /// </summary>
         public float StaggerChildrenSec { get; init; }
 

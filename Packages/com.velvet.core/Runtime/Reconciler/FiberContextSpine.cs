@@ -395,7 +395,7 @@ namespace Velvet
         private static bool PushMotionSubtree(MotionNode motion, in SpineWalk walk)
         {
             var stack = walk.Stack;
-            var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
+            var motionLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
             var motionProvider = new ContextProviderNode<string>
             {
                 Context = MotionContext.ActiveLabel,
@@ -421,10 +421,6 @@ namespace Velvet
             }
             initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            // MUTANT_SURVIVES(equivalent): left listed, the two entries are popped a second time by Unwind, after
-            // the render, each pop taking the top of its own context's stack. FiberRenderer pushes a spine only
-            // for a render no reconcile encloses, so what those pops take early are entries this spine pushed
-            // beneath them, which Unwind pops anyway, and the stacks end as they would have.
             walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
             return false;
         }

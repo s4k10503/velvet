@@ -1308,7 +1308,7 @@ namespace Velvet
             foreach (var (key, node) in oldState.Committed)
             {
                 var site = new PresenceChildSite { Walk = walk, Position = presencePosition };
-                EmitPresenceChildAsAnchor(in site, node, FiberNodeFactory.FindFirstMotionDescendant(node), key, out _);
+                EmitPresenceChildAsAnchor(in site, node, FiberNodeFactory.FindFirstMotionDescendant(node), key, out _, out _);
             }
         }
 
@@ -1529,6 +1529,9 @@ namespace Velvet
             var state = pass.State;
             var boundaryFiber = pass.BoundaryFiber;
             var commit = walk.Commit;
+            // Once removed, a key coming back, mid-exit or later, is not the child Framer's PresenceChild held
+            // initial: false for.
+            state.InitialBlocked.Remove(key);
             if (state.ExitComplete.Contains(key))
             {
                 state.Exiting.Remove(key);
@@ -1567,7 +1570,7 @@ namespace Velvet
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
             var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state };
-            var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement);
+            var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement, out _);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
             // the per-key memo the live emissions kept (see PresenceBoundaryState.MotionElements).
@@ -1688,10 +1691,9 @@ namespace Velvet
         }
 
         // One Motion's exit, returning 1 when it plays, and what it hands its descendants in place of
-        // inheritedExit and frame. A Motion with no animate of its own exits to the inherited label unless it
-        // names an exit itself, the way an animate label propagates, and one with its own animate hands down
-        // only its own exit. A variant child exiting to an inherited label claims the frame's next slot, whether or
-        // not it plays an exit.
+        // inheritedExit and frame. A Motion naming none of its labels exits to the inherited label, the way an
+        // animate label propagates, and one naming any hands down only its own exit. A variant child claims the
+        // frame's next slot, whether or not it plays an exit.
         private int CollectOwnExit(
             VisualElement element,
             MotionNode motion,
@@ -1699,9 +1701,9 @@ namespace Velvet
             ref MotionOrchestrationFrame? frame,
             in DescendantExitWalk walk)
         {
-            var label = motion.Exit ?? (motion.Animate == null ? inheritedExit : null);
+            var label = MotionVariantResolver.IsControlling(motion) ? motion.Exit : inheritedExit;
             StyleTransitionConfig? exitTransition = null;
-            var claimSec = motion.Exit == null && MotionVariantResolver.IsVariantChild(motion) && frame != null
+            var claimSec = MotionVariantResolver.IsVariantChild(motion) && frame != null
                 ? frame.ClaimNextChildDelaySec()
                 : 0f;
             var plays = 0;
@@ -1979,8 +1981,9 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var site = LiveEntrySite(in pass);
-            var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement);
+            var site = LiveEntrySite(in pass, key);
+            var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
+                out var anchorEnterHandled);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
             // reference-equal patch bailed before recording.
@@ -2029,7 +2032,8 @@ namespace Velvet
                 }
 
                 var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
-                if (isEnter)
+                // The create path already played, or withheld, the enter of an anchor inheriting its labels.
+                if (isEnter && !anchorEnterHandled)
                 {
                     PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
                 }
@@ -2039,16 +2043,24 @@ namespace Velvet
             pass.Tally.VisualIndex++;
         }
 
-        // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in.
-        private static PresenceChildSite LiveEntrySite(in PresenceExpansion pass)
-            => new()
+        // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in. A child
+        // present at the first render under initial: false keeps withholding mount enters for as long as it
+        // stays, as Framer's PresenceChild keeps the initial: false it was created with.
+        private static PresenceChildSite LiveEntrySite(in PresenceExpansion pass, string key)
+        {
+            if (pass.FirstRender && !pass.Presence.Initial)
+            {
+                pass.State.InitialBlocked.Add(key);
+            }
+            return new PresenceChildSite
             {
                 Walk = pass.Walk,
                 Position = pass.Position,
                 State = pass.State,
-                SuppressInitial = pass.FirstRender && !pass.Presence.Initial,
+                SuppressInitial = pass.State.InitialBlocked.Contains(key),
                 AnchorEnterDelaySec = pass.Presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count),
             };
+        }
 
         // The re-entry replaces the ghost's node in the committed set. The OLD node was kept alive only by
         // presence bookkeeping (a ghost is never part of the boundary's own render output), so this
@@ -2499,28 +2511,32 @@ namespace Velvet
             VNode? node,
             MotionNode? anchorMotion,
             string? key,
-            out VisualElement? anchorMotionElement)
+            out VisualElement? anchorMotionElement,
+            out bool anchorEnterHandled)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
+            var previousAnchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
-            var previousSuppressInitial = _ctx.PresenceSuppressesInitial;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             _ctx.PresenceAnchorMotion = anchorMotion;
             _ctx.PresenceAnchorMotionElement = null;
-            _ctx.PresenceSuppressesInitial = site.SuppressInitial;
+            _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
             _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
+            _ctx.PresenceAnchorEnterHandled = false;
             try
             {
                 var emitted = EmitPresenceChild(site.Walk, node, key, site.Position, site.State);
                 anchorMotionElement = _ctx.PresenceAnchorMotionElement;
+                anchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
                 return emitted;
             }
             finally
             {
                 _ctx.PresenceAnchorMotion = previousAnchor;
                 _ctx.PresenceAnchorMotionElement = previousAnchorElement;
-                _ctx.PresenceSuppressesInitial = previousSuppressInitial;
+                _ctx.ComponentContextStack.Pop(MotionContext.EntersBlocked);
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
+                _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
             }
         }
 

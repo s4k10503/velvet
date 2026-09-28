@@ -559,31 +559,16 @@ namespace Velvet
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
                     ambientOrchestration, extraDelaySec);
-                // Skip the Orchestration round-trip when this node passes the ambient frame through UNCHANGED
-                // (including the common "no orchestration anywhere in this subtree" case, both null): a
-                // descendant's Get already sees exactly ambientOrchestration without anything new pushed, so
-                // pushing then popping the identical reference back off is pure overhead.
-                var pushOrchestration = !ReferenceEquals(childOrchestration, ambientOrchestration);
-                _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
-                // What a descendant this patch creates mounts from: FiberNodeFactory.ResolveMountEnter.
-                _ctx.ComponentContextStack.Push(MotionContext.InitialLabel, MotionVariantResolver.InitialLabel(
-                    newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)));
-                if (pushOrchestration)
-                {
-                    _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
-                }
+                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    childOrchestration);
                 try
                 {
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
                 {
-                    if (pushOrchestration)
-                    {
-                        _ctx.ComponentContextStack.Pop(MotionContext.Orchestration);
-                    }
-                    _ctx.ComponentContextStack.Pop(MotionContext.InitialLabel);
-                    _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
+                    MotionContext.PopForChildren(_ctx.ComponentContextStack);
                 }
             }
             else
@@ -929,11 +914,11 @@ namespace Velvet
         //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
         //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
         //   letting a grandchild start animating before its own parent does.
-        // - The ambient frame, UNCHANGED, through a Motion with neither variants nor an animate of its own:
+        // - The ambient frame, UNCHANGED, through a Motion with neither variants nor a label of its own:
         //   Framer registers the variant children under it with the variant node above it, which numbers them.
         // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
-        //   it and are numbered from zero; an ambient frame never reaches past a node with variants or its own
-        //   animate.
+        //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
+        //   of its own.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
@@ -955,7 +940,7 @@ namespace Velvet
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
             }
-            if (newNode.Variants == null && newNode.Animate == null)
+            if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
             {
                 return ambientOrchestration;
             }

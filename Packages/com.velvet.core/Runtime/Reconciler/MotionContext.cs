@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Velvet
 {
     // MotionContext: the active variant label propagated down the tree so a descendant Motion
@@ -19,6 +21,12 @@ namespace Velvet
         // The initial label a descendant Motion inheriting ActiveLabel mounts from, pushed and popped with it.
         public static readonly ComponentContext<string> InitialLabel = ComponentContext<string>.Create(null);
 
+        // Whether the presence child being emitted withholds mount enters (GeneralPathReconciler.LiveEntrySite).
+        // Pushed around each presence-child emission, so an inner presence answers for its own children, and
+        // carried by the snapshots a portal or a virtual list mounts under. Null outside every emission, where
+        // ComponentFiber.BlocksInitialEnters answers instead.
+        public static readonly ComponentContext<bool?> EntersBlocked = ComponentContext<bool?>.Create(null);
+
         // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
         // while that Motion's label changes this render or its mount enter plays. Pushed alongside ActiveLabel by
         // FiberNodePatcher.PatchMotion and FiberNodeFactory.CreateForMotionNode; null (the default) means no
@@ -26,13 +34,43 @@ namespace Velvet
         // its children.
         public static readonly ComponentContext<MotionOrchestrationFrame> Orchestration =
             ComponentContext<MotionOrchestrationFrame>.Create(null);
+
+        // What a Motion establishes for the subtree it reconciles, pushed together and popped together by
+        // FiberNodeFactory.CreateForMotionNode and FiberNodePatcher.PatchMotion. FiberContextSpine rebuilds the
+        // two labels, and not the orchestration, for an isolated render.
+        public static void PushForChildren(ComponentContextStack stack, string label, string? initialLabel,
+            MotionOrchestrationFrame? orchestration)
+        {
+            stack.Push(ActiveLabel, label);
+            stack.Push(InitialLabel, initialLabel);
+            stack.Push(Orchestration, orchestration);
+        }
+
+        public static void PopForChildren(ComponentContextStack stack)
+        {
+            stack.Pop(Orchestration);
+            stack.Pop(InitialLabel);
+            stack.Pop(ActiveLabel);
+        }
+
+        // A context snapshot kept past the pass that took it, less the orchestration: a Motion mounting from it
+        // mounts under a parent already mounted, which Framer staggers no further.
+        public static List<KeyValuePair<object, object>>? OutlivingPass(List<KeyValuePair<object, object>>? snapshot)
+        {
+            snapshot?.RemoveAll(IsOrchestration);
+            return snapshot;
+        }
+
+        private static bool IsOrchestration(KeyValuePair<object, object> entry)
+            => ReferenceEquals(entry.Key, Orchestration);
     }
 
     // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration (see its doc).
     // A reference type (not a struct) so the child-index counter mutates in place as siblings are visited, in
     // document order, during the same reconcile pass — ComponentContextStack.Get unboxes a COPY of a struct on
-    // every read, which would reset the counter for each sibling instead of advancing it. Popped when the
-    // subtree walk of the render that pushed it unwinds, so an instance never survives past that render.
+    // every read, which would reset the counter for each sibling instead of advancing it. A snapshot taken
+    // for a deferred portal mount carries it to that pass's drain, and MotionContext.OutlivingPass takes it out
+    // of every snapshot kept longer.
     internal sealed class MotionOrchestrationFrame
     {
         private readonly float _delayChildrenSec;

@@ -115,6 +115,7 @@
 6aa282569aab	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 6bb587bb4287	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 6ce24d36be0d	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
+6e9d634bc39a	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 6eeae3152a27	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 70b56d08fa2f	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 72541da549a1	Runtime/Routing/RouteBlockerManager.cs,Runtime/Store/Store.cs
@@ -181,7 +182,6 @@ b2dc4e1fc262	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhou
 b3b8add8a240	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 b4d06c13361b	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b4ea0c6ca69d	Runtime/Styling/StyleStructuralVariantClass.cs,Runtime/Styling/StyleVariantClass.cs
-b7aa73950c22	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 b7d1b2a93e98	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 b8fec61b1274	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b96e63847524	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
@@ -205,6 +205,7 @@ c5987eea9427	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/DndTypes.cs,
 c76dd6edc42a	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 c94c8f2ea433	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 c9f790dfa90e	Runtime/Styling/DropShadowSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
+cac89a4a4dc6	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 ccfb87d0b12b	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 cd0652235345	Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleGridClass.cs
 cd1333c0d9ff	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
@@ -244,6 +245,7 @@ ef74861abed6	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapM
 f38f7447e3ee	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f4b444268654	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
 f5088f3a2503	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleFilterValueParser.cs
+f633f23c7149	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 f65f2844172b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 f7bf7010547c	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f8e5df703fca	Runtime/Reconciler/AnchoredDriver.cs,Runtime/Styling/StyleAnimationScheduler.cs

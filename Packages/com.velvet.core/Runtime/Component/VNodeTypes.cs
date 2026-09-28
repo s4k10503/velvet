@@ -165,24 +165,21 @@ namespace Velvet
         /// Named animation states: each label maps to a <see cref="MotionVariant"/> — a utility-class string
         /// and, optionally, the transition a swap into that pose plays on in place of <see cref="Transition"/>.
         /// Carried RAW (never baked into <see cref="BaseElementNode.ClassNames"/>): the effective label is
-        /// resolved at reconcile time — this node's <see cref="Animate"/>, else the nearest ANCESTOR Motion's
-        /// active label (parent→child propagation) — and applied against these variants.
+        /// resolved at reconcile time — this node's own labels, else, when it names none, the nearest ANCESTOR
+        /// Motion's active label (parent→child propagation) — and applied against these variants.
         /// </summary>
         public IReadOnlyDictionary<string, MotionVariant>? Variants { get; init; }
 
-        /// <summary>The active variant label for this node (a key of <see cref="Variants"/>); null inherits the
-        /// nearest ancestor Motion's active label.</summary>
+        /// <summary>The active variant label for this node (a key of <see cref="Variants"/>). A node naming none
+        /// of this, <see cref="Initial"/> and <see cref="Exit"/> inherits the nearest ancestor Motion's labels.</summary>
         public string? Animate { get; init; }
 
         /// <summary>
         /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
-        /// <c>variants[Animate]</c> (which it then rests at, persistently).
-        /// <see cref="MotionVariant.Transition"/> resolves the timing, and
-        /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
-        /// enter to play at all. AnimatePresence plays it when this Motion is a keyed child's anchor (the
-        /// motion guide's <i>Exits</i> section says which Motion that is); any other Motion plays it itself on
-        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal —
+        /// <c>variants[Animate]</c> (which it then rests at, persistently); with no <see cref="Animate"/> it rests
+        /// at <c>variants[Initial]</c>. <see cref="MotionVariant.Transition"/> resolves the timing. The motion
+        /// guide's <i>Enter on mount</i> section owns who plays the enter and when a presence withholds it —
         /// <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence is only required for
         /// <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>

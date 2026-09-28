@@ -35,10 +35,12 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
-**Label inheritance (Framer's variant propagation):** a Motion with no `animate` of its own
-follows the nearest ancestor Motion's active label, and takes that ancestor's `initial` label with it
-unless it names its own. A coordinator can therefore flip one label and drive a whole subtree of
-inheriting children — that is also what orchestration staggers (below).
+**Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
+`exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with
+it. A Motion naming any of the three takes neither, as Framer treats a Motion naming any variant label
+as controlling its own; one naming only an `initial` rests at that pose. A coordinator can therefore
+flip one label and drive a whole subtree of inheriting children — that is also what orchestration
+staggers (below).
 
 ## Enter on mount (`initial` → `animate`)
 
@@ -47,15 +49,15 @@ enter — **standalone, no `AnimatePresence` required** (Framer parity: `initial
 on any `motion.*` element). The element mounts showing `variants[initial]`, then transitions to
 `variants[animate]` and rests there.
 
-- An inherited label drives the enter too: a Motion with no `animate` of its own mounts at its own
-  pose for the inherited `initial` label and enters to its pose for the inherited `animate` one. One
+- An inherited label drives the enter too, a presence's keyed child included: an inheriting Motion mounts
+  at its own pose for the inherited `initial` label and enters to its pose for the inherited `animate` one. One
   mounting with an entering parent enters in the slot the parent's transition orchestrates for it (see
   *Orchestration*); one mounting under a parent already mounted enters on its own.
 - An `initial` pose applying no class starts the enter from the Motion's own classes, the way a
   Framer `initial` naming no value starts each value from the one it already has.
-- Inside `AnimatePresence`, first-mount enters are controlled by the presence instead:
-  `V.AnimatePresence(initial: false, …)` suppresses them on the initial mount, like Framer's
-  `<AnimatePresence initial={false}>`.
+- Inside `AnimatePresence`, the presence can withhold enters: `V.AnimatePresence(initial: false, …)`
+  suppresses them for the children its first render mounts, like Framer's `<AnimatePresence initial={false}>`
+  (see *Exits* below).
 
 ## Exits (`AnimatePresence`)
 
@@ -86,10 +88,11 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
   the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers
   its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`,
-  numbered as *Orchestration* below numbers a label change, except that a child naming an `exit` of
-  its own takes no slot. The children of an inner `V.AnimatePresence` are that presence's, as in Framer
-  without `propagate`. `initial: false` suppresses the mount enter of the Motions the presence's
-  first render creates, other than those inside a `V.Portal`, which mount after that render.
+  numbered as *Orchestration* below numbers a label change. The children of an inner
+  `V.AnimatePresence` are that presence's, as in Framer without `propagate`. `initial: false`
+  suppresses the mount enter of every Motion that mounts under a child the presence's first render
+  created, a `V.Portal`'s and a later render's included, for as long as that child stays, as Framer's
+  `PresenceChild` keeps the `initial` it was created with.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
   Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A
@@ -116,7 +119,7 @@ keeps its original paint order: a survivor that reflows into the ghost's rect dr
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
 
 A parent Motion whose transition declares orchestration knobs staggers its **inheriting**
-children (children with no `animate` of their own) whenever its propagated label changes or its
+children (children naming none of `animate`, `initial` and `exit`) whenever its propagated label changes or its
 mount enter plays — no `AnimatePresence` boundary required. "Its transition" is the one resolved for the pose it is
 swapping into (see *Transition semantics* below):
 
@@ -139,9 +142,10 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
   back to `Together`.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
   with variants of its own starts its children with it and numbers them from zero, while a Motion
-  with neither variants nor an `animate` of its own passes its parent's numbering through to the
+  with neither variants nor a label of its own passes its parent's numbering through to the
   children below it. Every inheriting child with variants takes a slot, whether or not the label
-  changes its pose.
+  changes its pose, and one naming a label of its own takes none. A `V.VirtualList` row, which mounts
+  after the pass that rendered the list, takes no slot.
 - `V.AnimatePresence(staggerSec: …, delayChildrenSec: …, staggerDirection: …)` provides the
   presence-side equivalent for enter/exit plays — the same stagger/delay knobs, scoped to a
   list of children entering or exiting under one presence boundary.
@@ -410,7 +414,7 @@ A step is exactly one of:
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
   immediately (never holds the cursor).
 
-**"One at a time" needs no separate multi-target API.** Descendant Motions with no own `animate` inherit
+**"One at a time" needs no separate multi-target API.** Descendant Motions naming no label of their own inherit
 the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
 inheritance" above); a `To` step's own `transition` declaring `StaggerChildrenSec` fans that swap out
 across those descendants in document order, the same mechanism `V.Motion`'s orchestration knobs already

@@ -58,7 +58,7 @@ namespace Velvet
             _contextStack = contextStack;
             // Capture the enclosing context now (the cursor is correct mid-reconcile, where CreateElement
             // constructs this controller). The list's items render later, when the cursor is empty.
-            _enclosingContext = contextStack?.SnapshotTops();
+            _enclosingContext = MotionContext.OutlivingPass(contextStack?.SnapshotTops());
 
             if (node.Name != null)
             {
@@ -112,7 +112,7 @@ namespace Velvet
             _totalHeightSpacer.style.height = newNode.ItemHeight * newNode.Items.Count;
             // Update runs during the host's reconcile (PatchNode), so the cursor is correct here: refresh the
             // snapshot in case the enclosing Provider / MotionContext value changed since the last render.
-            _enclosingContext = _contextStack?.SnapshotTops();
+            _enclosingContext = MotionContext.OutlivingPass(_contextStack?.SnapshotTops());
             ForceRefresh();
         }
 

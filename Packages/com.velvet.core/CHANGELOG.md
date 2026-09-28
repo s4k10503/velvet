@@ -1124,7 +1124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child's anchor used to exit, so a keyed `V.List` row rendered by a component vanished at once. A
   Motion inheriting its labels takes its coordinator's exit label, staggered by the coordinator's exit
   pose, and `initial: false` suppresses the mount enter of the Motions the presence's first render
-  creates outside a `V.Portal`, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
+  creates, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
   presence's. A variant Motion whose classic exit completed no longer keeps that exit's class when its
   key returns before the removal.
 

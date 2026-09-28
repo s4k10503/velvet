@@ -1391,6 +1391,33 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false, false)));
         }
 
+        [Test]
+        public void Given_AChildNamingItsOwnExitUnderAnOrchestrator_When_TheLabelFlips_Then_ItTakesNoSlotFromItsSibling()
+        {
+            // Arrange — Framer's isControllingVariants counts an own exit label, so own-exit is no variant child
+            // and c1 is gp's first.
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "own-exit", name: "own-exit", variants: s_fade, exit: "hidden",
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                        V.Motion(key: "c1", name: "c1", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+
+            // Act
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("c1").ClassListContains("opacity-100"), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a Motion with neither variants nor an animate already passed the
         // orchestration through to the children below it.
         [Test]
