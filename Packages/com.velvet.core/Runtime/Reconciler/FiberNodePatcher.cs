@@ -1123,11 +1123,7 @@ namespace Velvet
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
             // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
             // another Portal already bridged is not double-attached.
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
-            {
-                _ctx.SamePanelPortalBridges[resolvedTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(resolvedTarget, _ctx);
-            }
+            _ctx.BindPortalTarget(resolvedTarget);
             return (resolvedTarget, true);
         }
 

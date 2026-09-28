@@ -144,7 +144,11 @@ settings, sorts around it, and keeps them in sync: a runtime change on the decla
 theme swap, a scale flip) re-copies on the next pass that touches the portal. A declaring panel
 without resolvable settings (an editor-hosted or headless root) gets an empty runtime theme
 instead — native-control default visuals come from a theme, so declare layers from a themed
-panel when those matter. The host object itself is hidden from the Hierarchy:
+panel when those matter. Where the portal's position on the declaring panel reaches Velvet's utility
+stylesheet ([setup.md](setup.md)) and the host does not already, the host's root gets the sheet the way
+`VelvetStyleUtilities.AttachTo` gives it, dark-theme binding included. That is looked at when a portal
+mounts into the host and again at the declaring panel's next update, so a sheet attached there right after
+the mount still reaches the host. The host object itself is hidden from the Hierarchy:
 
 | Layer | Sits | Typical use |
 |---|---|---|
@@ -180,9 +184,9 @@ occlude them and they can sit behind it, which no screen-space layer can do. `po
 resolution in pixels. The host carries the `BoxCollider` described under "Cross-panel input
 routing" above, which is what lets Unity's own runtime input system route pointer input into it.
 
-A world-space host follows the same declaring-panel sync as the layers, and a host destroyed
-externally (a scene unload) is skipped safely on later patches — remount the `V.WorldSpace`
-node to rebuild it.
+A world-space host follows the same declaring-panel sync and utility-stylesheet carry as the layers,
+and a host destroyed externally (a scene unload) is skipped safely on later patches — remount the
+`V.WorldSpace` node to rebuild it.
 
 ## Cross-panel Tab order: `PanelFocusOrder`
 

@@ -11,13 +11,15 @@ using Object = UnityEngine.Object;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the warning <see cref="V.Mount(VisualElement, VNode)"/> raises when its target reaches a panel that
-    /// does not carry the bundled utility stylesheet, and that it stays quiet wherever the sheet does reach.
+    /// Pins the warning <see cref="V.Mount(VisualElement, VNode)"/> and a portal into an element the app owns
+    /// raise when their target's panel is about to resolve styles without the bundled utility stylesheet, and
+    /// that it stays quiet wherever the sheet does reach by then.
     /// </summary>
     /// <remarks>
     /// The warning is raised once per run, so a case that expects none mounts a sheetless target last and
     /// asserts that one alone was named: a false report on the case's own target would have taken the only
-    /// slot, which is what makes an absence observable here.
+    /// slot, which is what makes an absence observable here. <see cref="Tick"/> runs the panels in the order
+    /// they were made, so the case's own target is looked at before that control.
     /// </remarks>
     [TestFixture]
     internal sealed class MountStyleSheetReportTests
@@ -75,7 +77,15 @@ namespace Velvet.Tests
 
         private static VisualElement Named(string name) => new() { name = name };
 
-        private void Mount(VisualElement target) => _mounts.Add(V.Mount(target, V.Div()));
+        private void Mount(VisualElement target) => Mount(target, V.Div());
+
+        private void Mount(VisualElement target, VNode tree) => _mounts.Add(V.Mount(target, tree));
+
+        // The scheduler tick a live panel runs ahead of its style pass.
+        private void Tick()
+        {
+            foreach (var host in _hosts) EditorPanelTestHelpers.DriveSchedulerOnce(host.Panel);
+        }
 
         private void MountBare()
         {
@@ -85,6 +95,7 @@ namespace Velvet.Tests
             Mount(bare);
         }
 
+        // GREEN_ON_BASE(characterization): the base reports this target at the mount, ahead of the tick.
         [Test]
         public void Given_APanelWithoutTheSheet_When_ATreeIsMountedOnIt_Then_TheTargetIsReported()
         {
@@ -94,11 +105,13 @@ namespace Velvet.Tests
 
             // Act
             Mount(bare);
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already reports once per run.
         [Test]
         public void Given_TwoPanelsWithoutTheSheet_When_ATreeIsMountedOnEach_Then_OnlyTheFirstIsReported()
         {
@@ -109,11 +122,13 @@ namespace Velvet.Tests
             // Act
             Mount(first);
             MountBare();
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("first"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already finds the sheet on an ancestor.
         [Test]
         public void Given_TheSheetOnThePanelRoot_When_ATreeIsMountedBelowIt_Then_OnlyTheBareControlIsReported()
         {
@@ -127,11 +142,13 @@ namespace Velvet.Tests
             // Act
             Mount(carried);
             MountBare();
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already follows an @import.
         [Test]
         public void Given_ASheetThatImportsTheUtilities_When_ATreeIsMountedOnIt_Then_OnlyTheBareControlIsReported()
         {
@@ -144,11 +161,13 @@ namespace Velvet.Tests
             // Act
             Mount(imported);
             MountBare();
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already declines a partial for the whole sheet.
         [Test]
         public void Given_OnlyASheetTheUtilitiesImport_When_ATreeIsMountedOnIt_Then_TheTargetIsReported()
         {
@@ -160,11 +179,13 @@ namespace Velvet.Tests
 
             // Act
             Mount(partial);
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("partial"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already re-arms the report for a play session.
         [Test]
         public void Given_AReportAlreadyMade_When_APlaySessionStarts_Then_TheNextBareMountIsReportedAgain()
         {
@@ -174,11 +195,13 @@ namespace Velvet.Tests
             // Act — what entering play mode runs.
             RearmMissingReport?.Invoke(null, null);
             MountBare();
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already matches a copy by its name.
         [Test]
         public void Given_ACopyOfTheSheetOnThePanelRoot_When_ATreeIsMountedBelowIt_Then_OnlyTheBareControlIsReported()
         {
@@ -196,6 +219,7 @@ namespace Velvet.Tests
             {
                 Mount(copied);
                 MountBare();
+                Tick();
             }
             finally
             {
@@ -206,6 +230,7 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already stops watching a disposed mount's target.
         [Test]
         public void Given_AMountDisposedOffAnyPanel_When_ItsTargetIsAddedToOneWithoutTheSheet_Then_OnlyTheBareControlIsReported()
         {
@@ -216,11 +241,13 @@ namespace Velvet.Tests
             // Act
             PanelRoot().Add(disposed);
             MountBare();
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already checks a target when it arrives on a panel.
         [Test]
         public void Given_ATargetMountedOffAnyPanel_When_ItIsAddedToOneWithoutTheSheet_Then_ItIsReported()
         {
@@ -230,9 +257,100 @@ namespace Velvet.Tests
 
             // Act
             PanelRoot().Add(late);
+            Tick();
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("late"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already checks a target again on each arrival.
+        [Test]
+        public void Given_ATargetCheckedOnAPanelWithTheSheet_When_ItMovesToOneWithout_Then_ItIsReported()
+        {
+            // Arrange — the first panel's tick consumes the check the mount scheduled.
+            var carrying = PanelRoot();
+            carrying.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            var moved = Named("moved");
+            carrying.Add(moved);
+            Mount(moved);
+            Tick();
+
+            // Act
+            PanelRoot().Add(moved);
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("moved"));
+        }
+
+        [Test]
+        public void Given_TheSheetAttachedAfterTheMount_When_ThePanelTicks_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange
+            var root = PanelRoot();
+            var attachedLate = Named("attached-late");
+            root.Add(attachedLate);
+            Mount(attachedLate);
+
+            // Act
+            root.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            MountBare();
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
+        [Test]
+        public void Given_TwoMountsOnATargetOffAnyPanel_When_OneIsDisposedAndTheTargetIsAddedToABarePanel_Then_ItIsReported()
+        {
+            // Arrange
+            var shared = Named("shared");
+            Mount(shared);
+            V.Mount(shared, V.Div()).Dispose();
+
+            // Act
+            PanelRoot().Add(shared);
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("shared"));
+        }
+
+        [Test]
+        public void Given_APortalIntoAnElementOnAPanelWithoutTheSheet_When_ItMounts_Then_ThatElementIsReported()
+        {
+            // Arrange — the declaring panel carries the sheet, so only the portal's target can be named.
+            var declaring = PanelRoot();
+            declaring.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            var elsewhere = Named("elsewhere");
+            PanelRoot().Add(elsewhere);
+
+            // Act
+            Mount(declaring, V.Portal(elsewhere, new VNode[] { V.Div() }));
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("elsewhere"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base looks at no portal target at all.
+        [Test]
+        public void Given_APortalIntoABareElementUnmountedBeforeItsPanelTicks_When_ItTicks_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange
+            var declaring = PanelRoot();
+            declaring.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            var elsewhere = Named("elsewhere");
+            PanelRoot().Add(elsewhere);
+            V.Mount(declaring, V.Portal(elsewhere, new VNode[] { V.Div() })).Dispose();
+
+            // Act
+            MountBare();
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
     }
 }

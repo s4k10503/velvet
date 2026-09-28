@@ -998,11 +998,11 @@ namespace Velvet
 
         // Same-panel portal TARGET elements — a registered id's element (V.Portal(targetId:)) or one the
         // caller passed outright (V.Portal(target:)) — that already carry
-        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge, mapped to the delegate that
-        // detaches it. Doubles as the attach-once guard: ChildReconciler's same-panel drain branch
-        // checks this before calling AttachBridge, since multiple Portals — or repeated mounts of the
-        // same Portal — commonly resolve to the SAME target (see PortalSlotInfo's own multi-Portal-per-
-        // target contract), and re-attaching would stack duplicate callbacks. The guard is scoped to
+        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge and the missing-sheet watch, mapped to
+        // the delegate that releases both. Doubles as the attach-once guard BindPortalTarget checks, since
+        // multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
+        // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
+        // duplicate callbacks. The guard is scoped to
         // this one context: a second, independently mounted reconciler whose own Portal resolves to the
         // same registered target attaches its own bridge through its own instance of this dictionary,
         // since it has no way to see this one. Harmless — Continue's ancestor walk itself is ctx-agnostic
@@ -1021,6 +1021,20 @@ namespace Velvet
         // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
         // roots... can outlive this reconciler" teardown rationale.
         public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
+
+        // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
+        // deferred-mount drain and FiberNodePatcher's retarget.
+        internal void BindPortalTarget(VisualElement target)
+        {
+            if (SamePanelPortalBridges.ContainsKey(target)) return;
+            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
+            var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
+            SamePanelPortalBridges[target] = () =>
+            {
+                detachBridge();
+                sheetWatch.Dispose();
+            };
+        }
 
         // The declaring panel's driving UIDocument per panel, filled by
         // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
