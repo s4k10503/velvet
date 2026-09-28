@@ -922,6 +922,32 @@ The source-generator tests and the `upm`-branch split run with no Unity license,
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
 
+### Merging a pull request
+
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once its head's own
+checks are green; every other pull request is merged by hand after review, with `settle.py merge`. The
+label means *merge when the head's own required checks pass*: add it once review has settled, and
+remove it to hold the pull request. Labelling takes triage access or above, so only an account
+holding that can opt a pull request in. The workflow does not create the label; it has to exist in the repository.
+
+The workflow asks again whenever `Test` or `Source generators` completes a run for a pull request,
+when the label is added, and when dispatched with a pull request number (*Actions ▸ Automerge ▸ Run
+workflow*). It merges through `settle.py merge`, run from a checkout of the default branch and never
+of the pull request, so every precondition above applies, and a refusal is logged with the run still
+succeeding. A completed run whose head is no longer the pull request's is left to the newer head's
+runs, and a head on a fork is refused, as `settle.py` refuses one by hand. Adding the label reaches a
+pull request based on a maintenance line only where that line holds the workflow, since a label event
+runs the workflow file the base branch holds; a completed run reaches it either way.
+
+The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a
+merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the
+green-base precondition above reads the required workflows' push runs, so a break an automerged change
+carried would go unseen until some later push. The `upm` split would wait for that push too. Without
+the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
+for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
+Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
+holds it as it holds anyone: it lists no bypass actor.
+
 ### Enabling Unity tests (free Personal license)
 
 A free Unity **Personal** license works in CI. Add these **Actions secrets** (Settings ▸ Secrets and

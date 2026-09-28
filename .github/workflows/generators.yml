@@ -111,6 +111,9 @@ jobs:
       - name: Pull request settle tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_settle.py
 
+      - name: Automerge tests
+        run: python3 scripts/test_quality/run_suite.py scripts/pr/test_automerge.py
+
       - name: Suite runner tests
         run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_run_suite.py
 
