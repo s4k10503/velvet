@@ -179,6 +179,88 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_EveryShaderListedByTheProjectAndALockedFile_When_ABuildWouldInjectNothing_Then_ItDoesNotRefuse()
+        {
+            // Arrange — the project's own entries, so the build has nothing to add and nothing to write.
+            foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
+            var injector = new BundledShaderBuildInclusion();
+
+            // Act
+            bool writableUnderLock;
+            Exception refused = null;
+            try
+            {
+                using (File.Open(GraphicsSettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    writableUnderLock = CanOpenForWriting();
+                    refused = PreprocessRefusal(injector);
+                }
+            }
+            finally
+            {
+                foreach (var name in VelvetShaders.Names) RemoveFirst(Shader.Find(name));
+            }
+
+            // Assert — the lock's own reading rides along: where it did not make the file unwritable, the
+            // absence of a refusal says nothing.
+            Assert.That((writableUnderLock, refused?.GetType()), Is.EqualTo((false, (Type)null)));
+        }
+
+        [Test]
+        public void Given_EveryShaderListedByTheProject_When_ABuildPreprocesses_Then_NoRecordIsLeft()
+        {
+            // Arrange — the project's own entries, so the build adds nothing. A record left behind would read as
+            // something to undo, and refuse the next build in this session on a read-only file.
+            foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
+            var injector = new BundledShaderBuildInclusion();
+
+            // Act
+            bool recorded;
+            try
+            {
+                injector.OnPreprocessBuild(null);
+                recorded = File.Exists(RecordFilePath());
+            }
+            finally
+            {
+                foreach (var name in VelvetShaders.Names) RemoveFirst(Shader.Find(name));
+            }
+
+            // Assert
+            Assert.That(recorded, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every locked file, this record case included.
+        // What changed is that a build with nothing to write no longer refuses; a leftover record is still
+        // something to undo.
+        [Test]
+        public void Given_ALeftoverInjectionAndALockedFile_When_ABuildWouldInjectNothing_Then_ItStillRefuses()
+        {
+            // Arrange — every entry present, so only the record says the build has something to undo.
+            foreach (var name in VelvetShaders.Names) Append(Shader.Find(name));
+            File.WriteAllLines(RecordFilePath(), VelvetShaders.Names);
+            var injector = new BundledShaderBuildInclusion();
+
+            // Act
+            Exception refused;
+            try
+            {
+                using (File.Open(GraphicsSettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    refused = PreprocessRefusal(injector);
+                }
+            }
+            finally
+            {
+                File.Delete(RecordFilePath());
+                foreach (var name in VelvetShaders.Names) RemoveFirst(Shader.Find(name));
+            }
+
+            // Assert
+            Assert.That(refused?.GetType(), Is.EqualTo(typeof(BuildFailedException)));
+        }
+
+        [Test]
         public void Given_ABuildThatDiedBeforeItsPostprocess_When_TheEditorLoadsAgain_Then_TheEntriesAreGone()
         {
             // Arrange — the record on disk outlives the editor; erasing the session marker is what a new
@@ -288,6 +370,41 @@ namespace Velvet.Tests
             => (string)typeof(BundledShaderBuildInclusion)
                 .GetField("LiveSessionKey", BindingFlags.NonPublic | BindingFlags.Static)!
                 .GetRawConstantValue()!;
+
+        private static void Append(Shader shader)
+        {
+            var included = IncludedShaders(out var settings);
+            included.InsertArrayElementAtIndex(included.arraySize);
+            included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
+            settings.ApplyModifiedProperties();
+        }
+
+        private static Exception PreprocessRefusal(BundledShaderBuildInclusion injector)
+        {
+            try
+            {
+                injector.OnPreprocessBuild(null);
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }
+
+        private static bool CanOpenForWriting()
+        {
+            try
+            {
+                using var probe = File.Open(
+                    GraphicsSettingsAsset, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         private static void RemoveFirst(Shader shader)
         {

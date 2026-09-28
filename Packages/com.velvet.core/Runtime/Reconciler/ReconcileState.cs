@@ -136,11 +136,12 @@ namespace Velvet
     }
 
     // Identity key for a child in the keyed reconcile path. A child is identified either by an
-    // explicit key (its own VNode.Key or a Fragment-scoped key) or, when unkeyed, by
-    // its full sibling index. Keeping the two kinds in one type but tagged by kind separates
-    // explicit string keys from numeric implicit indices: an explicit key and a positional
-    // index can never compare equal, so a user key value — including one a Fragment scope composes
-    // — cannot collide with an unkeyed sibling's slot.
+    // explicit key (its own VNode.Key or a Fragment-scoped key) or, when unkeyed, by its slot: the index it
+    // is written at in its child array, under the SlotPath of that array (FiberKeying.WalkPosition). Two
+    // slots at one index whose SlotPaths hash alike match each other, the cost WalkPosition states for Path.
+    // Keeping the two kinds in one type but tagged by kind separates explicit string keys from numeric
+    // implicit indices: an explicit key and a positional index can never compare equal, so a user key
+    // value — including one a Fragment scope composes — cannot collide with an unkeyed sibling's slot.
     //
     // The general path also carries the fiber whose output emitted the leaf (OwnedBy), so two components'
     // leaves never match each other whatever keys they carry. The flat diff never sets one: it is taken only
@@ -149,33 +150,40 @@ namespace Velvet
     {
         private readonly string? _key;
         private readonly int _index;
+        private readonly long _slotPath;
         private readonly bool _isPositional;
         private readonly ComponentFiber? _owner;
 
-        private ChildKey(string? key, int index, bool isPositional, ComponentFiber? owner)
+        private ChildKey(string? key, int index, long slotPath, bool isPositional, ComponentFiber? owner)
         {
             _key = key;
             _index = index;
+            _slotPath = slotPath;
             _isPositional = isPositional;
             _owner = owner;
         }
 
-        public static ChildKey Explicit(string key) => new(key, 0, false, null);
+        public static ChildKey Explicit(string key) => new(key, 0, 0, false, null);
 
-        public static ChildKey Positional(int index) => new(null, index, true, null);
+        // A slot in a child array no wrapper encloses.
+        public static ChildKey Positional(int index) => Positional(FiberKeying.RootSlotPath, index);
 
-        internal ChildKey OwnedBy(ComponentFiber? owner) => new(_key, _index, _isPositional, owner);
+        public static ChildKey Positional(long slotPath, int index) => new(null, index, slotPath, true, null);
+
+        internal ChildKey OwnedBy(ComponentFiber? owner) => new(_key, _index, _slotPath, _isPositional, owner);
 
         public bool Equals(ChildKey other)
             => ReferenceEquals(_owner, other._owner)
                 && (_isPositional
-                    ? other._isPositional && _index == other._index
+                    ? other._isPositional && _index == other._index && _slotPath == other._slotPath
                     : !other._isPositional && _key == other._key);
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
+        // The slot path is hashed with the index: siblings written under separate unkeyed wrappers share
+        // their index, and a table hashing the index alone chains every one of them into one bucket.
         public override int GetHashCode()
-            => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
+            => (_isPositional ? unchecked(_index * 397) ^ _slotPath.GetHashCode() : (_key?.GetHashCode() ?? 0))
                 // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
                 // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
                 // reads the owner.
@@ -183,7 +191,7 @@ namespace Velvet
 
         public override string ToString()
             => _isPositional
-                ? $"position {_index.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                ? $"position {_index.ToString(System.Globalization.CultureInfo.InvariantCulture)} under slot path {_slotPath.ToString("X16", System.Globalization.CultureInfo.InvariantCulture)}"
                 : $"\"{_key}\"";
     }
 }

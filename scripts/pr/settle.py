@@ -5,7 +5,7 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Seven of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Eight of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
@@ -13,7 +13,7 @@ everything wrong rather than costing a round of CI per reason.
 
 **One has no hook: a draft head**, or one whose merge state is `dirty`.
 
-Eight preconditions:
+Nine preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
@@ -37,6 +37,8 @@ Eight preconditions:
 - **A head on another repository is not merged from here.** Its branch is a ref this checkout has
   not got, so neither containment above is asked of it, and the branch deleted after a merge is
   addressed on origin by that name.
+- **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
+  owns which heads those are.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -86,6 +88,8 @@ def load_published_check():
 published_check = load_published_check()
 
 red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
+
+long_lived = load_by_path(Path(__file__).resolve().with_name("long_lived.py"), "long_lived")
 
 # The three files this writes and two hooks read; watcher_state.py owns their format.
 watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
@@ -320,24 +324,28 @@ def contains_commit(project, branch, sha):
 
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
-                 unpublished_release, draft, merge_state, fork, failing_runs, behind_release):
+                 unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
+                 long_lived_head):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
     read as a clean base, and the only production caller is held by no test. `failing_runs` takes
     none either: a caller that stopped supplying it would read as a green base. It holds the base's
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
-    newest release commit where the head lacks it, and None otherwise.
+    newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
+    for the reason `unpublished_release` gives.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
     reporting the rest would be reporting about two SHAs at once. The publication reason is about the
-    base, which the force-push did not touch, and draft is a state of the pull request rather than of
-    its head.
+    base, which the force-push did not touch; draft is a state of the pull request rather than of
+    its head, and a long-lived head is one by its branch name.
     """
     reasons = [unpublished_release] if unpublished_release else []
     if draft:
         reasons.append("it is a draft: mark it ready for review first")
+    if long_lived_head:
+        reasons.append(long_lived.reason(branch))
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
@@ -445,6 +453,7 @@ def blocking_reasons(project, number, base=None, states=None):
                  or not contains_commit(project, before.branch, failing.sha)]
     behind_release = (state.release if state.release and not before.fork
                       and not contains_commit(project, before.branch, state.release[0]) else None)
+    long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
@@ -452,7 +461,8 @@ def blocking_reasons(project, number, base=None, states=None):
                                  merge_state=before.merge_state,
                                  fork=before.fork,
                                  failing_runs=uncovered,
-                                 behind_release=behind_release),
+                                 behind_release=behind_release,
+                                 long_lived_head=long_lived_head),
                     after, before.branch, results, target)
 
 

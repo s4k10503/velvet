@@ -67,7 +67,6 @@ namespace Velvet
             // Key committed for each NewElements entry (parallel list), so a
             // speculative subtree (Suspense primary) can be rolled back on suspend.
             public List<ChildKey> CommittedKeys = null!;
-            public int NewIndex;
             // The component fibers whose expansion this walk completed, each with the NewElements index its
             // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
             // places the rows. RollbackCommitTo leaves the entries of a suspended primary's fibers in place, so
@@ -150,7 +149,6 @@ namespace Velvet
                 NewElements = pool.RentElementList(),
                 OldOwners = pairing.OldOwners,
                 CommittedKeys = new List<ChildKey>(),
-                NewIndex = 0,
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
@@ -282,7 +280,6 @@ namespace Velvet
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
-            commit.NewIndex++;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
 
             // Old leaf i is committed at parent.children[slotStart + i] (the previous render placed
@@ -348,14 +345,13 @@ namespace Velvet
         // recording beside it that key and the fiber the walk had reached. One method writes all three, so
         // neither KeysOut nor OwnersOut can fall behind Result.
         //
-        // An unkeyed leaf's sibling index counts from where the output of the fiber the walk has reached began
-        // (InlineWalk.FiberLeafBase), not from the container's first leaf. With the owner the key carries, that
-        // matches a component's elements within its own output, so a component matched by key finds them again
-        // wherever its siblings moved it.
+        // An unkeyed leaf is keyed by its slot under the SlotPath FiberKeying.ComponentChild restarts, not by a
+        // count of the leaves emitted before it. With the owner the key carries, that matches a component's
+        // elements within its own output, so a component matched by key finds them again wherever its siblings
+        // moved it, and what an earlier sibling emits moves none of them.
         private void Emit(InlineWalk walk, VNode? node, WalkPosition position, int nodeIndex)
         {
-            var siblingIndex = (walk.Commit?.NewIndex ?? walk.Result!.Count) - walk.FiberLeafBase;
-            var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, siblingIndex);
+            var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, position.SlotPath);
             if (walk.Commit != null) CommitLeaf(node, walk.Commit, key);
             else if (node != null)
             {
@@ -382,8 +378,6 @@ namespace Velvet
         // parent's children directly (wrapper-less inline at the suspended slot, not nested under
         // a created container) are retained — those slots are re-filled by the fallback / by the
         // later resolve's re-expansion, which reuses the retained subtree.
-        // GeneralCommitState.NewIndex rewinds so the replacement subtree re-emits at
-        // the same flat positions.
         private void RollbackCommitTo(GeneralCommitState commit, int preCount,
             HashSet<ComponentFiber>? fibersBefore = null,
             HashSet<ComponentFiber>? newFibers = null)
@@ -423,7 +417,6 @@ namespace Velvet
             }
             commit.NewElements.RemoveRange(preCount, commit.NewElements.Count - preCount);
             commit.CommittedKeys.RemoveRange(preCount, commit.CommittedKeys.Count - preCount);
-            commit.NewIndex = preCount;
         }
 
         // A created container orphan (e.g. V.Div) reconciled its declared children during CreateElement, so
@@ -593,8 +586,6 @@ namespace Velvet
             public List<ComponentFiber?>? OwnersOut;
             // The key each leaf was emitted under, index-aligned with Result, on the same terms as OwnersOut.
             public List<ChildKey>? KeysOut;
-            // How many leaves the walk had emitted when the output of the fiber it has reached began.
-            public int FiberLeafBase;
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -616,7 +607,6 @@ namespace Velvet
                 NewFibers = null!;
                 OwnersOut = null;
                 KeysOut = null;
-                FiberLeafBase = 0;
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
@@ -1014,8 +1004,6 @@ namespace Velvet
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
             _ctx.CurrentFiberTree = fiber.PreviousTree;
-            var enclosingLeafBase = walk.FiberLeafBase;
-            walk.FiberLeafBase = walk.Commit?.NewIndex ?? walk.Result!.Count;
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -1023,7 +1011,6 @@ namespace Velvet
             }
             finally
             {
-                walk.FiberLeafBase = enclosingLeafBase;
                 _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }
