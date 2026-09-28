@@ -15,3 +15,12 @@
   them on its own transition, and a spring or bezier play or reversal still running kept driving them toward its
   own target until it settled, where a `translate-*` value went back to the earlier pose's. Properties the pose
   does not name keep moving as before.
+
+- A `V.Motion` whose tween, spring or bezier play, or a presence child's spring exit reversal, is still running
+  when a zero-duration pose lands no longer ends carrying that play's earlier pose classes beside those of the
+  timed pose that follows. The next pose's swap cancelled the play, and the cancel put back the classes the play
+  had been started toward.
+
+- A `V.Motion` whose label changes while it is exiting, or into a pose whose transition has zero duration, no
+  longer gets the earlier pose's arbitrary values, such as `translate-x-[40px]`, back when a later spring or
+  bezier pose that does not name them settles.
