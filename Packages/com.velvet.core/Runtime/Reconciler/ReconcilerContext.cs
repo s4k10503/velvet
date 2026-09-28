@@ -713,6 +713,15 @@ namespace Velvet
         public Dictionary<VisualElement, LayoutIdProjection> LayoutIdProjections { get; } = new();
         public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
 
+        // The live Motions registered under each layoutId in the order they joined; the transition each last
+        // patched with; the followers hidden, with the opacity and picking mode they had; and the leads a
+        // teardown promoted that have not started yet, with the frame count they were promoted at.
+        // MotionLayoutIdDriver.CancelForTeardown takes an element out of all four.
+        public Dictionary<string, List<VisualElement>> LayoutIdMembers { get; } = new();
+        public Dictionary<VisualElement, LayoutIdTiming> LayoutIdTimings { get; } = new();
+        public Dictionary<VisualElement, (StyleFloat Opacity, PickingMode Picking)> LayoutIdHidden { get; } = new();
+        public Dictionary<VisualElement, int> LayoutIdPromotions { get; } = new();
+
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
         // by the element's own generateVisualContent (DropShadowSilhouette draws the baked shadow texture

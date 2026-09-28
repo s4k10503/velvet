@@ -1578,17 +1578,133 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionWithNoTransition_When_FramersDefaultDurationHasPassed_Then_TheTweenHasEnded()
+        public void Given_ALayoutIdMotionWithNoTransition_When_ItMoves_Then_ItTweensForFramersDefaultDuration()
         {
             // Arrange
             var element = MoveOn(null);
-            var start = TranslateX(element);
 
-            // Act — past the 0.45s default tween.
-            for (var i = 0; i < 34; i++) Tick();
+            // Act — about 0.3s, inside the 0.45s default and past the 0.2s the Fade preset V.Motion defaults its
+            // swaps to; then about 0.56s, past the default and far short of a spring on the config's default knobs.
+            for (var i = 0; i < 19; i++) Tick();
+            var midway = element.style.translate.keyword;
+            for (var i = 0; i < 16; i++) Tick();
 
-            // Assert — pinned at first, done by now; a spring on StyleTransitionConfig's defaults is still moving.
-            Assert.That((start < -150f, element.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+            // Assert
+            Assert.That((midway, element.style.translate.keyword), Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
+        // "a" mounts first and stays; step 1 mounts "b" 300px right of it under the same layoutId, step 2 moves
+        // "b" 100px further in a render that patches "a" before it, and step 3 removes "b".
+        [Component]
+        private static VNode SharedLiveIdRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var children = new List<VNode>
+            {
+                V.Motion(key: "a", name: "a", layoutId: "card", transition: s_layoutSpring,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+            };
+            if (step is 1 or 2)
+            {
+                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_layoutSpring,
+                    className: $"absolute left-[{(step == 1 ? 300 : 400)}px] top-[0px] w-[100px] h-[100px]"));
+            }
+            return V.Div(children: children.ToArray());
+        }
+
+        // Mounts SharedLiveIdRender and plays the given steps, each up to the frame its layout settles on.
+        private MountedTree PlaySharedLiveId(params int[] steps)
+        {
+            var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
+            Tick();
+            foreach (var step in steps)
+            {
+                if (step < 0)
+                {
+                    AdvancePast(2.5f);
+                    continue;
+                }
+                s_setStep.Invoke(step);
+                mounted.FlushStateForTest();
+                Tick();
+            }
+            return mounted;
+        }
+
+        // GREEN_ON_BASE(characterization): the base tweens a Motion mounting under a live layoutId from the holder's box.
+        // Making the holder follow must leave the newcomer's start as it was.
+        [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_AnotherMountsUnderIt_Then_TheNewOneTweensFromIt()
+        {
+            // Arrange / Act
+            using var mounted = PlaySharedLiveId(1);
+
+            // Assert — pinned over "a", 300px left of its own box.
+            Assert.That(TranslateX(Root.Q<VisualElement>("b")), Is.EqualTo(-300f).Within(1f));
+        }
+
+        [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_AnotherMountsUnderIt_Then_TheNewOneStartsTransparent()
+        {
+            // Arrange / Act
+            using var mounted = PlaySharedLiveId(1);
+
+            // Assert — it fades in over the first half of its move while the older one is still there.
+            var opacity = Root.Q<VisualElement>("b").style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_TheOneMountedUnderItIsMidTween_Then_TheOlderOneIsDrawnOverIt()
+        {
+            // Arrange
+            using var mounted = PlaySharedLiveId(1);
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — "b" is on its way right, and "a" is drawn where "b" is.
+            var lead = DrawnBox(Root.Q<VisualElement>("b"));
+            var follower = DrawnBox(Root.Q<VisualElement>("a"));
+            Assert.That((lead.x > 20f, Near(follower, lead)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALiveMotionHoldingALayoutId_When_TheOneMountedUnderItHasSettled_Then_TheOlderOneIsHiddenFromSightAndThePointer()
+        {
+            // Arrange / Act
+            using var mounted = PlaySharedLiveId(1, -1);
+
+            // Assert
+            var follower = Root.Q<VisualElement>("a");
+            Assert.That((follower.style.opacity.value, follower.pickingMode), Is.EqualTo((0f, PickingMode.Ignore)));
+        }
+
+        [Test]
+        public void Given_TwoLiveMotionsSharingALayoutId_When_TheLeadMovesInARenderThatAlsoPatchesTheFollower_Then_TheLeadTweensFromItsOwnBox()
+        {
+            // Arrange / Act
+            using var mounted = PlaySharedLiveId(1, -1, 2);
+
+            // Assert — pinned 100px left, at its own previous box, not 400px left at the follower's.
+            Assert.That(TranslateX(Root.Q<VisualElement>("b")), Is.EqualTo(-100f).Within(1f));
+        }
+
+        [Test]
+        public void Given_TwoLiveMotionsSharingALayoutId_When_TheLeadLeavesTheTree_Then_TheFollowerShowsAndTweensFromTheLeadsBox()
+        {
+            // Arrange
+            using var mounted = PlaySharedLiveId(1, -1);
+            var follower = Root.Q<VisualElement>("a");
+
+            // Act — the teardown promotes "a", which starts once a layout pass has run.
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Assert — visible again, and drawn most of the way over the 400px-right box "b" left.
+            Assert.That((follower.style.opacity.keyword, TranslateX(follower) > 250f), Is.EqualTo((StyleKeyword.Null, true)));
         }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +

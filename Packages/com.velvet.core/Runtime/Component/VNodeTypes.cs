@@ -150,6 +150,11 @@ namespace Velvet
         /// </summary>
         public StyleTransitionConfig? Transition { get; init; }
 
+        // V.Motion's own default when its caller named no transition, duration, easing or delay: the Fade preset
+        // the swaps take stands in for the transition the caller did not give, which a layoutId move replaces
+        // with Framer's default layout transition (LayoutIdTiming.From).
+        internal bool TransitionDefaulted { get; init; }
+
         /// <summary>
         /// Callback invoked when the enter animation completes.
         /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under
@@ -211,8 +216,8 @@ namespace Velvet
         /// spring that inverse back to zero) instead of jump-cutting. Independent of <see cref="Variants"/>/
         /// <see cref="Animate"/>: a layoutId tween runs from the ACTUAL rect delta, not a class-defined
         /// from/to pair. Null = no layout animation (ordinary jump-cut on a rect change, matching every other
-        /// element). Two Motions in the same tree must never share a live layoutId simultaneously — the
-        /// second one to patch silently steals the registration (see MotionLayoutIdDriver).
+        /// element). Two live Motions sharing an id follow Framer's shared layout: the newest to mount leads it
+        /// and the others follow it (see MotionLayoutIdDriver).
         /// </summary>
         public string? LayoutId { get; init; }
     }

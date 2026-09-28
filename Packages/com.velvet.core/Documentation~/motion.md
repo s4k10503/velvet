@@ -328,9 +328,13 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
   discrete event flushes, however many components they re-render: once an element has left the tree,
-  its id hands nothing to a Motion that mounts under it in a later batch, which appears in place. Two Motions in the same tree must never
-  share a live `layoutId` simultaneously — the second one to patch silently steals the
-  registration.
+  its id hands nothing to a Motion that mounts under it in a later batch, which appears in place — as in
+  Framer, which drops a removed element's snapshot once the frame it left in has rendered.
+- Two live Motions can share a `layoutId`, as in Framer's shared layout. The newest to mount leads the
+  id and tweens from the one before it, which follows: it is drawn over the lead's box and fades out
+  while the lead moves, the lead fading in over the first half of its move, and then stays hidden and
+  ignores the pointer. A follower's own patches move nothing. When the lead leaves the tree, the newest
+  follower left takes the id back and tweens from the box the lead left.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
