@@ -125,6 +125,12 @@ namespace Velvet
         internal static bool RunsOnSwap(StyleTransitionConfig config)
             => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
+        internal static bool MovesClasses(StyleTransitionConfig config)
+            => config.Type != TransitionType.Tween || RunsOnSwap(config);
+
+        internal bool IsDriving(VisualElement element)
+            => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
+
         internal bool IsSwapPending(VisualElement element, Action onSwap)
             // MUTANT_SURVIVES(unreachable): a registered hold's swap is always the element's pending enter.
             // Each call that ends or replaces that enter releases, lands or replaces the hold before it returns:

@@ -53,7 +53,7 @@ namespace Velvet.Tests
         }
 
         private readonly record struct Poses(StyleTransitionConfig Transition, string From, string To, string Land,
-            int Frames = 3, string Next = null);
+            int Frames = 3, string Next = null, StyleTransitionConfig NextTransition = null);
 
         // Mounts the box at From, plays the swap to To on Transition for Frames frames, then changes the label to
         // Land, whose pose has zero duration. Returns the box, what read gave just before Land, and the mount.
@@ -66,7 +66,7 @@ namespace Velvet.Tests
                 ["from"] = poses.From,
                 ["to"] = poses.To,
                 ["land"] = new MotionVariant(poses.Land, StyleTransitionConfig.None),
-                ["next"] = new MotionVariant(poses.Next ?? string.Empty, s_tween),
+                ["next"] = new MotionVariant(poses.Next ?? string.Empty, poses.NextTransition ?? s_tween),
             };
             s_store = new LabelStore();
             var mounted = V.Mount(Root, V.Component(PoseBox, key: "root"));
@@ -480,6 +480,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TagClasses(box), Is.EqualTo("tag-d"));
+        }
+
+        [Test]
+        public void Given_ATweenSwapLandedUnderAZeroDurationPoseLeavingTranslateUnnamed_When_ASpringPoseFollows_Then_NoTranslateComesBack()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "translate-x-[0px]", "translate-x-[40px]",
+                "opacity-50", Next: "opacity-0", NextTransition: s_spring), Opacity);
+            using var __ = mounted;
+            AdvancePast(1f);
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(box.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
     }
 }

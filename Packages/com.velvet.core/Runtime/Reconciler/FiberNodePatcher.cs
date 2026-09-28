@@ -609,6 +609,8 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew);
             }
+            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
+                new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion never renders skew (the animation node never attaches a sheared
@@ -632,6 +634,31 @@ namespace Velvet
                 var t = newNode.Transition;
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId,
                     t?.Stiffness ?? 100f, t?.Damping ?? 10f, t?.Mass ?? 1f, _ctx);
+            }
+        }
+
+        // A play that moves classes puts its pose's inline-resolved tokens on the class list, and the class sync
+        // writes them as inline style without touching that list, so a label change whose swap moves none leaves
+        // the old pose's there. A spring or bezier settle re-applies what the list names
+        // (ReapplyMotionOwnedInlineValues), so they would come back under a later pose that leaves their property
+        // unnamed. A running driver is left alone, since its settle re-applying them is what ends a property the
+        // pose leaves unnamed at the play's target (MotionZeroDurationLandingTests); LandNamedProperties takes
+        // off what the pose names.
+        private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
+            string[] oldVariantClasses, MotionAppliedClassSet next)
+        {
+            if (playedTransition != null && StyleAnimationScheduler.MovesClasses(playedTransition)
+                || SequenceEqual(oldVariantClasses, next.VariantClasses)
+                || _ctx.StyleAnimationScheduler.IsDriving(element))
+            {
+                return;
+            }
+            foreach (var cls in oldVariantClasses)
+            {
+                if (IsInlineResolved(cls) && Array.IndexOf(next.Merged, cls) < 0)
+                {
+                    element.RemoveFromClassList(cls);
+                }
             }
         }
 

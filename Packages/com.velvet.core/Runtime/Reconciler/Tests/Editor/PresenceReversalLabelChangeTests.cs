@@ -439,6 +439,40 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildReAddedMidItsOwnExitAtANewLabel_When_ALaterSpringPoseLeavesTranslateUnnamed_Then_NoTranslateComesBack()
+        {
+            // Arrange — the child's own tween plays a classic exit, and it returns at another translate inside it.
+            s_initialPoses = new Dictionary<string, MotionVariant>
+            {
+                ["start"] = new MotionVariant("translate-x-[0px]", s_tween),
+                ["hidden"] = new MotionVariant("translate-x-[10px]", s_tween),
+                ["visible"] = new MotionVariant("translate-x-[40px]", s_tween),
+                ["dim"] = new MotionVariant("opacity-50", new StyleTransitionConfig { Type = TransitionType.Spring }),
+            };
+            s_initialTransition = s_tween;
+            using var store = new PresenceStore("hidden");
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(InitialPoseHost, key: "root"));
+            AdvancePast(1f);
+            store.SetKeys(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Tick();
+            var item = Root.Q<VisualElement>("item");
+            var exiting = mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(item);
+            store.Set("a", "visible");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Act
+            store.SetLabel("dim");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert — with the child exiting at the re-add, the shape the case is named for.
+            Assert.That((exiting, item.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_ASpringExitReversalUnderALandedZeroDurationPose_When_ATimedPoseFollows_Then_OnlyThatPosesClassIsCarried()
         {
             // Arrange — the reversal still moves a translate the zero-duration pose leaves unnamed.
