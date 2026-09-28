@@ -156,9 +156,10 @@ namespace Velvet
         // FiberContextSpine wherever it walks those same children: a walk unwrapping where the other does not
         // places the components under the Fragment at two different positions.
         internal static VNode?[] UnwrapLoneFragment(VNode?[] children)
-            => children is { Length: 1 } && children[0] is FragmentNode { Key: null } lone
-                ? lone.Children ?? System.Array.Empty<VNode?>()
-                : children;
+        {
+            var lone = children is { Length: 1 } ? children[0] as FragmentNode : null;
+            return lone != null && lone.Key == null ? lone.Children ?? System.Array.Empty<VNode?>() : children;
+        }
 
         // The position an outer walk starts from. Scope-less (nothing has established a keyed boundary yet)
         // with both path accumulators at their seed.
