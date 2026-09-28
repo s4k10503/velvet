@@ -641,5 +641,45 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Opacity(box), Is.EqualTo(0.3f).Within(1e-3f));
         }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ADrivenSwapRunningUnderALandedZeroDurationPose_When_ASecondNamingTranslateFollows_Then_TheTranslateStaysAfterThePlayEnds(
+            TransitionType type)
+        {
+            // Arrange — the first landing pose leaves translate unnamed, so the play goes on driving it.
+            var (box, _, mounted) = PlayThenLand(new Poses(Driver(type), "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-50", Next: "opacity-50 translate-x-[20px]",
+                NextTransition: StyleTransitionConfig.None), InlineTranslateX);
+            using var __ = mounted;
+            Tick();
+
+            // Act
+            s_store.Set("next");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(InlineTranslateX(box), Is.EqualTo(20f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base left a swapped tween's `all` in place under a zero-duration pose.
+        // So a class the same render changes outside the pose tweens on the play's timing.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABackgroundChange_Then_TheBackgroundTweens()
+        {
+            // Arrange
+            s_className = "bg-[#ff0000]";
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0 translate-x-[0px]",
+                "opacity-100 translate-x-[40px]", "opacity-100 translate-x-[20px]"), Opacity,
+                _ => s_className = "bg-[#0000ff]");
+            using var __ = mounted;
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(box.resolvedStyle.backgroundColor.r, Is.GreaterThan(0.5f));
+        }
     }
 }

@@ -1111,8 +1111,9 @@ namespace Velvet
         // Lands each named longhand of a variant tween within two frames while the entries before it keep timing
         // the rest of what they timed (MotionZeroDurationLandingTests). One whose value the pose changes gets a 1ms
         // entry appended. One whose value the pose repeats from the play's target leaves the list instead, which
-        // rests it at that target (HeldTransitionOverrideEngineTests); an `all` entry is then spelled out as the
-        // longhands the play's classes write. A classic enter's or a preset exit's transition-property is its USS
+        // rests it at that target (HeldTransitionOverrideEngineTests); an `all` entry is then spelled out as every
+        // other longhand the style table names, so a class outside the pose keeps its timing
+        // (MotionZeroDurationLandingTests). A classic enter's or a preset exit's transition-property is its USS
         // one, which is why only a play with resting classes reaches here. Rejected: a zero duration, under which
         // an earlier `all` still times the longhand.
         private static void LandOnHeldTransition(VisualElement element, PendingAnimation pending,
@@ -1137,7 +1138,6 @@ namespace Velvet
                 easings.Add(easing);
                 delays?.Add(delay);
             }
-            var played = PlayedLonghands(pending);
             for (var i = 0; i < held.Count; i++)
             {
                 var name = held[i].ToString();
@@ -1150,7 +1150,7 @@ namespace Velvet
                 {
                     foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
                     {
-                        if (played.Contains(longhand) && !repeated.Contains(longhand))
+                        if (!named.Contains(longhand))
                         {
                             Add(StyleUtilityProperties.UssName(longhand), heldDurations[i], heldEasings[i], delay);
                         }
@@ -1188,11 +1188,6 @@ namespace Velvet
             }
             return repeated;
         }
-
-        private static StyleLonghandSet PlayedLonghands(PendingAnimation pending)
-            => FiberNodePatcher.LonghandsOf(pending.FromClasses ?? Array.Empty<string>())
-                .Union(FiberNodePatcher.LonghandsOf(pending.ToClasses ?? Array.Empty<string>()))
-                .Union(FiberNodePatcher.LonghandsOf(pending.RestingClasses ?? Array.Empty<string>()));
 
         private static bool IsRepeated(string name, StyleLonghandSet repeated)
             => Array.Exists((StyleLonghand[])Enum.GetValues(typeof(StyleLonghand)),
