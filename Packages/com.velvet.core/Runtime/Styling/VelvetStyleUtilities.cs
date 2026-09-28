@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,7 +11,8 @@ namespace Velvet
     /// Resolves and attaches Velvet's bundled utility stylesheet from runtime code, in the editor and in a
     /// player alike. Every utility the sheet declares resolves to nothing on a panel that does not carry
     /// it, while arbitrary values and the many families Velvet resolves itself rather than declaring are
-    /// unaffected — which is why a missing sheet reads as a partial styling bug.
+    /// unaffected — so <see cref="V.Mount(VisualElement, VNode)"/> warns, once per run, when its target
+    /// reaches the panel without the sheet.
     /// <para>
     /// <c>Documentation~/setup.md</c> owns when to call this, which utilities sit on which side of that
     /// split (with the command that answers it for any one class), and the alternative of referencing the
@@ -49,24 +51,32 @@ namespace Velvet
         {
             get
             {
-                // The `== null` re-check is Unity's overloaded operator, not a reference test: it also catches a
-                // destroyed asset, which a domain-surviving static would otherwise keep handing out.
-                if (_sheet == null)
+                var sheet = TryResolve();
+                if (sheet == null)
                 {
-                    _sheet = Load();
-                    if (_sheet == null)
-                    {
-                        throw new InvalidOperationException(
-                            "Velvet's bundled utility stylesheet was not found. In a player it arrives "
-                            + $"through '{RuntimeAssetsPath}', which the package's build step adds to "
-                            + "PlayerSettings' preloaded assets; a build that cannot find it was made with "
-                            + "that step disabled, with the asset removed from the package, or with the "
-                            + "asset's own reference to the stylesheet broken.");
-                    }
+                    throw new InvalidOperationException(
+                        "Velvet's bundled utility stylesheet was not found. In a player it arrives "
+                        + $"through '{RuntimeAssetsPath}', which the package's build step adds to "
+                        + "PlayerSettings' preloaded assets; a build that cannot find it was made with "
+                        + "the holder excluded under Project Settings ▸ Velvet, with that step disabled, "
+                        + "with the asset removed from the package, or with the asset's own reference to "
+                        + "the stylesheet broken.");
                 }
 
-                return _sheet;
+                return sheet;
             }
+        }
+
+        private static StyleSheet? TryResolve()
+        {
+            // The `== null` re-check is Unity's overloaded operator, not a reference test: it also catches a
+            // destroyed asset, which a domain-surviving static would otherwise keep handing out.
+            if (_sheet == null)
+            {
+                _sheet = Load();
+            }
+
+            return _sheet;
         }
 
         // The holder first, because it is the only thing a player has; the asset database second, because
@@ -116,6 +126,75 @@ namespace Velvet
             if (_themeBindings.TryGetValue(root, out _)) return;
             _themeBindings.Add(root, new ThemeBinding(root));
         }
+
+        private static bool s_missingReported;
+        private static FieldInfo? s_importsField;
+        private static FieldInfo? s_importedSheetField;
+
+        // Styles resolve on a panel, so that is where the search runs: at once for a target already on one, and
+        // on each later arrival, since the panel a target moves to need not carry the sheet.
+        internal static void ReportIfMissing(VisualElement target)
+        {
+            target.RegisterCallback<AttachToPanelEvent>(OnMountTargetAttached);
+            if (target.panel != null)
+            {
+                ReportIfMissingAbove(target);
+            }
+        }
+
+        private static void OnMountTargetAttached(AttachToPanelEvent attached)
+            => ReportIfMissingAbove((VisualElement)attached.currentTarget);
+
+        private static void ReportIfMissingAbove(VisualElement target)
+        {
+            if (s_missingReported) return;
+
+            var sheet = TryResolve();
+            // A player that cannot resolve the sheet through its holder has nothing to compare against, and a
+            // project that excluded the holder may still reach the sheet from a scene reference.
+            if (sheet == null)
+            {
+                return;
+            }
+
+            for (var element = target; element != null; element = element.hierarchy.parent)
+            {
+                for (var i = 0; i < element.styleSheets.count; i++)
+                {
+                    if (Reaches(element.styleSheets[i], sheet)) return;
+                }
+            }
+
+            s_missingReported = true;
+            FiberLogger.LogWarning("VelvetStyleUtilities",
+                $"V.Mount's target '{target.name}' is on a panel that does not carry Velvet's utility "
+                + "stylesheet, so every utility class the sheet declares resolves to nothing there while "
+                + "arbitrary values and the families Velvet realises in C# keep working. Call "
+                + "VelvetStyleUtilities.AttachTo on the panel root before V.Mount — Documentation~/setup.md. "
+                + "Reported once per run.");
+        }
+
+        // A theme or project sheet that @imports the utilities carries them too.
+        private static bool Reaches(StyleSheet from, StyleSheet sheet)
+        {
+            if (from == sheet) return true;
+
+            s_importsField ??= typeof(StyleSheet).GetField("imports", BindingFlags.Instance | BindingFlags.NonPublic);
+            foreach (var import in s_importsField?.GetValue(from) as Array ?? Array.Empty<object>())
+            {
+                s_importedSheetField ??= import.GetType().GetField("styleSheet");
+                if (s_importedSheetField?.GetValue(import) is not StyleSheet imported) continue;
+                if (Reaches(imported, sheet)) return true;
+            }
+
+            return false;
+        }
+
+#if UNITY_EDITOR
+        // Re-armed for the reason VelvetShaders re-arms its missing-shader warning.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void RearmMissingReport() => s_missingReported = false;
+#endif
 
         private sealed class ThemeBinding
         {

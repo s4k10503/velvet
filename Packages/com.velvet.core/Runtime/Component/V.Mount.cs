@@ -47,6 +47,7 @@ namespace Velvet
             // root and attaches there once; a target with no panel yet defers to its own AttachToPanelEvent
             // so ring predictions are never computed from a non-root subtree.
             FiberFocusNavigator.EnsureAttached(target, ctx);
+            VelvetStyleUtilities.ReportIfMissing(target);
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif

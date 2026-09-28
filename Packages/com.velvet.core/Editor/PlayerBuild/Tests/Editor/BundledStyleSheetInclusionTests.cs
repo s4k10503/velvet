@@ -141,6 +141,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHolderTheProjectPreloadedAndALockedFile_When_ABuildRuns_Then_ItDoesNotRefuse()
+        {
+            // Arrange — the project's own entry, so the build has nothing to add and nothing to write.
+            var owned = PlayerSettings.GetPreloadedAssets();
+            PlayerSettings.SetPreloadedAssets(owned.Concat(new[] { BundledStyleSheetBuildInclusion.Holder() }).ToArray());
+            var injector = new BundledStyleSheetBuildInclusion();
+
+            // Act
+            bool writableUnderLock;
+            Exception refused;
+            try
+            {
+                using (File.Open(SettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    writableUnderLock = CanWriteSettingsForTest();
+                    refused = PreprocessRefusal(injector);
+                }
+            }
+            finally
+            {
+                PlayerSettings.SetPreloadedAssets(owned);
+            }
+
+            // Assert — the lock's own reading rides along: where it did not make the file unwritable, the
+            // absence of a refusal says nothing.
+            Assert.That((writableUnderLock, refused?.GetType()), Is.EqualTo((false, (Type)null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every locked file, this record case included.
+        // What changed is that a build with nothing to write no longer refuses; a leftover record is still
+        // something to undo.
+        [Test]
+        public void Given_ALeftoverRecordAndALockedFile_When_ABuildRuns_Then_ItRefusesEvenWithTheHolderPreloaded()
+        {
+            // Arrange — the entry present, so only the record says the build has something to undo.
+            var owned = PlayerSettings.GetPreloadedAssets();
+            PlayerSettings.SetPreloadedAssets(owned.Concat(new[] { BundledStyleSheetBuildInclusion.Holder() }).ToArray());
+            File.WriteAllLines(RecordFilePath(), new[] { RuntimeAssetsPath() });
+            var injector = new BundledStyleSheetBuildInclusion();
+
+            // Act
+            Exception refused;
+            try
+            {
+                using (File.Open(SettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    refused = PreprocessRefusal(injector);
+                }
+            }
+            finally
+            {
+                File.Delete(RecordFilePath());
+                PlayerSettings.SetPreloadedAssets(owned);
+            }
+
+            // Assert
+            Assert.That(refused?.GetType(), Is.EqualTo(typeof(BuildFailedException)));
+        }
+
+        [Test]
         public void Given_TheHolderAsset_When_ItsSheetIsRead_Then_ItIsTheOneTheEditorLoadsFromTheAssetPath()
         {
             // Arrange — the one link no other run can see: a player reads the sheet through the holder's
@@ -326,6 +386,19 @@ namespace Velvet.Tests
             => (string)typeof(VelvetStyleUtilities)
                 .GetField(field, BindingFlags.NonPublic | BindingFlags.Static)!
                 .GetRawConstantValue()!;
+
+        private static Exception PreprocessRefusal(BundledStyleSheetBuildInclusion injector)
+        {
+            try
+            {
+                injector.OnPreprocessBuild(null);
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }
 
         private static bool CanWriteSettingsForTest()
         {

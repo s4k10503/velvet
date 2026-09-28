@@ -41,10 +41,14 @@ namespace Velvet.Editor
         //
         // The writability check is here rather than inside Inject because Revert runs first and writes too. A
         // read-only file with a leftover record would otherwise have the revert mutate and save before the
-        // refusal it should have stopped at.
+        // refusal it should have stopped at. A build with no record and nothing to add writes nothing to the
+        // file, so a project that lists the shaders itself builds from a read-only one.
         public void OnPreprocessBuild(BuildReport report)
         {
-            RequireWritableSettings();
+            if (File.Exists(RecordFile) || Unreached().Length > 0)
+            {
+                RequireWritableSettings();
+            }
             Revert();
             Inject();
         }
@@ -98,7 +102,8 @@ namespace Velvet.Editor
                     $"{GraphicsSettingsAsset} cannot be opened for writing, so Velvet cannot add its shaders " +
                     "to Always Included Shaders for this build and could not take them out again afterwards. " +
                     "Make the file writable — check it out of version control if that is what holds it — and " +
-                    "build again.");
+                    "build again, or list the shaders in Always Included Shaders yourself or exclude them " +
+                    "under Project Settings ▸ Velvet, after which the build writes nothing there.");
             }
         }
 
@@ -108,7 +113,7 @@ namespace Velvet.Editor
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
             var added = new List<string>();
-            foreach (var name in VelvetShaders.Names)
+            foreach (var name in Wanted())
             {
                 var shader = Shader.Find(name);
                 if (shader == null)
@@ -202,13 +207,14 @@ namespace Velvet.Editor
             SessionState.EraseString(LiveSessionKey);
         }
 
-        /// <summary>The bundled shader names Always Included Shaders does not currently carry.</summary>
+        /// <summary>The bundled shaders the project has not excluded that Always Included Shaders does not
+        /// currently carry.</summary>
         internal static string[] Unreached()
         {
             var settings = new SerializedObject(
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
-            return VelvetShaders.Names
+            return Wanted()
                 .Where(name =>
                 {
                     var shader = Shader.Find(name);
@@ -216,6 +222,9 @@ namespace Velvet.Editor
                 })
                 .ToArray();
         }
+
+        private static IEnumerable<string> Wanted()
+            => VelvetShaders.Names.Where(name => !VelvetBuildSettings.instance.Excludes(name));
 
         private static int IndexOf(SerializedProperty array, UnityEngine.Object item)
         {
