@@ -27,8 +27,8 @@ namespace Velvet.Tests
     /// the layout effects of its own fallback.</item>
     /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition, and
     /// one the transition parked short of reports without waiting for it.</item>
-    /// <item>Once a chain of follow-up commits reaches its bound, the next entry does not run the chain
-    /// again.</item>
+    /// <item>Once a chain of follow-up commits reaches its bound, the next entry neither runs the chain again
+    /// nor delivers the report it left, and a parked transition still runs the layout effects it held.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -58,6 +58,7 @@ namespace Velvet.Tests
             s_setSecondTick = default;
             s_setOther = default;
             s_fallbackMounts = 0;
+            s_reportCount = 0;
         }
 
         [TearDown]
@@ -68,6 +69,8 @@ namespace Velvet.Tests
         }
 
         private static MountOptions RecordingOrder { get; } = new((_, _) => s_order.Add("caught"));
+
+        private static MountOptions CountingReports { get; } = new((_, _) => s_reportCount++);
 
         private MountedTree Mount(Func<VNode> child)
         {
@@ -485,10 +488,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheFollowUpBoundStopsTheChain_Then_TheNextEntryDoesNotRunItAgain()
+        public void Given_AFallbackWhoseLayoutEffectThrowsIntoItsOwnBoundaryOnEveryMount_When_TheFollowUpBoundStopsTheChain_Then_TheNextEntryNeitherRunsItAgainNorDeliversItsReport()
         {
             // Arrange
-            _mounted = V.Mount(_root, V.Component(RefallingHostRender, key: "host"), CaughtErrors.Unlogged);
+            _mounted = V.Mount(_root, V.Component(RefallingHostRender, key: "host"), CountingReports);
             var bounded = false;
             try
             {
@@ -499,6 +502,7 @@ namespace Velvet.Tests
                 bounded = true;
             }
             s_setOther.Invoke(1);
+            var reportsBefore = s_reportCount;
 
             // Act
             var nextEntry = "nothing thrown";
@@ -513,7 +517,36 @@ namespace Velvet.Tests
 
             // Assert — the bound is read beside the next entry, because a chain that never started leaves the
             // next entry nothing to run either.
-            Assert.That($"{bounded} | {nextEntry}", Is.EqualTo("True | nothing thrown"));
+            Assert.That(
+                $"{bounded} | {nextEntry} | {s_reportCount - reportsBefore} reported",
+                Is.EqualTo("True | nothing thrown | 0 reported"));
+        }
+
+        [Test]
+        public void Given_AParkedTransitionHoldingARowsLayoutEffect_When_TheFollowUpBoundStopsAChainElsewhere_Then_TheRowsLayoutEffectRunsWhenThePassCompletes()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(RefallingBesideASlowListRender, key: "host"), CaughtErrors.Unlogged);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var parked = s_listFiber.HasPendingReconcileWorkForTest();
+            var bounded = false;
+            try
+            {
+                _mounted.FlushEffectsForTest();
+            }
+            catch (InvalidOperationException exception) when (exception.Message.Contains("follow-up"))
+            {
+                bounded = true;
+            }
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the park and the bound are read beside the order, because a pass that completed before
+            // the chain, or a chain that never reached the bound, leaves nothing for the bound to drop.
+            Assert.That($"{parked} | {bounded} | {string.Join(", ", s_order)}", Is.EqualTo("True | True | slow"));
         }
 
         // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
@@ -562,6 +595,7 @@ namespace Velvet.Tests
         private static VisualElement s_fallbackElement;
         private static StateUpdater<int> s_setOther;
         private static int s_fallbackMounts;
+        private static int s_reportCount;
         private static StateUpdater<int> s_setFirstTick;
         private static StateUpdater<int> s_setSecondTick;
         private static ComponentFiber s_listFiber;
@@ -772,6 +806,38 @@ namespace Velvet.Tests
                 }),
                 overscan: 0,
                 name: "rows");
+
+        [Component]
+        private static VNode RefallingBesideASlowListRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(RefallingBoundaryRender, key: "boundary"),
+                V.Component(SlowLayoutListRender, key: "list"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SlowLayoutListRender()
+        {
+            s_listFiber = FiberAmbientStack.Current;
+            if (s_listTick == 0) return V.Fragment(children: new VNode[] { V.Label(text: "empty", key: "empty") });
+            return V.Fragment(children: new VNode[]
+            {
+                V.Div(key: "slow", children: new VNode[] { V.Component(SlowLayoutRender, key: "slow") }),
+                V.Div(key: "tail", children: new VNode[] { V.Label(text: "tail") }),
+            });
+        }
+
+        [Component]
+        private static VNode SlowLayoutRender()
+        {
+            System.Threading.Thread.Sleep(SlowRenderMs);
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_order.Add("slow");
+                return null;
+            }), Array.Empty<object>());
+            return V.Label(text: "slow");
+        }
 
         [Component]
         private static VNode RefallingHostRender()

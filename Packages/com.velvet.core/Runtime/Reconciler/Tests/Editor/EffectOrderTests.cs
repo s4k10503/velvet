@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -559,6 +560,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_store = null;
             s_log = new List<string>();
+            s_setters.Clear();
         }
 
         // Sibling A: re-renders on the store tick and has a layout effect (keyed on the tick so it re-runs).
@@ -631,30 +633,53 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoSiblingsWhoseUpdatesAreEnqueuedInReverseTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        public void Given_SiblingsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(OwnStateHost, key: "host"));
             s_log.Clear();
-            s_setSecond.Invoke(1);
-            s_setFirst.Invoke(1);
+            s_setters["second"].Invoke(1);
+            s_setters["first"].Invoke(1);
+            s_setters["third"].Invoke(1);
 
             // Act
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:setup, second:setup"));
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:setup, second:setup, third:setup"));
         }
 
-        private static StateUpdater<int> s_setFirst;
-        private static StateUpdater<int> s_setSecond;
+        // GREEN_ON_BASE(characterization): the base runs these three setups in tree order already.
+        // Its commit of the item took the whole deferred stack, the host's re-rendered child included.
+        [Test]
+        public void Given_AHostWhoseDrainedRenderMountsAVirtualListItemAfterReRenderingAnEarlierChild_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the item mounts through a mount of its own inside the drain, and the child is re-rendered by
+            // the host's render.
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, 50f);
+            s_log.Clear();
+            s_setters["child"].Invoke(1);
+            s_setters["host"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("child:setup, item:setup, host:setup"));
+        }
+
+        private static readonly Dictionary<string, StateUpdater<int>> s_setters = new();
 
         [Component]
         private static VNode OwnStateSibling(string name)
         {
             var (tick, setTick) = Hooks.UseState(0);
-            if (name == "first") s_setFirst = setTick;
-            else s_setSecond = setTick;
+            s_setters[name] = setTick;
             Hooks.UseLayoutEffect(() => { s_log.Add(name + ":setup"); return (Action)null; }, new object[] { tick });
             return V.Label(text: name);
         }
@@ -665,7 +690,26 @@ namespace Velvet.Tests
             {
                 V.Component(OwnStateSibling, "first", key: "first"),
                 V.Component(OwnStateSibling, "second", key: "second"),
+                V.Component(OwnStateSibling, "third", key: "third"),
             });
+
+        [Component]
+        private static VNode ListHost()
+        {
+            var (items, setItems) = Hooks.UseState(0);
+            s_setters["host"] = setItems;
+            Hooks.UseLayoutEffect(() => { s_log.Add("host:setup"); return (Action)null; }, new object[] { items });
+            return V.Div(children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "child", key: "child"),
+                V.VirtualList(
+                    items: items == 0 ? Array.Empty<string>() : new[] { "item" },
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(OwnStateSibling, item, key: item),
+                    overscan: 0),
+            });
+        }
 
         // Each parent re-renders on the store tick on its own, and hands the tick to its inline child, so one bump
         // puts both parents in the drain and each re-render reaches its child.

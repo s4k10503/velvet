@@ -64,9 +64,6 @@ namespace Velvet
                     var (fiber, mountDoubleInvoke) = pending[i];
                     if (fiber.IsMounted && !fiber.IsDisposed) roots.Add((fiber, mountDoubleInvoke));
                 }
-                // They were added in the order the drain flushed them, which is FiberBatchScheduler's order rather
-                // than tree order.
-                SortInTreeOrder(roots);
                 if (roots.Count > 0) CommitLayoutBatch(ctx, null, roots);
             }
             finally
@@ -155,16 +152,16 @@ namespace Velvet
             ReconcilerContext ctx,
             (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report,
             ComponentFiber? scope)
-            => !report.Boundary.IsDisposed && !IsHeldByAParkedPass(ctx, report.Boundary)
+            => !report.Boundary.IsDisposed && !HasLayoutEffectsWaiting(ctx, report.Boundary)
                 && IsInScope(report.Boundary, scope);
 
-        // A boundary a parked pass mounted or re-rendered reports in the commit that completes the pass, after its
-        // own layout effects, which the pass holds.
-        private static bool IsHeldByAParkedPass(ReconcilerContext ctx, ComponentFiber boundary)
+        // A boundary whose own entry still waits on the stack reports in the commit that takes the entry, after its
+        // own layout effects: one a parked pass mounted or re-rendered, in the commit that completes the pass.
+        private static bool HasLayoutEffectsWaiting(ReconcilerContext ctx, ComponentFiber boundary)
         {
             foreach (var entry in ctx.DeferredInlineLayoutEffectFibers)
             {
-                if (ReferenceEquals(entry.Fiber, boundary) && IsHeld(entry.Pass)) return true;
+                if (ReferenceEquals(entry.Fiber, boundary)) return true;
             }
             return false;
         }
@@ -188,10 +185,10 @@ namespace Velvet
         // due, all within scope. It runs every layout-effect cleanup before any setup — a later fiber's cleanup
         // must not observe state an earlier fiber's setup wrote — and both passes in post-order: a child before
         // its parent, so a parent setup observes a child's already-committed imperative handle, and the fibers
-        // under one parent in the order they rendered, a boundary joining them at its position in the tree.
-        // Insertion effects belong to the cleanup pass (the mutation phase); imperative handles and layout setups
-        // to the setup pass. A boundary's reports are delivered right after its own setups: after the layout
-        // effects of the fallback below it, before its ancestors'.
+        // under one parent in the order they rendered, a root or a boundary joining them at its position in the
+        // tree. Insertion effects belong to the cleanup pass (the mutation phase); imperative handles and layout
+        // setups to the setup pass. A boundary's reports are delivered right after its own setups: after the
+        // layout effects of the fallback below it, before its ancestors'.
         private static void CommitLayoutBatch(
             ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
         {
@@ -255,10 +252,7 @@ namespace Velvet
 
             // Dedup: the same fiber pushed twice (MountInline + a follow-up SubsumeFiberIntoThisPass bundled in
             // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
-            // architecturally first, so IsMount=false (the update) prevails. The roots go ahead of what was
-            // pushed, in the order given: the post-order walk groups each entry under the nearest fiber of the
-            // batch above it, so where a root sits matters only against the fibers no root is above. A root
-            // already pushed keeps its entry.
+            // architecturally first, so IsMount=false (the update) prevails. A root already pushed keeps its entry.
             var bufferPool = ctx.BufferPool;
             var pushedSet = bufferPool.RentFiberSet();
             var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(taken.Count + roots.Count);
@@ -266,21 +260,32 @@ namespace Velvet
             {
                 if (pushedSet.Add(taken[i].Fiber)) deduped.Add(taken[i]);
             }
-            for (var i = roots.Count - 1; i >= 0; i--)
-            {
-                if (pushedSet.Add(roots[i].Fiber)) deduped.Add(roots[i]);
-            }
             deduped.Reverse();
 
-            // A boundary that caught shows its fallback without rendering, so unless it rendered as well nothing
-            // pushed it: it joins the batch to give its reports a slot.
+            // The roots and the boundaries with a report due join what was pushed at their positions in the tree:
+            // a drain's roots arrive in the order it flushed them, a root can sit below another root among fibers
+            // that were pushed, and a boundary that caught shows its fallback without rendering, so unless it
+            // rendered as well nothing pushed it. Every one of them is in the batch before any is placed, since
+            // where one goes depends on which of its ancestors are in the batch.
+            var joining = new List<(ComponentFiber Fiber, bool IsMount)>(roots.Count);
+            for (var i = roots.Count - 1; i >= 0; i--)
+            {
+                if (pushedSet.Add(roots[i].Fiber)) joining.Add(roots[i]);
+            }
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
             {
                 if (IsDue(ctx, reports[i], scope) && pushedSet.Add(reports[i].Boundary))
                 {
-                    InsertAmongPeersInTreeOrder(deduped, pushedSet, reports[i].Boundary);
+                    // MUTANT_SURVIVES(equivalent, literal): the mount flag reaches nothing on this boundary.
+                    // One that joins here has not rendered since its last commit, so no layout or insertion
+                    // effect of its own is pending.
+                    joining.Add((reports[i].Boundary, false));
                 }
+            }
+            for (var i = 0; i < joining.Count; i++)
+            {
+                InsertAmongPeersInTreeOrder(deduped, pushedSet, joining[i]);
             }
 
             var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
@@ -290,39 +295,24 @@ namespace Velvet
         }
 
         // The post-order walk emits the fibers grouped under one nearest batch fiber in their batch order, so the
-        // boundary goes ahead of the first of its peers there it precedes in the tree. What lies below it is
-        // grouped under it wherever it sits. batch already holds the boundary.
+        // entry goes ahead of the first of its peers there it precedes in the tree. What lies below it is
+        // grouped under it wherever it sits. batch already holds the entry's fiber.
         private static void InsertAmongPeersInTreeOrder(
-            List<(ComponentFiber Fiber, bool IsMount)> deduped, HashSet<ComponentFiber> batch, ComponentFiber boundary)
+            List<(ComponentFiber Fiber, bool IsMount)> deduped, HashSet<ComponentFiber> batch,
+            (ComponentFiber Fiber, bool IsMount) entry)
         {
-            var group = NearestAncestorIn(boundary, batch);
+            var group = NearestAncestorIn(entry.Fiber, batch);
             var slot = deduped.Count;
             for (var i = 0; i < deduped.Count; i++)
             {
                 var peer = deduped[i].Fiber;
                 if (!ReferenceEquals(NearestAncestorIn(peer, batch), group)) continue;
-                if (!PrecedesInTreeOrder(boundary, peer)) continue;
+                if (!PrecedesInTreeOrder(entry.Fiber, peer)) continue;
                 slot = i;
                 break;
             }
-            deduped.Insert(slot, (boundary, false));
+            deduped.Insert(slot, entry);
         }
-
-        // Stable, so two entries for one fiber keep the order TakeBatch's dedup reads.
-        private static void SortInTreeOrder(List<(ComponentFiber Fiber, bool IsMount)> roots)
-        {
-            for (var i = 1; i < roots.Count; i++)
-            {
-                var entry = roots[i];
-                var j = i - 1;
-                for (; j >= 0 && PrecedesInPreOrder(entry.Fiber, roots[j].Fiber); j--) roots[j + 1] = roots[j];
-                roots[j + 1] = entry;
-            }
-        }
-
-        private static bool PrecedesInPreOrder(ComponentFiber a, ComponentFiber b)
-            => !ReferenceEquals(a, b) && !IsStrictDescendant(a, b)
-                && (IsStrictDescendant(b, a) || PrecedesInTreeOrder(a, b));
 
         private static ComponentFiber? NearestAncestorIn(ComponentFiber fiber, HashSet<ComponentFiber> batch)
         {
@@ -367,7 +357,7 @@ namespace Velvet
             {
                 var report = reports[i];
                 if (ReferenceEquals(report.Boundary, boundary) && report.Sequence < reportCutoff
-                    && !IsHeldByAParkedPass(ctx, boundary))
+                    && !HasLayoutEffectsWaiting(ctx, boundary))
                 {
                     due ??= new List<(Exception Error, ErrorInfo Info)>();
                     due.Add((report.Error, report.Info));
