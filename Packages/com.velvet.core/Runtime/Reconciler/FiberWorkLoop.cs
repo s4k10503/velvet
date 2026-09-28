@@ -342,8 +342,8 @@ namespace Velvet
                 // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
                 FlushCompletedTransitionIndicator(fiber);
-                FiberEffects.CommitStrandedLayoutWork(context!);
             }
+            FiberEffects.CommitStrandedLayoutWork(context!);
         }
 
         private static void SettleCompletedTransition(ComponentFiber fiber)
@@ -483,8 +483,8 @@ namespace Velvet
                     // commits before the frame yields. Safe here: the pass completed (no pending
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
                     fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
-                    FiberEffects.CommitStrandedLayoutWork(resumeContext);
                 }
+                FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }
             catch (Exception ex)
             {

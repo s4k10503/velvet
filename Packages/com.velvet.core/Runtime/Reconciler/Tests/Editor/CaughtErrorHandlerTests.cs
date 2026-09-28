@@ -22,6 +22,9 @@ namespace Velvet.Tests
     /// the fallback's layout effects run in that same commit when the catch came from a passive effect or a
     /// frame callback, and after the layout effects of an unrelated component the same drain re-rendered. A
     /// boundary that an outer boundary replaces before its fallback commits reports nothing.</item>
+    /// <item>Boundaries reporting in one commit report in tree order, whatever order they caught in, each after
+    /// the layout effects of its own fallback.</item>
+    /// <item>A boundary a parked transition has mounted reports in the commit that completes the transition.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -47,6 +50,8 @@ namespace Velvet.Tests
             s_fallbackElement = null;
             s_listFiber = null;
             s_listTick = 0;
+            s_setFirstTick = default;
+            s_setSecondTick = default;
         }
 
         [TearDown]
@@ -284,7 +289,8 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
             s_child = () => V.Component(ThrowInFrameCallbackRender, key: "child");
             _mounted = V.Mount(_host.Root, V.Component(LayoutFallbackBoundaryRender, key: "boundary"), RecordingOrder);
-            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushEffectsForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel); // absorbs the zero-delta arm-time firing
 
             // Act
             UseFrameFakeClockHost.Ms += 16;
@@ -328,7 +334,7 @@ namespace Velvet.Tests
         public void Given_AFallbackWithALayoutEffect_When_ABoundaryCatchesAnElementCallbacksErrorInAResumedSlice_Then_TheFallbacksLayoutEffectRunsWithItsRefAndTheReportFollowsIt()
         {
             // Arrange — the boundary is the tail the transition appends, past the first slice's budget.
-            s_child = () => V.Component(ThrowInOnCreatedRender, key: "child");
+            s_child = () => V.Component(ThrowInRefRender, key: "child");
             _mounted = V.Mount(_root, V.Component(SlicedListRender, key: "list"), RecordingOrder);
             s_listTick = 1;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
@@ -357,6 +363,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
+        }
+
+        [Test]
+        public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
+        {
+            // Arrange — the second boundary's child throws from its effect's cleanup, which the drain runs
+            // before the first child's throwing setup.
+            _mounted = V.Mount(
+                _root,
+                V.Component(PassiveBoundaryPairRender, key: "pair"),
+                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+            _mounted.FlushEffectsForTest();
+            s_setFirstTick.Invoke(1);
+            s_setSecondTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("one, fallback, two"));
+        }
+
+        [Test]
+        public void Given_ABoundaryTheFirstSliceOfAParkedTransitionMounted_When_ItCatchesAPassiveEffectsErrorBeforeThePassCompletes_Then_ItReportsInTheCommitThatCompletesThePass()
+        {
+            // Arrange — the boundary heads the rows the transition adds, so the first slice mounts it.
+            s_child = () => V.Component(ThrowInPassiveEffectRender, key: "child");
+            _mounted = V.Mount(_root, V.Component(BoundaryFirstListRender, key: "list"), RecordingOrder);
+            s_listTick = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
+            _mounted.FlushEffectsForTest();
+            var beforeCompletion = $"{s_listFiber.HasPendingReconcileWorkForTest()} | {string.Join(", ", s_order)}";
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(
+                $"{beforeCompletion}; {string.Join(", ", s_order)}",
+                Is.EqualTo("True | fallback; fallback, caught"));
         }
 
         // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
@@ -404,6 +452,8 @@ namespace Velvet.Tests
         private static readonly List<string> s_order = new();
         private static VisualElement s_fallbackElement;
         private static StateUpdater<int> s_setOther;
+        private static StateUpdater<int> s_setFirstTick;
+        private static StateUpdater<int> s_setSecondTick;
         private static ComponentFiber s_listFiber;
         private static int s_listTick;
         private static Func<VNode> s_child;
@@ -471,7 +521,7 @@ namespace Velvet.Tests
                 s_order.Add("ancestor");
                 return null;
             }), Array.Empty<object>());
-            return V.Div(children: new VNode[]
+            return V.Fragment(children: new VNode[]
             {
                 V.Component(SiblingWithLayoutEffectRender, key: "sibling"),
                 V.Component(LayoutFallbackBoundaryRender, key: "boundary"),
@@ -493,16 +543,38 @@ namespace Velvet.Tests
         private static VNode SlicedListRender()
         {
             s_listFiber = FiberAmbientStack.Current;
-            var children = new List<VNode>();
+            var rows = new List<VNode>();
             for (var i = 0; i < 4; i++)
             {
-                children.Add(V.Label(text: "item-" + i, key: "item" + i));
+                rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i) }));
             }
             if (s_listTick > 0)
             {
-                children.Add(V.Component(LayoutFallbackBoundaryRender, key: "boundary"));
+                rows.Add(V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(LayoutFallbackBoundaryRender, key: "boundary"),
+                }));
             }
-            return V.Div(children: children.ToArray());
+            return V.Fragment(children: rows.ToArray());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode BoundaryFirstListRender()
+        {
+            s_listFiber = FiberAmbientStack.Current;
+            var rows = new List<VNode>();
+            if (s_listTick > 0)
+            {
+                rows.Add(V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(LayoutFallbackBoundaryRender, key: "boundary"),
+                }));
+            }
+            for (var i = 0; i < 4; i++)
+            {
+                rows.Add(V.Div(key: "item" + i, children: new VNode[] { V.Label(text: "item-" + i) }));
+            }
+            return V.Fragment(children: rows.ToArray());
         }
 
         [Component]
@@ -592,6 +664,48 @@ namespace Velvet.Tests
         {
             Hooks.UseLayoutEffect((Func<Action>)(() => throw new InvalidOperationException(message)), Array.Empty<object>());
             return V.Label(text: message);
+        }
+
+        [Component]
+        private static VNode PassiveBoundaryPairRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(FirstPassiveBoundaryRender, key: "first"),
+                V.Component(SecondPassiveBoundaryRender, key: "second"),
+            });
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode FirstPassiveBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "first fallback"));
+            return V.Component(ThrowInPassiveSetupOnUpdateRender, key: "first");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode SecondPassiveBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(FallbackWithLayoutEffectRender, key: "fallback"));
+            return V.Component(ThrowInPassiveCleanupOnUpdateRender, key: "second");
+        }
+
+        [Component]
+        private static VNode ThrowInPassiveSetupOnUpdateRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setFirstTick = setTick;
+            Hooks.UseEffect(
+                (Func<Action>)(() => tick > 0 ? throw new InvalidOperationException("one") : (Action)null),
+                new object[] { tick });
+            return V.Label(text: "one");
+        }
+
+        [Component]
+        private static VNode ThrowInPassiveCleanupOnUpdateRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setSecondTick = setTick;
+            Hooks.UseEffect((Func<Action>)(() => () => throw new InvalidOperationException("two")), new object[] { tick });
+            return V.Label(text: "two");
         }
 
         [Component]

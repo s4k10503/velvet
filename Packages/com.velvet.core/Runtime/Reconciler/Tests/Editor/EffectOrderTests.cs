@@ -533,7 +533,8 @@ namespace Velvet.Tests
     /// before ANY fiber's layout effect runs, so a layout effect observes the already-committed output of the
     /// other fibers flushed in the same batch — not a half-updated tree. Previously each fiber ran its layout
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
-    /// sibling had even rendered.
+    /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
+    /// child before its parent.
     /// </summary>
     [TestFixture]
     internal sealed class LayoutEffectDrainPhaseTests
@@ -609,6 +610,62 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)),
                 "All renders in a batch must complete before any layout effect runs (React commit-phase order)");
         }
+
+        [Test]
+        public void Given_TwoSiblingsWithInlineChildrenDirtiedInOneDrain_When_Drained_Then_EveryLayoutCleanupPrecedesAnySetupInTreeOrder()
+        {
+            // Arrange
+            using var store = new TickStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PhaseHost, key: "host"));
+            s_log.Clear();
+            store.Bump();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(", ", s_log),
+                Is.EqualTo("A-child:cleanup, A:cleanup, B-child:cleanup, B:cleanup, A-child:setup, A:setup, B-child:setup, B:setup"));
+        }
+
+        // Each parent re-renders on the store tick on its own, and hands the tick to its inline child, so one bump
+        // puts both parents in the drain and each re-render reaches its child.
+        [Component]
+        private static VNode PhaseParent(string name)
+        {
+            var tick = Hooks.UseStore(s_store, s => s.Tick);
+            Hooks.UseLayoutEffect(
+                () =>
+                {
+                    s_log.Add(name + ":setup");
+                    return (Action)(() => s_log.Add(name + ":cleanup"));
+                },
+                new object[] { name, tick });
+            return V.Div(children: new VNode[] { V.Component(PhaseChild, (name + "-child", tick), key: "child") });
+        }
+
+        [Component]
+        private static VNode PhaseChild((string Name, int Tick) props)
+        {
+            Hooks.UseLayoutEffect(
+                () =>
+                {
+                    s_log.Add(props.Name + ":setup");
+                    return (Action)(() => s_log.Add(props.Name + ":cleanup"));
+                },
+                new object[] { props.Name, props.Tick });
+            return V.Label(text: props.Name);
+        }
+
+        [Component]
+        private static VNode PhaseHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(PhaseParent, "A", key: "a"),
+                V.Component(PhaseParent, "B", key: "b"),
+            });
     }
 
     /// <summary>

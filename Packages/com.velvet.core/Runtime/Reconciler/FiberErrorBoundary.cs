@@ -155,8 +155,11 @@ namespace Velvet
             }
             if (result)
             {
-                fiber.Reconciler.SetAborted();
                 var ctx = fiber.Reconciler.Context;
+                // Only a pass on the stack has sibling work left for the abort to stop. Set outside one, the flag
+                // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
+                // CommitPhaseCatchAbortLeakTests holds that.
+                if (ctx.SharedReconcileDepth > 0) fiber.Reconciler.SetAborted();
                 ctx.PendingCaughtErrorReports.Add((fiber, exception, info!, ctx.NextCaughtErrorSequence++));
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;

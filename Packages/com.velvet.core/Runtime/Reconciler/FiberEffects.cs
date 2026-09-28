@@ -41,56 +41,15 @@ namespace Velvet
                 ctx.PendingDrainLayoutEffects.Add((fiber, mountDoubleInvoke));
                 return;
             }
-            CommitSubtreeEffectsNow(fiber, mountDoubleInvoke);
+            // A fiber without a reconciler has been unmounted.
+            if (ctx == null) return;
+            CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, mountDoubleInvoke) });
         }
 
-        private static void CommitSubtreeEffectsNow(ComponentFiber fiber, bool mountDoubleInvoke)
-        {
-            // Commit ALL layout-effect cleanups (the mutation phase) across a whole subtree before ANY
-            // layout-effect setup (the layout phase). This root fiber and the inline children MountInline
-            // deferred onto the drain stack form one subtree, so their layout effects run as one cleanup pass
-            // then one setup pass with the root interleaved between: the root's cleanup runs before a child's
-            // setup, so a child setup that writes shared state can no longer be observed by the root's cleanup —
-            // [child.cleanup, root.cleanup, child.setup, root.setup]. Committing each child fully before
-            // the root began (the child's setup ahead of the root's cleanup) inverted that pair. Imperative
-            // handles and layout setups belong to the setup pass; insertion effects run in the cleanup pass
-            // (they belong to the mutation phase too).
-            var ctx = fiber.Reconciler?.Context;
-            if (ctx != null) ctx.EffectCommitDepth++;
-            // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
-            // report waits for the follow-up commit that does.
-            var reportCutoff = ctx?.NextCaughtErrorSequence ?? 0;
-            try
-            {
-                List<(ComponentFiber Fiber, bool IsMount)>? inlineBatch = null;
-                // MUTANT_SURVIVES(equivalent, clause removed): a batch with no stack entry and no report under this
-                // root runs nothing.
-                if (ctx != null && HasInlineBatchWork(ctx, fiber))
-                {
-                    inlineBatch = new List<(ComponentFiber Fiber, bool IsMount)>(ctx.DeferredInlineLayoutEffectFibers.Count);
-                    DrainInlineLayoutCleanupsOneBatch(ctx, fiber, inlineBatch);
-                }
-                RunInsertionEffects(fiber, mountDoubleInvoke);
-                HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
-
-                if (inlineBatch != null) RunInlineLayoutSetups(ctx!, inlineBatch, reportCutoff);
-                FiberHookCommit.RunImperativeHandleSlots(fiber);
-                HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke);
-
-                // A setup (a child's or this root's) that mounted more inline children, a boundary's fallback among
-                // them, pushed them onto the drain stack: they are a follow-up commit, which the entry's closing
-                // CommitStrandedLayoutWork runs once every commit the entry holds is done.
-                ScheduleRunEffects(fiber, mountDoubleInvoke);
-            }
-            finally
-            {
-                if (ctx != null) ctx.EffectCommitDepth--;
-            }
-        }
-
-        // Runs the effect commits deferred during a batch drain (see CommitSubtreeEffects), in
-        // collection order, after every fiber in the batch has rendered. Called at the end of the outer drain.
-        // The defer flag is cleared first so a layout effect that triggers further work commits inline.
+        // Runs the effect commits deferred during a batch drain (see CommitSubtreeEffects) after every fiber in
+        // the batch has rendered, as one commit, so the layout cleanups of every fiber the drain re-rendered run
+        // before any of their setups. Called at the end of the outer drain. The defer flag is cleared first so a
+        // layout effect that triggers further work commits inline.
         internal static void FlushDeferredDrainLayoutEffects(ReconcilerContext ctx)
         {
             ctx.DeferDrainLayoutEffects = false;
@@ -99,16 +58,13 @@ namespace Velvet
             // user code) does not leave entries to accumulate / re-run on the next drain.
             try
             {
-                // Index-walk (not foreach): a deferred effect that schedules more work commits inline now (flag
-                // is false), so the list does not grow here — but guard against it defensively.
+                var roots = new List<(ComponentFiber Fiber, bool IsMount)>(pending.Count);
                 for (var i = 0; i < pending.Count; i++)
                 {
                     var (fiber, mountDoubleInvoke) = pending[i];
-                    if (fiber.IsMounted && !fiber.IsDisposed)
-                    {
-                        CommitSubtreeEffectsNow(fiber, mountDoubleInvoke);
-                    }
+                    if (fiber.IsMounted && !fiber.IsDisposed) roots.Add((fiber, mountDoubleInvoke));
                 }
+                if (roots.Count > 0) CommitLayoutBatch(ctx, null, roots);
             }
             finally
             {
@@ -121,62 +77,80 @@ namespace Velvet
         // is on the stack to do it. An entry that commits, or that renders or runs effects, has to end with this
         // call: a follow-up commit its layout setups left waits here, and so does a fallback a boundary showed
         // where no commit of a live root reaches it. A boundary's catch calls it as well, which is what commits a
-        // fallback shown from a frame callback. With a render, a reconcile, a batch drain or an effect commit on
-        // the stack it does nothing, and the call at the end of what encloses it does the work.
+        // fallback shown from a frame callback. With a render, a reconcile, a batch drain, an effect commit or a
+        // ref-setup drain on the stack it does nothing, and the call at the end of what encloses it does the work.
+        // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass.
         internal static void CommitStrandedLayoutWork(ReconcilerContext ctx)
         {
             if (IsCommitOnTheStack(ctx)) return;
-            ctx.EffectCommitDepth++;
-            try
+            var commits = 0;
+            while (HasStrandedWork(ctx))
             {
-                while (HasInlineBatchWork(ctx, null))
+                // Bounded, so a chain of follow-up commits that never settles surfaces as this exception rather
+                // than a hang.
+                if (commits++ == MaxFollowUpCommits)
                 {
-                    var reportCutoff = ctx.NextCaughtErrorSequence;
-                    var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(ctx.DeferredInlineLayoutEffectFibers.Count);
-                    DrainInlineLayoutCleanupsOneBatch(ctx, null, ordered);
-                    RunInlineLayoutSetups(ctx, ordered, reportCutoff);
+                    throw new InvalidOperationException(
+                        $"Velvet: layout effects kept leaving work for a follow-up commit, {MaxFollowUpCommits} follow-up"
+                        + " commits in a row.");
                 }
+                CommitLayoutBatch(ctx, null, s_noRoots);
             }
-            finally
-            {
-                ctx.EffectCommitDepth--;
-            }
-            // MUTANT_SURVIVES(equivalent): what is left names boundaries disposed before their slot was reached,
-            // whose reports nothing delivers either way; the clear only keeps the list from growing.
-            ctx.PendingCaughtErrorReports.Clear();
+            // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
+            // delivers.
+            ctx.PendingCaughtErrorReports.RemoveAll(static report => report.Boundary.IsDisposed);
         }
+
+        private const int MaxFollowUpCommits = 100;
+
+        private static readonly List<(ComponentFiber Fiber, bool IsMount)> s_noRoots = new();
 
         private static bool IsCommitOnTheStack(ReconcilerContext ctx)
             => FiberAmbientStack.Current != null
                 || ctx.SharedReconcileDepth > 0
                 || ctx.DeferDrainLayoutEffects
-                || ctx.EffectCommitDepth > 0;
+                || ctx.EffectCommitDepth > 0
+                || ctx.IsDrainingRefAttaches;
 
-        // rootFiber null asks for everything; otherwise only for the stack entries and the reports of boundaries
-        // below it. What lies outside its subtree is another part of the tree, and the call at the end of the
-        // entry commits it after this commit, where its post-order position is; the root's own report goes there
-        // too.
-        private static bool HasInlineBatchWork(ReconcilerContext ctx, ComponentFiber? rootFiber)
+        private static bool HasStrandedWork(ReconcilerContext ctx)
         {
             foreach (var entry in ctx.DeferredInlineLayoutEffectFibers)
             {
-                if (IsInBatchOf(entry.Fiber, rootFiber)) return true;
+                if (!IsHeld(entry.Pass)) return true;
             }
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
             {
-                if (IsPositionedInBatch(reports[i].Boundary, rootFiber)) return true;
+                if (IsDue(reports[i], null)) return true;
             }
             return false;
         }
 
-        // A boundary an ancestor boundary replaced before its slot was reached is gone before its fallback
-        // commits, and its report is dropped with it.
-        private static bool IsPositionedInBatch(ComponentFiber boundary, ComponentFiber? rootFiber)
-            => !boundary.IsDisposed && IsInBatchOf(boundary, rootFiber);
+        // A parked pass holds back what it pushed, as DrainRefAttaches holds back the ref setups it queued: its
+        // elements are not all in place, and the ref setups it queued have not run.
+        private static bool IsHeld(Reconciler? pass) => pass is { HasPendingWork: true };
 
-        private static bool IsInBatchOf(ComponentFiber fiber, ComponentFiber? rootFiber)
-            => rootFiber == null || IsStrictDescendant(fiber, rootFiber);
+        // A boundary an ancestor boundary replaced before its report was delivered is gone before its fallback
+        // commits, and its report is dropped with it.
+        private static bool IsDue(
+            (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report, ComponentFiber? scope)
+            => !report.Boundary.IsDisposed && !IsInParkedPass(report.Boundary) && IsInScope(report.Boundary, scope);
+
+        // A boundary a parked pass has reached reports in the commit that completes the pass.
+        private static bool IsInParkedPass(ComponentFiber boundary)
+        {
+            for (ComponentFiber? fiber = boundary; fiber != null; fiber = fiber.Parent)
+            {
+                if (IsHeld(fiber.Reconciler)) return true;
+            }
+            return false;
+        }
+
+        // scope null is the whole tree. Otherwise it is the fiber being committed and what lies below it; what
+        // lies elsewhere is another part of the tree, which the CommitStrandedLayoutWork ending the entry
+        // commits after this commit.
+        private static bool IsInScope(ComponentFiber fiber, ComponentFiber? scope)
+            => scope == null || ReferenceEquals(fiber, scope) || IsStrictDescendant(fiber, scope);
 
         private static bool IsStrictDescendant(ComponentFiber fiber, ComponentFiber ancestor)
         {
@@ -187,21 +161,176 @@ namespace Velvet
             return false;
         }
 
-        // A report is delivered at its boundary's slot in the post-order setup walk: after the layout effects of
-        // the subtree the fallback put there, before its ancestors'. CaughtErrorHandlerTests holds the order.
-        // reportCutoff excludes a report caught after the batch delivering it was collected.
+        // One layout commit over roots, the inline fibers on the deferred stack and the boundaries with a report
+        // due, all within scope. It runs every layout-effect cleanup before any setup — a later fiber's cleanup
+        // must not observe state an earlier fiber's setup wrote — and both passes in post-order: a child before
+        // its parent, so a parent setup observes a child's already-committed imperative handle, and the fibers
+        // under one parent in the order they rendered, a boundary joining them at its position in the tree.
+        // Insertion effects belong to the cleanup pass (the mutation phase); imperative handles and layout setups
+        // to the setup pass. A boundary's reports are delivered right after its own setups: after the layout
+        // effects of the fallback below it, before its ancestors'.
+        private static void CommitLayoutBatch(
+            ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
+        {
+            ctx.EffectCommitDepth++;
+            // A catch during this commit's own setups showed a fallback this commit has not laid out, so its
+            // report waits for the follow-up commit that does.
+            var reportCutoff = ctx.NextCaughtErrorSequence;
+            try
+            {
+                var ordered = TakeBatch(ctx, scope, roots);
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    var (fiber, isMount) = ordered[i];
+                    if (fiber.IsDisposed) continue;
+                    RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+                    HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
+                }
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    var (fiber, isMount) = ordered[i];
+                    if (fiber.IsDisposed) continue;
+                    FiberHookCommit.RunImperativeHandleSlots(fiber);
+                    HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
+                    DeliverCaughtErrors(ctx, fiber, reportCutoff);
+                }
+                // A setup that mounted more inline children, a boundary's fallback among them, pushed them onto
+                // the stack: they are a follow-up commit, which CommitStrandedLayoutWork runs once every commit
+                // the entry holds is done.
+                for (var i = 0; i < roots.Count; i++)
+                {
+                    ScheduleRunEffects(roots[i].Fiber, roots[i].IsMount);
+                }
+            }
+            finally
+            {
+                ctx.EffectCommitDepth--;
+            }
+        }
+
+        // Takes the batch off the stack and orders it. The stack was populated in DFS pre-order during reconcile
+        // (parent before children, siblings left-to-right); a naive LIFO drain would run sibling B before
+        // sibling A. What the batch does not take goes back in its push order. An effect that synchronously
+        // pushes MORE deferred fibers lands on the stack for a later batch, not this already-captured one.
+        private static List<(ComponentFiber Fiber, bool IsMount)> TakeBatch(
+            ReconcilerContext ctx, ComponentFiber? scope, List<(ComponentFiber Fiber, bool IsMount)> roots)
+        {
+            var stack = ctx.DeferredInlineLayoutEffectFibers;
+            var popped = new List<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)>(stack.Count);
+            while (stack.Count > 0) popped.Add(stack.Pop());
+            var taken = new List<(ComponentFiber Fiber, bool IsMount)>(popped.Count);
+            for (var i = popped.Count - 1; i >= 0; i--)
+            {
+                var entry = popped[i];
+                if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
+                {
+                    taken.Add((entry.Fiber, entry.IsMount));
+                    continue;
+                }
+                stack.Push(entry);
+            }
+
+            // Dedup: the same fiber pushed twice (MountInline + a follow-up SubsumeFiberIntoThisPass bundled in
+            // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
+            // architecturally first, so IsMount=false (the update) prevails. The roots go ahead of what was
+            // pushed, in the order given: the post-order walk groups each entry under the nearest fiber of the
+            // batch above it, so where a root sits matters only against the fibers no root is above. A root
+            // already pushed keeps its entry.
+            var bufferPool = ctx.BufferPool;
+            var pushedSet = bufferPool.RentFiberSet();
+            var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(taken.Count + roots.Count);
+            for (var i = taken.Count - 1; i >= 0; i--)
+            {
+                if (pushedSet.Add(taken[i].Fiber)) deduped.Add(taken[i]);
+            }
+            for (var i = roots.Count - 1; i >= 0; i--)
+            {
+                if (pushedSet.Add(roots[i].Fiber)) deduped.Add(roots[i]);
+            }
+            deduped.Reverse();
+
+            // A boundary that caught shows its fallback without rendering, so unless it rendered as well nothing
+            // pushed it: it joins the batch to give its reports a slot.
+            var reports = ctx.PendingCaughtErrorReports;
+            for (var i = 0; i < reports.Count; i++)
+            {
+                if (IsDue(reports[i], scope) && pushedSet.Add(reports[i].Boundary))
+                {
+                    InsertAmongPeersInTreeOrder(deduped, pushedSet, reports[i].Boundary);
+                }
+            }
+
+            var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
+            OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
+            bufferPool.ReturnFiberSet(pushedSet);
+            return ordered;
+        }
+
+        // The post-order walk emits the fibers grouped under one nearest batch fiber in their batch order, so the
+        // boundary goes ahead of the first of its peers there it precedes in the tree. What lies below it is
+        // grouped under it wherever it sits. batch already holds the boundary.
+        private static void InsertAmongPeersInTreeOrder(
+            List<(ComponentFiber Fiber, bool IsMount)> deduped, HashSet<ComponentFiber> batch, ComponentFiber boundary)
+        {
+            var group = NearestAncestorIn(boundary, batch);
+            var slot = deduped.Count;
+            for (var i = 0; i < deduped.Count; i++)
+            {
+                var peer = deduped[i].Fiber;
+                if (!ReferenceEquals(NearestAncestorIn(peer, batch), group)) continue;
+                if (!PrecedesInTreeOrder(boundary, peer)) continue;
+                slot = i;
+                break;
+            }
+            deduped.Insert(slot, (boundary, false));
+        }
+
+        private static ComponentFiber? NearestAncestorIn(ComponentFiber fiber, HashSet<ComponentFiber> batch)
+        {
+            var ancestor = fiber.Parent;
+            while (ancestor != null && !batch.Contains(ancestor)) ancestor = ancestor.Parent;
+            return ancestor;
+        }
+
+        // Of two branches under one parent, the one earlier in its child list precedes. a and b are never an
+        // ancestor and its descendant here, and two fibers with no common ancestor read false.
+        private static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
+        {
+            for (var branchOfA = a; branchOfA.Parent != null; branchOfA = branchOfA.Parent)
+            {
+                var parent = branchOfA.Parent;
+                ComponentFiber? branchOfB = null;
+                for (var x = b; x != null; x = x.Parent)
+                {
+                    if (!ReferenceEquals(x.Parent, parent)) continue;
+                    branchOfB = x;
+                    break;
+                }
+                if (branchOfB == null) continue;
+                for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
+                {
+                    if (ReferenceEquals(sibling, branchOfA)) return true;
+                    if (ReferenceEquals(sibling, branchOfB)) return false;
+                }
+                return false;
+            }
+            return false;
+        }
+
+        // reportCutoff excludes a report caught after the batch delivering it was collected. CaughtErrorHandlerTests
+        // holds the order the reports are delivered in.
         private static void DeliverCaughtErrors(ReconcilerContext ctx, ComponentFiber boundary, long reportCutoff)
         {
             var reports = ctx.PendingCaughtErrorReports;
-            List<(ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence)>? due = null;
+            List<(Exception Error, ErrorInfo Info)>? due = null;
             var kept = 0;
             for (var i = 0; i < reports.Count; i++)
             {
                 var report = reports[i];
-                if (ReferenceEquals(report.Boundary, boundary) && report.Sequence < reportCutoff)
+                if (ReferenceEquals(report.Boundary, boundary) && report.Sequence < reportCutoff && !IsInParkedPass(boundary))
                 {
-                    due ??= new List<(ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence)>();
-                    due.Add(report);
+                    due ??= new List<(Exception Error, ErrorInfo Info)>();
+                    due.Add((report.Error, report.Info));
                     continue;
                 }
                 reports[kept++] = report;
@@ -211,121 +340,6 @@ namespace Velvet
             for (var i = 0; i < due.Count; i++)
             {
                 FiberErrorBoundary.ReportCaughtError(ctx, due[i].Error, due[i].Info);
-            }
-        }
-
-        // Snapshots the current deferred-inline stack as one batch, orders it post-order (children before
-        // parents), and runs the layout-effect CLEANUP pass over that order into `ordered` — per fiber, its
-        // insertion effects then its layout-effect cleanups. The caller feeds the same `ordered` list to
-        // RunInlineLayoutSetups for the SETUP pass; splitting the two lets CommitSubtreeEffectsNow interleave
-        // its root fiber's own cleanup/setup between them, so the all-cleanups-before-all-setups invariant holds
-        // across the root/child boundary and not just within the child batch. Ordering off a snapshot and
-        // running after is equivalent to running mid-walk: an effect that synchronously pushes MORE deferred
-        // fibers lands on the stack and is picked up by a later batch, not this already-captured batch.
-        private static void DrainInlineLayoutCleanupsOneBatch(
-            ReconcilerContext ctx, ComponentFiber? rootFiber, List<(ComponentFiber Fiber, bool IsMount)> ordered)
-        {
-            var stack = ctx.DeferredInlineLayoutEffectFibers;
-            var bufferPool = ctx.BufferPool;
-
-            // The stack was populated in DFS pre-order during reconcile (parent before children, siblings
-            // left-to-right). A naive LIFO drain would run sibling B before sibling A — layout effects visit
-            // siblings left-to-right then their parent (post-order DFS, LtR). Reconstruct that order.
-            var entries = new List<(ComponentFiber Fiber, bool IsMount)>(stack.Count);
-            while (stack.Count > 0) entries.Add(stack.Pop());
-            entries.Reverse();
-            TakeBatchOf(rootFiber, entries, stack);
-
-            // Dedup: the same fiber pushed twice (MountInline + a follow-up SubsumeFiberIntoThisPass bundled in
-            // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
-            // architecturally first, so IsMount=false (the update) prevails.
-            var pushedSet = bufferPool.RentFiberSet();
-            var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(entries.Count);
-            for (var i = entries.Count - 1; i >= 0; i--)
-            {
-                if (pushedSet.Add(entries[i].Fiber)) deduped.Add(entries[i]);
-            }
-            deduped.Reverse();
-
-            PlaceCaughtErrorBoundaries(ctx, rootFiber, deduped, pushedSet);
-
-            OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
-            bufferPool.ReturnFiberSet(pushedSet);
-
-            // Cleanup pass — the mutation phase. Running every cleanup before any setup is the point of the
-            // split: a later fiber's cleanup must not observe state an earlier fiber's setup wrote. Insertion
-            // effects belong to the mutation phase too; imperative handles and layout setups defer to the setup
-            // pass so a parent setup can observe a child's already-committed handle.
-            for (var i = 0; i < ordered.Count; i++)
-            {
-                var (deferred, isMount) = ordered[i];
-                if (deferred == null || deferred.IsDisposed) continue;
-                RunInsertionEffects(deferred, mountDoubleInvoke: isMount);
-                HookEffectExecutor.RunCleanups(deferred, deferred.PendingLayoutEffects);
-            }
-        }
-
-        // Puts back, in their push order, the entries outside rootFiber's subtree.
-        private static void TakeBatchOf(
-            ComponentFiber? rootFiber, List<(ComponentFiber Fiber, bool IsMount)> entries,
-            Stack<(ComponentFiber Fiber, bool IsMount)> stack)
-        {
-            var kept = 0;
-            for (var i = 0; i < entries.Count; i++)
-            {
-                if (IsInBatchOf(entries[i].Fiber, rootFiber))
-                {
-                    entries[kept++] = entries[i];
-                    continue;
-                }
-                stack.Push(entries[i]);
-            }
-            entries.RemoveRange(kept, entries.Count - kept);
-        }
-
-        // A boundary that caught shows its fallback without rendering, so nothing pushed it; it joins the batch
-        // to give its reports a slot. It takes the staging slot of its first descendant in the batch, which is
-        // where the post-order walk emits the subtree it is the ancestor of.
-        private static void PlaceCaughtErrorBoundaries(
-            ReconcilerContext ctx, ComponentFiber? rootFiber, List<(ComponentFiber Fiber, bool IsMount)> deduped,
-            HashSet<ComponentFiber> pushedSet)
-        {
-            var reports = ctx.PendingCaughtErrorReports;
-            for (var r = 0; r < reports.Count; r++)
-            {
-                var boundary = reports[r].Boundary;
-                // MUTANT_SURVIVES(equivalent, clause removed): a boundary already in the batch placed again is
-                // emitted twice by the post-order walk, the subtree under it with it, and each second pass finds
-                // the cleanups detached, the pending lists cleared and the reports delivered by the first.
-                if (!IsPositionedInBatch(boundary, rootFiber) || !pushedSet.Add(boundary)) continue;
-                var slot = deduped.Count;
-                for (var i = 0; i < deduped.Count; i++)
-                {
-                    if (IsStrictDescendant(deduped[i].Fiber, boundary))
-                    {
-                        slot = i;
-                        break;
-                    }
-                }
-                deduped.Insert(slot, (boundary, false));
-            }
-        }
-
-        // Runs the layout-effect SETUP pass over a batch DrainInlineLayoutCleanupsOneBatch already ordered and
-        // cleaned up: each fiber's imperative handles then its layout-effect setups, in post-order (a parent
-        // setup observes a child's already-committed handle), each followed by the reports of the errors it
-        // caught. A setup that mounts more inline children pushes them onto the drain stack for
-        // CommitStrandedLayoutWork.
-        private static void RunInlineLayoutSetups(
-            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, long reportCutoff)
-        {
-            for (var i = 0; i < ordered.Count; i++)
-            {
-                var (deferred, isMount) = ordered[i];
-                if (deferred == null || deferred.IsDisposed) continue;
-                FiberHookCommit.RunImperativeHandleSlots(deferred);
-                HookEffectExecutor.RunFactoriesAndClear(deferred, deferred.PendingLayoutEffects, mountDoubleInvoke: isMount);
-                DeliverCaughtErrors(ctx, deferred, reportCutoff);
             }
         }
 
@@ -419,7 +433,7 @@ namespace Velvet
         // (child-before-parent) so a child's passive effect commits before its parent's — mirroring
         // the layout-effect drain's ordering, but deferred to the post-paint scheduler tick rather
         // than committed synchronously. Reconstructs post-order from fiber.Parent ancestry
-        // the same way DrainDeferredInlineLayoutEffects does.
+        // the same way TakeBatch does for the layout commit.
         private static void DrainPassiveEffects(ReconcilerContext context)
         {
             context.PassiveEffectDrainScheduled = false;
@@ -479,7 +493,7 @@ namespace Velvet
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary
         // subset of fibers using fiber.Parent ancestry — the same grouping
-        // DrainDeferredInlineLayoutEffects performs for layout effects. A fiber whose
+        // TakeBatch performs for layout effects. A fiber whose
         // nearest staged ancestor is present is emitted before that ancestor; staged roots keep their
         // relative staging order (siblings are staged left-to-right during reconcile).
         private static List<ComponentFiber> OrderFibersPostOrder(List<ComponentFiber> staged)

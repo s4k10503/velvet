@@ -100,7 +100,8 @@ namespace Velvet
             // stale (null) refs. Push the fiber onto the deferred stack and let the top-level
             // reconcile entry drain it (LIFO = bottom-up) before its own layout-effect commit so the
             // root commits last.
-            fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true));
+            var mountContext = fiber.Reconciler!.Context;
+            mountContext.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true, mountContext.CurrentPass));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
         }
 
@@ -134,7 +135,8 @@ namespace Velvet
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
-            subsumedReconciler.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
+            var subsumedContext = subsumedReconciler.Context;
+            subsumedContext.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, subsumedContext.CurrentPass));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
             SettleSubsumedFiber(fiber);
         }

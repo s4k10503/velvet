@@ -14,3 +14,15 @@
 - Components mounted while a commit runs its layout effects — the fallback an error boundary shows for a
   layout effect's error, for one — commit their own layout effects as a commit of their own, after every
   commit of the same flush. They ran inside the commit that mounted them, ahead of the flush's other commits.
+- A batch drain that re-renders several components commits their layout effects as one commit, matching
+  React's all-cleanups-before-all-setups across it: the layout-effect cleanups of every component the drain
+  re-rendered run before any of their setups, each pass child before parent. The first component's commit ran
+  the layout effects of every inline child the drain had re-rendered, whichever component it belonged to, and
+  each component then ran its own cleanup and setup before the next one's cleanup.
+- A component mounted into a wrapper element, as a `V.VirtualList` item is, commits the layout effects of its
+  own subtree only. Its mount also ran those of the components the enclosing reconcile had mounted and not yet
+  committed, before that reconcile had attached their refs.
+- After an error boundary caught an error thrown outside a reconcile — from a layout effect, a `UseEffect`, a
+  `UseFrame` callback or a component's own re-render — the next reconcile to start in the tree was discarded,
+  so that component's update did not show until it rendered again, and a second boundary catching before then
+  kept the content that had thrown in place of its fallback. Both now commit.
