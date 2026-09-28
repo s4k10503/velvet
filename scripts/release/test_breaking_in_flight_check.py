@@ -1832,6 +1832,103 @@ class FragmentsInTheSection(ReleaseHistory):
         self.assertEqual((done.returncode, "carries in no major" in done.stderr), (UNNAMED, True))
 
 
+WRITTEN = "- `V.Mount` warns when its target's panel lacks the sheet.\n"
+CORRECTED = "- `V.Mount` warns at the panel's next update when it lacks the sheet.\n"
+NEIGHBOUR = "- A second break in the same change.\n"
+
+
+class CorrectedInPlace(ReleaseHistory):
+    """A breaking entry no release has carried, reworded where its fragment writes it."""
+
+    def write(self, root, *entries, message="a fragment"):
+        """One more commit on the checked-out branch, writing the fragment with `entries` under one
+        heading and touching nothing else. Returns it."""
+        path = root / FRAGMENT
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("### Changed\n\n" + "".join(entries))
+        git(root, "add", FRAGMENT)
+        git(root, "commit", "--quiet", "-m", message)
+        return revision(root)
+
+    def shown(self, root, rev):
+        """The fragment's text at `rev`."""
+        return subprocess.run(["git", "-C", str(root), "show", f"{rev}:{FRAGMENT}"],
+                              capture_output=True, text=True).stdout
+
+    def test_Given_AFragmentsFirstLineReworded_When_TheChangeClosesNothing_Then_ItPasses(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN)
+        self.write(root, CORRECTED, message="a correction")
+        reworded = WRITTEN not in self.shown(root, "HEAD")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert -- the reword rides along: without it the result is the base, which passes for no
+        # reason.
+        self.assertEqual((reworded, done.returncode, done.stderr), (True, 0, ""))
+
+    # GREEN_ON_BASE(characterization): the base refuses every first line the result stops carrying.
+    # What this pins is that the neighbour left in the dropped entry's place is not read as its
+    # correction, which is what a place matched without asking what the section already held does.
+    def test_Given_AFragmentDroppingItsFirstEntry_When_ItsNeighbourMovesUpIntoThatPlace_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN, NEIGHBOUR)
+        self.write(root, NEIGHBOUR, message="a drop")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    def test_Given_AnEntryCorrectedInPlaceSinceTheRelease_When_AMajorClosesCarryingTheCorrection_Then_ItPasses(self):
+        # Arrange -- the first wording is on main at one commit and in no later one, so only the
+        # history walked back to the release still sights it.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        written = WRITTEN in self.shown(root, self.write(root, WRITTEN))
+        base = self.write(root, CORRECTED, message="a correction")
+        git(root, "rm", "--quiet", FRAGMENT)
+        self.commit(root, OPEN.replace(
+            "## [Unreleased]\n",
+            "## [Unreleased]\n\n## [3.0.0] - 2026-09-01\n\n### Changed\n\n" + CORRECTED), "a major")
+
+        # Act
+        done = run(root, base, "[]", body="A major.")
+
+        # Assert -- the first wording rides along: without it on main the history sights nothing the
+        # major could fail to carry.
+        self.assertEqual((written, done.returncode, done.stderr), (True, 0, ""))
+
+
+    # GREEN_ON_BASE(characterization): the base reads each first line apart from every other.
+    # What this pins is that an entry written above another in its fragment, taking that one's place,
+    # is not read as a correction of the entry it pushed down and still carries, so the one written
+    # above answers for itself when a later change moves it out.
+    def test_Given_AnEntryWrittenAboveAnotherInItsFragment_When_ItIsMovedOutAndAMinorClosesOverIt_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.write(root, WRITTEN)
+        self.write(root, NEIGHBOUR, WRITTEN, message="written above")
+        moved = root / FRAGMENT.replace("/breaking/", "/unreleased/")
+        moved.parent.mkdir(parents=True, exist_ok=True)
+        moved.write_text("### Changed\n\n" + NEIGHBOUR)
+        git(root, "add", str(moved.relative_to(root)))
+        base = self.write(root, WRITTEN, message="moved out")
+        git(root, "rm", "--quiet", str(moved.relative_to(root)))
+        self.commit(root, OPEN.replace(
+            "## [Unreleased]\n",
+            "## [Unreleased]\n\n## [2.2.0] - 2026-09-02\n\n### Changed\n\n" + NEIGHBOUR), "a minor")
+
+        # Act
+        done = run(root, base, "[]", body="A minor.")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries in no major" in done.stderr), (UNNAMED, True))
+
+
 class DispatchMirror(unittest.TestCase):
     """What this module restates from upm.yml: the `-main` tag it leaves on the release commit."""
 
