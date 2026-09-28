@@ -33,22 +33,13 @@ namespace Velvet
     // (same repaint-dirtying reason as the Hue arm of StyleAnimateDriver).
     //
     // Velvet takes over when the resolved transition-property CONTAINS filter — what .transition-filter pins,
-    // and equally true of a hand-authored list naming filter among others. Under a whole-property value the
-    // inline-filter setter runs the write as its own native animation (which no public API can cancel), so the
-    // tween stands down there and the engine animates it. That decision is TryStartOrRedirect's resolvedStyle
-    // probe, not the class list, and the tick re-checks it every frame so a value that changes mid-tween hands
-    // over instead of fighting.
-    //
-    // NB the setter does not test the transition list against `filter` at all: it tests it against
-    // `background-size`, and takes its animating path when an entry equals that or is a shorthand covering it.
-    // Three values therefore trip it — a whole-property value, `background-size`, and the
-    // `-unity-background-scale-mode` shorthand. The probe's rule is an OBSERVED equivalence, measured on this
-    // editor, not a restatement of the engine's own condition: it holds only because the values Velvet's own
-    // utilities produce never name those. Two consequences, neither diagnosed anywhere. A hand-authored list
-    // naming filter AND either of those two satisfies the probe and the setter at once, so both animators run
-    // the same property. And a list naming one of them WITHOUT filter animates the change natively even though
-    // nothing about it mentions filter, so "names neither, therefore discrete" holds only for lists that also
-    // avoid the background-size family.
+    // and equally true of a hand-authored list naming filter among others — and names none of the three entries
+    // the inline-filter setter is measured running the write under as its own native animation (which no public
+    // API can cancel): a whole-property value, `background-size`, or `-unity-background-scale-mode`. Where one of
+    // those is named the tween stands down and the engine animates, so one animator runs the property.
+    // FilterTransitionPanelTests pins each of the three alone and the latter two beside filter. That decision is
+    // TryStartOrRedirect's resolvedStyle probe, not the class list, and the tick re-checks it every frame so a
+    // value that changes mid-tween hands over instead of fighting.
     //
     // The write hook (TryStartOrRedirect) sits inside StyleArbitraryValueResolver.ApplyCombinedFilter — the sole
     // site that composes and writes style.filter — so it covers every filter path (base blur-md, arbitrary
@@ -65,7 +56,7 @@ namespace Velvet
     //   (the common case: a hover-driven variant swap, which runs through the manipulator's event callback)
     //   transitions correctly.
     //
-    // The phase math (ApplyFrame / Ease / channel alignment) is pure and unit-tested directly; the scheduler
+    // The phase math (ApplyFrame / channel alignment) is pure and unit-tested directly; the scheduler
     // wiring runs at runtime (the EditMode PlayerLoop does not tick, so tests drive ApplyFrame at explicit
     // phases). The resolver runs during event callbacks with no ReconcilerContext, so the element→binding
     // lookup lives in a ConditionalWeakTable (same reason the layer map does); ReconcilerContext mirrors the
@@ -132,14 +123,9 @@ namespace Velvet
                 Cancel(b);
                 return false;
             }
-            // The RESOLVED transition-property — not the class list — decides which animator owns the change.
-            // A list CONTAINING filter (alongside any number of other properties) keeps the inline-filter
-            // setter on its plain direct-write path, the only path where a per-frame tween write actually
-            // paints what it wrote. A whole-property value instead makes that setter run the write as a native
-            // animation that nothing can cancel, so the tween stands down and lets it animate. Any other list
-            // leaves the change discrete — EXCEPT one naming the background-size family, which trips the same
-            // native animation without mentioning filter at all (see the note on the class).
-            if (!ResolvedTransitionNamesFilter(element))
+            // The RESOLVED transition-property — not the class list — decides which animator owns the change
+            // (see the note on the class).
+            if (!ResolvedTransitionNamesFilter(element) || EngineAnimatesFilterWrites(element))
             {
                 Cancel(b);
                 return false;
@@ -208,13 +194,31 @@ namespace Velvet
             return false;
         }
 
+        // True where the resolved list holds an entry the inline-filter setter animates a write under (see the
+        // note on the class). Indexed for the reason ResolvedTransitionNamesFilter gives; the copy is the
+        // fallback for a list that is not one.
+        private static bool EngineAnimatesFilterWrites(VisualElement element)
+        {
+            var resolved = element.resolvedStyle.transitionProperty;
+            var properties = resolved as IList<StylePropertyName> ?? resolved.ToList();
+            for (var k = 0; k < properties.Count; k++)
+            {
+                var name = properties[k].ToString();
+                if (name == "all" || name == "background-size" || name == "-unity-background-scale-mode")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Applies one frame at progress t (pre-easing). Pure: builds a FRESH list every call (UI Toolkit's
         // inline-filter setter dirties the element for repaint only when the backing list REFERENCE changes,
         // so a reused list would paint the first frame then freeze). Public so tests drive specific phases
         // without the runtime scheduler.
         public static void ApplyFrame(VisualElement element, StyleFilterTransitionBinding b, float t)
         {
-            var e = Ease(b.Easing, t);
+            var e = UssEasing.Evaluate(b.Easing, t);
             var list = new List<FilterFunction>(b.Channels.Length);
             foreach (var channel in b.Channels)
             {
@@ -248,11 +252,16 @@ namespace Velvet
             {
                 var elapsed = Time.realtimeSinceStartupAsDouble - b.StartTime;
                 var progress = b.DurationSec > 0f ? (float)(elapsed / b.DurationSec) : 1f;
-                // The resolved transition-property can stop naming filter WHILE the tween runs — a class swap
-                // the reconciler keeps bound, or an inline transition-property written by a Motion play. From
-                // that moment every frame write is taken over by the setter's own animation and restarted from
-                // the painted value, so the paint would crawl behind a target that moves each tick. Hand over
-                // by settling once instead.
+                // The resolved transition-property can change WHILE the tween runs — a class swap the reconciler
+                // keeps bound, or an inline transition-property written by a Motion play. Where the setter
+                // animates from that moment, every frame write is taken over by its own animation and restarted
+                // from the painted value, so the paint would crawl behind a target that moves each tick. Hand
+                // over by settling once instead.
+                if (EngineAnimatesFilterWrites(element))
+                {
+                    Settle(element, b);
+                    return;
+                }
                 if (progress >= 1f || !ResolvedTransitionNamesFilter(element))
                 {
                     Settle(element, b);
@@ -616,27 +625,6 @@ namespace Velvet
             => from.type == FilterParameterType.Color
                 ? new FilterParameter(Color.Lerp(from.colorValue, to.colorValue, e))
                 : new FilterParameter(Mathf.Lerp(from.floatValue, to.floatValue, e));
-
-        #endregion
-
-        #region Easing
-
-        // Maps the five easing curves Velvet's .ease-* utilities expose onto their standard CSS cubic-bezier
-        // control points and evaluates them; any curve not exposed by a Velvet utility (only reachable via a
-        // hand-authored resolvedStyle) falls back to linear.
-        private static float Ease(EasingMode mode, float t)
-        {
-            t = Mathf.Clamp01(t);
-            return mode switch
-            {
-                EasingMode.Linear => t,
-                EasingMode.EaseIn => CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, t),
-                EasingMode.EaseOut => CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, t),
-                EasingMode.EaseInOut => CubicBezierEvaluator.Evaluate(0.42f, 0f, 0.58f, 1f, t),
-                EasingMode.Ease => CubicBezierEvaluator.Evaluate(0.25f, 0.1f, 0.25f, 1f, t),
-                _ => t,
-            };
-        }
 
         #endregion
     }

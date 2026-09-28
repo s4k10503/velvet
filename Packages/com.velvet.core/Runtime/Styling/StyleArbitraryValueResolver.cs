@@ -1345,8 +1345,8 @@ namespace Velvet
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
             // from-side, so it must run BEFORE the instant write below (never observing its own write). It
             // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // zero duration, a resolved transition-property that does not name filter (the engine's own
-            // animation runs the change, or there is no transition), or a non-interpolable change.
+            // zero duration, a resolved transition-property that is not the tween's (the engine's own animation
+            // runs the change, or there is no transition), or a non-interpolable change.
             if (functions == null)
             {
                 if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
@@ -1427,6 +1427,10 @@ namespace Velvet
                 ArbitraryProperty.FilterSepia => FilterFunctionType.Sepia,
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, "not a built-in filter"),
             };
+            if (type == FilterFunctionType.Contrast)
+            {
+                BuiltInFilterDefinitions.PadEngineContrastFromIdentity();
+            }
             // Only the single-arg ctor + AddParameter are public (the (type,value) ctors are internal).
             var fn = new FilterFunction(type);
             fn.AddParameter(new FilterParameter(value));

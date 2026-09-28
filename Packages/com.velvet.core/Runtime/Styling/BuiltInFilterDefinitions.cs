@@ -1,3 +1,5 @@
+using System;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -39,6 +41,33 @@ namespace Velvet
         // customs apart from a user filter-[name:args] one; both kinds interpolate, but only the user kind is
         // limited to one distinct definition per add/remove transition (they share a canonical compose slot).
         internal static bool IsBuiltIn(FilterFunctionDefinition? def) => IsBrightness(def) || IsSaturate(def);
+
+        // UI Toolkit's own contrast definition declares 0 as the value its filter-list transition pads an added or
+        // removed contrast() from, where CSS pads from contrast's identity 1, so an engine-run transition would
+        // ramp through a fully flat element. Velvet reaches the definition through the engine's internal accessor,
+        // and its declaration array is public and mutable, so the padding value is corrected in place.
+        // FilterTransitionPanelTests pins what an engine-run contrast fade starts and ends at.
+        private static readonly Func<FilterFunctionType, FilterFunctionDefinition>? s_engineDefinition = BindEngineDefinition();
+
+        internal static void PadEngineContrastFromIdentity()
+        {
+            if (s_engineDefinition?.Invoke(FilterFunctionType.Contrast)?.parameters is { Length: not 0 } declarations)
+            {
+                declarations[0].interpolationDefaultValue = new FilterParameter(1f);
+            }
+        }
+
+        private static Func<FilterFunctionType, FilterFunctionDefinition>? BindEngineDefinition()
+        {
+            var method = typeof(FilterFunction).Assembly
+                .GetType("UnityEngine.UIElements.FilterFunctionDefinitionUtils")
+                ?.GetMethod("GetBuiltinDefinition", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(FilterFunctionType) }, null);
+            return method?.ReturnType == typeof(FilterFunctionDefinition)
+                ? (Func<FilterFunctionType, FilterFunctionDefinition>)method.CreateDelegate(
+                    typeof(Func<FilterFunctionType, FilterFunctionDefinition>))
+                : null;
+        }
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
