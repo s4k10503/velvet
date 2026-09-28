@@ -411,6 +411,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARectMovedAlongXByExactlyThePixelTolerance_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange
+            var oldRect = new Rect(MotionLayoutIdDriver.PixelTolerance, 0f, 64f, 64f);
+            var newRect = new Rect(0f, 0f, 64f, 64f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(32f, 32f));
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_ARectMovedAlongYByExactlyThePixelTolerance_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange
+            var oldRect = new Rect(0f, MotionLayoutIdDriver.PixelTolerance, 64f, 64f);
+            var newRect = new Rect(0f, 0f, 64f, 64f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, new Vector2(32f, 32f));
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_ARectWhoseAveragedScaleChangesItsSizeByExactlyThePixelTolerance_When_DeltaComputed_Then_ThePlanIsEmpty()
+        {
+            // Arrange — the width grows by twice the tolerance, which the averaged scale halves.
+            var oldRect = new Rect(0f, 0f, 64f + 2f * MotionLayoutIdDriver.PixelTolerance, 64f);
+            var newRect = new Rect(0f, 0f, 64f, 64f);
+
+            // Act
+            var plan = MotionLayoutIdDriver.ComputeDeltaPlan(oldRect, newRect, Vector2.zero);
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
         public void Given_ARectMovedWithoutResizing_When_DeltaComputed_Then_OnlyTranslateChannelsAreSet()
         {
             // Arrange — moved from (10,20) to (110,220), same 100x50 size.

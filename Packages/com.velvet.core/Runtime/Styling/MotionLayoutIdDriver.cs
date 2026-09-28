@@ -205,7 +205,8 @@ namespace Velvet
             ctx.LayoutIdSnapshots.Clear();
         }
 
-        private const float PixelTolerance = 0.01f;
+        // A power of two, so a rect off by exactly this much is representable and the boundary testable.
+        internal const float PixelTolerance = 1f / 128f;
 
         // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
         // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose Scale
