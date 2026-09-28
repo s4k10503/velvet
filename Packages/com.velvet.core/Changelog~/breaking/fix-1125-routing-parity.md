@@ -26,7 +26,7 @@
 
 - Navigation blocking follows React Router's `useBlocker`. `Hooks.UseBlocker` takes a `bool` or a
   predicate over `BlockerFunctionArgs` (`CurrentLocation`, `NextLocation`, `HistoryAction`), which
-  replaces `NavigationAttempt`; the asynchronous predicate overloads of `Hooks.UseBlocker` and
+  replaces the NavigationAttempt type; the asynchronous predicate overloads of `Hooks.UseBlocker` and
   `RouteBlockerManager.Register` are gone. `RouteBlockerState.Location` replaces `Attempt`, and
   `Proceed` and `Reset` are delegates, null unless the Blocker is `Blocked` and bound to the block
   they were handed out for: a kept `Proceed` throws once that block is over. The component calling
@@ -39,4 +39,4 @@
   is put to it, a Guard is not asked about an attempt it stopped, a Guard's redirect is not put to it,
   and a blocked attempt no longer cancels the navigation already in flight. A block stands until a
   navigation commits rather than until the next attempt reaches the Blocker, and disposing a Blocker's
-  registration returns its state to `Idle`. `RouteBlockerManager.ResetAllBlocked` is gone.
+  registration returns its state to `Idle`. The ResetAllBlocked method of `RouteBlockerManager` is gone.
