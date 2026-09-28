@@ -247,6 +247,23 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        [Test]
+        public void Given_AMountOnABarePanelDisposedBeforeThePanelTicks_When_ItTicks_Then_OnlyTheBareControlIsReported()
+        {
+            // Arrange — a check left armed past the dispose would report at whichever later tick reached it, in
+            // whatever test that tick ran under.
+            var disposedFirst = Named("disposed-first");
+            PanelRoot().Add(disposedFirst);
+            V.Mount(disposedFirst, V.Div()).Dispose();
+
+            // Act
+            MountBare();
+            Tick();
+
+            // Assert
+            Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
         // GREEN_ON_BASE(characterization): the base already checks a target when it arrives on a panel.
         [Test]
         public void Given_ATargetMountedOffAnyPanel_When_ItIsAddedToOneWithoutTheSheet_Then_ItIsReported()
