@@ -281,8 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   effects survive. The controller looked a row up in a `Dictionary` keyed by string, whose lookup refuses
   a null key even against an empty dictionary, so the range update threw from inside the item loop — and
   the buffers it abandoned there were the live ones, since a window whose size has not changed reuses
-  them in place. A selector returning a key holding a NUL is unchanged: that item is still left out of the
-  range under a warning.
+  them in place.
 
 - A `V.VirtualList` range update that throws — from the item renderer, or from creating or patching the
   row it describes, as a `V.Custom<T>` element whose constructor throws does — no longer leaves the list
