@@ -441,8 +441,8 @@ namespace Velvet.Tests
 
         #region Scope lifetime
 
-        // GREEN_ON_BASE(characterization): a whole-reconciler teardown already released the scope. The
-        // router is now built through the helper that publishes it, since an Outlet reaches the scope
+        // GREEN_ON_BASE(characterization): a whole-reconciler teardown already released the scope.
+        // The router is now built through the helper that publishes it, since an Outlet reaches the scope
         // factory through the router above it rather than through a static.
         [Test]
         public void Given_RoutedOutletWithScope_When_ReconcilerDisposed_Then_ScopeIsDisposed()

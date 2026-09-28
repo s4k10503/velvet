@@ -466,82 +466,56 @@ namespace Velvet
         #region UseBlocker
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate on
-        /// every render so it answers with the state the latest render captured.
-        /// Must be used inside Render() only.
+        /// Blocks navigation departures while <paramref name="shouldBlock"/> is true, as React Router's
+        /// <c>useBlocker(boolean)</c> does. The component re-renders whenever the returned Blocker's state
+        /// changes. Must be used inside Render() only.
+        /// </summary>
+        /// <param name="shouldBlock">Whether a departure is blocked.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(bool shouldBlock)
+            => UseBlockerCore(shouldBlock ? s_alwaysBlock : s_neverBlock, new object?[] { shouldBlock });
+
+        private static readonly Func<BlockerFunctionArgs, bool> s_alwaysBlock = _ => true;
+        private static readonly Func<BlockerFunctionArgs, bool> s_neverBlock = _ => false;
+
+        /// <summary>
+        /// Conditionally blocks navigation departures, re-registering the predicate on every render so it
+        /// answers with the state the latest render captured. The component re-renders whenever the returned
+        /// Blocker's state changes. Must be used inside Render() only.
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous — see
         /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
         /// </remarks>
-        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock)
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                null);
+            return UseBlockerCore(shouldBlock, null);
         }
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate
-        /// only when a dependency changes.
+        /// Conditionally blocks navigation departures, re-registering the predicate only when a dependency
+        /// changes. The component re-renders whenever the returned Blocker's state changes.
         /// Must be used inside Render() only.
         /// </summary>
-        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[]? deps)
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                deps);
+            return UseBlockerCore(shouldBlock, deps);
         }
 
-        /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate on
-        /// every render so it answers with the state the latest render captured. Use when integrating with
-        /// asynchronous UI such as confirmation dialogs.
-        /// </summary>
-        /// <remarks>
-        /// The single-argument overload exists so that omitting deps is unambiguous — see
-        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
-        /// </remarks>
-        /// <param name="shouldBlock">
-        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel.
-        /// </param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock)
-        {
-            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                null);
-        }
-
-        /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate
-        /// only when a dependency changes. Use when integrating with asynchronous UI such as confirmation
-        /// dialogs.
-        /// </summary>
-        /// <param name="shouldBlock">
-        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel.
-        /// </param>
-        /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[]? deps)
-        {
-            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                deps);
-        }
-
-        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[]? deps)
+        private static RouteBlockerState UseBlockerCore(Func<BlockerFunctionArgs, bool> shouldBlock, object?[]? deps)
         {
             var fiber = Resolve("UseBlocker");
             var router = UseRouterOrThrow("UseBlocker");
@@ -554,31 +528,35 @@ namespace Velvet
             {
                 var existing = fiber.BlockerSlots[index];
 
-                // Compare against the committed deps. The (Dispose -> re-register) side effect is staged and run
-                // at the render-phase settle, so a discarded attempt cannot register a throwaway predicate closure
-                // against Router.RouteBlockerManager (or leave the committed blocker pointing at it).
+                // Compare against the committed deps. The registration change is staged and made at the
+                // render-phase settle, so a discarded attempt cannot leave its throwaway predicate closure
+                // answering for the committed Blocker.
                 var unchanged = deps != null
                     && ReferenceEquals(existing.LastRouter, router)
                     && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
                 existing.NextDeps = deps;
                 existing.NextRouter = router;
-                existing.NextNeedsReregister = !unchanged;
-                existing.NextRegister = !unchanged ? () => registerFn(router, existing.State) : null;
+                existing.NextPredicate = unchanged ? null : shouldBlock;
                 return existing.State;
             }
 
-            // New (mounting) slot: the public State is created now (so it can be returned), but the registration
-            // is staged and performed at settle with the settled attempt's predicate closure.
+            // New (mounting) slot: the public State is created now so it can be returned, and registered at the
+            // settle with the settled attempt's predicate closure.
             var state = new RouteBlockerState();
-            var slot = new HookBlockerSlot
+            state.Changed = () =>
+            {
+                if (!fiber.IsDisposed)
+                {
+                    RequestRender(fiber);
+                }
+            };
+            fiber.BlockerSlots.Add(new HookBlockerSlot
             {
                 State = state,
                 NextDeps = deps,
                 NextRouter = router,
-                NextNeedsReregister = true,
-                NextRegister = () => registerFn(router, state),
-            };
-            fiber.BlockerSlots.Add(slot);
+                NextPredicate = shouldBlock,
+            });
             return state;
         }
 

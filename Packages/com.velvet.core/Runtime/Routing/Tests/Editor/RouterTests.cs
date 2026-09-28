@@ -10,8 +10,8 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    // Bounded for the cases here that await a blocker stub's Entered signal;
-    // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
+    // Bounded so a case awaiting a task that never completes fails at thirty seconds rather than at the
+    // runner's own bound, which UnityRunnerDefaultTimeoutTests pins.
     [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterTests
@@ -1075,117 +1075,12 @@ namespace Velvet.Tests
 
         #region Concurrent navigation cancellation
 
-        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
-        // under test arrives cannot tell the two apart. What the bound changes is the run where it
-        // does not: a hang becomes a failure naming the wait.
-        [UnityTest]
-        public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_FirstReturnsCancelled()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // An async Blocker await is exactly the window where a second navigation can take over. The
-            // first nav's VelvetTask.Never(ct) raises OperationCanceledException on cancellation, which the OCE
-            // catch filter maps to Cancelled.
-            // Arrange
-            var router = new Router(_routes);
-            await router.NavigateAsync("/home");
-            var (check, entered) = MakeOneShotBlocker();
-            using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
-            var firstNav = router.NavigateAsync("/about");
-            await entered.Task.Bounded();
-            var secondNav = router.NavigateAsync("/home");
-
-            // Act
-            var firstResult = await firstNav;
-            await secondNav;
-
-            // Assert
-            Assert.That(firstResult, Is.EqualTo(NavigationResult.Cancelled));
-        });
-
-        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
-        // under test arrives cannot tell the two apart. What the bound changes is the run where it
-        // does not: a hang becomes a failure naming the wait.
-        [UnityTest]
-        public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_SecondSucceeds()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange
-            var router = new Router(_routes);
-            await router.NavigateAsync("/home");
-            var (check, entered) = MakeOneShotBlocker();
-            using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
-            var firstNav = router.NavigateAsync("/about");
-            await entered.Task.Bounded();
-            var secondNav = router.NavigateAsync("/home");
-
-            // Act
-            await firstNav;
-            var secondResult = await secondNav;
-
-            // Assert
-            Assert.That(secondResult, Is.EqualTo(NavigationResult.Success));
-        });
-
-        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
-        // under test arrives cannot tell the two apart. What the bound changes is the run where it
-        // does not: a hang becomes a failure naming the wait.
-        [UnityTest]
-        public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_CommitsLatestLocation()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange
-            var router = new Router(_routes);
-            await router.NavigateAsync("/home");
-            var (check, entered) = MakeOneShotBlocker();
-            using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
-            var firstNav = router.NavigateAsync("/about");
-            await entered.Task.Bounded();
-            var secondNav = router.NavigateAsync("/home");
-
-            // Act
-            await firstNav;
-            await secondNav;
-
-            // Assert
-            Assert.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
-                "The final committed location reflects the latest nav, not the cancelled first");
-        });
-
-        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
-        // under test arrives cannot tell the two apart. What the bound changes is the run where it
-        // does not: a hang becomes a failure naming the wait.
-        [UnityTest]
-        public IEnumerator Given_CallerCancelsTokenDuringBlockerAwait_When_Cancelled_Then_ReturnsCancelledInsteadOfThrowing()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // The OCE catch filter maps caller-token cancellation during the blocker await to Cancelled,
-            // symmetrically with the loader phase, so callers branching on `nav != Success` never see an
-            // uncaught OperationCanceledException.
-            // Arrange
-            var router = new Router(_routes);
-            await router.NavigateAsync("/home");
-            var (check, entered) = MakeOneShotBlocker();
-            using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
-            using var callerCts = new CancellationTokenSource();
-            var nav = router.NavigateAsync("/about", cancellationToken: callerCts.Token);
-            await entered.Task.Bounded();
-
-            // Act
-            callerCts.Cancel();
-            var result = await nav;
-
-            // Assert
-            Assert.That(result, Is.EqualTo(NavigationResult.Cancelled));
-        });
-
         [UnityTest]
         public IEnumerator Given_CancelledToken_When_GoBackHitsCachedEntry_Then_ReturnsCancelled()
             => VelvetTask.ToCoroutine(async () =>
         {
             // A cached Back/Forward navigation commits without reaching the loader-phase cancellation check, so a
-            // superseded attempt must unwind at the blocker boundary instead. The blocker phase observes the
-            // already-cancelled token even with no blocker registered (CheckAsync would otherwise return false
-            // and fall through to the cached commit).
+            // superseded attempt must unwind before that phase instead.
             // Arrange
             var router = new Router(_routes);
             await router.NavigateAsync("/home");
@@ -1220,6 +1115,8 @@ namespace Velvet.Tests
                 "A cancelled cached Back does not commit the previous entry");
         });
 
+        // GREEN_ON_BASE(refactor): the takeover this pins is unchanged by the branch; the attempt it takes over
+        // from parks on an Await loader, where it parked on an async Blocker, which the branch removes.
         [UnityTest]
         public IEnumerator Given_ACancellationCallbackThatNavigatesDuringATakeover_When_BothNavigationsFinish_Then_OnlyTheOneStartedLastCommits()
             => VelvetTask.ToCoroutine(async () =>
@@ -1228,21 +1125,17 @@ namespace Velvet.Tests
             // would otherwise report into.
             // Arrange
             var lastLoader = new VelvetTaskCompletionSource<object>();
-            var router = BuildRouter("/home",
+            var parked = new VelvetTaskCompletionSource<object>();
+            Router router = null;
+            router = BuildRouter("/home",
                 Route("home"),
-                Route("away"),
+                Route("away", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => router.NavigateAsync("/last").Forget());
+                    return parked.Task;
+                }),
                 Route("takeover"),
                 Route("last", loader: (ctx, ct) => lastLoader.Task));
-            var parked = new VelvetTaskCompletionSource<bool>();
-            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
-            {
-                if (attempt.NextPath != "/away")
-                {
-                    return VelvetTask.FromResult(false);
-                }
-                ct.Register(() => router.NavigateAsync("/last").Forget());
-                return parked.Task;
-            }, new RouteBlockerState());
             router.NavigateAsync("/away").Forget();
 
             // Act

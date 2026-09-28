@@ -5,7 +5,7 @@ namespace Velvet
     public enum RouterStatus
     {
         Idle,
-        /// <summary>The path has matched, and the matched routes' guards and blockers are running.</summary>
+        /// <summary>The path has matched, and the matched routes' guards are running.</summary>
         Matching,
         Loading,
         Ready,
@@ -46,7 +46,7 @@ namespace Velvet
 
     public sealed class RouterLocation
     {
-        /// <summary>The committed path, including its query string.</summary>
+        /// <summary>The path, including its query string.</summary>
         public string? Path { get; init; }
         /// <summary>Path parameters captured across the full matched branch.</summary>
         public IReadOnlyDictionary<string, string> Params { get; init; } = null!;

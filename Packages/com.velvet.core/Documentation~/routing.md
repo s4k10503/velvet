@@ -119,18 +119,10 @@ component to hook from.
 **No route actions.** Velvet has no form-submission model: a route declares no action, nothing reads
 an action's result, and `NavigationLifecycle` therefore has no `submitting` beside its two values.
 
-**`UseBlocker` takes an async predicate.** Like `useBlocker` it takes the predicate and hands back a
-state object with `Proceed()` / `Reset()`, but the predicate may be asynchronous — the router awaits
-it — and the attempt is exposed as `RouteBlockerState.Attempt` (`CurrentPath`, `NextPath`,
-`NavigationMode`) rather than as a location. [routing-blockers.md](routing-blockers.md) owns the
-blocker states and what each of those two methods does.
-
-**Guards, evaluated before blockers.** A route's `guard` and `redirectTo` are declarative properties
-of the route with no React Router counterpart, where the same job there is a `redirect` thrown from a
-loader or from middleware. A guard runs before the blocker phase of its own attempt and a redirect
-re-enters the pipeline, so the path a guard redirects away from never reaches a blocker and the target
-does: an unsaved-changes blocker is asked about `/login` rather than about the `/admin` that was
-navigated to, and a block there stops the redirect.
+**Guards.** A route's `guard` and `redirectTo` are declarative properties of the route with no React
+Router counterpart, where the same job there is a `redirect` thrown from a loader or from middleware. A
+guard runs after the blocker, and its redirect is not put to the blocker, as React Router does not put a
+loader's redirect to its blocker; [routing-blockers.md](routing-blockers.md) owns where the blocker sits.
 
 **No URL.** There is no browser to own the address bar, so `Router` is `createMemoryRouter`'s
 counterpart and holds its own history stack, which grows without a bound as a memory history's does.

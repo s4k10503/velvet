@@ -19,9 +19,9 @@ namespace Velvet.Tests
     /// <see cref="Router.PendingLocation"/> reports the destination — resolved, so it carries the
     /// destination's path parameters.</item>
     /// <item>The destination is published only while a navigation is in flight: the commit that lands it,
-    /// the Blocker refusal that abandons it, a guard redirect that matches no route, a redirect chain that
-    /// exhausts the limit, and disposing the router each withdraw it — the two redirect refusals only from
-    /// the initiator that still holds the claim.</item>
+    /// a guard redirect that matches no route, a redirect chain that exhausts the limit, and disposing the
+    /// router each withdraw it — the two redirect refusals only from the initiator that still holds the
+    /// claim.</item>
     /// <item>A loader that fails after suspending has its own exception recorded against the route, and the
     /// navigation still commits.</item>
     /// <item>The route on screen through that window is still the live one: a Suspend loader of its own
@@ -502,30 +502,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That($"unmatched={unmatched} status={router.Status}",
                 Is.EqualTo("unmatched=NotFound status=Loading"));
-        });
-
-        [UnityTest]
-        public IEnumerator Given_ABlockerParkedOnTheDeparture_When_ItRefuses_Then_ThePendingDestinationIsWithdrawn()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // An attempt that gives up has to take its destination back with it, and the blocker is the phase
-            // that can be held open long enough to read the destination before the refusal lands.
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("users/:id"));
-            var parked = new VelvetTaskCompletionSource<bool>();
-            using var registration = router.RouteBlockerManager.Register(
-                (_, _) => parked.Task, new RouteBlockerState());
-            var navigation = router.NavigateAsync("/users/7");
-            var whileBlocking = router.PendingLocation?.Path ?? "none";
-
-            // Act
-            parked.TrySetResult(true);
-            var result = await navigation;
-
-            // Assert
-            Assert.That(
-                $"blocking={whileBlocking} result={result} settled={router.PendingLocation?.Path ?? "none"}",
-                Is.EqualTo("blocking=/users/7 result=Blocked settled=none"));
         });
     }
 }

@@ -42,7 +42,7 @@ namespace Velvet.Tests
             });
 
             router.RouteBlockerManager.Register(
-                (_, ct) => VelvetTask.FromResult(false),
+                _ => false,
                 new RouteBlockerState());
 
             return router;

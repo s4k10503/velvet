@@ -21,6 +21,7 @@
 [Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
 [Velvet] ctor Velvet.AnimatePresenceNode.ctor(): System.Void
+[Velvet] ctor Velvet.BlockerFunctionArgs.ctor(): System.Void
 [Velvet] ctor Velvet.BlurBinding.ctor(): System.Void
 [Velvet] ctor Velvet.ChangeEventBinding`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ChoicesSettings.ctor(System.Collections.Generic.List`1[System.String]?): System.Void
@@ -74,7 +75,6 @@
 [Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
-[Velvet] ctor Velvet.NavigationAttempt.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesSettings.ctor(UnityEngine.ParticleSystem?, Velvet.PlayTrigger, System.Single): System.Void
@@ -296,10 +296,9 @@
 [Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
 [Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object?[]?): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]]): Velvet.RouteBlockerState
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Boolean): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean]): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseCallback`1(T): T
 [Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
 [Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
@@ -366,11 +365,7 @@
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
-[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.NavigationAttempt, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
-[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
-[Velvet] method Velvet.RouteBlockerManager.ResetAllBlocked(): System.Void
-[Velvet] method Velvet.RouteBlockerState.Proceed(): System.Void
-[Velvet] method Velvet.RouteBlockerState.Reset(): System.Void
+[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
 [Velvet] method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
 [Velvet] method Velvet.Router.Dispose(): System.Void
 [Velvet] method Velvet.Router.GetLoaderData(System.String): System.Object
@@ -629,6 +624,9 @@
 [Velvet] property Velvet.BaseElementNode.WhileFocusClass: System.String?
 [Velvet] property Velvet.BaseElementNode.WhileHoverClass: System.String?
 [Velvet] property Velvet.BaseElementNode.WhileTapClass: System.String?
+[Velvet] property Velvet.BlockerFunctionArgs.CurrentLocation: Velvet.RouterLocation?
+[Velvet] property Velvet.BlockerFunctionArgs.HistoryAction: Velvet.NavigationMode
+[Velvet] property Velvet.BlockerFunctionArgs.NextLocation: Velvet.RouterLocation
 [Velvet] property Velvet.BlurBinding.EventId: System.String
 [Velvet] property Velvet.BlurBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.BlurEvent]?
 [Velvet] property Velvet.ChangeEventBinding`1[T].EventId: System.String
@@ -816,9 +814,6 @@
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Variables: TVariables?
-[Velvet] property Velvet.NavigationAttempt.CurrentPath: System.String
-[Velvet] property Velvet.NavigationAttempt.NavigationMode: Velvet.NavigationMode
-[Velvet] property Velvet.NavigationAttempt.NextPath: System.String
 [Velvet] property Velvet.NavigationState.Location: Velvet.RouterLocation?
 [Velvet] property Velvet.NavigationState.State: Velvet.NavigationLifecycle
 [Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
@@ -841,7 +836,9 @@
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
-[Velvet] property Velvet.RouteBlockerState.Attempt: Velvet.NavigationAttempt?
+[Velvet] property Velvet.RouteBlockerState.Location: Velvet.RouterLocation?
+[Velvet] property Velvet.RouteBlockerState.Proceed: System.Action?
+[Velvet] property Velvet.RouteBlockerState.Reset: System.Action?
 [Velvet] property Velvet.RouteBlockerState.Status: Velvet.RouteBlockerStatus
 [Velvet] property Velvet.RouteDefinition.CaseSensitive: System.Boolean
 [Velvet] property Velvet.RouteDefinition.Children: Velvet.RouteDefinition[]?
@@ -973,6 +970,7 @@
 [Velvet] type Velvet.AnimationSequenceState
 [Velvet] type Velvet.AnimationSequenceStep
 [Velvet] type Velvet.BaseElementNode
+[Velvet] type Velvet.BlockerFunctionArgs
 [Velvet] type Velvet.BlurBinding
 [Velvet] type Velvet.ChangeEventBinding`1[T]
 [Velvet] type Velvet.ChoicesSettings
@@ -1050,7 +1048,6 @@
 [Velvet] type Velvet.MutationResultExtensions
 [Velvet] type Velvet.MutationResult`2[TVariables, TData]
 [Velvet] type Velvet.MutationStatus
-[Velvet] type Velvet.NavigationAttempt
 [Velvet] type Velvet.NavigationLifecycle
 [Velvet] type Velvet.NavigationMode
 [Velvet] type Velvet.NavigationResult

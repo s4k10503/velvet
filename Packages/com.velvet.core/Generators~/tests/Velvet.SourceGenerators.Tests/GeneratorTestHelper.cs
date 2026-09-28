@@ -69,7 +69,7 @@ namespace Velvet
 
     public readonly struct TransitionStarter { }
 
-    public sealed class NavigationAttempt { }
+    public sealed class BlockerFunctionArgs { }
     public sealed class RouteBlockerState { }
 
     public readonly struct VelvetTask<T> { }
@@ -109,16 +109,11 @@ namespace Velvet
         public static T UseCallback<T>(T callback, params object[] deps) where T : global::System.Delegate => callback;
         public static T UseMemo<T>(global::System.Func<T> factory) => factory();
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
+        public static global::Velvet.RouteBlockerState UseBlocker(bool shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock) => null;
+            global::System.Func<global::Velvet.BlockerFunctionArgs, bool> shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
-        public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Velvet.VelvetTask<bool>> shouldBlock) => null;
-        public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Velvet.VelvetTask<bool>> shouldBlock, params object[] deps) => null;
+            global::System.Func<global::Velvet.BlockerFunctionArgs, bool> shouldBlock, params object[] deps) => null;
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(T initial) =>
             (initial, default);
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(global::System.Func<T> initialFactory) =>

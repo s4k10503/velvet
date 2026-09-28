@@ -23,3 +23,20 @@
   empty data or a navigation that did nothing. `V.Outlet`, `Hooks.UseParams` and
   `Hooks.UseOutletContext` still answer there, as React Router's do. A tree that publishes the routing
   contexts by hand publishes `RouterContext.Router`, which is new, beside them.
+
+- Navigation blocking follows React Router's `useBlocker`. `Hooks.UseBlocker` takes a `bool` or a
+  predicate over `BlockerFunctionArgs` (`CurrentLocation`, `NextLocation`, `HistoryAction`), which
+  replaces `NavigationAttempt`; the asynchronous predicate overloads of `Hooks.UseBlocker` and
+  `RouteBlockerManager.Register` are gone. `RouteBlockerState.Location` replaces `Attempt`, and
+  `Proceed` and `Reset` are delegates, null unless the Blocker is `Blocked` and bound to the block
+  they were handed out for: a kept `Proceed` throws once that block is over. The component calling
+  `UseBlocker` re-renders when its Blocker's state changes.
+
+- A router consults only the Blocker registered last, and warns each time it does so with more than one
+  registered. Every registered Blocker used to be consulted.
+
+- The Blocker is consulted before the path is matched and before Guards run, so a path no route matches
+  is put to it, a Guard is not asked about an attempt it stopped, a Guard's redirect is not put to it,
+  and a blocked attempt no longer cancels the navigation already in flight. A block stands until a
+  navigation commits rather than until the next attempt reaches the Blocker, and disposing a Blocker's
+  registration returns its state to `Idle`. `RouteBlockerManager.ResetAllBlocked` is gone.
