@@ -39,20 +39,22 @@ MERGE = "gh pr merge 7 --squash --delete-branch"
 HEAD = "abcdef1234567890"
 MOVED = "0123456789abcdef"
 
-# The three readings the guard makes, so a verdict of `ALLOWED` can be told from a guard that never
+# The four readings the guard makes, so a verdict of `ALLOWED` can be told from a guard that never
 # recognised the command and read nothing.
-READINGS = 3
+READINGS = 4
 
-# `gh` as this fixture answers it: the head, then the check list, then the head again, told apart by
-# a call count kept on disk. An empty `VELVET_HEAD_AGAIN` is the second head reading failing.
+# `gh` as this fixture answers it: the head with its labels, the check list, the head's check runs,
+# then the head again, told apart by a call count kept on disk. An empty `VELVET_HEAD_AGAIN` is the
+# second head reading failing.
 STUB_GH = """#!/bin/sh
 calls=0
 [ -r "$VELVET_CALLS" ] && read calls < "$VELVET_CALLS"
 calls=$((calls + 1))
 printf '%s\\n' "$calls" > "$VELVET_CALLS"
+[ "$1" = api ] && { printf '%s' "$VELVET_RUNS"; exit 0; }
 case "$2" in
   view)
-    [ "$calls" -eq 1 ] && { printf '{"headRefOid":"%s"}\\n' "$VELVET_HEAD"; exit 0; }
+    [ "$calls" -eq 1 ] && { printf '{"headRefOid":"%s","labels":%s}\\n' "$VELVET_HEAD" "$VELVET_LABELS"; exit 0; }
     [ -z "$VELVET_HEAD_AGAIN" ] && { printf 'gh: HTTP 502\\n' >&2; exit 1; }
     printf '%s\\n' "$VELVET_HEAD_AGAIN_PAYLOAD"; exit 0 ;;
   checks)
@@ -66,6 +68,18 @@ PASSING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pass"}])
 SKIPPED = json.dumps([{"name": "Required checks (Unity)", "bucket": "skipping"}])
 PENDING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pending"}])
 BUCKETLESS = json.dumps([{"name": "Required checks (Unity)"}])
+
+UNLABELLED = json.dumps([])
+LABELLED = json.dumps([{"name": "automerge"}])
+
+
+def check_runs(*campaigns):
+    """The head's check runs: the aggregate, and a campaign per (id, conclusion) pair."""
+    listed = [{"id": 1, "name": "Required checks (Unity)", "status": "completed",
+               "conclusion": "success"}]
+    listed += [{"id": identity, "name": "Mutation campaign", "status": "completed",
+                "conclusion": conclusion} for identity, conclusion in campaigns]
+    return json.dumps({"total_count": len(listed), "check_runs": listed})
 
 
 class HeadCheckVerdictTests(unittest.TestCase):
@@ -82,13 +96,15 @@ class HeadCheckVerdictTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def ask(self, checks=PASSING, head_again=HEAD, checks_exit=0, head_again_payload=None):
+    def ask(self, checks=PASSING, head_again=HEAD, checks_exit=0, head_again_payload=None,
+            labels=UNLABELLED, runs=None):
         """What the guard does with `MERGE`, against a `gh` answering as given."""
         environment = dict(os.environ)
         environment["PATH"] = str(self.binaries) + os.pathsep + environment.get("PATH", "")
         environment.update(VELVET_CALLS=str(self.calls), VELVET_HEAD=HEAD,
                            VELVET_HEAD_AGAIN=head_again, VELVET_CHECKS=checks,
-                           VELVET_CHECKS_EXIT=str(checks_exit),
+                           VELVET_CHECKS_EXIT=str(checks_exit), VELVET_LABELS=labels,
+                           VELVET_RUNS=check_runs() if runs is None else runs,
                            VELVET_HEAD_AGAIN_PAYLOAD=(head_again_payload if head_again_payload is not None
                                                       else json.dumps({"headRefOid": head_again})))
         event = {"tool_name": "Bash", "cwd": str(self.root), "tool_input": {"command": MERGE}}
@@ -187,6 +203,58 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode,
                           f"the check list for {HEAD[:7]} could not be read" in result.stderr),
+                         (REFUSED, True))
+
+
+    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange / Act — every check `gh pr checks` lists passes.
+        result = self.ask(labels=LABELLED)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"no Mutation campaign check has run on {HEAD[:7]}" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange / Act
+        result = self.ask(labels=LABELLED, runs=check_runs((2, "success")))
+
+        # Assert — the reading count rides along for the reason the passing case above states.
+        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsAsked_Then_ItIsRefused(self):
+        # Arrange / Act — a campaign present on the head has to pass whether or not one was owed.
+        result = self.ask(runs=check_runs((2, "failure")))
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"not passing at {HEAD[:7]}: Mutation campaign" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_ANewerCampaignThatPassedListedFirst_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange / Act — the older one was superseded on the same head, and a reader taking the
+        # page's last entry takes it.
+        result = self.ask(labels=LABELLED, runs=check_runs((3, "success"), (2, "cancelled")))
+
+        # Assert
+        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
+
+    def test_Given_CheckRunsThatCameBackPartial_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
+        # Arrange / Act — the page claims a run it did not carry, which may be the campaign.
+        runs = json.dumps({"total_count": 2, "check_runs": []})
+        result = self.ask(runs=runs)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"the check runs of {HEAD[:7]} could not all be read" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_LabelsThatCameBackUnreadable_When_TheMergeIsAsked_Then_TheyAreNamed(self):
+        # Arrange / Act
+        result = self.ask(labels=json.dumps("automerge"))
+
+        # Assert
+        self.assertEqual((result.returncode, "its labels could not be read" in result.stderr),
                          (REFUSED, True))
 
 

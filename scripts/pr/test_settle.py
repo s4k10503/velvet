@@ -40,14 +40,16 @@ settle = load_module()
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
-            fork=False, failing_runs=(), behind_release=None, long_lived_head=False):
+            fork=False, failing_runs=(), behind_release=None, long_lived_head=False,
+            owed_campaign=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
                                held_by_worktree=held_by_worktree,
                                unpublished_release=unpublished_release, draft=draft,
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
-                               behind_release=behind_release, long_lived_head=long_lived_head)
+                               behind_release=behind_release, long_lived_head=long_lived_head,
+                               owed_campaign=owed_campaign)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -201,7 +203,7 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork")
+    "Fabricated", "sha after branch base draft merge_state results holds held fork labels")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -210,6 +212,10 @@ SUITES_RAN = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "pass"},
                         {"name": "Unity tests (PlayMode)", "bucket": "pass"}]
 SUITES_SKIPPED = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "skipping"},
                             {"name": "Unity tests (PlayMode)", "bucket": "skipping"}]
+
+# The label that owes a head a campaign, and a head whose campaign passed beside the aggregate.
+AUTOMERGE = "automerge"
+CAMPAIGN_PASSED = PASSING + [{"name": "Mutation campaign", "bucket": "pass"}]
 
 # The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
 # for anything else, so a case posing another base reads it green.
@@ -220,12 +226,12 @@ RELEASING = "3.x"
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None):
+              held=False, moved=False, fork=False, base="main", branch=None, labels=()):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork)
+                      held=held, fork=fork, labels=frozenset(labels))
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,)):
@@ -259,7 +265,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
             ("pull_request", lambda _project, number: types.SimpleNamespace(
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
-                fork=states[number].fork)),
+                fork=states[number].fork, labels=states[number].labels)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
@@ -364,6 +370,8 @@ class ReadinessTests(unittest.TestCase):
         13: fabricate(13, base=RED, holds=(BROKE,), results=SUITES_SKIPPED),
         14: fabricate(14, base=RELEASING),
         15: fabricate(15, base=RELEASING, holds=(RELEASED,)),
+        16: fabricate(16, labels=(AUTOMERGE,)),
+        17: fabricate(17, labels=(AUTOMERGE,), results=CAMPAIGN_PASSED),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -703,6 +711,65 @@ class RetirementTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((set(answers), watched.code), ({True}, 0))
+
+
+def campaign_runs(*entries):
+    """A check-runs payload holding the aggregate and one campaign per (id, conclusion) pair."""
+    listed = [{"id": 1, "name": "Required checks (Unity)", "status": "completed",
+               "conclusion": "success"}]
+    listed += [{"id": identity, "name": "Mutation campaign", "status": "completed",
+                "conclusion": conclusion} for identity, conclusion in entries]
+    return {"total_count": len(listed), "check_runs": listed}
+
+
+class CampaignMergeTests(unittest.TestCase):
+    """What a head carrying the automerge label owes before it merges, and which campaign is read."""
+
+    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — the aggregate passed, so the missing campaign is the only thing left to refuse on.
+        states = {1: fabricate(1, labels=(AUTOMERGE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [
+            "it carries the automerge label and no Mutation campaign check has run on 0000000: one "
+            "is dispatched when the label is added and on each push while it is on"])
+
+    # GREEN_ON_BASE(characterization): a labelled head whose campaign passed merges on both sides.
+    # It is the side the refusal above must not take, which a rule ignoring the check would.
+    def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), results=CAMPAIGN_PASSED)}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ACancelledCampaignAndANewerOneThatPassed_When_Bucketed_Then_OnlyThePassIsRead(self):
+        # Arrange — the older campaign was superseded on the same head.
+        payload = campaign_runs((2, "cancelled"), (3, "success"))
+
+        # Act
+        results = settle.check_results(payload, NO_STATUSES)
+
+        # Assert
+        self.assertEqual(results, CAMPAIGN_PASSED)
+
+    def test_Given_APassedCampaignAndANewerOneThatFailed_When_Bucketed_Then_OnlyTheFailureIsRead(self):
+        # Arrange — listed newest first, so the page's order is not what picks the newest.
+        payload = campaign_runs((5, "failure"), (4, "success"))
+
+        # Act
+        results = settle.check_results(payload, NO_STATUSES)
+
+        # Assert
+        self.assertEqual(results, PASSING + [{"name": "Mutation campaign", "bucket": "fail"}])
 
 
 class ForkMergeTests(unittest.TestCase):
@@ -1056,11 +1123,13 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
+    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base merges on both sides.
+    # The branch changed only its arrangement, which now carries the labels the decision reads.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
-                                      merge_state="clean", fork=False)
+                                      merge_state="clean", fork=False, labels=frozenset())
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
@@ -1498,6 +1567,17 @@ class CheckResultTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(passing, ["neutral", "skipped", "success"])
+
+    def test_Given_TheConclusionsTheCampaignReaderPasses_When_ComparedToTheTable_Then_TheyAreTheSame(self):
+        # Arrange — `refuse/merge_unproven_head.py` reads the campaign off the checks API without
+        # going through this table, and has to let through what it lets through.
+        table = {name for name, bucket in settle._BUCKET.items() if bucket in settle.TERMINAL_PASS}
+
+        # Act
+        mirrored = set(settle.campaign.PASSED)
+
+        # Assert
+        self.assertEqual(mirrored, table)
 
     def test_Given_AConclusionTheTableDoesNotCarry_When_Bucketed_Then_ItBlocks(self):
         # Arrange — GitHub adding a conclusion must not merge unclassified.

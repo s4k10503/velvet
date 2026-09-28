@@ -15,6 +15,10 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
+The mutation campaign is held here too, by `scripts/pr/campaign.py`'s rule: its newest aggregate on
+the head must pass, and a head carrying the label must have one. It is read off the head's check
+runs, as settle.py reads every check, and inside the same pair of head readings.
+
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
 head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
@@ -32,6 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             program_invocations, unexpanded)
 import repository
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import campaign
 
 
 HOOK_TOOLS = {"Bash"}
@@ -61,9 +68,31 @@ def gh_json(cwd, args):
 
 
 def head_sha(cwd, number):
-    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", "headRefOid"])
+    return head_and_labels(cwd, number, fields="headRefOid")[0]
+
+
+def head_and_labels(cwd, number, fields="headRefOid,labels"):
+    """(head, label names), the head None where unread and the names None where unread."""
+    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", fields])
     head = payload.get("headRefOid") if isinstance(payload, dict) else None
-    return head if isinstance(head, str) and head else None
+    if not (isinstance(head, str) and head):
+        return None, None
+    labels = payload.get("labels")
+    if not isinstance(labels, list) or not all(
+            isinstance(label, dict) and isinstance(label.get("name"), str) for label in labels):
+        return head, None
+    return head, frozenset(label["name"] for label in labels)
+
+
+def newest_campaign(cwd, sha):
+    """(whether every check run of the head was read, the newest campaign aggregate among them)."""
+    payload = gh_json(cwd, ["api", "repos/{owner}/{repo}/commits/" + sha + "/check-runs?per_page=100"])
+    runs = payload.get("check_runs") if isinstance(payload, dict) else None
+    if not isinstance(runs, list) or payload.get("total_count", len(runs)) > len(runs):
+        return False, None
+    kept = [run for run in campaign.newest(runs)
+            if isinstance(run, dict) and run.get("name") == campaign.CHECK]
+    return True, (kept[0] if kept else None)
 
 
 def checks_of(cwd, number):
@@ -98,13 +127,14 @@ def unproven(asked, cwd):
         number = next((token for token in operands if token.isdigit()), None)
         label = "#" + number if number else "the current branch"
 
-        before = head_sha(cwd, number)
+        before, labels = head_and_labels(cwd, number)
         if before is None:
             # gh is unreachable or this is not a pull request; the other guards still apply and this
             # one declines to invent an answer.
             continue
 
         listed = checks_of(cwd, number)
+        read, newest = newest_campaign(cwd, before)
         after = head_sha(cwd, number)
 
         # Past the first reading a reading that failed is refused, where the arm above lets one
@@ -120,11 +150,19 @@ def unproven(asked, cwd):
             found.append((label, f"the check list for {before[:7]} could not be read"))
         elif not listed:
             found.append((label, f"no check ran for {before[:7]}: a workflow was never triggered for it"))
-        else:
-            unfinished = sorted(entry["name"] for entry in listed
-                                if entry["bucket"] not in TERMINAL_PASS)
-            if unfinished:
-                found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+        elif unfinished := sorted(entry["name"] for entry in listed
+                                  if entry["bucket"] not in TERMINAL_PASS):
+            found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+        elif not read:
+            found.append((label, f"the check runs of {before[:7]} could not all be read"))
+        elif newest and not (newest.get("status") == "completed"
+                             and newest.get("conclusion") in campaign.PASSED):
+            found.append((label, f"not passing at {before[:7]}: {campaign.CHECK}"))
+        elif labels is None:
+            found.append((label, f"its labels could not be read, so whether it owes a "
+                                 f"{campaign.CHECK} is not known"))
+        elif owed := campaign.missing(labels, {newest["name"]} if newest else set(), before):
+            found.append((label, owed))
     return found
 
 

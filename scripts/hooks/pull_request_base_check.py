@@ -109,6 +109,9 @@ def main():
         sys.stdout.write(json.dumps({"total_count": 1, "workflow_runs": [
             {"run_number": 1, "status": "completed", "conclusion": conclusion, "head_sha": sha}]}))
         return 0
+    if argv[0] == "api" and argv[1].endswith("/check-runs?per_page=100") and "--jq" not in argv:
+        sys.stdout.write(json.dumps({"total_count": 0, "check_runs": []}))
+        return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
         number = argv[1].rsplit("/", 1)[1]
@@ -125,7 +128,8 @@ def main():
         pull = BY_NUMBER[next((token for token in argv if token.isdigit()), "1")]
         known = {"headRefOid": pull["head"]["sha"],
                  "headRefName": pull["head"]["ref"],
-                 "baseRefName": pull["base"]["ref"]}
+                 "baseRefName": pull["base"]["ref"],
+                 "labels": pull.get("labels", [])}
         asked = argv[argv.index("--json") + 1].split(",") if "--json" in argv else []
         if not asked or any(field not in known for field in asked):
             return unmodelled()

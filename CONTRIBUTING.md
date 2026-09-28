@@ -181,9 +181,12 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
-**A pull request's CI runs the campaign, and that run is the one the pull request answers to.**
-`Test ▸ mutation-plan` generates the mutants of the pull request's diff against its base, taking the
-readings `--list` takes, and stops there when there are none — because no mutable package source
+**A pull request's CI runs the campaign once review has settled, and that run is the one the pull
+request answers to.** The `Mutation campaign` workflow runs on the pull request's head when the
+`automerge` label is added, and again on each push while it is on;
+[Merging a pull request](#merging-a-pull-request) owns when it is dispatched and what a merge requires
+of it. `Mutation campaign ▸ mutation-plan` generates the mutants of the head's diff against its merge
+base with the pull request's base, taking the readings `--list` takes, and stops there when there are none — because no mutable package source
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
 something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
@@ -192,25 +195,28 @@ smaller pull requests; without one no shard would run, and the plan passes as th
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
-`Test ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
+`Mutation campaign ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
 in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
-owns. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
-they left surviving, and `Test ▸ mutation-playmode-shard` measures only those against the whole
+owns. Once every one of those jobs has passed, `Mutation campaign ▸ mutation-playmode-plan` counts
+the mutants they left surviving, and `Mutation campaign ▸ mutation-playmode-shard` measures only those
+against the whole
 PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
 pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
-EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split. `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads both passes' records
-and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split.
+`Mutation campaign ▸ mutation-verdict` reads both passes' records and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
 `--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
 unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
-files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. All five feed
-`Required checks (Unity)`, and every push to the pull request runs them again, so a review round that
-changes production code is measured by the push that carries it. Running the campaign locally is
-optional: it answers the same question before a push.
+files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. The check named
+`Mutation campaign` is the workflow's `campaign` job, which fails unless every job above passed or was
+skipped. A push to a labelled pull request runs them all again and cancels the run still measuring
+the head before it, so a review round that changes production code after the label is measured by the
+push that carries it. Running the campaign locally is optional: it answers the same question before
+a push, and before the label.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
@@ -864,11 +870,6 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
-| `Test ▸ mutation-plan` | every PR | not required | no |
-| `Test ▸ mutation-shard` | every PR | **required** (skipped if absent) | no |
-| `Test ▸ mutation-playmode-plan` | every PR | **required** (skipped if absent) | no |
-| `Test ▸ mutation-playmode-shard` | every PR | **required** (skipped if absent) | no |
-| `Test ▸ mutation-verdict` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
@@ -878,6 +879,10 @@ that does not run stays `Pending` and blocks the pull request with nothing able 
 a trigger filter, a matrix change or a rename would each cause. The aggregates carry no trigger filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
+
+The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a dispatch alone, once a
+pull request carries the `automerge` label, and no branch-protection rule requires its check.
+[Merging a pull request](#merging-a-pull-request) says what requires it instead.
 
 In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
 request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
@@ -929,27 +934,48 @@ unless a license secret is configured.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
-its head has passed or been skipped; every other pull request is merged by hand after review, with
-`settle.py merge`. The label means *merge when every check on the head has passed or been skipped*:
-add it once review has settled, and remove it to hold the pull request. Labelling takes triage access
-or above, so only an account holding that can opt a pull request in. The workflow does not create the
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once a mutation
+campaign has passed on its head and every other check there has passed or been skipped; every other
+pull request is merged by hand after review, with `settle.py merge`. The label means *review has
+settled: run the campaign, then merge when every check on the head has passed or been skipped*: add it
+once review has settled, and remove it to hold the pull request. Labelling takes triage access or
+above, so only an account holding that can opt a pull request in. The workflow does not create the
 label; it has to exist in the repository.
 
-It merges through `settle.py merge`, run from a checkout of the default branch and never of the pull
-request, so every precondition above applies, and a refusal is logged with the run still succeeding.
-It asks again about one pull request when `Test` or `Source generators` passes a run for it, when the
-label is added, when a labelled draft is marked ready for review, and when dispatched with its number
-(*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull requests carrying the label when
-either of those two passes a push run on `main`, which is what clears a red base, and when a release
+Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
+reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then dispatches
+`.github/workflows/mutation.yml` onto the head's branch where no campaign has run on that head, or
+where the newest one was cancelled, and the merge run otherwise; a failed campaign is a verdict about
+its head, which a push or a re-run of its failed jobs asks again. The campaign reads the head against
+its merge base with the pull request's base, with the licence secrets, so it is dispatched onto a
+branch of this repository only: a head on a fork gets none, and settle refuses that head. A branch
+holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
+it — and no `Test` run shares its concurrency group. A dispatch that fails fails the hand-off's check
+on the head, and names `settle.py update` for a branch that predates the workflow.
+
+`scripts/pr/campaign.py` owns what a merge requires of the campaign, and `settle.py merge`, the
+automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: the newest `Mutation
+campaign` check on the head must pass wherever one ran, and a head carrying the label must have one.
+No branch-protection rule requires that check, so an unlabelled pull request does not wait on a
+campaign. Merged by hand, it merges without one, and `settle.py merge` and the hook still refuse it
+where a campaign ran on its head and did not pass.
+
+The merge goes through `settle.py merge`, run from a checkout of the default branch and never of the
+pull request, so every precondition above applies, and a refusal is logged with the run still
+succeeding. It asks again about one pull request when `Test` or `Source generators` passes a run for
+it, when a campaign on its head passes, when a hand-off finds the campaign already run, and when
+dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull
+requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
+what clears a red base, and when a release
 dispatch of `UPM` passes, which is what clears an unpublished release. A refusal cleared by anything
 else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
 for a manual dispatch.
 
 A completed run whose head is no longer the pull request's is left to the newer head's runs, and a head
-on a fork is refused, as `settle.py` refuses one by hand. Adding the label or marking the pull request
-ready reaches a pull request based on a maintenance line only where that line holds the workflow,
-since those events run the workflow file the base branch holds; a completed run reaches it either way.
+on a fork is refused, as `settle.py` refuses one by hand. A hand-off reaches a pull request based on a
+maintenance line only where that line holds the workflow, since the events behind one run the workflow
+file the base branch holds; a completed run reaches it either way. On a line without it, a labelled
+pull request gets no campaign and so no automerge: merge it by hand, without the label.
 
 The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a
 merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the

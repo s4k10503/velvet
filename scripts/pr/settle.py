@@ -5,7 +5,7 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Eight of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Nine of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
@@ -13,7 +13,7 @@ everything wrong rather than costing a round of CI per reason.
 
 **One has no hook: a draft head**, or one whose merge state is `dirty`.
 
-Nine preconditions:
+Ten preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
@@ -39,6 +39,8 @@ Nine preconditions:
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
   owns which heads those are.
+- **A head carrying the `automerge` label must carry a mutation campaign.** `campaign.py` owns which
+  heads owe one and which of several campaigns on one head is read.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -90,6 +92,8 @@ published_check = load_published_check()
 red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
 
 long_lived = load_by_path(Path(__file__).resolve().with_name("long_lived.py"), "long_lived")
+
+campaign = load_by_path(Path(__file__).resolve().with_name("campaign.py"), "campaign")
 
 # The three files this writes and two hooks read; watcher_state.py owns their format.
 watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
@@ -203,7 +207,7 @@ def head_sha(project, number):
 
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
-PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork")
+PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork labels")
 
 
 def pull_request(project, number):
@@ -223,8 +227,10 @@ def pull_request(project, number):
     base = payload.get("base") or {}
     home = ((head.get("repo") or {}).get("full_name") or "")
     base_repository = ((base.get("repo") or {}).get("full_name") or "")
+    labels = frozenset(label.get("name") for label in payload.get("labels") or []
+                       if isinstance(label, dict))
     return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
-                       payload.get("mergeable_state") or "", home != base_repository)
+                       payload.get("mergeable_state") or "", home != base_repository, labels)
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -272,6 +278,7 @@ def check_results(runs, statuses):
     reported = statuses.get("statuses", [])
     whole_page(runs, listed, "check runs")
     whole_page(statuses, reported, "commit statuses")
+    listed = campaign.newest(listed)
     results = [{"name": run.get("name", ""),
                 "bucket": "pending" if run.get("status") != "completed"
                 else _BUCKET.get(run.get("conclusion") or "", "fail")}
@@ -325,7 +332,7 @@ def contains_commit(project, branch, sha):
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
-                 long_lived_head):
+                 long_lived_head, owed_campaign):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -333,7 +340,8 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     none either: a caller that stopped supplying it would read as a green base. It holds the base's
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
-    for the reason `unpublished_release` gives.
+    for the reason `unpublished_release` gives, and neither does `owed_campaign`, the reason
+    `campaign.missing` gives or None.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -367,6 +375,8 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append("still pending at {}: {}".format(after[:7], ", ".join(sorted(unfinished))))
     if failed:
         reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
+    if owed_campaign:
+        reasons.append(owed_campaign)
 
     for failing in failing_runs:
         reasons.append(f"origin/{base}'s last {failing.workflow} push run failed at "
@@ -462,7 +472,10 @@ def blocking_reasons(project, number, base=None, states=None):
                                  fork=before.fork,
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
-                                 long_lived_head=long_lived_head),
+                                 long_lived_head=long_lived_head,
+                                 owed_campaign=campaign.missing(
+                                     before.labels, {entry["name"] for entry in results},
+                                     before.sha)),
                     after, before.branch, results, target)
 
 

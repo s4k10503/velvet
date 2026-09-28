@@ -119,6 +119,42 @@ class ResolverTests(unittest.TestCase):
         # Assert
         self.assertEqual(done.stdout, "sha={}\n".format(repository.cut))
 
+    def test_Given_ADispatchNamingABase_When_Resolved_Then_ItNamesTheHeadsMergeBaseWithOriginsCopy(self):
+        # Arrange — origin's copy has moved past the cut, so its tip is not the answer, and the
+        # checkout is the head itself, as mutation.yml's is.
+        repository = self.repository
+        repository.git("update-ref", "refs/remotes/origin/main", repository.moved)
+        repository.git("checkout", "-q", "--detach", repository.head)
+
+        # Act
+        done = repository.resolve("workflow_dispatch", {"inputs": {"base": "main"}})
+
+        # Assert
+        self.assertEqual(done.stdout, "sha={}\n".format(repository.cut))
+
+    def test_Given_ADispatchNamingABaseOriginHasNot_When_Resolved_Then_ItRefusesNamingIt(self):
+        # Arrange
+        repository = self.repository
+
+        # Act
+        done = repository.resolve("workflow_dispatch", {"inputs": {"base": "2.x"}})
+
+        # Assert — the branch named in the refusal, so a script that failed to run at all is not one.
+        self.assertEqual((done.returncode != 0, "origin/2.x" in done.stderr), (True, True))
+
+    # GREEN_ON_BASE(characterization): a dispatch naming no base reads against nothing on both sides.
+    # That is Test's own dispatch, which a default filling in a branch would start reading.
+    def test_Given_ADispatchNamingNoBase_When_Resolved_Then_ItNamesNothing(self):
+        # Arrange
+        repository = self.repository
+        repository.git("update-ref", "refs/remotes/origin/main", repository.moved)
+
+        # Act
+        done = repository.resolve("workflow_dispatch", {"inputs": {}})
+
+        # Assert
+        self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
+
     def test_Given_APushEvent_When_Resolved_Then_ItNamesNothing(self):
         # Arrange
         repository = self.repository

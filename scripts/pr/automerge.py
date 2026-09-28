@@ -2,11 +2,13 @@
 """Merge a pull request labelled `automerge` through `settle.py merge`, from a workflow.
 
 `.github/workflows/automerge.yml` runs this from a checkout of the default branch, never of the
-pull request. Settle decides the merge; what this adds is which pull request to ask it about. A
-refusal is an ordinary outcome here — CONTRIBUTING.md's "Merging a pull request" section says what
-asks again — so it exits 0, where a reading that failed or a hand-off run that never finished exits 1.
+pull request. Settle decides the merge; what this adds is which pull request to ask it about, and,
+handed a pull_request_target event, what the labelled head is waiting on: `campaign.py`'s workflow
+where the head has no campaign, and the merge run otherwise. A refusal is an ordinary outcome
+here — CONTRIBUTING.md's "Merging a pull request" section says what asks again — so it exits 0,
+where a reading or a dispatch that failed, or a hand-off run that never finished, exits 1.
 
-Run: python3 scripts/pr/automerge.py                      (the workflow_run event GitHub hands a job)
+Run: python3 scripts/pr/automerge.py                      (the event GitHub hands a job)
      python3 scripts/pr/automerge.py --number <n> [--after-run <run id>]
 """
 
@@ -17,8 +19,6 @@ import os
 import sys
 import time
 from pathlib import Path
-
-LABEL = "automerge"
 
 # CONTRIBUTING.md's continuous-integration section owns why this is not the workflow's own token.
 TOKEN = "GH_TOKEN"
@@ -36,6 +36,10 @@ def load_settle():
 
 
 settle = load_settle()
+
+LABEL = settle.campaign.LABEL
+
+MERGE_WORKFLOW = "automerge.yml"
 
 
 # The workflows automerge.yml subscribes to, by the `name:` each declares. test_automerge.py fails
@@ -122,6 +126,44 @@ def settle_one(project, number, tested=None):
               f"request\" section says what asks again.")
 
 
+def dispatch(project, workflow, ref, **inputs):
+    """Starts `workflow` on `ref` with `inputs`, raising settle's RuntimeError when gh refuses."""
+    fields = [argument for name, value in inputs.items() for argument in ("-f", f"{name}={value}")]
+    settle.gh("workflow", "run", workflow, "--repo", settle.repository(project), "--ref", ref,
+              *fields)
+
+
+def hand_off(project, number, run_id):
+    """Dispatches what a labelled pull request's head waits on, and says which.
+
+    A head on another repository gets nothing: a dispatch names a branch of this repository, which
+    that head's branch name does not address, and settle refuses that head anyway. `run_id` is this run's own, which the merge run
+    waits out for the reason `wait_for_run` gives.
+    """
+    pull = settle.rest_json(f"repos/{settle.repository(project)}/pulls/{number}")
+    head, base = pull.get("head") or {}, pull.get("base") or {}
+    reason = pull_skip_reason(pull)
+    if not reason and ((head.get("repo") or {}).get("full_name")
+                       != (base.get("repo") or {}).get("full_name")):
+        reason = "its head is on another repository, which no campaign is dispatched onto"
+    if reason:
+        print(f"PR#{number} left alone: {reason}")
+        return
+    if settle.campaign.dispatch_owed(settle.checks(project, head["sha"])):
+        try:
+            dispatch(project, settle.campaign.WORKFLOW, head["ref"], base=base["ref"],
+                     number=number)
+        except RuntimeError as error:
+            raise RuntimeError(f"{error}. If {head['ref']} predates {settle.campaign.WORKFLOW}, "
+                               f"take the base in with `settle.py update`")
+        print(f"PR#{number}: a campaign is dispatched onto {head['ref']}, whose run asks for the "
+              f"merge once it passes")
+        return
+    dispatch(project, MERGE_WORKFLOW, base["repo"]["default_branch"], number=number,
+             after_run=run_id)
+    print(f"PR#{number}: {head['sha'][:7]} has its campaign, so the merge run is dispatched")
+
+
 def list_open_pulls(project):
     return settle.rest_json(f"repos/{settle.repository(project)}/pulls?state=open&per_page=100")
 
@@ -181,7 +223,15 @@ def main(argv=None, environ=None):
         numbers, tested = [args.number], None
     else:
         path = args.event or environ.get("GITHUB_EVENT_PATH")
-        numbers, tested = numbers_from_event(project, json.loads(Path(path).read_text()))
+        event = json.loads(Path(path).read_text())
+        if "pull_request" in event:
+            try:
+                hand_off(project, event["pull_request"]["number"], environ.get("GITHUB_RUN_ID", ""))
+            except RuntimeError as error:
+                print(f"::error::PR#{event['pull_request']['number']}: {error}")
+                return 1
+            return 0
+        numbers, tested = numbers_from_event(project, event)
 
     failed = False
     for number in numbers:

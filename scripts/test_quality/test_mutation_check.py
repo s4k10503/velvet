@@ -4453,7 +4453,7 @@ class ShardCeilingTests(unittest.TestCase):
 
     def fits(self, platform):
         job, slowest, setup = self.COSTS[platform]
-        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
@@ -4477,7 +4477,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_TheVerdictJob_When_ItsCampaignIsRead_Then_ItDecidesOverBothPasses(self):
         # Arrange — without the three, the verdict is the EditMode pass's alone, and every mutant only a
         # PlayMode fixture kills reads as a survivor.
-        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         job = workflow.partition("\n  mutation-verdict:")[2].partition("\n\n  # ---")[0]
         step = job.partition("mutation_check.py")[2].partition("| tee")[0]
 
@@ -4490,7 +4490,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_ThePlanStep_When_ItsCeilingStatusIsRead_Then_ItIsTheOneThePlanExits(self):
         # Arrange — the step lets the ceiling through without a licence by this number, and a copy
         # drifting from the script's either fails every such fork or lets another refusal through.
-        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         job = workflow.partition("\n  mutation-plan:")[2].partition("\n  mutation-shard:")[0]
 
         # Act
