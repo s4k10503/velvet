@@ -110,8 +110,9 @@ namespace Velvet.Tests
         }
 
         // Reads what `panel` holds focused on two consecutive frames once the pull-back tick has had its
-        // frame, so two scopes pulling focus back from each other every tick fail the comparison instead of
-        // matching it by phase. readings[0] is left to the arrangement's own reading.
+        // frame. A reading at a frame boundary cannot see a fight whose two sides both land within one frame,
+        // as two panels' pull-back ticks do; the two-trees case counts landings for that. readings[0] is left
+        // to the arrangement's own reading.
         private static IEnumerator ReadTwoSettledFrames(VisualElement onPanel, Focusable[] readings)
         {
             yield return null;
@@ -357,16 +358,21 @@ namespace Velvet.Tests
             yield return null;
             yield return null;
             var b1 = OtherRoot.Q<VisualElement>("b1");
+            var a1 = Main("a1");
             var readings = new Focusable[3];
             readings[0] = FocusAndRead(b1);
+            var landingsOnTheOlder = 0;
+            a1.RegisterCallback<FocusInEvent>(_ => landingsOnTheOlder++);
 
             // Act
             b1.Blur();
-            Main("a1").Focus();
+            a1.Focus();
             yield return ReadTwoSettledFrames(b1, readings);
 
-            // Assert
-            Assert.That(readings, Is.EqualTo(new Focusable[] { b1, b1, b1 }));
+            // Assert — the one landing is the move itself; a pull-back fight adds one every frame.
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOnTheOlder),
+                Is.EqualTo(((Focusable)b1, (Focusable)b1, (Focusable)b1, 1)));
         }
     }
 }
