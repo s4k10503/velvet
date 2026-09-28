@@ -181,6 +181,7 @@ b2dc4e1fc262	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhou
 b3b8add8a240	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 b4d06c13361b	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b4ea0c6ca69d	Runtime/Styling/StyleStructuralVariantClass.cs,Runtime/Styling/StyleVariantClass.cs
+b7aa73950c22	Runtime/Reconciler/FiberNodeFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 b7d1b2a93e98	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 b8fec61b1274	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b96e63847524	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs

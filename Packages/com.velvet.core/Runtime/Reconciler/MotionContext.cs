@@ -16,37 +16,30 @@ namespace Velvet
     {
         public static readonly ComponentContext<string> ActiveLabel = ComponentContext<string>.Create(null);
 
-        // The active staggerChildren/delayChildren orchestration for the current label-propagation subtree,
-        // established by the nearest ancestor Motion whose active label just changed THIS render and whose own
-        // Transition declares StaggerChildrenSec / DelayChildrenSec / a non-Together When. Pushed alongside
-        // ActiveLabel by FiberNodePatcher.PatchMotion. Null (the default, and the overwhelming common case) means
-        // no orchestration is active — a Motion that declares none of those knobs costs nothing beyond the
-        // ordinary label push. Flows THROUGH an inheriting descendant (no own Animate) that declares no
-        // orchestration of its own, so a grandchild keeps claiming from the SAME ancestor sequence; a descendant
-        // with its own explicit Animate breaks the chain (pushes null) since it is no longer driven by this
-        // propagation. See MotionOrchestrationFrame for the per-child delay computation.
+        // The initial label a descendant Motion inheriting ActiveLabel mounts from, pushed and popped with it.
+        public static readonly ComponentContext<string> InitialLabel = ComponentContext<string>.Create(null);
+
+        // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
+        // while that Motion's label changes this render or its mount enter plays. Pushed alongside ActiveLabel by
+        // FiberNodePatcher.PatchMotion and FiberNodeFactory.CreateForMotionNode; null (the default) means no
+        // orchestration is active. FiberNodePatcher.ResolveChildOrchestration owns which frame each Motion hands
+        // its children.
         public static readonly ComponentContext<MotionOrchestrationFrame> Orchestration =
             ComponentContext<MotionOrchestrationFrame>.Create(null);
     }
 
-    // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration when a Motion's active label
-    // just changed and its own Transition declares StaggerChildrenSec / DelayChildrenSec / a non-Together When.
+    // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration (see its doc).
     // A reference type (not a struct) so the child-index counter mutates in place as siblings are visited, in
     // document order, during the same reconcile pass — ComponentContextStack.Get unboxes a COPY of a struct on
-    // every read, which would reset the counter for each sibling instead of advancing it. Pushed once per
-    // label-changing render and popped when that render's subtree walk unwinds (see FiberNodePatcher.PatchMotion),
-    // so an instance never survives past the render that created it.
+    // every read, which would reset the counter for each sibling instead of advancing it. Popped when the
+    // subtree walk of the render that pushed it unwinds, so an instance never survives past that render.
     internal sealed class MotionOrchestrationFrame
     {
         private readonly float _delayChildrenSec;
         private readonly float _staggerChildrenSec;
         // Extra delay (seconds) folded into EVERY claim from this frame, on top of delayChildren +
-        // index*staggerChildren — see FiberNodePatcher.ResolveChildOrchestration for the two contributions:
-        // this Motion's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren (inheriting
-        // descendants wait for the parent's own swap to finish, not just start), PLUS — when this Motion is
-        // itself an inheriting descendant claiming a delay from a FURTHER-OUT orchestration — that claimed
-        // delay, so a claim from this frame is measured from render-commit time (when the whole chain actually
-        // started), not from when this Motion's own already-delayed swap begins.
+        // index*staggerChildren — see FiberNodePatcher.ResolveChildOrchestration for its contributions, which
+        // measure a claim from render-commit time rather than from when the Motion's own delayed swap begins.
         private readonly float _baseDelaySec;
         private int _nextChildIndex;
 

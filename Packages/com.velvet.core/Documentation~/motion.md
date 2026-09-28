@@ -36,9 +36,9 @@ A pose is a *class delta*: classes present in the resting variant and absent fro
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
 **Label inheritance (Framer's variant propagation):** a Motion with no `animate` of its own
-follows the nearest ancestor Motion's active label. A coordinator can therefore flip one label
-and drive a whole subtree of inheriting children — that is also what orchestration staggers
-(below).
+follows the nearest ancestor Motion's active label, and takes that ancestor's `initial` label with it
+unless it names its own. A coordinator can therefore flip one label and drive a whole subtree of
+inheriting children — that is also what orchestration staggers (below).
 
 ## Enter on mount (`initial` → `animate`)
 
@@ -47,10 +47,12 @@ enter — **standalone, no `AnimatePresence` required** (Framer parity: `initial
 on any `motion.*` element). The element mounts showing `variants[initial]`, then transitions to
 `variants[animate]` and rests there.
 
-- An *inherited* label does not drive a standalone enter: the Motion needs its own `animate`
-  (a warning explains this at mount time otherwise).
-- A classless `initial` pose is not resolvable: nothing plays and the element rests at
-  `variants[animate]` from the start. *Transition semantics* below carries that rule.
+- An inherited label drives the enter too: a Motion with no `animate` of its own mounts at its own
+  pose for the inherited `initial` label and enters to its pose for the inherited `animate` one. One
+  mounting with an entering parent enters in the slot the parent's transition orchestrates for it (see
+  *Orchestration*); one mounting under a parent already mounted enters on its own.
+- An `initial` pose applying no class starts the enter from the Motion's own classes, the way a
+  Framer `initial` naming no value starts each value from the one it already has.
 - Inside `AnimatePresence`, first-mount enters are controlled by the presence instead:
   `V.AnimatePresence(initial: false, …)` suppresses them on the initial mount, like Framer's
   `<AnimatePresence initial={false}>`.
@@ -83,9 +85,9 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
   declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
   the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers
-  its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`: each
-  inheriting child whose exit plays takes the next slot, in the order the children sit in the
-  element tree. The children of an inner `V.AnimatePresence` are that presence's, as in Framer
+  its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`,
+  numbered as *Orchestration* below numbers a label change, except that a child naming an `exit` of
+  its own takes no slot. The children of an inner `V.AnimatePresence` are that presence's, as in Framer
   without `propagate`. `initial: false` suppresses the mount enter of the Motions the presence's
   first render creates, other than those inside a `V.Portal`, which mount after that render.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
@@ -95,6 +97,7 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no
   pose plays the classic exit instead.
+- An `exit` on a Motion outside every `V.AnimatePresence` plays nothing, as in Framer.
 - A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
   throws `ArgumentOutOfRangeException`, naming the parameter.
 
@@ -113,8 +116,8 @@ keeps its original paint order: a survivor that reflows into the ghost's rect dr
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
 
 A parent Motion whose transition declares orchestration knobs staggers its **inheriting**
-children (children with no `animate` of their own) whenever its propagated label changes — no
-`AnimatePresence` boundary required. "Its transition" is the one resolved for the pose it is
+children (children with no `animate` of their own) whenever its propagated label changes or its
+mount enter plays — no `AnimatePresence` boundary required. "Its transition" is the one resolved for the pose it is
 swapping into (see *Transition semantics* below):
 
 ```csharp
@@ -134,8 +137,11 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
   `DelaySec + DurationSec` span.
 - `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
   back to `Together`.
-- The stagger counter runs in **tree order across the orchestrator's whole subtree** (a
-  documented deviation from Framer, which numbers each parent's children independently).
+- Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
+  with variants of its own starts its children with it and numbers them from zero, while a Motion
+  with neither variants nor an `animate` of its own passes its parent's numbering through to the
+  children below it. Every inheriting child with variants takes a slot, whether or not the label
+  changes its pose.
 - `V.AnimatePresence(staggerSec: …, delayChildrenSec: …, staggerDirection: …)` provides the
   presence-side equivalent for enter/exit plays — the same stagger/delay knobs, scoped to a
   list of children entering or exiting under one presence boundary.
@@ -170,8 +176,8 @@ new StyleTransitionConfig
 Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"translate"`,
 `"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config.
 Completion is sized off the **slowest** overridden property, so a long override finishes instead
-of being snapped when the top-level duration elapses. Overrides apply on the scheduler-driven
-paths (enters / exits); they are not read by plain label-swap patches.
+of being snapped when the top-level duration elapses. A `Tween` reads them on every variant swap:
+mount enters, label changes and exits.
 
 ## Springs
 
@@ -441,9 +447,8 @@ behind. Framer expresses the same thing as a `transition` key inside a variant o
 `exit`.
 
 A destination pose applying no class still supplies its own timing, at a mount enter, a label change
-and a removal alike. Whether there is a mount enter
-to time at all is a separate rule, and it reads the pose the enter starts from: a `variants[initial]`
-applying no class declines the enter, and the element rests at `variants[animate]` from the start.
+and a removal alike, and an enter whose `variants[initial]` applies no class starts from the Motion's
+own classes.
 
 So slow in against fast out is one declaration:
 

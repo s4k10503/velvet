@@ -1530,6 +1530,9 @@ namespace Velvet
         // inner presence answers for its own children.
         internal bool PresenceSuppressesInitial;
 
+        // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
+        internal float PresenceAnchorEnterDelaySec;
+
         // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
         internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);
 

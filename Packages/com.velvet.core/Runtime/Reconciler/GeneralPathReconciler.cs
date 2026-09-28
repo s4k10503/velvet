@@ -1690,7 +1690,8 @@ namespace Velvet
         // One Motion's exit, returning 1 when it plays, and what it hands its descendants in place of
         // inheritedExit and frame. A Motion with no animate of its own exits to the inherited label unless it
         // names an exit itself, the way an animate label propagates, and one with its own animate hands down
-        // only its own exit. One that plays an exit to an inherited label claims the frame's next slot.
+        // only its own exit. A variant child exiting to an inherited label claims the frame's next slot, whether or
+        // not it plays an exit.
         private int CollectOwnExit(
             VisualElement element,
             MotionNode motion,
@@ -1700,7 +1701,9 @@ namespace Velvet
         {
             var label = motion.Exit ?? (motion.Animate == null ? inheritedExit : null);
             StyleTransitionConfig? exitTransition = null;
-            var claimSec = 0f;
+            var claimSec = motion.Exit == null && MotionVariantResolver.IsVariantChild(motion) && frame != null
+                ? frame.ClaimNextChildDelaySec()
+                : 0f;
             var plays = 0;
             if (label != null)
             {
@@ -1712,7 +1715,6 @@ namespace Velvet
                     : motion.Exit != null ? motion.Transition : null;
                 if (exitTransition?.HasExitAnimation == true)
                 {
-                    if (motion.Exit == null && frame != null) claimSec = frame.ClaimNextChildDelaySec();
                     if (!ReferenceEquals(motion, walk.Anchor))
                     {
                         plays = 1;
@@ -1977,13 +1979,7 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var site = new PresenceChildSite
-            {
-                Walk = walk,
-                Position = pass.Position,
-                State = state,
-                SuppressInitial = pass.FirstRender && !presence.Initial,
-            };
+            var site = LiveEntrySite(in pass);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
@@ -2042,6 +2038,17 @@ namespace Velvet
             pass.NextCommitted.Add((key, node));
             pass.Tally.VisualIndex++;
         }
+
+        // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in.
+        private static PresenceChildSite LiveEntrySite(in PresenceExpansion pass)
+            => new()
+            {
+                Walk = pass.Walk,
+                Position = pass.Position,
+                State = pass.State,
+                SuppressInitial = pass.FirstRender && !pass.Presence.Initial,
+                AnchorEnterDelaySec = pass.Presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count),
+            };
 
         // The re-entry replaces the ghost's node in the committed set. The OLD node was kept alive only by
         // presence bookkeeping (a ghost is never part of the boundary's own render output), so this
@@ -2497,9 +2504,11 @@ namespace Velvet
             var previousAnchor = _ctx.PresenceAnchorMotion;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousSuppressInitial = _ctx.PresenceSuppressesInitial;
+            var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             _ctx.PresenceAnchorMotion = anchorMotion;
             _ctx.PresenceAnchorMotionElement = null;
             _ctx.PresenceSuppressesInitial = site.SuppressInitial;
+            _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
             try
             {
                 var emitted = EmitPresenceChild(site.Walk, node, key, site.Position, site.State);
@@ -2511,6 +2520,7 @@ namespace Velvet
                 _ctx.PresenceAnchorMotion = previousAnchor;
                 _ctx.PresenceAnchorMotionElement = previousAnchorElement;
                 _ctx.PresenceSuppressesInitial = previousSuppressInitial;
+                _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
             }
         }
 
@@ -2522,6 +2532,7 @@ namespace Velvet
             internal WalkPosition Position { get; init; }
             internal ReconcilerContext.PresenceBoundaryState? State { get; init; }
             internal bool SuppressInitial { get; init; }
+            internal float AnchorEnterDelaySec { get; init; }
         }
 
         // Records the top-level elements this emission of key placed as the key's roots. An element an inner
@@ -2556,30 +2567,36 @@ namespace Velvet
         // Resolves the from/to class arrays for an `initial` variant enter: fromClasses =
         // variants[Initial], toClasses = variants[Animate]. Returns false (no
         // variant-initial enter; caller falls back to the classic transition) unless the Motion sets its own
-        // Initial + Animate + Variants and the initial label maps to a non-empty class string. Internal (not
-        // private): FiberNodeFactory calls this too, to play the same variant enter on a standalone Motion
-        // (outside any AnimatePresence) at element-creation time.
+        // Initial + Animate + Variants, the initial label names a pose, and the enter has a transition. A pose applying no class starts the
+        // enter from the Motion's own classes, as a Framer `initial` naming no value starts each animated value
+        // from the one it already has. Internal (not private): FiberNodeFactory calls this too, to play the same
+        // variant enter on a standalone Motion (outside any AnimatePresence) at element-creation time.
         // transition is what the enter plays on: the TARGET variant's own (variants[Animate]) when it declares
         // one, else the Motion's — the enter's destination pose is what an enter's timing belongs to, the same
-        // way the exit resolution below reads variants[Exit] rather than the resting pose it leaves. Null only
-        // where neither carries one, which leaves the caller nothing to play.
+        // way the exit resolution below reads variants[Exit] rather than the resting pose it leaves.
         internal static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses,
             out string[]? toClasses, out StyleTransitionConfig? transition)
+            => TryResolveVariantEnter(motion, motion?.Initial, motion?.Animate, out fromClasses, out toClasses,
+                out transition);
+
+        // TryResolveVariantInitial on the labels a Motion resolves, own or inherited.
+        internal static bool TryResolveVariantEnter(MotionNode? motion, string? initialLabel, string? animateLabel,
+            out string[]? fromClasses, out string[]? toClasses, out StyleTransitionConfig? transition)
         {
             fromClasses = null;
             toClasses = null;
             transition = null;
-            if (motion?.Initial == null || motion.Animate == null || motion.Variants == null
-                || !motion.Variants.TryGetValue(motion.Initial, out var from) || string.IsNullOrEmpty(from.ClassName))
+            if (initialLabel == null || animateLabel == null || motion?.Variants == null
+                || !motion.Variants.TryGetValue(initialLabel, out var from))
             {
                 return false;
             }
 
-            motion.Variants.TryGetValue(motion.Animate, out var to);
+            motion.Variants.TryGetValue(animateLabel, out var to);
             fromClasses = V.ParseClassNames(from.ClassName);
             toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
             transition = to.Transition ?? motion.Transition;
-            return true;
+            return transition != null;
         }
 
         // PlayPresenceEnter's gate reads this rather than the Motion's own transition because that gate

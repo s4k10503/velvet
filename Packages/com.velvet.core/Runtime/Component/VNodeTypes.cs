@@ -442,9 +442,8 @@ namespace Velvet
     /// Container node that manages mount / unmount animations of its children.
     /// When keyed children become null, it does not delete them immediately and retains them until the exit
     /// animation completes.
-    /// Children should preferably be MotionNode. Non-MotionNode children (e.g. ElementNode) also work as
-    /// transition-less (immediate deletion), but a Debug.LogWarning is emitted because they are not animation
-    /// targets. TextNode is skipped without a warning.
+    /// A child of any node type is kept while the exits of the Motions under it play, however deep they sit;
+    /// the Exits section of Documentation~/motion.md owns which Motions play one.
     /// Note: FragmentNode cannot be included directly as a child (it is not expanded). Use MotionNode or a direct
     /// VNode.
     /// Children without a key receive a position-based automatic key, so reordering can cause unintended

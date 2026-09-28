@@ -404,6 +404,14 @@ namespace Velvet
             };
             motionProvider.PushContext(stack);
             walk.Pushed.Add(motionProvider);
+            var initialProvider = new ContextProviderNode<string>
+            {
+                Context = MotionContext.InitialLabel,
+                Value = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel)),
+                Children = System.Array.Empty<VNode>(),
+            };
+            initialProvider.PushContext(stack);
+            walk.Pushed.Add(initialProvider);
             if (motion.Children is { Length: > 0 })
             {
                 if (PushEnclosingProviders(motion.Children, FiberKeying.WalkRoot, in walk))
@@ -411,8 +419,12 @@ namespace Velvet
                     return true;
                 }
             }
+            initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            walk.Pushed.RemoveAt(walk.Pushed.Count - 1);
+            // MUTANT_SURVIVES(equivalent): left listed, the two entries are popped a second time by Unwind, after
+            // the render. Each pop takes the top of its own context's stack, and the isolated render that pushes a
+            // spine starts from a cursor with nothing on it, so the extra pops only empty those two stacks early.
+            walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
             return false;
         }
 
