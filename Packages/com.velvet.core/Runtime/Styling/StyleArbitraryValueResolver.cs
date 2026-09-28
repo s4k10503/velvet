@@ -936,6 +936,25 @@ namespace Velvet
             }
         }
 
+        // The form of ReapplyLayeredValues above for the properties writing one of longhands, for a driver that
+        // hands back some of its slots and keeps writing the rest, which a whole-map pass would take back for a
+        // frame.
+        internal static void ReapplyLayeredValues(VisualElement element, StyleLonghandSet longhands)
+        {
+            if (element == null || !s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            foreach (var property in map.Keys)
+            {
+                if (property != ArbitraryProperty.FilterCustom && !IsFilter(property)
+                    && StyleArbitraryLonghands.Of(property).Overlaps(longhands))
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+        }
+
         // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
         // form of ReapplyLayeredValues above.
         //

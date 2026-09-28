@@ -486,13 +486,20 @@ namespace Velvet
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
             // variant classes — an explicit pair (MotionAppliedClassSet), not something re-derived from the
             // merged array's tail by position (see ResolveApplied's own doc for why that would be fragile).
-            var hasPreviousApplied = _ctx.MotionAppliedClasses.TryGetValue(element, out var previousApplied);
-            var appliedOld = hasPreviousApplied ? previousApplied.Merged : oldNode.ClassNames;
-            var oldVariantClasses = hasPreviousApplied ? previousApplied.VariantClasses : Array.Empty<string>();
+            var previous = RestingClassSet(element, oldNode.ClassNames);
             var variantApplied = newVariantClasses.Length > 0;
             // Decided before the class-driven sync rather than beside the play below, because a tween swap
-            // changes what that sync may write (ResolveInlineHold).
-            var playedTransition = ResolvePlayedSwap(element, swapTransition, oldVariantClasses, newVariantClasses);
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
+                newVariantClasses);
+            var old = OldSet(previous, newVariantClasses);
+            var appliedOld = old.Merged;
+            var oldVariantClasses = old.VariantClasses;
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition);
+            }
             var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
                 new MotionAppliedClassSet(appliedOld, oldVariantClasses),
                 new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
@@ -500,7 +507,8 @@ namespace Velvet
             // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
             if (variantApplied)
             {
-                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses);
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
+                    old.Carried);
             }
             else
             {
@@ -604,6 +612,8 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew);
             }
+            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
+                new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion never renders skew (the animation node never attaches a sheared
@@ -630,11 +640,76 @@ namespace Velvet
             }
         }
 
+        // A play that moves classes puts its pose's inline-resolved tokens on the class list, and the class sync
+        // writes them as inline style without touching that list, so a label change whose swap moves none leaves
+        // the old pose's there. A spring or bezier settle re-applies what the list names
+        // (ReapplyMotionOwnedInlineValues), so each one comes off here, except one for a property the new applied
+        // set leaves unnamed while a spring or bezier still drives it: that play's settle re-applying it is what
+        // ends the property at the play's target (MotionZeroDurationLandingTests). It is carried instead, so the
+        // next label change diffs it and its layer away as the old pose's (MotionAppliedClassSet.Carried).
+        private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
+            string[] oldVariantClasses, MotionAppliedClassSet next)
+        {
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition))
+            {
+                return;
+            }
+            bool? driving = null;
+            StyleLonghandSet? written = null;
+            List<string>? carried = null;
+            foreach (var cls in oldVariantClasses)
+            {
+                if (!IsInlineResolved(cls) || Array.IndexOf(next.Merged, cls) >= 0)
+                {
+                    continue;
+                }
+                driving ??= _ctx.StyleAnimationScheduler.IsDriving(element);
+                written ??= LonghandsOf(next.Merged);
+                if (driving.Value && !LonghandsOf(new[] { cls }).Overlaps(written.Value))
+                {
+                    (carried ??= new List<string>()).Add(cls);
+                    continue;
+                }
+                element.RemoveFromClassList(cls);
+            }
+            if (carried != null)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(next.Merged, next.VariantClasses,
+                    carried.ToArray());
+            }
+        }
+
+        // The set a patch diffs from: on a label change, with the classes the element was left resting at counted as
+        // the old pose's, else as stored, still carrying them.
+        private static MotionAppliedClassSet OldSet(MotionAppliedClassSet previous, string[] newVariantClasses)
+            => SequenceEqual(previous.VariantClasses, newVariantClasses)
+                ? previous
+                : new MotionAppliedClassSet(Concat(previous.Carried, previous.Merged),
+                    Concat(previous.Carried, previous.VariantClasses));
+
+        private static string[] Concat(string[] first, string[] second)
+        {
+            var joined = new string[first.Length + second.Length];
+            first.CopyTo(joined, 0);
+            second.CopyTo(joined, first.Length);
+            return joined;
+        }
+
+        // A class's parsed value where the resolver parses one, else the class itself, so two spellings of one
+        // value (translate-x-4, translate-x-[16px]) share a key.
+        internal static string ValueKey(string rawCls)
+            => TryGetInlineResolvedCore(rawCls, out var core, out var important)
+                && StyleArbitraryValueResolver.TryParse(core, out var style)
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Color}"
+                    + $"|{(style.Custom == null ? string.Empty : rawCls)}"
+                : rawCls;
+
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
             string[] oldVariantClasses, string[] newVariantClasses)
-            => swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
-                && !SequenceEqual(oldVariantClasses, newVariantClasses)
-                ? swapTransition
+            // A label change with no transition lands like one on StyleTransitionConfig.None, so a play still running
+            // on the element is handled the same way under both.
+            => !_ctx.StyleAnimationScheduler.IsExiting(element) && !SequenceEqual(oldVariantClasses, newVariantClasses)
+                ? swapTransition ?? StyleTransitionConfig.None
                 : null;
 
         // The class sets the class-driven sync diffs this render, and the onSwap that writes what it holds back.
@@ -1346,6 +1421,30 @@ namespace Velvet
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
         }
+
+        // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
+        // property, else the USS rule of a utility that carries no gate.
+        internal static StyleLonghandSet LonghandsOf(string[] classes)
+        {
+            var longhands = StyleLonghandSet.Empty;
+            foreach (var rawCls in classes)
+            {
+                if (TryGetInlineResolvedCore(rawCls, out var core, out _))
+                {
+                    if (StyleArbitraryValueResolver.TryParse(core, out var style))
+                    {
+                        longhands = longhands.Union(StyleArbitraryLonghands.Of(style.Property));
+                    }
+                }
+                else if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
+                {
+                    longhands = longhands.Union(rule.Properties);
+                }
+            }
+            return longhands;
+        }
+
+        internal static bool IsInlineResolved(string rawCls) => TryGetInlineResolvedCore(rawCls, out _, out _);
 
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {
