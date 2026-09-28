@@ -294,7 +294,7 @@
 [Velvet] method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]?
 [Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
 [Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
-[Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object?[]?): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
+[Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Boolean, System.Boolean): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]]): Velvet.RouteBlockerState
@@ -451,6 +451,7 @@
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Fragment(Velvet.VNode?[]): Velvet.FragmentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
 [Velvet] method Velvet.V.Image(System.String?, System.String?, System.String?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.IntegerField(System.String?, System.Nullable`1[System.Int32], System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
@@ -534,9 +535,13 @@
 [Velvet] method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
 [Velvet] method Velvet.VelvetTask+Awaiter`1[T].GetResult(): T
 [Velvet] method Velvet.VelvetTask+Awaiter`1[T].OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask+SuppressThrowingAwaitable+Awaiter.GetResult(): Velvet.VelvetTaskStatus
+[Velvet] method Velvet.VelvetTask+SuppressThrowingAwaitable+Awaiter.OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask+SuppressThrowingAwaitable.GetAwaiter(): Velvet.VelvetTask+SuppressThrowingAwaitable+Awaiter
 [Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.GetResult(): System.Void
 [Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.OnCompleted(System.Action): System.Void
 [Velvet] method Velvet.VelvetTask+SwitchToMainThreadAwaitable.GetAwaiter(): Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter
+[Velvet] method Velvet.VelvetTask.AsTask(): System.Threading.Tasks.Task
 [Velvet] method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
 [Velvet] method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
@@ -544,6 +549,8 @@
 [Velvet] method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
 [Velvet] method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
 [Velvet] method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.Preserve(): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
 [Velvet] method Velvet.VelvetTask.SwitchToMainThread(): Velvet.VelvetTask+SwitchToMainThreadAwaitable
 [Velvet] method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
 [Velvet] method Velvet.VelvetTask.WhenAll(Velvet.VelvetTask[]): Velvet.VelvetTask
@@ -586,8 +593,11 @@
 [Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompleted(Velvet.VelvetTaskStatus): System.Boolean
 [Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompletedSuccessfully(Velvet.VelvetTaskStatus): System.Boolean
 [Velvet] method Velvet.VelvetTaskStatusExtensions.IsFaulted(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTask`1[T].AsTask(): System.Threading.Tasks.Task`1[T]
 [Velvet] method Velvet.VelvetTask`1[T].FromResult(T): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask`1[T].GetAwaiter(): Velvet.VelvetTask+Awaiter`1[T~]
+[Velvet] method Velvet.VelvetTask`1[T].Preserve(): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask`1[T].SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
@@ -940,6 +950,7 @@
 [Velvet] property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
 [Velvet] property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
 [Velvet] property Velvet.VelvetTask+Awaiter`1[T].IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask+SuppressThrowingAwaitable+Awaiter.IsCompleted: System.Boolean
 [Velvet] property Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter.IsCompleted: System.Boolean
 [Velvet] property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
 [Velvet] property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
@@ -1132,6 +1143,8 @@
 [Velvet] type Velvet.VelvetTask
 [Velvet] type Velvet.VelvetTask+Awaiter
 [Velvet] type Velvet.VelvetTask+Awaiter`1[T]
+[Velvet] type Velvet.VelvetTask+SuppressThrowingAwaitable
+[Velvet] type Velvet.VelvetTask+SuppressThrowingAwaitable+Awaiter
 [Velvet] type Velvet.VelvetTask+SwitchToMainThreadAwaitable
 [Velvet] type Velvet.VelvetTask+SwitchToMainThreadAwaitable+Awaiter
 [Velvet] type Velvet.VelvetTaskCompletionSource

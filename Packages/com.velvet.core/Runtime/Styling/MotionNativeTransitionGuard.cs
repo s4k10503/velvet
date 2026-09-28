@@ -99,7 +99,7 @@ namespace Velvet
             var held = HoldsAForeignValue(element) && element.style.transitionProperty.value != null;
             if (held)
             {
-                ExcludeFromHeldList(element, drivenSlots);
+                ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
             }
             if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -130,7 +130,7 @@ namespace Velvet
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
-            ExcludeFromHeldList(element, drivenSlots);
+            ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
             if (drivenSlots == MotionTransitionSlots.None
                 || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -334,14 +334,13 @@ namespace Velvet
             return names;
         }
 
-        // Rewrites the held transition-property list without the longhands drivenSlots covers — an `all` entry
+        // Rewrites the held transition-property list without the driven longhands — an `all` entry
         // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
         // since those pair with transition-property by position. The expansion never names `filter`: under the
         // `all` it replaces StyleFilterTransitionDriver stands down, and a list naming filter hands a filter
         // change to that driver instead.
-        private static void ExcludeFromHeldList(VisualElement element, MotionTransitionSlots drivenSlots)
+        internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
-            var driven = LonghandsOf(drivenSlots);
             var held = element.style.transitionProperty.value;
             if (held == null)
             {

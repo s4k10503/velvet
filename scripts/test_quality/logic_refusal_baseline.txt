@@ -19,7 +19,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs	7
 Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberKeying.cs	1
-Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs	10
+Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs	11
 Packages/com.velvet.core/Runtime/Reconciler/FiberOutletScope.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs	1
@@ -33,7 +33,8 @@ Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
 Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	12
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	11
+Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	1
+Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	12
 Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs	1

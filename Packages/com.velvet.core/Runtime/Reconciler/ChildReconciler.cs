@@ -245,13 +245,14 @@ namespace Velvet
                     // Fast path: the container is a flat list of host leaves (no ComponentNode /
                     // ContextProviderNode / FragmentNode / SuspenseNode / MemoNode / null). This
                     // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
-                    // path is selected if either side carries a key (unifying keyed/unkeyed transitions).
+                    // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
+                    // or an old leaf's slot is not its flat index.
                     _general.RunOrphanEffectCleanups(oldFibers, newFibers);
                     var newNodes = newChildren ?? Array.Empty<VNode>();
                     // Null where the old side needed no expansion; OldKey says what that stands for.
                     var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
                     if (_keying.HasAnyKey(newNodes)
-                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.HasAnyKey(scopedOldKeys)))
+                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.AnyKeyOffItsFlatIndex(scopedOldKeys)))
                     {
                         ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
                     }
@@ -431,7 +432,8 @@ namespace Velvet
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 try
                 {
-                    Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
+                    Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
+                        slotStart: slotStart);
                 }
                 finally
                 {
