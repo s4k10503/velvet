@@ -310,12 +310,18 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 ```
 
 - Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
-  layout rect (position and/or size) different from the rect the SAME id last settled at, it
-  tweens from the old rect to the new one — FLIP: the old rect is captured, layout settles at the
+  layout box (position and/or size) different from the box the SAME id stood at, it
+  tweens from the old box to the new one — FLIP: the old box is captured, layout settles at the
   new one, an inverse inline transform is applied immediately, then it springs back to zero —
-  instead of jump-cutting.
+  instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
+  placed apart tween across the distance between them; within one parent, the rect relative to it is
+  compared, so a Motion nested in a moving one tweens only its own move inside it. An outer Motion's
+  change of size is not accounted for in an inner one's start.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
-  the id, not the physical element, is what's tracked. Two Motions in the same tree must never
+  the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
+  scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
+  discrete event flushes, however many components they re-render: once an element has left the tree,
+  its id hands nothing to a Motion that mounts under it in a later batch, which appears in place. Two Motions in the same tree must never
   share a live `layoutId` simultaneously — the second one to patch silently steals the
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
@@ -326,7 +332,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   Motion declares no `Transition`.
 - **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
   averages the two axis scale factors rather than distorting the element on two independent axes
-  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y.
+  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y. The scale holds the
+  element's transform origin still (its centre unless an `origin-*` class or style moves it), and the translate
+  places the element so that it starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
