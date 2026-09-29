@@ -702,16 +702,16 @@ namespace Velvet
         public HashSet<string> LayoutIdSnapshots { get; } = new();
 
         // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
-        // tweens from, which a descendant's settle reads too. A registered callback, so it is removed
-        // explicitly at teardown like LayoutIdTicks below rather than through _pureElementSideTables.
+        // tweens from. A registered callback, so it is removed explicitly at teardown like
+        // LayoutIdProjections below rather than through _pureElementSideTables.
         public Dictionary<VisualElement, LayoutIdPendingSettle> LayoutIdPendingSettles { get; } = new();
 
-        // The recurring physics tick for an in-flight layoutId FLIP tween, keyed by the animating
-        // element. Owns a real scheduled resource (unlike ElementToLayoutId above), so it is deliberately
-        // NOT enrolled in _pureElementSideTables — MotionLayoutIdDriver.CancelForTeardown pauses and
-        // removes it explicitly, mirroring StyleAnimationScheduler's own spring-tick teardown for the
-        // variant enter/exit case.
-        public Dictionary<VisualElement, (IVisualElementScheduledItem Tick, MotionSpringState State)> LayoutIdTicks { get; } = new();
+        // The layoutId Motions whose inline translate and scale MotionLayoutIdDriver currently writes, and
+        // the per-panel frame that steps and writes them, keyed by the panel's visual tree. An element's
+        // entry is removed by MotionLayoutIdDriver.CancelForTeardown; a frame pauses itself once its panel
+        // has none left.
+        public Dictionary<VisualElement, LayoutIdProjection> LayoutIdProjections { get; } = new();
+        public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdFrames { get; } = new();
 
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted

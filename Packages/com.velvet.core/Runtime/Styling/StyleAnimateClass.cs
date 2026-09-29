@@ -20,12 +20,11 @@ namespace Velvet
         Shimmer,
         // Rotates the hue 0..360 over the loop via the hue-rotate filter — the element's colors cycle in place.
         Hue,
-        // Oscillates opacity between full and half over the loop (a smooth ease) — the attention / skeleton
-        // pulse. Geometry-free, so it works on any element; compose with a colour cycle for a glowing pulse.
+        // Oscillates opacity between full and half over the loop — the attention / skeleton pulse.
+        // Geometry-free, so it works on any element; compose with a colour cycle for a glowing pulse.
         Pulse,
         // Rotates a full turn over the loop, linearly — the loading spinner. Owns the rotate slot on the terms
-        // Hue owns the filter slot. The one combination it cannot serve is a Motion rotate channel on the same
-        // element: both write the slot every frame, so the result is whichever wrote last, not a blend.
+        // Hue owns the filter slot.
         Spin,
     }
 
