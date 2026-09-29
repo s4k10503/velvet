@@ -71,8 +71,8 @@ namespace Velvet
                 return;
             }
 
-            // A filter function carries at most 4 parameters (a fixed buffer that throws past its cap), so
-            // a definition declaring more could never compose — fail at the API boundary instead.
+            // A filter function carries at most 4 parameters (CustomFilterRegistryTests pins the engine's cap),
+            // so a definition declaring more could never compose — fail at the API boundary instead.
             if (definition.parameters != null && definition.parameters.Length > 4)
             {
                 Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": it declares {definition.parameters.Length} parameters, but a filter function supports at most 4.");

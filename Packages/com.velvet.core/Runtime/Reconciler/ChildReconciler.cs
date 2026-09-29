@@ -508,6 +508,7 @@ namespace Velvet
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
             }
             var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(placeholder, target);
             var children = layerPortal.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
                 layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
@@ -520,6 +521,7 @@ namespace Velvet
             var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
             _ctx.WorldSpaceBindings[placeholder] = record;
             var target = record.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(placeholder, target);
             var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
                 worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
@@ -532,20 +534,14 @@ namespace Velvet
             // The target was resolved (non-null) at enqueue: the create path never queues a registry
             // portal without one, and an element-valued portal arrives already holding its container.
             var children = samePanelPortal.Children ?? Array.Empty<VNode>();
-            // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
-            // guarded by SamePanelPortalBridges (see its own comment for why the guard
-            // lives here rather than at a single creation call site — unlike a layer/
-            // world-space host, a same-panel target is an ordinary, already-existing
-            // element with no one-time "just created it" moment to hook). Never attached
-            // from FiberPortalRegistry.Register itself: that registry is a bare global
+            // Same-panel synthetic-bubbling bridge: attached here, at resolution, ONCE per resolved target
+            // through BindPortalTarget's guard — unlike a layer/world-space host, a same-panel target is an
+            // ordinary, already-existing element with no one-time "just created it" moment to hook. Never
+            // attached from FiberPortalRegistry.Register itself: that registry is a bare global
             // static with no ReconcilerContext to guard duplicate attaches with or later
             // dispose the bridge through.
             var samePanelTarget = target!;
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(samePanelTarget))
-            {
-                _ctx.SamePanelPortalBridges[samePanelTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(samePanelTarget, _ctx);
-            }
+            _ctx.BindPortalTarget(samePanelTarget);
             return (samePanelTarget, children);
         }
 
