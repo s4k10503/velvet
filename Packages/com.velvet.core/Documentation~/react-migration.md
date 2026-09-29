@@ -130,7 +130,7 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
-- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()`, which logs it with `Debug.LogException`; an `OperationCanceledException` from the handler is not logged, since `.Forget()` reports no cancellation. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
 ### 1-3. State Management (React + Zustand)
 
@@ -223,13 +223,13 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | React (JSX) | Velvet | Notes |
 |-------------|--------|------|
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
-| `<span>` | `V.Div()` | No span-equivalent element. Substitute a generic `VisualElement` |
+| `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
 | `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
-| `<>{children}</>` | `V.Fragment(children)` | No shorthand `<>` syntax |
+| `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
 `V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
 null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
@@ -246,8 +246,9 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 
 | React | Velvet | Notes |
 |-------|--------|------|
-| `{cond && <X/>}` | `V.When(cond, () => V.X())` | There is no JS truthy evaluation, so use an explicit factory function. For what the returned `null` costs the siblings after it, see [what a position is](#what-a-position-is) |
-| `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | A dedicated API that enforces `key` |
+| `{cond && <X/>}` | `cond ? V.X() : null` or `V.When(cond, () => V.X())` | `null` is the "render nothing" child, and it holds its slot — see [what a position is](#what-a-position-is). `V.When` takes a factory that runs only while `cond` holds |
+| `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | Gives each node the selector's key |
+| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index |
 
 ### 2-3. Components
 
@@ -281,13 +282,13 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 >
 > Within one container the position is the slot a child is written at, and a child that renders nothing occupies its own: `cond ? V.Component(Row) : null` unmounts that one instance and leaves the components after it on the slots they already held. A slot whose component changes is a remount rather than a re-bind, so two unkeyed siblings swapping places both start over. The elements that component's output emitted go with it: `cond ? V.Component(Row) : V.Component(Counter)` builds the elements `Counter` renders instead of patching `Row`'s into them, so nothing `Row` rendered there is left behind. The `V.Fragment`s and `V.Provider`s a component is written under inside that container count toward its slot, keyed or not, so one keyed component under two sibling wrappers is two instances, and moving it from one wrapper into another is a remount, as in React.
 >
-> A component keeps the elements it rendered wherever its siblings move it, as in React: a keyed component that a reorder or an inserted sibling moves takes its elements to its new slot, whether it is written into an element, under a `V.Fragment` or at the root, and what it rendered into them or into its `V.Portal` keeps its state. An unkeyed element is matched by its position in the output of the component that renders it, counted from where that output begins, so what that component's own siblings render does not shift it, while a change in how many elements a component written earlier in that output renders does, as a `null` does below; React gives each of those one slot, and keeps the element. A keyed `V.Fragment` a component returns as its whole output keeps its key, so changing that key remounts what the Fragment holds, as in React; an unkeyed one is the component's output itself.
+> A component keeps the elements it rendered wherever its siblings move it, as in React: a keyed component that a reorder or an inserted sibling moves takes its elements to its new slot, whether it is written into an element, under a `V.Fragment` or at the root, and what it rendered into them or into its `V.Portal` keeps its state. An unkeyed element is matched by the index it is written at in the output of the component that renders it — among the children of the `V.Fragment`, `V.Provider` or other wrapper it is written under there, if any — as in React. What that component's siblings render does not move it; nor does a sibling written before it in that output turning to `null`, or a `V.Fragment` or component written there rendering more or fewer elements. A keyed `V.Fragment` a component returns as its whole output keeps its key, so changing that key remounts what the Fragment holds, as in React; an unkeyed one is the component's output itself. Likewise an unkeyed `V.Fragment` that is an element's, a `V.Motion`'s, a `V.Portal`'s or a `V.WorldSpace`'s only child stands for that parent's children, as React unwraps an unkeyed top-level Fragment under any parent; one written among siblings takes one slot, so moving an unkeyed element into or out of it is a remount.
 >
 > An element's `key:` is compared with the other elements its own component renders into the container, not with a sibling component's: two components that each render an element keyed `"title"` into one container keep both elements across a re-render, as in React.
 >
 > A `V.Memoized`'s dependency-cache entry belongs to the same kind of position: the component whose output holds the memo, the `V.Portal` it is written under if there is one, the element the memo's output lands in, and its slot there — counted through the `V.Fragment`s, `V.Provider`s and other wrappers that enclose it inside that element and that output, so wrapping a memo in a `V.Fragment` gives it a new slot. Two containers each holding a memo at their first child cache separately, as do two components that each memoize their own first child into one container. An explicit `key:` stands in for the memo's own index and nothing above it: it keeps the entry across a reorder of the siblings it is written beside, and two `V.ListFragment`s keep apart the memos they each key alike. What the memo renders is placed the same way: under a keyed memo it keeps its state across that reorder, and under an unkeyed one it is placed by the memo's slot, so after a reorder a keyed component there remounts and an unkeyed one takes over the state of whatever held that slot. The entry goes when Velvet tears down that component, that Portal or that element — a Portal moving its children to another element included — so a memo written into a replaced container, or held by a component that remounts, computes again. When recomputation reuses a node from the prior result, the current cached tree keeps that node’s properties and children intact.
 >
-> Sibling **elements** are matched by position too, but a `null` among unkeyed ones does shift the ones after it. In `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper is patched onto the element the departing one left, and the component inside it re-binds to that element's instance — the state of the pair's first `Row`, under the second one's props. A `key:` on those wrappers matches each with itself and keeps the pairing right.
+> Sibling **elements** are matched by position the same way, a `null` among them holding its slot: in `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper keeps its own element and the `Row` inside it keeps its own state, keyed or not.
 
 ### 2-4. Context
 
@@ -653,11 +654,11 @@ const button = cva("btn rounded-full font-bold", {
 | Styling convention (no new USS) | Strictly utility-first; creating new `.uss` files is prohibited |
 | Component declaration style | Functional only (a static method annotated with `[Component]`). Equivalent to React's functional components; class components are not adopted |
 
-### APIs Out of Scope for This Migration Guide (to be documented separately)
+### APIs Out of Scope for This Migration Guide (documented separately)
 
-The following domains are out of scope for this migration guide and are intended to be covered in separate documents:
+The following domains are out of scope for this migration guide and are covered in separate documents:
 
-- Layout features such as virtual scroll (`V.VirtualList`, not yet documented separately) and Portal (equivalent to React Window / Portal — see [portals.md](portals.md))
+- Layout features such as virtual scroll (`V.VirtualList`, equivalent to react-window — see [virtual-list.md](virtual-list.md)) and Portal (see [portals.md](portals.md))
 - Animation features (equivalent to Framer Motion — see [motion.md](motion.md))
 - Routing features (equivalent to React Router — see [routing.md](routing.md), and [routing-blockers.md](routing-blockers.md) for navigation blocking)
 
@@ -669,4 +670,4 @@ Since concrete API names stay in sync more easily with the implementation, refer
 
 Velvet's first principle is to **reproduce React's semantics as faithfully as possible**; "same name, different behavior" is treated as **a trap to be avoided**, and any difference discovered is resolved toward React over time. See the [package README's design philosophy](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/README.md#design-philosophy) for the full policy and the three pillars it rests on.
 
-The differences retained *within this migration guide* are the ones documented inline above, each either environment-forced (C# language constraints: PascalCase naming / no JSX / `params` limitations) or a type-safety / GC-allocation improvement scoped to the specific API being mapped — e.g. the required `keySelector` for `V.List`, or the lazy thunk in `V.When`.
+The differences this guide keeps from React are documented inline above. Where the tables list a Velvet-only addition — the `keySelector` `V.List` takes, the factory `V.When` takes — it sits beside the plain C# counterpart rather than replacing it.

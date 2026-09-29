@@ -149,8 +149,12 @@ namespace Velvet
                             Container = detachedContainer,
                             WalksCommittedTree = false,
                         };
+                        // A VirtualList item is one rendered node rather than a reconciled child array.
                         PushEnclosingProviders(
-                            detached.DescendantNodes, FiberKeying.WalkRoot, in detachedWalk,
+                            detached.RootProviderChildrenStartAtWalkRoot
+                                ? detached.DescendantNodes
+                                : FiberKeying.UnwrapLoneFragment(detached.DescendantNodes!),
+                            FiberKeying.WalkRoot, in detachedWalk,
                             detached.RootProviderChildrenStartAtWalkRoot);
                     }
                     continue;
@@ -275,7 +279,8 @@ namespace Velvet
                     // FiberStack.Current stays `ancestor`, so a Component among them is still a direct
                     // child fiber of `ancestor`.
                     if (element.Children is not { Length: > 0 }) return false;
-                    return PushEnclosingProviders(element.Children, FiberKeying.WalkRoot, in walk);
+                    return PushEnclosingProviders(
+                        FiberKeying.UnwrapLoneFragment(element.Children), FiberKeying.WalkRoot, in walk);
                 }
 
                 case AnimatePresenceNode presence:
@@ -303,10 +308,11 @@ namespace Velvet
             walk.Pushed.Add(provider);
             if (provider.Children != null)
             {
-                var providerPosition = childrenStartAtWalkRoot
-                    ? FiberKeying.WalkRoot
-                    : FiberKeying.ProviderChild(position, provider.Key, nodeIndex);
-                if (PushEnclosingProviders(provider.Children, providerPosition, in walk))
+                // Children starting at the walk root are the ones a Provider reconciled as an element reconciles.
+                var (providerChildren, providerPosition) = childrenStartAtWalkRoot
+                    ? (FiberKeying.UnwrapLoneFragment(provider.Children), FiberKeying.WalkRoot)
+                    : (provider.Children, FiberKeying.ProviderChild(position, provider.Key, nodeIndex));
+                if (PushEnclosingProviders(providerChildren, providerPosition, in walk))
                 {
                     return true;
                 }
@@ -395,7 +401,7 @@ namespace Velvet
         private static bool PushMotionSubtree(MotionNode motion, in SpineWalk walk)
         {
             var stack = walk.Stack;
-            var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
+            var motionLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
             var motionProvider = new ContextProviderNode<string>
             {
                 Context = MotionContext.ActiveLabel,
@@ -404,15 +410,25 @@ namespace Velvet
             };
             motionProvider.PushContext(stack);
             walk.Pushed.Add(motionProvider);
+            var initialProvider = new ContextProviderNode<string>
+            {
+                Context = MotionContext.InitialLabel,
+                Value = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel)),
+                Children = System.Array.Empty<VNode>(),
+            };
+            initialProvider.PushContext(stack);
+            walk.Pushed.Add(initialProvider);
             if (motion.Children is { Length: > 0 })
             {
-                if (PushEnclosingProviders(motion.Children, FiberKeying.WalkRoot, in walk))
+                if (PushEnclosingProviders(
+                        FiberKeying.UnwrapLoneFragment(motion.Children), FiberKeying.WalkRoot, in walk))
                 {
                     return true;
                 }
             }
+            initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            walk.Pushed.RemoveAt(walk.Pushed.Count - 1);
+            walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
             return false;
         }
 

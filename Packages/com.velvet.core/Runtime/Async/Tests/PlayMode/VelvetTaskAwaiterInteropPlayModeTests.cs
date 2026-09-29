@@ -50,6 +50,7 @@ namespace Velvet.Tests
             Assert.That((resumedBeforeCompletion, _resumed), Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already resumes this await on the main thread.
         [UnityTest]
         public IEnumerator Given_AsyncVelvetTaskAwaitingABclTask_When_ThatTaskCompletesOffTheMainThread_Then_ItResumesOnTheMainThread()
         {
@@ -60,12 +61,14 @@ namespace Velvet.Tests
             _completedThreadId = 0;
             AwaitBclTaskRecordingThread(gate.Task).Forget();
 
-            // Act
-            Task.Run(() =>
+            // Act — joined before counting, for the reason VelvetTaskMainThreadPlayModeTests gives.
+            var completer = new Thread(() =>
             {
                 _completedThreadId = Thread.CurrentThread.ManagedThreadId;
                 gate.SetResult(true);
             });
+            completer.Start();
+            completer.Join();
             for (var frame = 0; frame < ResumeFrameBudget && _resumedThreadId == 0; frame++)
             {
                 yield return null;
@@ -79,6 +82,7 @@ namespace Velvet.Tests
 
         // What the BCL does, not a shape to write: async.md says what code resumed there may call and
         // how it comes back.
+        // GREEN_ON_BASE(characterization): the base already leaves this continuation on the completing thread.
         [UnityTest]
         public IEnumerator Given_AsyncVelvetTaskAwaitingABclTaskWithTheSynchronizationContextSuppressed_When_ThatTaskCompletesOffTheMainThread_Then_TheContinuationDoesNotReturnToTheMainThread()
         {
@@ -89,12 +93,14 @@ namespace Velvet.Tests
             _completedThreadId = 0;
             AwaitBclTaskOffContextRecordingThread(gate.Task).Forget();
 
-            // Act
-            Task.Run(() =>
+            // Act — joined before counting, for the reason VelvetTaskMainThreadPlayModeTests gives.
+            var completer = new Thread(() =>
             {
                 _completedThreadId = Thread.CurrentThread.ManagedThreadId;
                 gate.SetResult(true);
             });
+            completer.Start();
+            completer.Join();
             for (var frame = 0; frame < ResumeFrameBudget && _resumedThreadId == 0; frame++)
             {
                 yield return null;

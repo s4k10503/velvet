@@ -6,6 +6,6 @@ namespace MyApp
     partial class Container<TKey, TValue>
     {
         private partial global::Velvet.VNode Build(int x)
-            => global::Velvet.V.Memoized(() => Build_Impl(x), x);
+            => global::Velvet.V.Memoized(() => Build_Impl(x), new object?[] { x });
     }
 }

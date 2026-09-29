@@ -56,14 +56,11 @@
  *
  * transition-property is pinned to `filter` so the scheduler-driven tween (StyleFilterTransitionDriver)
  * owns the motion outright. The inline-filter setter runs a write as an UNCANCELLABLE native animation
- * whenever the resolved transition-property covers every property, and takes a plain direct-write path
- * when it names filter; only the latter lets a per-frame tween write paint what it wrote, so leaving
- * this at the initial `all` would have each tween frame restart a native chase over the same value.
- * (What the setter actually matches the list against is `background-size` — or any shorthand covering
- * it, which `-unity-background-scale-mode` is — so that equivalence is measured on this editor rather
- * than definitional. A list naming filter AND either of those two would satisfy the tween's probe and
- * the setter's animating path at once; a list naming either WITHOUT filter animates the filter with
- * nothing in it mentioning filters.)
+ * wherever a transition runs for background-size, which `all` covers, and takes a plain direct-write
+ * path otherwise; only the latter lets a per-frame tween write paint what it wrote, so leaving this at
+ * the initial `all` would have each tween frame restart a native chase over the same value. A
+ * hand-authored list running one beside filter leaves the change to the engine: the driver stands its
+ * tween down there.
  * Pinning one property also means this class transitions ONLY filter, and it does not combine with
  * another transition-* utility: they set the same property, so the later-declared one wins outright.
  * duration-* / ease-* still override, declared later.

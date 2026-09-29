@@ -486,13 +486,20 @@ namespace Velvet
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
             // variant classes — an explicit pair (MotionAppliedClassSet), not something re-derived from the
             // merged array's tail by position (see ResolveApplied's own doc for why that would be fragile).
-            var hasPreviousApplied = _ctx.MotionAppliedClasses.TryGetValue(element, out var previousApplied);
-            var appliedOld = hasPreviousApplied ? previousApplied.Merged : oldNode.ClassNames;
-            var oldVariantClasses = hasPreviousApplied ? previousApplied.VariantClasses : Array.Empty<string>();
+            var previous = RestingClassSet(element, oldNode.ClassNames);
             var variantApplied = newVariantClasses.Length > 0;
             // Decided before the class-driven sync rather than beside the play below, because a tween swap
-            // changes what that sync may write (ResolveInlineHold).
-            var playedTransition = ResolvePlayedSwap(element, swapTransition, oldVariantClasses, newVariantClasses);
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
+                newVariantClasses);
+            var old = OldSet(previous, newVariantClasses);
+            var appliedOld = old.Merged;
+            var oldVariantClasses = old.VariantClasses;
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition);
+            }
             var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
                 new MotionAppliedClassSet(appliedOld, oldVariantClasses),
                 new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
@@ -500,7 +507,8 @@ namespace Velvet
             // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
             if (variantApplied)
             {
-                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses);
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
+                    old.Carried);
             }
             else
             {
@@ -519,7 +527,7 @@ namespace Velvet
             // does not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
             // claims from that same origin, not from render-commit time as if this node's swap were immediate.
             var extraDelaySec = 0f;
-            if (newNode.Animate == null && variantApplied && ambientOrchestration != null)
+            if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
             {
                 extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
             }
@@ -551,27 +559,16 @@ namespace Velvet
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
                     ambientOrchestration, extraDelaySec);
-                // Skip the Orchestration round-trip when this node passes the ambient frame through UNCHANGED
-                // (including the common "no orchestration anywhere in this subtree" case, both null): a
-                // descendant's Get already sees exactly ambientOrchestration without anything new pushed, so
-                // pushing then popping the identical reference back off is pure overhead.
-                var pushOrchestration = !ReferenceEquals(childOrchestration, ambientOrchestration);
-                _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
-                if (pushOrchestration)
-                {
-                    _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
-                }
+                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    childOrchestration);
                 try
                 {
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
                 {
-                    if (pushOrchestration)
-                    {
-                        _ctx.ComponentContextStack.Pop(MotionContext.Orchestration);
-                    }
-                    _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
+                    MotionContext.PopForChildren(_ctx.ComponentContextStack);
                 }
             }
             else
@@ -604,6 +601,8 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew);
             }
+            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
+                new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion never renders skew (the animation node never attaches a sheared
@@ -630,11 +629,76 @@ namespace Velvet
             }
         }
 
+        // A play that moves classes puts its pose's inline-resolved tokens on the class list, and the class sync
+        // writes them as inline style without touching that list, so a label change whose swap moves none leaves
+        // the old pose's there. A spring or bezier settle re-applies what the list names
+        // (ReapplyMotionOwnedInlineValues), so each one comes off here, except one for a property the new applied
+        // set leaves unnamed while a spring or bezier still drives it: that play's settle re-applying it is what
+        // ends the property at the play's target (MotionZeroDurationLandingTests). It is carried instead, so the
+        // next label change diffs it and its layer away as the old pose's (MotionAppliedClassSet.Carried).
+        private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
+            string[] oldVariantClasses, MotionAppliedClassSet next)
+        {
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition))
+            {
+                return;
+            }
+            bool? driving = null;
+            StyleLonghandSet? written = null;
+            List<string>? carried = null;
+            foreach (var cls in oldVariantClasses)
+            {
+                if (!IsInlineResolved(cls) || Array.IndexOf(next.Merged, cls) >= 0)
+                {
+                    continue;
+                }
+                driving ??= _ctx.StyleAnimationScheduler.IsDriving(element);
+                written ??= LonghandsOf(next.Merged);
+                if (driving.Value && !LonghandsOf(new[] { cls }).Overlaps(written.Value))
+                {
+                    (carried ??= new List<string>()).Add(cls);
+                    continue;
+                }
+                element.RemoveFromClassList(cls);
+            }
+            if (carried != null)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(next.Merged, next.VariantClasses,
+                    carried.ToArray());
+            }
+        }
+
+        // The set a patch diffs from: on a label change, with the classes the element was left resting at counted as
+        // the old pose's, else as stored, still carrying them.
+        private static MotionAppliedClassSet OldSet(MotionAppliedClassSet previous, string[] newVariantClasses)
+            => SequenceEqual(previous.VariantClasses, newVariantClasses)
+                ? previous
+                : new MotionAppliedClassSet(Concat(previous.Carried, previous.Merged),
+                    Concat(previous.Carried, previous.VariantClasses));
+
+        private static string[] Concat(string[] first, string[] second)
+        {
+            var joined = new string[first.Length + second.Length];
+            first.CopyTo(joined, 0);
+            second.CopyTo(joined, first.Length);
+            return joined;
+        }
+
+        // A class's parsed value where the resolver parses one, else the class itself, so two spellings of one
+        // value (translate-x-4, translate-x-[16px]) share a key.
+        internal static string ValueKey(string rawCls)
+            => TryGetInlineResolvedCore(rawCls, out var core, out var important)
+                && StyleArbitraryValueResolver.TryParse(core, out var style)
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Color}"
+                    + $"|{(style.Custom == null ? string.Empty : rawCls)}"
+                : rawCls;
+
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
             string[] oldVariantClasses, string[] newVariantClasses)
-            => swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
-                && !SequenceEqual(oldVariantClasses, newVariantClasses)
-                ? swapTransition
+            // A label change with no transition lands like one on StyleTransitionConfig.None, so a play still running
+            // on the element is handled the same way under both.
+            => !_ctx.StyleAnimationScheduler.IsExiting(element) && !SequenceEqual(oldVariantClasses, newVariantClasses)
+                ? swapTransition ?? StyleTransitionConfig.None
                 : null;
 
         // The class sets the class-driven sync diffs this render, and the onSwap that writes what it holds back.
@@ -835,7 +899,8 @@ namespace Velvet
             return composed.ToArray();
         }
 
-        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children.
+        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children, the way Framer
+        // Motion orchestrates each variant node's own variant children rather than every descendant.
         // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotion),
         // so a pose that carries its own transition orchestrates from the span it actually takes:
         // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
@@ -843,18 +908,17 @@ namespace Velvet
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
         //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
-        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay THIS
-        //   node itself claimed a moment ago in PatchMotion when it is, itself, an inheriting descendant of a
-        //   FURTHER-OUT orchestration. Folding extraDelaySec in regardless of When matters because this node's
+        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
+        //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
+        //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
         //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
         //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
         //   letting a grandchild start animating before its own parent does.
-        // - null when this node drives its children via its OWN explicit Animate: an ambient orchestration
-        //   meant for a sibling branch must not leak through a node that is no longer inheriting (it computes
-        //   its own child label independently of the ambient one, so it is a natural cut point).
-        // - Otherwise (a pure pass-through inheritor with no orchestration of its own) the ambient frame is
-        //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
-        //   ancestor's stagger sequence reaching its own grandchildren.
+        // - The ambient frame, UNCHANGED, through a Motion with neither variants nor a label of its own:
+        //   Framer registers the variant children under it with the variant node above it, which numbers them.
+        // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
+        //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
+        //   of its own.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
@@ -876,7 +940,13 @@ namespace Velvet
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
             }
-            return newNode.Animate != null ? null : ambientOrchestration;
+            if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
+            {
+                return ambientOrchestration;
+            }
+            // A frame with no stagger over a zero base hands each claim the zero no frame hands it, so the
+            // allocation is spared.
+            return extraDelaySec == 0f ? null : new MotionOrchestrationFrame(0f, 0f, extraDelaySec);
         }
 
         // Applies the diff for a PortalNode. Reconciles only this Portal's own slot range
@@ -987,6 +1057,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
+                VelvetStyleUtilities.SyncHost(placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1046,13 +1117,8 @@ namespace Velvet
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
-            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
-            // another Portal already bridged is not double-attached.
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
-            {
-                _ctx.SamePanelPortalBridges[resolvedTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(resolvedTarget, _ctx);
-            }
+            // synthetic-bubbling bridge gets attached.
+            _ctx.BindPortalTarget(resolvedTarget);
             return (resolvedTarget, true);
         }
 
@@ -1121,6 +1187,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
+            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
@@ -1346,6 +1413,30 @@ namespace Velvet
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
         }
+
+        // The longhands the classes write whatever state the element is in: an inline-resolved token's arbitrary
+        // property, else the USS rule of a utility that carries no gate.
+        internal static StyleLonghandSet LonghandsOf(string[] classes)
+        {
+            var longhands = StyleLonghandSet.Empty;
+            foreach (var rawCls in classes)
+            {
+                if (TryGetInlineResolvedCore(rawCls, out var core, out _))
+                {
+                    if (StyleArbitraryValueResolver.TryParse(core, out var style))
+                    {
+                        longhands = longhands.Union(StyleArbitraryLonghands.Of(style.Property));
+                    }
+                }
+                else if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
+                {
+                    longhands = longhands.Union(rule.Properties);
+                }
+            }
+            return longhands;
+        }
+
+        internal static bool IsInlineResolved(string rawCls) => TryGetInlineResolvedCore(rawCls, out _, out _);
 
         private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
         {
