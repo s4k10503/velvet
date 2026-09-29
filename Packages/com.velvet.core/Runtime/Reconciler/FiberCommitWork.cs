@@ -238,25 +238,25 @@ namespace Velvet
                 return;
             }
             var owning = OwningPortalOf(fiber, mountPoint);
-            if (owning == null)
-            {
-                // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates,
-                // and one has a MountPoint.
-                PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
-                return;
-            }
-            if (!portalState.TryGetValue(owning, out var range)
-                || !ReferenceEquals(range.Target, mountPoint))
+            var range = default(PortalSlotInfo);
+            if (owning != null && !portalState.TryGetValue(owning, out range))
             {
                 return;
             }
-            portalState[owning] = range with { SlotLength = range.SlotLength + delta };
-            PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning, range, delta);
+            if (ReferenceEquals(range.Target, mountPoint))
+            {
+                portalState[owning!] = range with { SlotLength = range.SlotLength + delta };
+                PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning!, range, delta);
+                return;
+            }
+            // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates, and
+            // one has a MountPoint.
+            PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
         }
 
-        // Follows a reconcile of a Portal target's own children, which places those rows and nothing behind
-        // them, so the change in their count moves every range on the target and the fibers mounted in those
-        // ranges here. rowsBehindBefore is PortalSlotTracker.RowsBehindRanges read before that reconcile:
+        // Follows a reconcile of a Portal target's own children, whose rows sit ahead of every range on the
+        // target, so the change in their count moves every range on it and the fibers mounted in those ranges
+        // here. rowsBehindBefore is PortalSlotTracker.RowsBehindRanges read before that reconcile:
         // measured behind the ranges rather than as a count, so that a Portal patch or a propagation nested
         // in that reconcile, which moves the ranges itself, is not counted a second time.
         internal static void FollowOwnRows(ReconcilerContext ctx, VisualElement target, int rowsBehindBefore)
@@ -272,7 +272,14 @@ namespace Velvet
             }
             foreach (var tenant in tenancy.Fibers)
             {
-                if (OwningPortalOf(tenant, target) != null) MoveTenant(tenant, delta);
+                // A fiber of the target's own rows can carry the placeholder of a Portal whose range is
+                // elsewhere; the reconcile that changed the rows placed it already.
+                var owner = OwningPortalOf(tenant, target);
+                var range = default(PortalSlotInfo);
+                if (owner != null && ctx.PortalState.TryGetValue(owner, out range) && ReferenceEquals(range.Target, target))
+                {
+                    MoveTenant(tenant, delta);
+                }
             }
         }
 

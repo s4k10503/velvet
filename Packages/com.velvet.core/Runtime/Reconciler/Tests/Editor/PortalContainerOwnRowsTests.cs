@@ -193,6 +193,49 @@ namespace Velvet.Tests
                 Is.EqualTo("c1|c2|c3|c4|c5|c6 / b1|b2|q"));
         }
 
+        [Component]
+        private static VNode ContainerInsidePortalRender()
+        {
+            var (own, setOwn) = Hooks.UseState(new[] { "a" });
+            s_setOwn = setOwn;
+            var (portalChild, setPortalChild) = Hooks.UseState("p");
+            s_setPortalChild = setPortalChild;
+            return V.Fragment(children: new VNode?[]
+            {
+                V.Div(name: "outer", refCallback: element => Register("outer", element)),
+                // The container sits in another portal's children, so the component among its own rows is
+                // reached by that portal's patch and carries that portal's placeholder.
+                V.Portal("outer", children: new VNode?[]
+                {
+                    V.Div(name: "container", refCallback: element => Register("inner", element),
+                        children: Rows(own).Append(V.Component(ComponentRowsRender, key: "rows")).ToArray()),
+                }),
+                V.Portal("inner", children: new VNode?[] { V.Div(name: portalChild) }),
+            });
+        }
+
+        [Test]
+        public void Given_AContainerInsideAnotherPortal_When_ItsOwnRowsGrowAndTheirComponentGrowsAlone_Then_BothItAndThePortalIntoTheContainerPatchTheirOwnRows()
+        {
+            // Arrange — the element rows grow first, then the component among them on its own state.
+            s_initialOwn = new[] { "f1" };
+            _mounted = V.Mount(_root, V.Component(ContainerInsidePortalRender, key: "host"));
+            Flush();
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_setComponentRows!.Invoke(new[] { "f1", "f2" });
+            Flush();
+            s_setPortalChild!.Invoke("q");
+            Flush();
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("a|b|f1|f2|q"));
+        }
+
         [Test]
         public void Given_APortalIntoARenderedContainer_When_TheContainerGainsAChildAndThePortalPatches_Then_ThePatchLandsOnThePortalsChild()
         {
