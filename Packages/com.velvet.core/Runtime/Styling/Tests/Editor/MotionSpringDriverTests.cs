@@ -280,6 +280,46 @@ namespace Velvet.Tests
             Assert.That(spring.Value, Is.EqualTo(target).Within(0.5f));
         }
 
+        // Each row is a spring released 1 from its target at 2 per second, and where it is 0.1s later: an
+        // underdamped, a critically damped and an overdamped spring, the reference values integrated
+        // numerically (RK4, 200000 steps) rather than from the closed form under test.
+        [TestCase(100.0, 10.0, 1.0, 0.766401592, -5.082686035)]
+        [TestCase(100.0, 20.0, 1.0, 0.809334771, -3.678794412)]
+        [TestCase(100.0, 125.0, 1.0, 0.943613190, -0.759773369)]
+        public void Given_ASpringReleasedWithAVelocity_When_SolvedATenthOfASecondLater_Then_ItMatchesTheIntegratedMotion(
+            double stiffness, double damping, double mass, double displacement, double velocity)
+        {
+            // Arrange
+            var spring = (stiffness, damping, mass);
+
+            // Act
+            var solved = SpringIntegrator.Solve(1.0, 2.0, 0.1, spring);
+
+            // Assert
+            Assert.That(new[] { solved.Displacement, solved.Velocity },
+                Is.EqualTo(new[] { displacement, velocity }).Within(1e-6));
+        }
+
+        [Test]
+        public void Given_AHeavilyOverdampedOpacitySpring_When_SteppedForTwentySeconds_Then_ItSettles()
+        {
+            // Arrange — damping 125 at mass 1 puts damping * dt / mass past 2 at this tick; a semi-implicit
+            // Euler step over the same 1200 ticks reaches -3e46.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 125f, mass: 1f);
+            var settled = false;
+
+            // Act
+            for (var i = 0; i < 1200 && !settled; i++)
+            {
+                settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+            }
+
+            // Assert
+            Assert.That(settled, Is.True);
+        }
+
         [Test]
         public void Given_AnUnderdampedSpring_When_SteppedTowardATarget_Then_ItOvershootsBeforeSettling()
         {
