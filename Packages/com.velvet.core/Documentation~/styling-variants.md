@@ -40,9 +40,8 @@ worth knowing, both when several variants name one such utility:
   way source order settles a tie between equal-specificity CSS rules. Only rules that actually apply
   take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
   lands on the children) rank nothing on this element, so adding one never moves what it paints.
-  A stacked variant is ranked by its own position too: `dark:hover:` layers at the stronger of its two
-  parts, which is the plain `dark:` layer, so `"dark:hover:shadow-lg dark:shadow-sm"` resolves to the
-  later-written `shadow-sm` while both are active.
+  A stacked variant is ranked by its own position too, which the precedence table below gives: so
+  `"dark:hover:shadow-lg hover:shadow-sm"` resolves to `shadow-lg` while dark and hover both hold.
 
 ## The variant set
 
@@ -153,28 +152,31 @@ the brackets.
 
 ### Precedence order
 
+A tie on one property resolves the way Tailwind's generated CSS resolves it: the rule with the higher
+specificity wins, and between rules of equal specificity the one Tailwind emits later does. A media or
+feature query adds no specificity, so `md:w-[10px] hover:w-[20px]` on a hovered element wider than `md`
+is 20 px wide; an attribute selector carries a pseudo-class's and is emitted after the states, so
+`disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves to 0.75.
+
 Lowest first. Where members of one row also rank against each other, `<` shows that order; where they
-do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 3 to 9
-keep the order Tailwind emits them in, which places every arbitrary `[&:…]:` selector after all the
-named variants: `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves
-to 0.75, and `hover:w-[20px] md:w-[10px]` on a hovered element wider than `md` to 10 px, as they do there.
+do not, each still occupies a layer of its own, so turning one off never disturbs another.
 
-| | Layer |
-|---|---|
-| 1 | The base utility |
-| 2 | `[&>*]:` — a rule the container imposes on its children |
-| 3 | Relational — the `group-*` and `peer-*` states |
-| 4 | Structural — `first:` · `last:` · `only:` · `odd:` · `even:` |
-| 5 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
-| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` < `nth-N:` / `nth-last-N:` |
-| 7 | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
-| 8 | Theme — `dark:` |
-| 9 | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
-| 10 | The important band — rows 1–9 again, one level each, for anything carrying `!` |
+| | Specificity | Layer |
+|---|---|---|
+| 1 | (0,1,0) | The base utility |
+| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
+| 3 | (0,1,0) | Theme — `dark:` |
+| 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
+| 5 | (0,2,0) | Relational — the `group-*` and `peer-*` states |
+| 6 | (0,2,0) | Structural — `first:` · `last:` · `only:` · `odd:` · `even:` |
+| 7 | (0,2,0) | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 8 | (0,2,0) | `has-[…]:` < `data-[…]:` / `aria-[…]:` < `nth-N:` / `nth-last-N:` |
+| 9 | (0,2,0) | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
+| 10 | | The important band — rows 1–9 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `dark:`
-layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
-with the stronger one; *Same family, different values* above settles such a tie.
+A **stacked** variant (`dark:hover:bg-red`) takes the specificity of its most specific part and sorts
+just after the latest-emitted part alone: `dark:hover:` outranks plain `hover:` and row 8, because
+`dark` is emitted after all of them, and ranks below row 9.
 
 ### The important modifier
 

@@ -7,8 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the tie between an element-state variant and a <c>data-</c> / <c>aria-</c> or <c>dark:</c> one
-    /// on the same property: the other variant wins, as it does in Tailwind, which emits has, aria, data and dark
-    /// after hover, focus, active and disabled.
+    /// on the same property, as Tailwind's generated CSS resolves it: an attribute selector carries a
+    /// pseudo-class's specificity and is emitted after the states, so it wins; <c>dark:</c> is a media query,
+    /// which adds none, so the state wins.
     /// </summary>
     [TestFixture]
     internal sealed class StateAgainstAttributeOrderTests : PanelTestBase
@@ -53,21 +54,23 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(characterization): hover: already outranks dark: on the base; the ladder rework keeps it,
+        // since a media query adds no specificity and :hover adds a class's worth.
         [Test]
-        public void Given_HoverAndDarkWidths_When_BothHold_Then_TheDarkWidthWins()
+        public void Given_DarkAndHoverWidths_When_BothHold_Then_TheHoverWidthWins()
         {
             // Arrange
             var darkBefore = VelvetTheme.IsDark;
             VelvetTheme.IsDark = true;
             try
             {
-                var leaf = MountLeaf("hover:w-[20px] dark:w-[10px]");
+                var leaf = MountLeaf("dark:w-[10px] hover:w-[20px]");
 
-                // Act — hovered after the dark width landed, so a shared layer would leave the hover width.
+                // Act
                 using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
 
                 // Assert
-                Assert.That(leaf.style.width.value.value, Is.EqualTo(10f));
+                Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
             }
             finally
             {

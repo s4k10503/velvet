@@ -541,7 +541,7 @@ namespace Velvet
                 if (!StackedVariantManipulators.TryGetValue(key, out var m))
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
-                    var priority = outerPriority > innerPriority ? outerPriority : innerPriority;
+                    var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
                     m = new StyleStackedVariantManipulator(this, innerKind, innerName,
                         new string?[] { leafPayload }, priority, declaration);
                     if (VariantManipulators.TryGetValue(target, out var local))

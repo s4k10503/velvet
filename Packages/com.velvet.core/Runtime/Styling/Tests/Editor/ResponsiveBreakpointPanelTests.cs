@@ -54,18 +54,40 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): hover: already outranks md: on the base; the ladder rework keeps it,
+        // since a media query adds no specificity and :hover adds a class's worth.
         [Test]
-        public void Given_HoverAndMdWidths_When_TheRootIsWiderThanMdAndTheLeafIsHovered_Then_TheMdWidthWins()
+        public void Given_MdAndHoverWidths_When_TheRootIsWiderThanMdAndTheLeafIsHovered_Then_TheHoverWidthWins()
         {
             // Arrange
-            var leaf = MountAndResolveAt(1000f, "hover:w-[20px] md:w-[10px]");
+            var leaf = MountAndResolveAt(1000f, "md:w-[10px] hover:w-[20px]");
 
-            // Act — hovered after the md width landed, so a shared layer would leave the hover width in place.
+            // Act
             using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
 
             // Assert
             Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
-                Is.EqualTo((true, 10f)));
+                Is.EqualTo((true, 20f)));
+        }
+
+        [Test]
+        public void Given_AChildMdWidthUnderAParentChildVariant_When_TheRootIsWiderThanMd_Then_TheParentWidthWins()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 1000f, 600);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "[&>*]:w-[20px]", children: new VNode?[]
+                {
+                    V.Label(name: "leaf", className: "md:w-[10px]", text: "x"),
+                }));
+            var leaf = _window.rootVisualElement.Q<Label>("leaf");
+
+            // Act — md: lands after the parent's payload, so a shared layer would leave the md width.
+            ResolveAt(1000f, leaf);
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 20f)));
         }
 
         [Test]

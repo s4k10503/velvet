@@ -6,9 +6,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies where the structural variants tie against their neighbours on the same property, in the order
-    /// Tailwind emits them: group/peer, then first/last/only/odd/even, then after data the functional nth-*, and
-    /// every arbitrary [&amp;:…]: selector after all the named variants.
+    /// Specifies where the structural and child-combinator variants tie against their neighbours on the same
+    /// property, as Tailwind's generated CSS resolves it — specificity first, then emission order: among the
+    /// pseudo-class variants group/peer come first, then first/last/only/odd/even, then after data the functional
+    /// nth-*, and an arbitrary [&amp;:…]: selector after all of them; [&amp;>*]: carries one class on the child,
+    /// so it beats the child's md:/dark: and loses to its pseudo-class variants.
     /// </summary>
     [TestFixture]
     internal sealed class StructuralTieOrderTests : PanelTestBase
@@ -41,6 +43,18 @@ namespace Velvet.Tests
             return (root.Q<VisualElement>("group"), root.Q<VisualElement>("leaf"));
         }
 
+        private (VisualElement Parent, VisualElement Leaf) MountUnderChildVariant(string parentClassName,
+            string leafClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: parentClassName, children: new VNode?[]
+                {
+                    V.Div(name: "leaf", className: leafClassName),
+                }));
+            var root = _window.rootVisualElement;
+            return (root.Q<VisualElement>("parent"), root.Q<VisualElement>("leaf"));
+        }
+
         [Test]
         public void Given_GroupHoverAndFirstWidths_When_TheGroupIsHovered_Then_TheFirstWidthWins()
         {
@@ -49,6 +63,21 @@ namespace Velvet.Tests
 
             // Act — hovered after the first width landed, so a shared layer would leave the group-hover width.
             using (var over = PointerOverEvent.GetPooled()) group.SimulateEvent(over);
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_AGroupHoverHoverStackBesidePlainHover_When_BothHold_Then_TheStackWins()
+        {
+            // Arrange — both carry hover's specificity; the stack sorts after hover alone, as Tailwind emits it,
+            // so it wins though the plain one is written later.
+            var (group, leaf) = MountFirstChild("group-hover:hover:w-[20px] hover:w-[10px]");
+
+            // Act
+            using (var overGroup = PointerOverEvent.GetPooled()) group.SimulateEvent(overGroup);
+            using (var overLeaf = PointerOverEvent.GetPooled()) leaf.SimulateEvent(overLeaf);
 
             // Assert
             Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
@@ -66,16 +95,44 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DarkAndArbitraryNthChildWidths_When_DarkTurnsOn_Then_TheArbitraryWidthWins()
+        public void Given_HoverAndArbitraryNthChildWidths_When_TheElementIsHovered_Then_TheArbitraryWidthWins()
         {
             // Arrange
-            var (_, leaf) = MountFirstChild("dark:w-[10px] [&:nth-child(1)]:w-[20px]");
+            var (_, leaf) = MountFirstChild("[&:nth-child(1)]:w-[20px] hover:w-[10px]");
 
-            // Act — dark lands after the arbitrary width, so a shared layer would leave the dark width.
+            // Act — hovered after the arbitrary width landed, so a shared layer would leave the hover width.
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_AChildDarkWidthUnderAParentChildVariant_When_DarkTurnsOn_Then_TheParentWidthWins()
+        {
+            // Arrange
+            var (_, leaf) = MountUnderChildVariant("[&>*]:w-[20px]", "dark:w-[10px]");
+
+            // Act — dark lands after the parent's payload, so a shared layer would leave the dark width.
             VelvetTheme.IsDark = true;
 
             // Assert
             Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        // GREEN_ON_BASE(characterization): the child's own hover: already outranks the container's [&>*]: on the
+        // base; the ladder rework keeps it, a pseudo-class outweighing `.x > *`.
+        [Test]
+        public void Given_AChildHoverWidthUnderAParentChildVariant_When_TheChildIsHovered_Then_TheChildWidthWins()
+        {
+            // Arrange
+            var (_, leaf) = MountUnderChildVariant("[&>*]:w-[20px]", "hover:w-[10px]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(10f));
         }
 
         [Test]

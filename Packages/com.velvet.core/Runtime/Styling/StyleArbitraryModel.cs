@@ -8,93 +8,85 @@ namespace Velvet
     // sources set the same property (e.g. w-[80px] hover:w-[200px] active:w-[100px]), the highest
     // priority wins; when it is cleared (the state turns off) the next-highest is re-applied — mirroring the
     // CSS cascade where a state rule layers over the base rather than replacing it.
+    //
+    // A priority is a specificity band and an order within it, as Tailwind's generated CSS resolves a tie:
+    // the selector with more classes wins, and between equal ones the rule emitted later does. The band is
+    // the number of class-level selectors the variant's rule carries on the element, and the order within it
+    // is ten times the variant's registration index in Tailwind's variants.ts, with every arbitrary variant
+    // after all the registered ones: a priority reads as band * 1000 + order. Band 1 is (0,1,0), where a media
+    // or feature query adds nothing to the utility's class; band 2 is (0,2,0), one pseudo-class or attribute
+    // selector on top of it. The arbitrary variants take 998, so a stacked variant's step past them (Stack)
+    // stays inside the band.
     internal static class StyleLayerPriority
     {
+        private const int Band = 1000;
+
         public const int Base = 0;
-        // [&>*]: child-combinator variant — an ambient blanket rule the PARENT imposes on every direct child.
-        // Ranked just above the base utility and below every condition the child declares itself (even mere
-        // sibling position), so the child's own layers win. A distinct priority is also required for
-        // correctness — the arbitrary-value LayerMap is a per-property SortedList set by an INDEXER, so reusing
-        // Base for a [&>*]: arbitrary payload would let a child's own base arbitrary utility and this inherited
-        // one clobber the same slot.
-        public const int ChildVariant = 5;
 
-        #region Relational
-        // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
-        // group-active) occupy separate layers — clearing one must not remove the other.
-        public const int GroupHover = 27;
-        public const int GroupFocus = 28;
-        public const int GroupActive = 29;
-        public const int PeerHover = 30;
-        public const int PeerFocus = 31;
-        public const int PeerActive = 32;
-        public const int GroupFocusWithin = 33;
-        public const int PeerFocusWithin = 34;
-        public const int PeerChecked = 35;
-        // The disabled states top the band, as disabled: tops the element-state one.
-        public const int GroupDisabled = 36;
-        public const int PeerDisabled = 37;
-        #endregion
-
-        #region Structural
-        // first:/last:/only:/odd:/even: — Tailwind registers them right after group/peer and before checked.
-        // The nth-* and arbitrary [&:…]: forms sit further up; StyleStructuralVariantClass.PriorityOf picks.
-        public const int Structural = 38;
-        #endregion
-
-        #region Element state
-        // Element-local interaction states. checked: ranks BELOW hover/focus/active on a same-property tie
-        // — the reference cascade emits checked before the interaction states, and later-emitted wins a
-        // tie — so a checked control's `checked:` value never beats a concurrent `hover:` / `focus:` /
-        // `active:` value (but still above the relational group-/peer- layers).
-        public const int Checked = 39;
-        public const int Hover = 40;
-        public const int Focus = 50;
-        public const int FocusVisible = 55;
-        public const int Active = 60;
-        // disabled: ranks above active on a same-property tie — Tailwind emits it after active.
-        public const int Disabled = 65;
-        #endregion
-
-        #region Has and Attribute
-        // has-[...] (a DESCENDANT condition) and data-[...] / aria-[...] (the element's OWN carried attribute)
-        // rank above every element state on a same-property tie: Tailwind registers has, aria and data after
-        // disabled, and their selectors carry the same specificity as a pseudo-class, so the later one wins.
-        public const int Has = 70;
-        public const int Attribute = 71;
-        // nth-N: / nth-last-N: — Tailwind registers the functional nth variants right after data.
-        public const int Nth = 72;
-        #endregion
-
-        #region Supports, Responsive and Theme
-        // Tailwind registers supports, then the breakpoints, then dark after data, and a media or feature query
-        // adds no specificity to the rule it wraps, so these rank above every layer declared before them here:
-        // md:w-[10px] beats hover:w-[20px] on a hovered element wider than md.
-        // supports-[prop:value] is STATIC in UI Toolkit (always-applied when well-formed; see
-        // StyleSupportsVariantClass), so this layer never toggles off at runtime; the priority only orders it
-        // against other layers on the same property.
-        public const int Supports = 75;
+        #region Band 1: (0,1,0)
+        // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
+        // so this layer never toggles off at runtime; the priority only orders it against other layers.
+        public const int Supports = 1580;
         // Responsive breakpoints: a larger min-width wins while active.
-        public const int ResponsiveSm = 76;
-        public const int ResponsiveMd = 77;
-        public const int ResponsiveLg = 78;
-        public const int ResponsiveXl = 79;
-        public const int Responsive2xl = 80;
-        public const int Dark = 85;
+        public const int ResponsiveSm = 1640;
+        public const int ResponsiveMd = 1641;
+        public const int ResponsiveLg = 1642;
+        public const int ResponsiveXl = 1643;
+        public const int Responsive2xl = 1644;
+        public const int Dark = 1730;
+        // [&>*]: — `.x > *` on the child, one class, emitted after every named variant: it wins over the child's
+        // base utility and its md:/dark:, and loses to any pseudo-class variant the child declares. A distinct
+        // priority is also required for correctness — the arbitrary-value LayerMap is a per-property SortedList
+        // set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would let a child's own base
+        // arbitrary utility and this inherited one clobber the same slot.
+        public const int ChildVariant = 1998;
         #endregion
 
-        #region Arbitrary selector
-        // [&:nth-child(N)]: and the other [&:…]: structural forms. Tailwind orders every arbitrary variant after
-        // all the registered ones, so this is the highest ordinary layer.
-        public const int ArbitrarySelector = 90;
+        #region Band 2: (0,2,0)
+        // group-*/peer-* get DISTINCT priorities so two on the same property (e.g. group-hover + group-active)
+        // occupy separate layers — clearing one must not remove the other. Within each, the inner state's order.
+        public const int GroupFocusWithin = 2040;
+        public const int GroupHover = 2041;
+        public const int GroupFocus = 2042;
+        public const int GroupActive = 2043;
+        public const int GroupDisabled = 2044;
+        public const int PeerChecked = 2050;
+        public const int PeerFocusWithin = 2051;
+        public const int PeerHover = 2052;
+        public const int PeerFocus = 2053;
+        public const int PeerActive = 2054;
+        public const int PeerDisabled = 2055;
+        // first:/last:/only:/odd:/even:. The nth-N: and arbitrary [&:…]: forms sit further up;
+        // StyleStructuralVariantClass.PriorityOf picks.
+        public const int Structural = 2160;
+        public const int Checked = 2280;
+        public const int Hover = 2430;
+        public const int Focus = 2440;
+        public const int FocusVisible = 2450;
+        public const int Active = 2460;
+        public const int Disabled = 2480;
+        // has-[.class]: / has-[:checked]: — `:has()` takes its argument's specificity, one class here.
+        public const int Has = 2510;
+        // aria-[…]: / data-[…]: — one attribute selector. Tailwind registers aria before data; Velvet keeps them
+        // on one layer.
+        public const int Attribute = 2530;
+        public const int Nth = 2540;
+        // [&:nth-child(N)]: and the other [&:…]: structural forms.
+        public const int ArbitrarySelector = 2998;
         #endregion
+
+        // A stacked variant (dark:hover:) carries the classes of its most specific part. Tailwind orders it by its
+        // latest-registered part and then after that part alone, hence the step past the larger order.
+        public static int Stack(int outer, int inner)
+            => System.Math.Max(outer / Band, inner / Band) * Band
+                + System.Math.Max(outer % Band, inner % Band) + 1;
 
         #region Important
         // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (ArbitrarySelector, the highest,
-        // is 90) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
-        // !w-[20px], the same way dark:w-[10px] beats w-[20px].
-        public const int Important = 100;
+        // its own variant priority, so the whole band sits above every ordinary layer while important-versus-
+        // important keeps the ordinary ladder: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
+        // w-[20px].
+        public const int Important = 10 * Band;
 
         // The layer an important payload occupies given the priority it would otherwise have had.
         public static int ImportantOf(int priority) => Important + priority;

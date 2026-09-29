@@ -133,9 +133,9 @@ namespace Velvet.Tests
         public void Given_TwoPrioritiesOfTheShadowFamily_When_TheSameStateIsReachedByEitherSignalOrder_Then_TheSameShadowPaints()
         {
             // Arrange — the oracle is the payload the precedence table elects, painted from a literal token:
-            // dark: outranks hover:, so shadow-lg is what both orders owe.
+            // hover: outranks dark:, so shadow-sm is what both orders owe.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
 
             // Act — the same two signals, in both orders.
             var hoverThenDark = BlurAfterBothLit(hoverFirst: true);
@@ -216,16 +216,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStackedVariantBesideThePlainOneItWraps_When_BothAreLit_Then_TheLaterWrittenOneWins()
+        public void Given_AStackedVariantBesideThePlainOneItWraps_When_BothAreLit_Then_TheStackedOneWins()
         {
-            // Arrange — dark:hover: layers at the stronger of its two parts, which is the plain dark: layer,
-            // so the two payloads share a layer while dark and hover are both on. They arrive from different
-            // manipulators, whose order is when each was attached; only the className can rank them, and
-            // shadow-sm is written later.
+            // Arrange — dark:hover: carries hover's specificity and sorts after plain hover:, as Tailwind emits
+            // it, so it wins while dark and hover are both on even though shadow-sm is written later.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "bg-[#FFFFFF] dark:hover:shadow-lg dark:shadow-sm");
+            var card = Mount(scope, "bg-[#FFFFFF] dark:hover:shadow-lg hover:shadow-sm");
 
             // Act
             VelvetTheme.IsDark = true;
@@ -317,12 +315,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALiteralBaseTokenReassertedByTheStrongerVariant_When_AWeakerVariantNamesTheSameFamily_Then_TheStrongerPayloadPaints()
         {
-            // Arrange — shadow-lg is declared literally AND behind dark:, with hover: naming a different
+            // Arrange — shadow-lg is declared literally AND behind hover:, with dark: naming a different
             // preset of the same family below it.
             using var oracleScope = new ReconcilerScope();
             var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
-            var card = Mount(scope, "bg-[#FFFFFF] shadow-lg hover:shadow-sm dark:shadow-lg");
+            var card = Mount(scope, "bg-[#FFFFFF] shadow-lg dark:shadow-sm hover:shadow-lg");
 
             // Act
             VelvetTheme.IsDark = true;
