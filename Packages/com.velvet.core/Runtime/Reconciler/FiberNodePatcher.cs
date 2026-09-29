@@ -2157,13 +2157,41 @@ namespace Velvet
             var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
             var disabled = ExtractVariant(classNames, StyleVariantKind.Disabled, out var disabledDecl);
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
-                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0;
+                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0
+                || StacksElementLocalInner(classNames);
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
                 new VariantOp(
                     new VariantPayloads(hover, focus, focusVisible, active, @checked, disabled),
                     new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl,
                         disabledDecl)));
+        }
+
+        // A stacked element-local inner (dark:hover:) is created when its outer gate opens and seeds itself from
+        // the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element carrying one keeps
+        // that manipulator tracking its state even with no payload of its own.
+        private static bool StacksElementLocalInner(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var className in classNames)
+            {
+                if (!StyleVariantClass.TryParse(className, out _, out var rest))
+                {
+                    continue;
+                }
+                while (StyleVariantClass.TryParse(rest, out var inner, out var next))
+                {
+                    if (StyleStackedVariantManipulator.IsElementLocalInner(inner))
+                    {
+                        return true;
+                    }
+                    rest = next;
+                }
+            }
+            return false;
         }
 
         private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)

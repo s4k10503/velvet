@@ -78,6 +78,8 @@ namespace Velvet
 
         private static StackedInnerSource SourceOf(StyleVariantKind kind) => s_sourceOf[kind];
 
+        internal static bool IsElementLocalInner(StyleVariantKind kind) => SourceOf(kind) == StackedInnerSource.ElementLocal;
+
         private static readonly VariantKindTable<StackedInnerSource> s_sourceOf = new(
             (StyleVariantKind.Hover, StackedInnerSource.ElementLocal),
             (StyleVariantKind.Focus, StackedInnerSource.ElementLocal),
