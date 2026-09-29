@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// <item>Layout and insertion effects commit bottom-up: a child's effect runs before its parent's, through
     /// any depth of single-child nesting.</item>
     /// <item>Sibling effects commit left-to-right, then the parent — on both the mount commit and the update
-    /// commit (parent re-render) path.</item>
+    /// commit (parent re-render) path, including a parent's own update flushed outside any drain.</item>
     /// <item>Disposing a mounted tree marks the root fiber disposed, so disposed-gated closures short-circuit.</item>
     /// <item>A parent re-render that changes an inline child's props runs the prior setup's cleanup then the new
     /// setup (deps changed) for layout, insertion, and passive effects; a parent re-render that leaves the
@@ -290,6 +290,41 @@ namespace Velvet.Tests
             Assume.That(idxA, Is.GreaterThanOrEqualTo(0), "Precondition: both sibling update effects ran");
             Assert.That(idxA, Is.LessThan(idxB),
                 "Left sibling A commits before right sibling B on the update-commit path");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a flushed parent's re-rendered child first already.
+        // Its commit of the parent took the whole deferred stack, the child's entry included.
+        [Test]
+        public void Given_AParentAndItsChildWithLayoutEffects_When_TheParentsOwnUpdateIsFlushed_Then_TheChildsSetupRunsFirst()
+        {
+            // Arrange — a flush outside any drain commits the parent's re-render as a commit scoped to it.
+            using var mounted = V.Mount(_root, V.Component(ScopedCommitParentRender, key: "parent"));
+            s_log.Clear();
+            s_scopedParentSet.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("child:1, parent:1"));
+        }
+
+        private static StateUpdater<int> s_scopedParentSet;
+
+        [Component]
+        private static VNode ScopedCommitParentRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_scopedParentSet = setTick;
+            Hooks.UseLayoutEffect(() => { s_log.Add("parent:" + tick); return (Action)null; }, new object[] { tick });
+            return V.Div(children: new VNode[] { V.Component(ScopedCommitChildRender, tick, key: "child") });
+        }
+
+        [Component]
+        private static VNode ScopedCommitChildRender(int tick)
+        {
+            Hooks.UseLayoutEffect(() => { s_log.Add("child:" + tick); return (Action)null; }, new object[] { tick });
+            return V.Label(text: "child");
         }
 
         #endregion

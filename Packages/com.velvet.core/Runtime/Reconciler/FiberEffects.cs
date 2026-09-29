@@ -243,7 +243,7 @@ namespace Velvet
                 var entry = popped[i];
                 // MUTANT_SURVIVES(equivalent, guard removed): a fiber no longer mounted runs nothing in a batch.
                 // Its unmount cleared its effect lists and handles, the setup pass skips it, and detached, it
-                // precedes and follows nothing, so InsertAmongPeersInTreeOrder places nothing around it.
+                // precedes and follows nothing, so InsertInTreeOrder places nothing around it.
                 if (!entry.Fiber.IsMounted) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
@@ -268,12 +268,10 @@ namespace Velvet
             // The roots and the boundaries with a report due join what was pushed at their positions in the tree:
             // a drain's roots arrive in the order it flushed them, a root can sit below another root among fibers
             // that were pushed, and a boundary that caught shows its fallback without rendering, so unless it
-            // rendered as well nothing pushed it. Every one of them is in the batch before any is placed, since
-            // where one goes depends on which of its ancestors are in the batch.
-            var joining = new List<(ComponentFiber Fiber, bool IsMount)>(roots.Count);
+            // rendered as well nothing pushed it.
             for (var i = roots.Count - 1; i >= 0; i--)
             {
-                if (pushedSet.Add(roots[i].Fiber)) joining.Add(roots[i]);
+                if (pushedSet.Add(roots[i].Fiber)) InsertInTreeOrder(deduped, roots[i]);
             }
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
@@ -283,12 +281,8 @@ namespace Velvet
                     // MUTANT_SURVIVES(equivalent, literal): the mount flag reaches nothing on this boundary.
                     // One that joins here has not rendered since its last commit, so no layout or insertion
                     // effect of its own is pending.
-                    joining.Add((reports[i].Boundary, false));
+                    InsertInTreeOrder(deduped, (reports[i].Boundary, false));
                 }
-            }
-            for (var i = 0; i < joining.Count; i++)
-            {
-                InsertAmongPeersInTreeOrder(deduped, pushedSet, joining[i]);
             }
 
             var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
@@ -297,35 +291,24 @@ namespace Velvet
             return ordered;
         }
 
-        // The post-order walk emits the fibers grouped under one nearest batch fiber in their batch order, so the
-        // entry goes ahead of the first of its peers there it precedes in the tree. What lies below it is
-        // grouped under it wherever it sits. batch already holds the entry's fiber.
-        private static void InsertAmongPeersInTreeOrder(
-            List<(ComponentFiber Fiber, bool IsMount)> deduped, HashSet<ComponentFiber> batch,
-            (ComponentFiber Fiber, bool IsMount) entry)
+        // The entry goes ahead of the first fiber it precedes in the tree. Its ancestors and descendants it
+        // precedes neither way, and the post-order walk groups each under the nearest fiber of the batch above
+        // it wherever it sits.
+        private static void InsertInTreeOrder(
+            List<(ComponentFiber Fiber, bool IsMount)> deduped, (ComponentFiber Fiber, bool IsMount) entry)
         {
-            var group = NearestAncestorIn(entry.Fiber, batch);
             var slot = deduped.Count;
             for (var i = 0; i < deduped.Count; i++)
             {
-                var peer = deduped[i].Fiber;
-                if (!ReferenceEquals(NearestAncestorIn(peer, batch), group)) continue;
-                if (!PrecedesInTreeOrder(entry.Fiber, peer)) continue;
+                if (!PrecedesInTreeOrder(entry.Fiber, deduped[i].Fiber)) continue;
                 slot = i;
                 break;
             }
             deduped.Insert(slot, entry);
         }
 
-        private static ComponentFiber? NearestAncestorIn(ComponentFiber fiber, HashSet<ComponentFiber> batch)
-        {
-            var ancestor = fiber.Parent;
-            while (ancestor != null && !batch.Contains(ancestor)) ancestor = ancestor.Parent;
-            return ancestor;
-        }
-
-        // Of two branches under one parent, the one earlier in its child list precedes. a and b are never an
-        // ancestor and its descendant here, and two fibers with no common ancestor read false.
+        // Of two branches under one parent, the one earlier in its child list precedes. A fiber and its ancestor
+        // or descendant read false both ways, as do two fibers with no common ancestor.
         private static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
         {
             for (var branchOfA = a; branchOfA.Parent != null; branchOfA = branchOfA.Parent)

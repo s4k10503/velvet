@@ -638,6 +638,26 @@ namespace Velvet.Tests
             return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
         }
 
+        [Test]
+        public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
+        {
+            // Arrange — the second boundary catches first, so its fallback is pushed ahead of the first's.
+            _mounted = V.Mount(
+                _root,
+                V.Component(NamedFallbackBoundaryPairRender, key: "pair"),
+                new MountOptions((exception, _) => s_order.Add(exception.Message)));
+            _mounted.FlushEffectsForTest();
+            s_setFirstTick.Invoke(1);
+            s_setSecondTick.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
+        }
+
         // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
         // queue that now holds them must keep the second while it delivers the first.
         [Test]
@@ -1096,6 +1116,39 @@ namespace Velvet.Tests
         {
             Hooks.UseLayoutEffect((Func<Action>)(() => throw new InvalidOperationException(message)), Array.Empty<object>());
             return V.Label(text: message);
+        }
+
+        [Component]
+        private static VNode NamedFallbackBoundaryPairRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(FirstNamedFallbackBoundaryRender, key: "first"),
+                V.Component(SecondNamedFallbackBoundaryRender, key: "second"),
+            });
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode FirstNamedFallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(NamedLayoutFallbackRender, "fallback one", key: "fallback"));
+            return V.Component(ThrowInPassiveSetupOnUpdateRender, key: "first");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode SecondNamedFallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(NamedLayoutFallbackRender, "fallback two", key: "fallback"));
+            return V.Component(ThrowInPassiveCleanupOnUpdateRender, key: "second");
+        }
+
+        [Component]
+        private static VNode NamedLayoutFallbackRender(string name)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_order.Add(name);
+                return null;
+            }), Array.Empty<object>());
+            return V.Label(text: name);
         }
 
         [Component]
