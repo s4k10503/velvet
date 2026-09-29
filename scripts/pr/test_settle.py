@@ -41,7 +41,7 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=()):
+            runs_failed=(), required=(), owed_campaign=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -50,7 +50,7 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
-                               required=required)
+                               required=required, owed_campaign=owed_campaign)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -204,7 +204,8 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork runs state jobs")
+    "Fabricated",
+    "sha after branch base draft merge_state results holds held fork labels runs state jobs")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -231,6 +232,20 @@ STUCK = {"id": 31128456870, "name": "Source generators", "workflow_id": 2, "run_
 COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed"},
                   {"name": "Required checks (generators)", "status": "completed"}]
 
+# The label that owes a head a campaign.
+AUTOMERGE = "automerge"
+
+CAMPAIGN = ".github/workflows/mutation.yml"
+
+
+def campaign_run(number, conclusion, path=CAMPAIGN, status="completed", suite=None):
+    """One entry of the Actions runs listing for a head."""
+    return {"run_number": number, "path": path, "status": status, "conclusion": conclusion,
+            "check_suite_id": suite if suite is not None else number}
+
+
+CAMPAIGN_PASSED = [campaign_run(1, "success")]
+
 # The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
 # for anything else, so a case posing another base reads it green.
 RED = "1.x"
@@ -244,13 +259,14 @@ REQUIRED = ("Required checks (Unity)",)
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None, runs=(), state="open",
-              jobs=None):
+              held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
+              state="open", jobs=None):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork, runs=runs, state=state, jobs=jobs or {})
+                      held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
+                      jobs=jobs or {})
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -287,8 +303,8 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("pull_request", lambda _project, number: types.SimpleNamespace(
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
-                fork=states[number].fork, state=states[number].state)),
-            ("checks", lambda _project, sha: by_sha[sha].results),
+                fork=states[number].fork, labels=states[number].labels, state=states[number].state)),
+            ("checks", lambda _project, sha, *_: by_sha[sha].results),
             ("head_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
                 run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
@@ -300,8 +316,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 {state.branch for state in states.values() if state.held}, base, red,
                 releasing, required)),
         ):
-            # `create` so the readings still answer on a tree without one of these names, where the
-            # alternative is a case that stops before it disagrees.
+            # `create`, so the table is posed to a settle that has not got a reading as well.
             stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         yield stack
 
@@ -397,8 +412,11 @@ class ReadinessTests(unittest.TestCase):
         13: fabricate(13, base=RED, holds=(BROKE,), results=SUITES_SKIPPED),
         14: fabricate(14, base=RELEASING),
         15: fabricate(15, base=RELEASING, holds=(RELEASED,)),
-        16: fabricate(16, runs=(TEST_PENDING,)),
-        17: fabricate(17, results=GENERATOR_CHECKS),
+        16: fabricate(16, labels=(AUTOMERGE,)),
+        17: fabricate(17, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED),
+        18: fabricate(18, runs=[campaign_run(1, None, status="in_progress")]),
+        19: fabricate(19, runs=(TEST_PENDING,)),
+        20: fabricate(20, results=GENERATOR_CHECKS),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -1001,6 +1019,178 @@ class RetirementTests(unittest.TestCase):
         self.assertEqual((set(answers), watched.code), ({True}, 0))
 
 
+@contextlib.contextmanager
+def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
+    """A head read over REST: its check runs, its workflow runs, and nothing else blocking it.
+
+    Patched at `rest_json`, so `checks` and `head_runs` both run.
+    """
+    state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
+                                  merge_state="clean", fork=False, labels=frozenset(labels),
+                                  state="open")
+    answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
+               "/status": NO_STATUSES,
+               "/actions/runs": {"total_count": len(workflow_runs), "workflow_runs": workflow_runs}}
+    with contextlib.ExitStack() as stack:
+        for name, answer in (
+            ("repository", lambda *_: "owner/name"),
+            ("pull_request", lambda *_: state),
+            ("head_sha", lambda *_: GREEN),
+            ("project_state", lambda _project, base: base_state(set(), base)),
+            ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
+        ):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        yield stack
+
+
+def check_run(name, conclusion, suite):
+    return {"name": name, "status": "completed", "conclusion": conclusion,
+            "check_suite": {"id": suite}}
+
+
+class CampaignMergeTests(unittest.TestCase):
+    """What a campaign on a head, or a label owing one, does to its merge."""
+
+    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — every check passed, so the missing campaign is the only thing left to refuse on.
+        states = {1: fabricate(1, labels=(AUTOMERGE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [
+            "it carries the automerge label and no mutation.yml run has measured 0000000: a "
+            "hand-off dispatches one for a branch of this repository whose base holds "
+            "automerge.yml, and for any other the label comes off before a merge by hand"])
+
+    # GREEN_ON_BASE(characterization): a labelled head whose campaign passed merges on both sides.
+    # It is the side the refusal above must not take, which a rule ignoring the run would.
+    def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ASkippedCampaignCheckOfAnotherWorkflow_When_TheMergeIsDecided_Then_ItIsNoCampaign(self):
+        # Arrange — the job test.yml carried before the campaign moved, skipped on a run of its own.
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Mutation campaign", "skipped", 7)]
+        runs = [campaign_run(40, "success", path=".github/workflows/test.yml", suite=7)]
+
+        # Act
+        with rest_readings(checks, runs):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual([reason.partition(":")[0] for reason in decided],
+                         ["it carries the automerge label and no mutation.yml run has measured "
+                          "aaaaaaa"])
+
+    def test_Given_ACancelledCampaignAndANewerOneThatPassed_When_Decided_Then_TheCancelledChecksAreNotRead(self):
+        # Arrange — the older campaign's aggregate failed on the cancel, in a suite of its own.
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Mutation campaign", "failure", 8),
+                  check_run("Mutation campaign (EditMode shard 0)", "cancelled", 8),
+                  check_run("Mutation campaign", "success", 9)]
+        runs = [campaign_run(2, "success", suite=9), campaign_run(1, "cancelled", suite=8)]
+
+        # Act
+        with rest_readings(checks, runs):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_APassedCampaignAndANewerOneCancelled_When_Decided_Then_ALabelledHeadIsRefused(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "success"),
+                                                            campaign_run(2, "cancelled")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
+                                   "again dispatches another"])
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — a campaign that ran has to have passed, whether or not one was owed.
+        states = {1: fabricate(1, runs=[campaign_run(1, "failure")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignWasCancelled_When_Decided_Then_NothingBlocksIt(self):
+        # Arrange — a cancelled campaign measured nothing, and nothing owed one.
+        states = {1: fabricate(1, runs=[campaign_run(1, "cancelled")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert — the reading rides along, since a settle that never asks reports nothing as well.
+        self.assertEqual((decided, settle.campaign.state(states[1].runs)), ([], "cancelled"))
+
+    def test_Given_ALabelledHeadWhoseCampaignConcludedSkipped_When_Decided_Then_ItIsRefused(self):
+        # Arrange — `success` alone is a pass, and a skipped run measured nothing.
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "skipped")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
+
+    # GREEN_ON_BASE(characterization): a labelled fork is refused for its repository alone on both sides.
+    # No campaign is dispatched onto it, so a reason saying one would be is not added beside it.
+    def test_Given_ALabelledForkWithNoCampaign_When_TheMergeIsDecided_Then_OnlyTheForkIsNamed(self):
+        # Arrange
+        states = {1: fabricate(1, fork=True, labels=(AUTOMERGE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its head is on another repository: this settles branches on origin"])
+
+    def test_Given_ACampaignQueuedWithNoCheckYet_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — a dispatched run carries no check until its first job starts.
+        states = {1: fabricate(1, runs=[campaign_run(1, None, status="queued")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 has not finished"])
+
+    # GREEN_ON_BASE(characterization): the watcher prints every finished check on both sides.
+    # A loop waiting on the campaign reads this line, which a filter over the output would drop.
+    def test_Given_ACampaignThatPassed_When_TheWatcherPolls_Then_ItPrintsItsCheck(self):
+        # Arrange
+        results = PASSING + [{"name": "Mutation campaign", "bucket": "pass"}]
+
+        # Act
+        outcome = poll({1: fabricate(1, results=results)})
+
+        # Assert
+        self.assertIn("PR#1 0000000 Mutation campaign => pass", outcome.output)
+
+
 class ForkMergeTests(unittest.TestCase):
     """What `settle.py merge` does with a head this checkout has no ref for."""
 
@@ -1352,13 +1542,14 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
-    # GREEN_ON_BASE(characterization): a branch behind a green base merges on the base as well.
-    # Its readings gained the head's workflow runs, answered as none, which the base does not read.
+    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base merges on both sides.
+    # The branch changed only its arrangement: the readings it answers and the pull request's state.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
-                                      merge_state="clean", fork=False, state="open")
+                                      merge_state="clean", fork=False, labels=frozenset(),
+                                      state="open")
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (

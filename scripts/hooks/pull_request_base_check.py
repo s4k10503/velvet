@@ -138,7 +138,8 @@ def main():
         pull = BY_NUMBER[next((token for token in argv if token.isdigit()), "1")]
         known = {"headRefOid": pull["head"]["sha"],
                  "headRefName": pull["head"]["ref"],
-                 "baseRefName": pull["base"]["ref"]}
+                 "baseRefName": pull["base"]["ref"],
+                 "labels": pull.get("labels", [])}
         asked = argv[argv.index("--json") + 1].split(",") if "--json" in argv else []
         if not asked or any(field not in known for field in asked):
             return unmodelled()
