@@ -2283,6 +2283,7 @@ namespace Velvet
                 Name = name,
                 ClassNames = ParseClassNames(className),
                 Transition = resolvedTransition,
+                TransitionDefaulted = transition == null && duration == null && easing == null && delay == null,
                 Children = children ?? EmptyChildren,
                 Props = props,
                 Events = events ?? EmptyEvents,

@@ -629,16 +629,10 @@ namespace Velvet
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
-            // it fires whether or not this patch also changed Variants/Animate. Falls back to
-            // StyleTransitionConfig's own documented spring defaults (Stiffness 100 / Damping 10 /
-            // Mass 1) when this Motion declares no Transition, since a layoutId tween needs SOME spring
-            // shape to animate with and Velvet applies no implicit default transition
-            // for the variant swap either.
+            // it fires whether or not this patch also changed Variants/Animate.
             if (newNode.LayoutId != null)
             {
-                var t = newNode.Transition;
-                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId,
-                    t?.Stiffness ?? 100f, t?.Damping ?? 10f, t?.Mass ?? 1f, _ctx);
+                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
             }
         }
 

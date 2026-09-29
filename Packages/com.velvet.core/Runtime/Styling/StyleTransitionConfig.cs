@@ -125,6 +125,15 @@ namespace Velvet
         public float DelaySec { get; init; }
 
         /// <summary>
+        /// The transition a <c>layoutId</c> move takes in place of this one — Framer's <c>transition.layout</c>.
+        /// When null, the move takes this transition itself; its <see cref="Type"/> decides the curve as it does
+        /// for a variant swap. A <c>layoutId</c> Motion whose caller gives <c>V.Motion</c> no transition, duration,
+        /// easing or delay moves on Framer's default layout transition, a 0.45 s tween eased by
+        /// <c>cubic-bezier(0.4, 0, 0.1, 1)</c>.
+        /// </summary>
+        public StyleTransitionConfig? Layout { get; init; }
+
+        /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
         /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
         /// When set, transition-property switches from the implicit "all" catch-all — used for a variant class
@@ -226,8 +235,9 @@ namespace Velvet
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, or the spring model.
+                // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
+                Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
