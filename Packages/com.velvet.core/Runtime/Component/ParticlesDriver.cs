@@ -611,6 +611,7 @@ namespace Velvet
         // and a paused system reads IsAlive forever, so the clock is the one the tick keeps.
         private static bool AnySystemLive(ParticlesBinding binding, bool playing)
         {
+            // MUTANT_SURVIVES(unreachable): every caller has found the host alive, and the host's own system is an entry, so the loop assigns live before it returns.
             var live = false;
             foreach (var hosted in binding.Systems!)
             {

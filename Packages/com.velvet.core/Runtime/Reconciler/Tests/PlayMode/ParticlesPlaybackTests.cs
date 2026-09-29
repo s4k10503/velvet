@@ -520,6 +520,66 @@ namespace Velvet.Tests
             Assert.That(red, Is.InRange(40000, 56000));
         }
 
+        [UnityTest]
+        public IEnumerator Given_ADenseSystemThatShrinks_When_Drawn_Then_OnlyTheParticlesStillAliveRender()
+        {
+            // Arrange — 4000 red 4px squares at a 5px pitch, two pixels per unit, filling a 400x250px
+            // block; after they have drawn, all but the first 3000 (the left 300px) are removed. The
+            // buffer the draw reads keeps the removed ones past its live count.
+            _effectGo = new GameObject("fx-shrinking");
+            var effect = _effectGo.AddComponent<ParticleSystem>();
+            var main = effect.main;
+            main.maxParticles = 4000;
+            main.playOnAwake = false;
+            var emission = effect.emission;
+            emission.enabled = false;
+            var shape = effect.shape;
+            shape.enabled = false;
+            effect.GetComponent<ParticleSystemRenderer>().sharedMaterial = null;
+            _host = new RenderTexturePanelHost("ParticlesPanel", 400, 400);
+            _mounted = V.Mount(_host.Root,
+                V.Particles(effect, className: "w-[400px] h-[400px]", pixelsPerUnit: 2f));
+            var element = _host.Root.Q<ParticlesElement>();
+            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
+            var host = _mounted.Root.Reconciler.Context.ParticlesBindings[element].Host;
+            for (var column = 0; column < 80; column++)
+            {
+                for (var row = 0; row < 50; row++)
+                {
+                    var emit = new ParticleSystem.EmitParams
+                    {
+                        position = new Vector3(((5f * column) + 2f - 200f) / 2f, (200f - (5f * row) - 2f) / 2f, 0f),
+                        velocity = Vector3.zero,
+                        startSize = 2f,
+                        startLifetime = 100f,
+                        startColor = Color.red,
+                    };
+                    host.Emit(emit, 1);
+                }
+            }
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            var particles = new ParticleSystem.Particle[4000];
+            host.GetParticles(particles);
+
+            // Act
+            host.SetParticles(particles, 3000);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+
+            // Assert — ReadPixels is bottom-origin, so the block's 250 rows are the texture's top 250.
+            Assert.That((CountRed(new RectInt(0, 150, 300, 250)) >= 40000, CountRed(new RectInt(300, 150, 100, 250))),
+                Is.EqualTo((true, 0)));
+        }
+
+        private int CountRed(RectInt region)
+        {
+            var red = 0;
+            foreach (var p in RenderTexturePixelReader.ReadPixels(_host.TargetTexture, region))
+            {
+                if (RenderTexturePixelReader.IsRedPixel(p)) red++;
+            }
+            return red;
+        }
+
         private static ParticleSystem s_effect;
         private static StateUpdater<bool> s_setFlag;
 
