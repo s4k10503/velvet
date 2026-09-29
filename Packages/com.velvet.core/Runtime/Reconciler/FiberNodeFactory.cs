@@ -267,6 +267,7 @@ namespace Velvet
             if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
             {
                 _ctx.PresenceAnchorMotionElement = element;
+                _ctx.PresenceAnchorCreated = true;
             }
             // See CreateForElementNode's comment on this same assignment (reserved userData
             // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).

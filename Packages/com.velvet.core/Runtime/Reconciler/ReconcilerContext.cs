@@ -1543,6 +1543,10 @@ namespace Velvet
         // set/restore discipline.
         internal bool PresenceAnchorEnterHandled;
 
+        // Set by the create path when it creates PresenceAnchorMotion's element, so the expansion can tell a
+        // live key remounted under its own key from one it patched. Same set/restore discipline.
+        internal bool PresenceAnchorCreated;
+
         // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 

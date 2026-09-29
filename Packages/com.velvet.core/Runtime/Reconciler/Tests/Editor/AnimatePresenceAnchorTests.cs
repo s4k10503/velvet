@@ -175,6 +175,8 @@ namespace Velvet.Tests
                 animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f },
                 children: new[] { SlowMotion() }),
             "classic" => V.Component(ClassicRender, key: key),
+            "named" => V.Motion(name: "item-" + key, key: key, variants: s_fade, initial: "hidden",
+                animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f }),
             "fragment" => V.Fragment(new[] { TimedMotion(null) }, key: key),
             "fragment-pair" => V.Fragment(new[] { TimedMotion(null), V.Div(name: "sibling") }, key: key),
             "z-nested" => V.Div(key: key, children: new[]
@@ -212,6 +214,23 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new[] { Presence(keys), OutsidePortal() });
         }
 
+        // One keyed child whose element type flips with s_flagStore while its key stays, so the reconciler creates
+        // its Motion again rather than patching it.
+        [Component]
+        private static VNode TypeFlipPresenceHost()
+        {
+            var on = Hooks.UseStore(s_flagStore, s => s.On);
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: new[]
+                {
+                    V.Motion(name: "item", key: "a", elementType: on ? null : typeof(Box), variants: s_fade,
+                        initial: "hidden", animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                }),
+            });
+        }
+
         // PresenceHost's presence, taken out of the tree while s_showStore is off.
         [Component]
         private static VNode ShowablePresenceHost()
@@ -221,12 +240,13 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new[] { shown ? Presence(keys) : null });
         }
 
-        // The inline transition-duration the scheduler wrote on the timed Motion's element, in milliseconds, or
-        // NaN when nothing holds the slot or the element is gone — the same reading MotionVariantTransitionTests
-        // takes.
-        private float ItemDurationMs()
+        private float ItemDurationMs() => DurationMs("item");
+
+        // The inline transition-duration the scheduler wrote on the named element, in milliseconds, or NaN when
+        // nothing holds the slot or the element is gone — the same reading MotionVariantTransitionTests takes.
+        private float DurationMs(string name)
         {
-            var element = Root.Q<VisualElement>("item");
+            var element = Root.Q<VisualElement>(name);
             if (element == null) return float.NaN;
             var duration = element.style.transitionDuration;
             return duration.keyword != StyleKeyword.Null && duration.value != null && duration.value.Count > 0
@@ -442,6 +462,59 @@ namespace Velvet.Tests
             // Assert — both of the Fragment's elements held while the exit played, then both gone, with
             // onExitComplete fired once.
             Assert.That((heldWhileExiting, HostChildCount, s_exitsCompleted), Is.EqualTo((2, 0, 1)));
+        }
+
+        [Test]
+        public void Given_AKeyedMotionSettled_When_ATypeFlipCreatesItAgainUnderItsKey_Then_TheNewElementEnters()
+        {
+            // Arrange — initial: true, so the key withholds nothing; settled well past the mount enter.
+            s_presenceInitial = true;
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            flag.Set(false);
+            Drain(mounted);
+
+            // Assert — a new element, with the 300ms enter timing written on it.
+            Assert.That((Root.Q<VisualElement>("item") is Box, ItemDurationMs()), Is.EqualTo((true, 300f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base plays no enter on a persisting key after a new one.
+        [Test]
+        public void Given_ANewKeyAheadOfASettledOne_When_BothAreEmitted_Then_OnlyTheNewOneEnters()
+        {
+            // Arrange — "a" settled well past its mount enter.
+            s_presenceInitial = true;
+            using var mounted = MountSettled("named", "a");
+            using var keys = s_keyStore;
+
+            // Act — "b" is created ahead of "a", which the same pass then patches.
+            keys.Set("ba");
+            Drain(mounted);
+
+            // Assert — the enter timing on "b" and none on "a".
+            Assert.That((DurationMs("item-b"), float.IsNaN(DurationMs("item-a"))), Is.EqualTo((300f, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base plays no enter on any type flip, this one included.
+        [Test]
+        public void Given_AKeyedMotionTheFirstRenderMountedUnderInitialFalse_When_ATypeFlipCreatesItAgain_Then_NoEnterPlays()
+        {
+            // Arrange — initial: false, which the key keeps withholding for as long as it stays.
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            flag.Set(false);
+            Drain(mounted);
+
+            // Assert — the new element, with no enter timing on it.
+            Assert.That((Root.Q<VisualElement>("item") is Box, float.IsNaN(ItemDurationMs())), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.

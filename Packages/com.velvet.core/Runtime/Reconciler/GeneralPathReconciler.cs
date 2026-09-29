@@ -1971,7 +1971,7 @@ namespace Velvet
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
             var site = LiveEntrySite(in pass, key);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
-                out var anchorEnterHandled);
+                out var anchorEmission);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
             // reference-equal patch bailed before recording.
@@ -2019,9 +2019,12 @@ namespace Velvet
                     ReleaseDescendantExits(state, key);
                 }
 
-                var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
+                // A live key whose anchor was created again under the same key — a type flip — remounts with an enter,
+                // as a Framer PresenceChild's new child does, unless the key still withholds its first render's.
+                var remounted = anchorEmission.Created && !state.InitialBlocked.Contains(key);
+                var isEnter = wasExiting || wasExitComplete || remounted || !PresenceContainsKey(prevCommitted, key);
                 // The create path already played, or withheld, the enter of an anchor inheriting its labels.
-                if (isEnter && !anchorEnterHandled)
+                if (isEnter && !anchorEmission.EnterHandled)
                 {
                     PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
                 }
@@ -2500,10 +2503,11 @@ namespace Velvet
             MotionNode? anchorMotion,
             string? key,
             out VisualElement? anchorMotionElement,
-            out bool anchorEnterHandled)
+            out AnchorEmission anchorEmission)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
             var previousAnchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+            var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             _ctx.PresenceAnchorMotion = anchorMotion;
@@ -2511,11 +2515,16 @@ namespace Velvet
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
             _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
             _ctx.PresenceAnchorEnterHandled = false;
+            _ctx.PresenceAnchorCreated = false;
             try
             {
                 var emitted = EmitPresenceChild(site.Walk, node, key, site.Position, site.State);
                 anchorMotionElement = _ctx.PresenceAnchorMotionElement;
-                anchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+                anchorEmission = new AnchorEmission
+                {
+                    EnterHandled = _ctx.PresenceAnchorEnterHandled,
+                    Created = _ctx.PresenceAnchorCreated,
+                };
                 return emitted;
             }
             finally
@@ -2525,7 +2534,16 @@ namespace Velvet
                 _ctx.ComponentContextStack.Pop(MotionContext.EntersBlocked);
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
+                _ctx.PresenceAnchorCreated = previousAnchorCreated;
             }
+        }
+
+        // What the create path reported about the anchor Motion during one emission: whether it played or withheld
+        // the anchor's enter itself, and whether it created the anchor's element rather than patching it.
+        private readonly struct AnchorEmission
+        {
+            internal bool EnterHandled { get; init; }
+            internal bool Created { get; init; }
         }
 
         // Where a keyed child is emitted and on what terms: the state its roots are recorded in (null on the
