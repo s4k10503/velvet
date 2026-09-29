@@ -10,13 +10,13 @@ name: Automerge
 # moment of the merge, are not among them.
 #
 # No job checks out the pull request: these jobs hold write access, and the only code of this
-# repository they run is the default branch's.
+# repository they run is the default branch's. The campaign the hand-off dispatches runs the branch's.
 on:
   workflow_run:
     workflows: [Test, Source generators, UPM]
     types: [completed]
   pull_request_target:
-    types: [labeled, ready_for_review]
+    types: [labeled, ready_for_review, synchronize, reopened]
   workflow_dispatch:
     inputs:
       number:
@@ -34,28 +34,33 @@ env:
 
 jobs:
   # A pull_request_target event's jobs are checks on the pull request's head, so a merge decided
-  # inside this run would find its own job pending there. It dispatches the merge run instead, which
-  # waits for this run to finish.
+  # inside this run would find its own job pending there. automerge.py dispatches the merge run
+  # instead, which waits for this run to finish — or, where the head has no campaign, the campaign,
+  # whose aggregate dispatches the merge run once it passes.
   hand-off:
-    name: Hand the labelled pull request to a merge run
+    name: Hand off the labelled pull request
     if: >-
       github.event_name == 'pull_request_target'
       && ((github.event.action == 'labeled' && github.event.label.name == 'automerge')
-          || (github.event.action == 'ready_for_review'
+          || (github.event.action != 'labeled'
               && contains(github.event.pull_request.labels.*.name, 'automerge')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       actions: write
+      checks: read
+      contents: read
+      pull-requests: read
+      statuses: read
     steps:
+      # The default branch, as the merge job checks it out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       - env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.pull_request.number }}
-          RUN: ${{ github.run_id }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: >-
-          gh workflow run automerge.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
-          -f number="$NUMBER" -f after_run="$RUN"
+        run: python3 scripts/pr/automerge.py
 
   # This job's `if` and the sweep's are automerge.py's `run_selection` taken again, so a completed
   # run it would decline starts no job. test_automerge.py holds the workflow names in them to its.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -13,8 +14,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Coverage for the filter-* transition tween (<see cref="StyleFilterTransitionDriver"/>), which lerps the
     /// inline filter's parameters itself whenever the resolved <c>transition-property</c> CONTAINS
-    /// <c>filter</c> — the shape under which the engine's inline-filter setter leaves a write on its plain
-    /// direct-write path instead of running it as its own uncancellable animation.
+    /// <c>filter</c> and names none of the entries the engine's inline-filter setter is measured animating
+    /// under — the shape under which that setter leaves a write on its plain direct-write path instead of running
+    /// it as its own uncancellable animation.
     /// Group A drives the pure <see cref="StyleFilterTransitionDriver.ApplyFrame"/> at explicit phases (the
     /// scheduler never ticks in EditMode; filter is geometry-independent, so no panel is needed to interpolate).
     /// Group B mounts a real <see cref="EditorWindow"/> panel with the bundled stylesheet so the transition-*
@@ -33,6 +35,7 @@ namespace Velvet.Tests
         // time function, so stepping this by hand makes every painted mid-animation value deterministic.
         private double _now;
         private readonly List<Object> _spawned = new();
+        private (VisualElement element, StyleAnimateBinding binding)? _hueLoop;
 
         protected override void LoadStyleSheets()
         {
@@ -45,6 +48,11 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
+            if (_hueLoop != null)
+            {
+                StyleAnimateDriver.Detach(_hueLoop.Value.element, _hueLoop.Value.binding);
+                _hueLoop = null;
+            }
             base.TearDown();
             foreach (var obj in _spawned)
             {
@@ -118,6 +126,26 @@ namespace Velvet.Tests
         // so it flows through ApplyCombinedFilter's transition hook.
         private static void ApplyBlur(VisualElement element, float px)
             => StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterBlur, px, LengthUnit.Pixel));
+
+        private static void ApplyContrast(VisualElement element, float amount)
+            => StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterContrast, amount, LengthUnit.Pixel));
+
+        private static void ClearContrast(VisualElement element)
+            => StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterContrast);
+
+        // Writes the transition longhands inline: one entry per property, the durations and delays as given, and
+        // linear so a painted midpoint is exactly half the change.
+        private static void SetInlineTransition(VisualElement element, string[] properties, TimeValue[] durations,
+            TimeValue[] delays)
+        {
+            element.style.transitionProperty = new StyleList<StylePropertyName>(
+                properties.Select(property => new StylePropertyName(property)).ToList());
+            element.style.transitionDuration = new StyleList<TimeValue>(durations.ToList());
+            element.style.transitionDelay = new StyleList<TimeValue>(delays.ToList());
+            element.style.transitionTimingFunction = new StyleList<EasingFunction>(
+                new List<EasingFunction> { new EasingFunction(EasingMode.Linear) });
+            ForcePanelUpdate(element.panel);
+        }
 
         // Advances the fake clock and runs the panel's animation phase, the pair a live panel performs once per
         // frame. What resolvedStyle reports afterwards is what would be painted.
@@ -230,8 +258,37 @@ namespace Velvet.Tests
             // Act
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.25f);
 
-            // Assert — RED if Ease ignores the mode and lerps linearly (which would land at 3).
+            // Assert — RED if the frame ignores the mode and lerps linearly (which would land at 3).
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.LessThan(3f));
+        }
+
+        [Test]
+        public void Given_EveryEasingMode_When_FramesApplied_Then_TheBlurFollowsTheCurveAUssTransitionTakes()
+        {
+            // Arrange — blur 0 → 1, so a frame's parameter is the eased progress itself, compared against the
+            // curve UI Toolkit eases a USS transition by for the same mode, clamped to 0..1 as the frame's
+            // Mathf.Lerp clamps it.
+            var convert = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.ComputedTransitionUtils")
+                .GetMethod("ConvertTransitionFunction", BindingFlags.NonPublic | BindingFlags.Static);
+            var element = new VisualElement();
+            var to = BlurList(1f);
+            StyleFilterTransitionDriver.TryBuildChannels(BlurList(0f), to, out var channels);
+            var samples = new[] { 0.1f, 0.3f, 0.5f, 0.7f, 0.9f };
+
+            // Act
+            var worst = Enum.GetValues(typeof(EasingMode)).Cast<EasingMode>().Select(mode =>
+            {
+                var curve = (Func<float, float>)convert.Invoke(null, new object[] { mode });
+                var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = mode, Target = to };
+                return samples.Max(t =>
+                {
+                    StyleFilterTransitionDriver.ApplyFrame(element, binding, t);
+                    return Mathf.Abs(element.style.filter.value[0].GetParameter(0).floatValue - Mathf.Clamp01(curve(t)));
+                });
+            }).ToArray();
+
+            // Assert
+            Assert.That(worst, Is.All.LessThan(1e-5f));
         }
 
         #endregion
@@ -562,6 +619,45 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(12f));
         }
 
+        // Starts an animate-hue loop on the element, detached again at teardown.
+        private void RunHueLoop(VisualElement element)
+        {
+            var binding = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Hue, 4f), panVertical: false);
+            _hueLoop = (element, binding);
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_ATweenFrameIsWritten_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_TheTweenSettles_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act — a teardown while mounted settles the tween at its target.
+            StyleFilterTransitionDriver.Detach(element, binding);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+        }
+
         #endregion
 
         #region Group C — what the panel actually paints
@@ -612,10 +708,9 @@ namespace Velvet.Tests
         {
             // CHARACTERIZATION PIN, not a requirement on Velvet: nothing in Velvet animates this, and the
             // asserted midpoint is what THIS editor's inline-filter setter does with a whole-property
-            // transition. It is recorded because the whole design branches on it — the setter reaches its
-            // animating path by matching the transition list against background-size, not filter. Should that
-            // property-id ever change, this test keeps passing while the filter-naming tests below start
-            // failing, and the right response is to re-measure both rather than to patch either.
+            // transition. It is recorded because the whole design branches on it: the driver stands down under
+            // the entries this case and Group D show the setter animating on, and should that set change, the
+            // right response is to re-measure those rows rather than to patch either side.
             //
             // Arrange
             var element = MountResolved("transition-all duration-300");
@@ -652,6 +747,233 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionPropertyNamingFilterAndBackgroundSize_When_FilterChanges_Then_OnlyTheEngineAnimatesIt()
+        {
+            // Arrange — the list names filter, so the tween binding would take the change, and background-size,
+            // which is what the inline-filter setter animates on. Linear over 0.3s so the engine's midpoint is
+            // exactly half the target.
+            var element = MountResolved("transition-filter");
+            element.style.transitionProperty = new StyleList<StylePropertyName>(
+                new List<StylePropertyName> { new StylePropertyName("filter"), new StylePropertyName("background-size") });
+            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
+            element.style.transitionTimingFunction = new StyleList<EasingFunction>(
+                new List<EasingFunction> { new EasingFunction(EasingMode.Linear) });
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — the engine's animation toward 12 is half way. Were the tween also to take the change, its
+            // start frame (the blur's neutral 0) would be the inline value the engine animates toward instead.
+            // Without a binding the tween could not have taken it, so that reads as NaN.
+            var painted = _mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element)
+                ? PaintedFloat(element)
+                : float.NaN;
+            Assert.That(painted, Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TransitionPropertyNamingFilterAndTheBackgroundScaleModeShorthand_When_FilterChanges_Then_OnlyTheEngineAnimatesIt()
+        {
+            // Arrange — the same as naming background-size, through the shorthand covering it.
+            var element = MountResolved("transition-filter");
+            element.style.transitionProperty = new StyleList<StylePropertyName>(
+                new List<StylePropertyName> { new StylePropertyName("filter"), new StylePropertyName("-unity-background-scale-mode") });
+            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
+            element.style.transitionTimingFunction = new StyleList<EasingFunction>(
+                new List<EasingFunction> { new EasingFunction(EasingMode.Linear) });
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — as above, NaN without a binding.
+            var painted = _mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element)
+                ? PaintedFloat(element)
+                : float.NaN;
+            Assert.That(painted, Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TransitionPropertyNamingFilterAndAll_When_FilterChanges_Then_OnlyTheEngineAnimatesIt()
+        {
+            // Arrange — the list names filter, so the tween binding would take the change, and `all`, which covers
+            // background-size.
+            var element = MountResolved("transition-filter");
+            SetInlineTransition(element, new[] { "filter", "all" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — the engine's animation toward 12 is half way; NaN without a binding, as above.
+            var painted = _mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element)
+                ? PaintedFloat(element)
+                : float.NaN;
+            Assert.That(painted, Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the tween takes a list whose background-size entry has nothing to run.
+        [Test]
+        public void Given_TransitionPropertyNamingFilterAndAZeroLengthBackgroundSize_When_FilterChanges_Then_TheTweenTakesIt()
+        {
+            // Arrange — background-size's entry has neither a duration nor a delay, so no transition runs for it
+            // and the setter writes a filter change as it is.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "filter", "background-size" },
+                new[] { new TimeValue(0.3f), new TimeValue(0f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert — the tween took the write.
+            Assert.That(binding.Scheduled, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_TransitionPropertyNamingFilterAndABackgroundSizeRunByItsDelay_When_FilterChanges_Then_OnlyTheEngineAnimatesIt()
+        {
+            // Arrange — background-size's entry has no duration but a 0.1s delay, so a transition runs for it: the
+            // engine holds the old value through the delay and then writes the target.
+            var element = MountResolved("transition-filter");
+            SetInlineTransition(element, new[] { "filter", "background-size" },
+                new[] { new TimeValue(0.3f), new TimeValue(0f) }, new[] { new TimeValue(0f), new TimeValue(0.1f) });
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — past the delay the engine has written 12. Were the tween also to take the change, its start
+            // frame (the blur's neutral 0) would be what the engine wrote. NaN without a binding, as above.
+            var painted = _mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element)
+                ? PaintedFloat(element)
+                : float.NaN;
+            Assert.That(painted, Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransitionListWhoseFilterEntryIsNotTheFirst_When_TheTweenTicks_Then_ItRunsForTheFilterEntrysDuration()
+        {
+            // Arrange — opacity's entry runs 0.1s and filter's 0.4s; the tween started 0.1s ago.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "opacity", "filter" },
+                new[] { new TimeValue(0.1f), new TimeValue(0.4f) }, new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 0.1;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — a quarter of the way to 12, plus what the clock moved since. Run for opacity's 0.1s the
+            // tween would have settled on 12; a tick that never ran would leave the start frame's 0.
+            Assert.That(PaintedFloat(element), Is.InRange(1.5f, 11f));
+        }
+
+        [Test]
+        public void Given_ATransitionListWhoseFilterEntryIsNotTheFirst_When_AFrameIsApplied_Then_ItEasesByTheFilterEntrysCurve()
+        {
+            // Arrange — opacity's entry eases in and filter's is linear.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "opacity", "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+            element.style.transitionTimingFunction = new StyleList<EasingFunction>(new List<EasingFunction>
+            {
+                new EasingFunction(EasingMode.EaseIn), new EasingFunction(EasingMode.Linear),
+            });
+            ForcePanelUpdate(element.panel);
+            ApplyBlur(element, 12f);
+
+            // Act — the frame a quarter of the way through.
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.25f);
+
+            // Assert — a quarter of the way to 12; opacity's ease-in would put it at 0.75.
+            Assert.That(PaintedFloat(element), Is.EqualTo(3f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransitionDelay_When_TheTweenTicks_Then_ProgressCountsFromTheDelaysEnd()
+        {
+            // Arrange — a 0.2s delay before a 0.3s run; the tween started 0.35s ago.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0.2f) });
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 0.35;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — half way to 12, plus what the clock moved since. Counted from the start instead, 0.35s of
+            // 0.3s would have settled on 12.
+            Assert.That(PaintedFloat(element), Is.InRange(1.5f, 11f));
+        }
+
+        [Test]
+        public void Given_ADurationInMilliseconds_When_TheTweenTicks_Then_ItRunsForThatManyMilliseconds()
+        {
+            // Arrange — a 300ms run; the tween started 0.15s ago.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(300f, TimeUnit.Millisecond) },
+                new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 0.15;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — half way to 12, plus what the clock moved since. Read as 300 seconds, the blur would barely
+            // have left 0.
+            Assert.That(PaintedFloat(element), Is.InRange(1.5f, 11f));
+        }
+
+        [Test]
+        public void Given_ATweenClearingAContrast_When_ItSettles_Then_NoEngineTransitionFollows()
+        {
+            // Arrange — a contrast tweened in and settled, then cleared, and that tween past its end. Clearing the
+            // inline filter under an entry for filter is a write the engine animates itself.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyContrast(element, 1.5f);
+            binding.StartTime -= 10;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            ClearContrast(element);
+            binding.StartTime -= 10;
+
+            // Act — the tick settles, and the panel paints a frame.
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — nothing is painted. Left to the engine, the clear would pad the contrast from 0 and still be
+            // fading it there.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        [Test]
+        public void Given_ARunningTween_When_TheTransitionPropertyGainsBackgroundSize_Then_TheTickSettlesAndStops()
+        {
+            // Arrange — a live tween, then a list that still names filter but also names background-size, from
+            // which moment the setter animates every frame the tick writes.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            var started = binding.Scheduled != null;
+            element.style.transitionProperty = new StyleList<StylePropertyName>(
+                new List<StylePropertyName> { new StylePropertyName("filter"), new StylePropertyName("background-size") });
+            ForcePanelUpdate(element.panel);
+
+            // Act — the tick fires once after the rewrite.
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — a tween ran, and the tick stopped it.
+            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_ARunningTween_When_TheTransitionPropertyStopsNamingFilter_Then_TheTickSettlesAndStops()
         {
             // Arrange — a live tween whose transition-property is then rewritten out from under it (what a
@@ -674,6 +996,42 @@ namespace Velvet.Tests
                 Is.EqualTo(((IVisualElementScheduledItem)null, 12f)));
         }
 
+        // GREEN_ON_BASE(characterization): a tick under a list running nothing for filter settles, as it did before.
+        [Test]
+        public void Given_ARunningTween_When_TheTransitionPropertyNamesNeitherFilterNorAll_Then_TheTickSettlesAndStops()
+        {
+            // Arrange — a live tween whose transition-property is then rewritten to a list running nothing for
+            // filter.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            Assume.That(binding.Scheduled, Is.Not.Null, "Precondition: a tween is running");
+            element.style.transitionProperty = new StyleList<StylePropertyName>(
+                new List<StylePropertyName> { new StylePropertyName("opacity") });
+            ForcePanelUpdate(element.panel);
+
+            // Act — the tick fires once after the rewrite.
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — the tick settled to its target and stopped.
+            Assert.That((binding.Scheduled, element.style.filter.value[0].GetParameter(0).floatValue),
+                Is.EqualTo(((IVisualElementScheduledItem)null, 12f)));
+        }
+
+        [Test]
+        public void Given_ANegativeTransitionDelay_When_AFilterChanges_Then_TheStartFrameIsPartway()
+        {
+            // Arrange — a 0.3s run whose delay is -0.15s, so it starts half way through.
+            var element = MountResolved("transition-filter");
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(-0.15f) });
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert — the frame written with the change is half way to 12, where a run counted from 0 starts at 0.
+            Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(0.5f));
+        }
+
         #endregion
 
         #region Group D — what the inline-filter setter actually gates on
@@ -682,11 +1040,9 @@ namespace Velvet.Tests
         // first line. The resolver's instant write is then the only writer and the engine the only animator,
         // which makes each row a single-animator, fully deterministic reading of the setter's gate.
         //
-        // Together they pin the gap between what Velvet's probe asks ("does the list name filter?") and what
-        // the setter asks ("does the list name background-size, or a shorthand covering it?"). Today those two
-        // questions disagree, which is exactly why naming filter is safe and naming the background-size family
-        // is not. If the engine ever changes which property-id it queries, the second and third rows flip and
-        // say so loudly — they are the canary for the whole design.
+        // Together with the whole-property case above they pin which lists the setter animates a write under,
+        // the set the driver's probe stands down on. Should that set change, these rows flip — they are the
+        // canary for the whole design.
         private void MountWithInlineTransition(string className, out VisualElement element, params string[] properties)
         {
             element = MountResolved(className);
@@ -709,9 +1065,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_NoBindingAndATransitionNamingFilterAndOpacity_When_FilterChanges_Then_ThePaintIsInstant()
         {
-            // Arrange — neither name is background-size-shaped, so the setter takes its direct-write path even
-            // though the list names filter and a live duration is resolved. This is the property that makes
-            // Velvet's tween able to paint its own frames at all.
+            // Arrange — the list names filter and a live duration is resolved, and nothing the setter animates
+            // on. This is the property that makes Velvet's tween able to paint its own frames at all.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "filter", "opacity");
 
             // Act
@@ -725,24 +1080,22 @@ namespace Velvet.Tests
         [Test]
         public void Given_NoBindingAndATransitionNamingBackgroundSize_When_FilterChanges_Then_TheEngineAnimatesIt()
         {
-            // Arrange — background-size is the property-id the setter actually queries, so naming it animates
-            // the FILTER even though the list says nothing about filters.
+            // Arrange — naming background-size animates the FILTER even though the list says nothing about
+            // filters.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "background-size");
 
             // Act
             ApplyBlur(element, 12f);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — exactly half way at the half-way point, so a list naming this alongside filter would
-            // put the engine's animation and Velvet's tween on the same property at once.
+            // Assert — exactly half way at the half-way point.
             Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(1e-3f));
         }
 
         [Test]
         public void Given_NoBindingAndATransitionNamingTheBackgroundScaleModeShorthand_When_FilterChanges_Then_TheEngineAnimatesIt()
         {
-            // Arrange — the same gate also accepts any shorthand covering background-size, and
-            // -unity-background-scale-mode is one, so it is a SECOND way into the engine's filter animation.
+            // Arrange — -unity-background-scale-mode is a second way into the engine's filter animation.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "-unity-background-scale-mode");
 
             // Act
@@ -751,6 +1104,197 @@ namespace Velvet.Tests
 
             // Assert — exactly half way, same as naming background-size outright.
             Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(1e-3f));
+        }
+
+        #endregion
+
+        #region Group E — the contrast an animated instant write pads from
+
+        // Mounted WITHOUT transition-filter, like Group D, so no tween binding exists and the engine is the only
+        // animator.
+
+        private static List<FilterFunction> ContrastList(float amount)
+        {
+            var fn = new FilterFunction(FilterFunctionType.Contrast);
+            fn.AddParameter(new FilterParameter(amount));
+            return new List<FilterFunction> { fn };
+        }
+
+        // GREEN_ON_BASE(characterization): the engine pads a contrast the list gains from 0, not CSS's identity 1.
+        // StyleFilterEngineWrite exists for this difference and names this case.
+        [Test]
+        public void Given_AWholePropertyTransition_When_AContrastIsWrittenStraightToTheInlineFilter_Then_TheEngineFadesItInFromZero()
+        {
+            // Arrange
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+
+            // Act — written past the resolver.
+            element.style.filter = ContrastList(2f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from 0 to 2.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsAdded_Then_ItFadesInFromOne()
+        {
+            // Arrange
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+
+            // Act
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from CSS's identity 1 to 2; the engine's own padding would put it at 1.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsAddedWhileAnotherFilterAnimates_Then_ItFadesInFromOne()
+        {
+            // Arrange — a blur half way through the engine's transition toward 12.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act — a contrast joins the list after the blur.
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from 1 to 2. Started from the running blur transition's value instead, the engine
+            // would pad the contrast from 0 and be at 1.
+            Assert.That(element.resolvedStyle.filter.ElementAt(1).GetParameter(0).floatValue, Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AContrastIsRemoved_Then_ItFadesOutToOne()
+        {
+            // Arrange — a contrast faded in and at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from 2 to CSS's identity 1; the engine's own padding would put it at 1.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a removed contrast leaves no filter once its fade ends, as it did before.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_ARemovedContrastsFadeEnds_Then_NoFilterIsLeft()
+        {
+            // Arrange — a contrast faded in and at rest, then cleared.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 1.0);
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act — the fade ends.
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Assert — the contrast(1) the fade ran toward is gone too.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        // GREEN_ON_BASE(characterization): clearing the filter under a background-size entry alone paints at once.
+        [Test]
+        public void Given_NoBindingAndATransitionNamingBackgroundSize_When_AContrastIsCleared_Then_ThePaintIsInstant()
+        {
+            // Arrange — a contrast faded in and at rest. The entry for background-size animates a list write, but
+            // not the clear.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "background-size");
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — nothing is painted, rather than a contrast fading toward 1.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        [Test]
+        public void Given_ADestroyedCustomBehindAContrast_When_TheContrastIsRemoved_Then_ItFadesOutToOne()
+        {
+            // Arrange — a contrast and a user custom composed at rest, then the custom's definition destroyed,
+            // which drops it from the next compose.
+            var element = MountResolved("w-[100px] h-[40px]");
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            ApplyContrast(element, 2f);
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                new CustomFilterValue("fade-x", definition, new[] { new FilterParameter(1f) })));
+            SetInlineTransition(element, new[] { "all" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+            Object.DestroyImmediate(definition);
+
+            // Act — the compose leaves no filter at all.
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from 2 to 1.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): removing a blur leaves the inline filter cleared at once, as it did before.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_ABlurIsRemoved_Then_TheInlineFilterIsClearedAtOnce()
+        {
+            // Arrange — a blur faded in and at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+
+            // Assert — nothing was written in the blur's place for the fade.
+            Assert.That(element.style.filter.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the engine shortens a reversed fade, which the padding must leave alone.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_ARemovedBlurIsAddedBackMidFade_Then_TheReversalIsShortened()
+        {
+            // Arrange — a blur at rest, removed, and half way through fading out.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act — the blur comes back, and a quarter of the full duration passes.
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.075);
+
+            // Assert — half way from 6 back to 12 over the half duration the engine gives a reversal. Restarted
+            // over the full duration, it would be a quarter of the way, at 7.5.
+            Assert.That(PaintedFloat(element), Is.EqualTo(9f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the engine shortens a reversed value change, which the padding must leave alone.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AChangedBlurIsRevertedMidFade_Then_TheReversalIsShortened()
+        {
+            // Arrange — a blur at 12 and at rest, changed to 4, and half way there. The inline filter holds the 4.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 1.0);
+            ApplyBlur(element, 4f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act — back to 12, one list of the same length as the painted one, and a quarter of the full duration
+            // passes.
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.075);
+
+            // Assert — half way from 8 back to 12 over the half duration the engine gives a reversal. Restarted
+            // over the full duration, it would be a quarter of the way, at 9.
+            Assert.That(PaintedFloat(element), Is.EqualTo(10f).Within(0.3f));
         }
 
         #endregion

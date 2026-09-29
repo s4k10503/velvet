@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -14,8 +15,8 @@ namespace Velvet.Tests
     /// that play one — a standalone mount enter, a presence mount enter, a runtime <c>animate</c> label
     /// change, and an AnimatePresence exit — with the Motion's own <c>transition:</c> as the default a pose
     /// replaces. Every one of the four reads the destination pose rather than the one left behind, whether
-    /// or not that pose applies a class. A classless initial pose, the one an enter starts from, loses the
-    /// enter itself; a classless exit pose is still a variant exit. A case pins each. The presence enter and
+    /// or not that pose applies a class. A classless initial pose, the one an enter starts from, starts it
+    /// from the Motion's own classes; a classless exit pose is still a variant exit. A case pins each. The presence enter and
     /// the exit share one
     /// declaration, 0.5s in against 0.05s out over a Motion whose own transition declares 0.2s, which is
     /// the asymmetry a single per-node config cannot express.
@@ -541,6 +542,37 @@ namespace Velvet.Tests
             Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): a label swap already read its pose's PropertyOverrides, which
+        // motion.md said it did not.
+        [Test]
+        public void Given_APoseWithPropertyOverrides_When_TheLabelSwapsIntoIt_Then_TheSwapTransitionsTheOverriddenProperty()
+        {
+            // Arrange
+            var poses = new Dictionary<string, MotionVariant>
+            {
+                ["hidden"] = "opacity-0 scale-50",
+                ["visible"] = new MotionVariant("opacity-100 scale-100", new StyleTransitionConfig
+                {
+                    DurationSec = 0.3f,
+                    PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+                }),
+            };
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: poses, animate: label, transition: s_nodeDefault),
+            };
+            using var reconciler = new Reconciler();
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), Tree("hidden"));
+
+            // Act
+            reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+
+            // Assert — the overrides name the properties the swap transitions, in place of "all".
+            var property = Root.Q<VisualElement>("m").style.transitionProperty;
+            Assert.That(string.Join(",", property.value?.Select(p => p.ToString()) ?? Enumerable.Empty<string>()),
+                Is.EqualTo("opacity"));
+        }
+
         [Test]
         public void Given_APoseApplyingNoClassButCarryingATransition_When_TheMotionMounts_Then_TheEnterRidesThatPosesDuration()
         {
@@ -559,19 +591,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInitialPoseApplyingNoClass_When_ThePresenceChildMounts_Then_NoEnterPlaysAtAll()
+        public void Given_AnInitialPoseApplyingNoClass_When_ThePresenceChildMounts_Then_TheEnterPlaysOnTheTargetPosesTiming()
         {
-            // Arrange — variants[start] applies no class, against a classed variants[end] declaring 0.5s.
-            // Mounted under an AnimatePresence rather than standalone, where the same refusal is diagnosed
-            // by a warning: this path plays nothing and logs nothing.
+            // Arrange — variants[start] applies no class, against a classed variants[end] declaring 0.5s. A
+            // Framer `initial` naming no value starts each animated value from the one it already has, which
+            // here is the Motion's own classes.
             using var keys = new KeySetStore("a");
             s_keyStore = keys;
 
-            // Act — a resolvable enter would write its inline timing inside this reconcile.
+            // Act — the enter writes its inline timing inside this reconcile.
             using var mounted = V.Mount(Root, V.Component(ClasslessInitialPresence, key: "root"));
 
-            // Assert — nothing holds the duration slot: the element rests at variants[end] from the start.
-            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.NaN);
+            // Assert
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AStandaloneInitialPoseApplyingNoClass_When_TheMotionMounts_Then_ItStartsWithoutTheTargetPosesClasses()
+        {
+            // Arrange / Act — the same declaration outside any presence.
+            using var mounted = V.Mount(Root, V.Motion(name: "m", variants: s_classlessInitial, initial: "start",
+                animate: "end", transition: s_nodeDefault));
+
+            // Assert — the enter starts from the Motion's own classes, so variants[end]'s are off until its swap.
+            Assert.That(Root.Q<VisualElement>("m").ClassListContains("opacity-100"), Is.False);
         }
 
         [Test]

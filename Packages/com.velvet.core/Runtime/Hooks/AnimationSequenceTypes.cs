@@ -36,10 +36,8 @@ namespace Velvet
         /// How long the sequence holds on this step before advancing. On a <see cref="To"/> step, null derives
         /// the hold from <see cref="Transition"/> (<c>DurationSec + DelaySec</c> for
         /// <see cref="TransitionType.Tween"/> or <see cref="TransitionType.Bezier"/>, both fixed-duration); a
-        /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/>
-        /// step with no explicit hold logs a warning and falls back to a fixed estimate, since a spring's
-        /// settle time is physics-derived and not statically knowable (matches
-        /// <see cref="StyleTransitionConfig"/>'s own documented "DurationSec is ignored for Spring" contract).
+        /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/> step holds for its <c>DelaySec</c> plus the
+        /// duration Framer Motion's sequence gives the same spring — see the motion guide's Timelines section.
         /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/>.
         /// </summary>
         public float? HoldSec { get; }
@@ -59,7 +57,7 @@ namespace Velvet
 
         /// <summary>
         /// Activates <paramref name="label"/> on the sequence's coordinator — feeds straight into
-        /// <c>V.Motion(animate:, transition:)</c>. Descendant Motions with no own <c>animate</c> inherit it
+        /// <c>V.Motion(animate:, transition:)</c>. Descendant Motions naming no label of their own inherit it
         /// exactly as they do for any hand-toggled label, including <c>StaggerChildrenSec</c> fan-out when
         /// <paramref name="transition"/> declares it — "one at a time" across a list of such descendants needs
         /// no separate multi-target API.
