@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
 using Velvet.TestUtilities;
+using static Velvet.Tests.RouteTestMounts;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -88,9 +89,7 @@ namespace Velvet.Tests
         /// the root Outlet <c>V.RouterProvider</c> renders takes none.
         /// </summary>
         private MountedTree MountWithOutletContext(Router router, object outletContext) =>
-            V.Mount(_root,
-                V.Provider(RouterContext.Location, router.CurrentLocation,
-                    children: new VNode[] { V.Outlet(context: outletContext) }));
+            V.Mount(_root, WithRouter(router, V.Outlet(context: outletContext)));
 
         [Test]
         public void Given_NavigatedRoute_When_UseLocation_Then_ReturnsCurrentLocationPath()
@@ -260,9 +259,7 @@ namespace Velvet.Tests
         }
 
         private MountedTree MountAt(Router router)
-            => V.Mount(_root,
-                V.Provider(RouterContext.Location, router.CurrentLocation,
-                    children: new VNode[] { V.Component(Capture.Render, key: "cap") }));
+            => V.Mount(_root, WithRouter(router, V.Component(Capture.Render, key: "cap")));
 
         [Test]
         public void Given_CapturedNavigate_When_Invoked_Then_NavigatesThroughRouter()
@@ -571,9 +568,7 @@ namespace Velvet.Tests
         }
 
         private MountedTree MountWith(Router router, VNode child)
-            => V.Mount(_root,
-                V.Provider(RouterContext.Location, router.CurrentLocation,
-                    children: new[] { child }));
+            => V.Mount(_root, WithRouter(router, child));
 
         [Test]
         public void Given_SettledNavigation_When_UseNavigation_Then_StateIsIdle()
@@ -590,7 +585,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SettledNavigation_When_UseNavigation_Then_LocationIsCurrent()
+        public void Given_SettledNavigation_When_UseNavigation_Then_LocationIsNull()
         {
             // Arrange
             var router = new Router(new[] { Route("home", element: V.Component(StubA)) });
@@ -600,7 +595,7 @@ namespace Velvet.Tests
             using var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
 
             // Assert
-            Assert.That(Capture.State.Location!.Path, Is.EqualTo("/home"));
+            Assert.That(Capture.State.Location?.Path ?? "null", Is.EqualTo("null"));
         }
 
         [Test]
@@ -672,9 +667,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Capture.RenderCount, Is.GreaterThan(rendersBefore));
-            Assert.That(Capture.State.State, Is.EqualTo(NavigationLifecycle.Idle));
-            Assert.That(Capture.State.Location!.Path, Is.EqualTo("/about"));
+            Assert.That(
+                $"rerendered={Capture.RenderCount > rendersBefore} state={Capture.State.State} "
+                + $"location={Capture.State.Location?.Path ?? "null"}",
+                Is.EqualTo("rerendered=True state=Idle location=null"));
         }
 
         [Test]

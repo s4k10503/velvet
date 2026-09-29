@@ -1,11 +1,13 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
 using Velvet.TestUtilities;
+using static Velvet.Tests.RouteTestMounts;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -44,8 +46,7 @@ namespace Velvet.Tests
         {
             router.NavigateSync(path);
 
-            return V.Mount(_root,
-                V.Provider(RouterContext.Location, router.CurrentLocation, children: new[] { tree }));
+            return V.Mount(_root, WithRouter(router, tree));
         }
 
         private static Button? FindButton(VisualElement root) =>
@@ -239,43 +240,44 @@ namespace Velvet.Tests
                         Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the absolute target a location without a router already matches,
-        // which resolving relative targets through that router must leave standing.
         [Test]
-        public void Given_AbsoluteNavLink_When_ThereIsNoRouterToResolveThrough_Then_AppliesActiveClass()
+        public void Given_NavLink_When_NoRouterProviderIsAbove_Then_ItsRenderThrows()
         {
-            // Arrange + Act
-            using var mounted = V.Mount(_root,
-                V.Provider(
-                    RouterContext.Location,
-                    new RouterLocation { Path = "/home", Params = new Dictionary<string, string>() },
-                    children: new VNode[]
-                    {
-                        V.NavLink(to: "/home", activeClass: "is-active", text: "Home", end: true),
-                    }));
+            // Arrange
+            Exception? caught = null;
 
-            // Assert — the absent router is folded in: with one mounted, an absolute target resolves to
-            // itself, so the active class alone would hold either way.
-            var button = FindButton(_root);
-            Assert.That(
-                (routerAbsent: Router.Current == null, rendered: button != null,
-                 active: button?.ClassListContains("is-active") == true),
-                Is.EqualTo((routerAbsent: true, rendered: true, active: true)));
+            // Act
+            using var mounted = V.Mount(_root, V.ErrorBoundary(
+                fallback: ex =>
+                {
+                    caught = ex;
+                    return V.Label(text: "boundary-fallback");
+                },
+                children: new VNode[] { V.NavLink(to: "/home", activeClass: "is-active", text: "Home") },
+                key: "boundary"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(caught?.Message, Is.EqualTo("UseLocation may be used only beneath a V.RouterProvider."));
         }
 
         [Test]
-        public void Given_RootNavLink_When_ThereIsNoLocation_Then_OmitsActiveClass()
+        public void Given_Link_When_NoRouterProviderIsAbove_Then_ItsRenderThrows()
         {
             // Arrange
+            Exception? caught = null;
 
             // Act
-            using var mounted = V.Mount(_root,
-                V.NavLink(to: "/", activeClass: "is-active", text: "Home", end: true));
+            using var mounted = V.Mount(_root, V.ErrorBoundary(
+                fallback: ex =>
+                {
+                    caught = ex;
+                    return V.Label(text: "boundary-fallback");
+                },
+                children: new VNode[] { V.Link(to: "/home", text: "Home") },
+                key: "boundary"), CaughtErrors.Unlogged);
 
             // Assert
-            var button = FindButton(_root);
-            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
-            Assert.That(button!.ClassListContains("is-active"), Is.False);
+            Assert.That(caught?.Message, Is.EqualTo("UseNavigate may be used only beneath a V.RouterProvider."));
         }
     }
 }

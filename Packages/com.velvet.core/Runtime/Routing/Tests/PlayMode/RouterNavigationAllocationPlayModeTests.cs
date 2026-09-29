@@ -29,7 +29,7 @@ namespace Velvet.Tests
             });
 
             router.RouteBlockerManager.Register(
-                (_, ct) => VelvetTask.FromResult(false),
+                _ => false,
                 new RouteBlockerState());
 
             return router;
@@ -52,7 +52,7 @@ namespace Velvet.Tests
             }
 
             var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
-            Assert.That(blocks, Is.EqualTo(96));
+            Assert.That(blocks, Is.EqualTo(88));
             yield return null;
         }
     }

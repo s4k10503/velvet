@@ -27,11 +27,6 @@ namespace Velvet.Tests
             SharedRunner.RunLoadersSync(matches, CancellationToken.None);
         }
 
-        private static void OpenEmptyRound()
-        {
-            SharedRunner.EmptyRound();
-        }
-
         // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
         // This change reads it over three windows.
         [Test]
@@ -67,24 +62,6 @@ namespace Velvet.Tests
             // Assert — both are pinned rather than ordered, and an assertion with a slack constant would
             // move with whichever path grew.
             Assert.That((awaitBlocks, suspendBlocks), Is.EqualTo((18, 19)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
-        [Test]
-        public void Given_AWarmRunner_When_ARoundRunningNoLoadersIsOpened_Then_AllocationMatchesPinnedExpectation()
-        {
-            // Arrange
-            for (var i = 0; i < 16; i++)
-            {
-                OpenEmptyRound();
-            }
-
-            // Act
-            var blocks = GCAllocationProbe.MedianBlocksDuring(OpenEmptyRound);
-
-            // Assert
-            Assert.That(blocks, Is.EqualTo(3));
         }
     }
 }

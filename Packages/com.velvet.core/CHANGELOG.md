@@ -21,9 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VelvetTask` awaited on the main thread resumes there whichever thread completes it — the
   continuation is handed to Unity's main-thread synchronization context rather than run on the
   completing thread — so a route loader that returns after awaiting `ConfigureAwait(false)` hands its
-  result back on the main thread. `VelvetTask.Yield()` called off the main thread throws
-  `InvalidOperationException` naming the switch. The async guide says what code resumed off the main
-  thread may call.
+  result back on the main thread. `VelvetTask.Yield()` called off the main thread resumes where
+  `Task.Yield()` does. The async guide says what code resumed off the main thread may call.
 
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
@@ -1281,15 +1280,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RouteBlockerState.Proceed()` now runs the blocked navigation again, from the request the caller made,
   so the confirm-dialog flow it exists for reaches the destination: the user clicks "Leave" and the
   router goes there. It used to clear the state and invoke a callback nothing assigned, leaving the
-  dialog closed and the navigation gone — reaching the destination meant copying `Attempt.NextPath` and
-  `Attempt.NavigationMode` out before calling `Proceed()`, re-issuing them by hand, and arranging for the
+  dialog closed and the navigation gone — reaching the destination meant copying the attempt's next path
+  and navigation mode out before calling `Proceed()`, re-issuing them by hand, and arranging for the
   predicate to stop blocking, because a re-issued attempt was put to that predicate again. Code written
   around that is what makes this a break: the hand-rolled re-issue now runs on top of the one `Proceed()`
   performs. What is re-issued is the navigation the caller asked for, so a blocked Back or Forward
   resumes as the same history step, and one a Guard redirected takes the redirect again from that step
   rather than committing the redirect target over the entry the user was standing on.
   `RouteBlockerStatus` has a third member, `Proceeding`, for the span between `Proceed()` and the
-  re-issued navigation settling: over it the Blocker still reports its `Attempt` and is consulted about
+  re-issued navigation settling: over it the Blocker still reports its destination and is consulted about
   nothing, and it returns to `Idle` — which is what arms it for the next navigation — once that
   navigation has committed, ended without committing or been abandoned, and no Blocker is left blocking.
   A second Blocker vetoing the re-issue is what leaves one, and the first waits on that one being

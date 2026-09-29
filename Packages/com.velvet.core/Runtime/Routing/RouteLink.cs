@@ -49,9 +49,10 @@ namespace Velvet
         public static VNode Render(Props p)
         {
             var location = Hooks.UseLocation();
+            var router = Hooks.UseContext(RouterContext.Router);
             var baseRouteIndex = Hooks.UseBaseRouteIndex();
             // Resolved first, because the click path takes p.To through this same Router call to navigate.
-            var target = Router.Current?.ResolvePath(p.To, baseRouteIndex) ?? p.To;
+            var target = router.ResolvePath(p.To, baseRouteIndex) ?? p.To;
             // Standing in for a missing location with the empty string was rejected: it goes through the same
             // normalisation as the target, where an empty path is the root, so a link to "/" came out as the
             // current page of a tree that has no current page.
