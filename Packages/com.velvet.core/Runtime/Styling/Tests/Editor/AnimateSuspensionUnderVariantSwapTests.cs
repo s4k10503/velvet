@@ -63,7 +63,7 @@ namespace Velvet.Tests
             {
                 V.Div(className: $"w-[{spacerWidth}px] h-[40px]"),
                 V.Motion(className: className, name: "card", variants: s_variants, animate: label, layoutId: "card",
-                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec }),
+                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec, Layout = s_layoutSpring }),
             });
 
         private VisualElement MountLayoutIdRow(string className, StyleTransitionConfig transition = null)
@@ -80,11 +80,15 @@ namespace Velvet.Tests
             new VNode[] { LayoutIdRow(from.Spacer, className, from.Label, transition) },
             new VNode[] { LayoutIdRow(to.Spacer, className, to.Label, transition) });
 
+        // The layoutId move each row takes beside its swap.
+        private static readonly StyleTransitionConfig s_layoutSpring =
+            new() { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
+
         // A swap short enough to end while the spring it runs beside is still moving fast.
-        private static readonly StyleTransitionConfig s_shortSwap = new() { DurationSec = 0.1f };
+        private static readonly StyleTransitionConfig s_shortSwap = new() { DurationSec = 0.1f, Layout = s_layoutSpring };
 
         private bool LayoutIdSpringRuns(VisualElement element)
-            => _mounted!.Root.Reconciler.Context.LayoutIdTicks.ContainsKey(element);
+            => _mounted!.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(element);
 
         // Frame by frame rather than in one step, so the spring integrates the way a live panel would drive it.
         private void RunFrames(int count)
@@ -270,6 +274,7 @@ namespace Velvet.Tests
             var transition = new StyleTransitionConfig
             {
                 DurationSec = SwapDurationSec,
+                Layout = s_layoutSpring,
                 PropertyOverrides = new[]
                 {
                     new StylePropertyTransition("translate", durationSec: 0.01f),

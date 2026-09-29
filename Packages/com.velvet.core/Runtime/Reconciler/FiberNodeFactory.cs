@@ -393,9 +393,7 @@ namespace Velvet
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
             {
-                var lt = motionNode.Transition;
-                MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId,
-                    lt?.Stiffness ?? 100f, lt?.Damping ?? 10f, lt?.Mass ?? 1f, _ctx);
+                MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
             }
             return element;
         }
