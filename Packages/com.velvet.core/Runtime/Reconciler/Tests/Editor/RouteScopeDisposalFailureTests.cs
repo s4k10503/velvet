@@ -85,6 +85,8 @@ namespace Velvet.Tests
         private VisualElement _root = null!;
         private Router _router = null!;
         private ThrowingRouteScopeFactory _scopeFactory = null!;
+        // The router the spine publishes, which is what an Outlet reaches the scope factory through.
+        private static Router s_router = null!;
 
         [SetUp]
         public void SetUp()
@@ -100,6 +102,7 @@ namespace Velvet.Tests
                     V.Route(path: "/other", element: V.Component(OtherRouteBody, key: "other"))),
                 _scopeFactory);
             _router.NavigateAsync("/").GetAwaiter().GetResult();
+            s_router = _router;
         }
 
         [TearDown]
@@ -356,10 +359,17 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode RoutedApp(RouterLocation location)
-            => V.Provider(RouterContext.Location, location,
+            => Spine(location);
+
+        private static VNode Spine(RouterLocation location)
+            => V.Provider(RouterContext.Router, s_router,
                 children: new VNode[]
                 {
-                    V.Provider(RouterContext.Depth, 0, children: new VNode[] { V.Outlet() }),
+                    V.Provider(RouterContext.Location, location,
+                        children: new VNode[]
+                        {
+                            V.Provider(RouterContext.Depth, 0, children: new VNode[] { V.Outlet() }),
+                        }),
                 });
 
         // The spine renders inside a component so the location move on the second render has a fiber under
@@ -411,11 +421,7 @@ namespace Velvet.Tests
 
         // The same spine at the top level, which the cases that never move the location can take.
         private static VNode RoutedOutlet()
-            => V.Provider(RouterContext.Location, Router.Current!.CurrentLocation!,
-                children: new VNode[]
-                {
-                    V.Provider(RouterContext.Depth, 0, children: new VNode[] { V.Outlet() }),
-                });
+            => Spine(s_router.CurrentLocation!);
 
         private static VNode Presence(string childKey) => V.AnimatePresence(key: "presence", children: new VNode[]
         {

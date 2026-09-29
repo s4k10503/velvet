@@ -19,8 +19,9 @@ namespace Velvet.Tests
     /// context default: a null location, and therefore an empty parameter dictionary.</item>
     /// <item>When a <see cref="RouterContext.Location"/> Provider supplies a location, a descendant component
     /// observes that exact location and its route parameters.</item>
-    /// <item><see cref="Hooks.UseLocation"/> declares that null return, while <see cref="Hooks.UseParams"/>
-    /// declares the empty dictionary it substitutes instead.</item>
+    /// <item><see cref="Hooks.UseLocation"/> declares a nullable return, for the null it hands back before
+    /// the router's first location, while <see cref="Hooks.UseParams"/> declares the empty dictionary it
+    /// substitutes for a missing location.</item>
     /// <item>Loader data is read for the route matched at the reader's own Outlet depth: at a depth the
     /// match list does not reach the default comes back even while the map holds entries, and at a nested
     /// depth the answer is that depth's route rather than the outermost or the innermost. Reading it
@@ -52,6 +53,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            Router.Current?.Dispose();
             _reconciler.Dispose();
             _reconciler = null!;
             _root = null!;
@@ -138,6 +140,8 @@ namespace Velvet.Tests
 
         #region Declared nullability
 
+        // GREEN_ON_BASE(characterization): both annotations are the base's. The message moves because
+        // UseLocation now throws with no provider above it, where it used to return that null.
         [Test]
         public void Given_RouterContextHooks_When_ReturnAnnotationsRead_Then_UseLocationIsNullableAndUseParamsIsNot()
         {
@@ -156,7 +160,7 @@ namespace Velvet.Tests
                 Is.EqualTo((
                     NullableAnnotationProbe.Annotation.Nullable,
                     NullableAnnotationProbe.Annotation.NotNullable)),
-                "UseLocation hands back the context default with no Provider above the caller, so its "
+                "UseLocation hands back null until the router publishes its first location, so its "
                 + "declaration must admit null; UseParams substitutes an empty dictionary and is the control "
                 + "showing the probe separates the two states");
         }
@@ -223,16 +227,20 @@ namespace Velvet.Tests
                 Matches = Array.ConvertAll(routeIds, id => new RouteMatch { RouteId = id }),
             };
 
-        // The three contexts an Outlet-rendered route reads loader data through. Depth is supplied
-        // directly because V.Outlet is what writes it, and an Outlet renders the route it matched — so a
-        // depth the match list does not reach cannot be arranged by mounting one.
+        // The contexts an Outlet-rendered route reads loader data through, beneath a router, which
+        // UseLoaderData refuses to run without. Depth is supplied directly because V.Outlet is what writes
+        // it, and an Outlet renders the route it matched — so a depth the match list does not reach cannot be
+        // arranged by mounting one.
         private static VNode RouterProviders(
             RouterLocation location, IReadOnlyDictionary<string, object> loaderData, int depth, VNode child)
-            => V.Provider(RouterContext.Location, location, new VNode[]
+            => V.Provider(RouterContext.Router, new Router(Array.Empty<RouteDefinition>()), new VNode[]
             {
-                V.Provider(RouterContext.LoaderData, loaderData, new VNode[]
+                V.Provider(RouterContext.Location, location, new VNode[]
                 {
-                    V.Provider(RouterContext.Depth, depth, new[] { child }),
+                    V.Provider(RouterContext.LoaderData, loaderData, new VNode[]
+                    {
+                        V.Provider(RouterContext.Depth, depth, new[] { child }),
+                    }),
                 }),
             });
 
