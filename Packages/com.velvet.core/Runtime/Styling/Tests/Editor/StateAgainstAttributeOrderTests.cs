@@ -6,9 +6,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the tie between an element-state variant and a <c>data-</c> / <c>aria-</c> one on the same
-    /// property: the attribute variant wins, as it does in Tailwind, which emits has, aria and data after
-    /// hover, focus, active and disabled.
+    /// Specifies the tie between an element-state variant and a <c>data-</c> / <c>aria-</c> or <c>dark:</c> one
+    /// on the same property: the other variant wins, as it does in Tailwind, which emits has, aria, data and dark
+    /// after hover, focus, active and disabled.
     /// </summary>
     [TestFixture]
     internal sealed class StateAgainstAttributeOrderTests : PanelTestBase
@@ -51,6 +51,28 @@ namespace Velvet.Tests
             // Assert
             Assert.That((leaf.ClassListContains("opacity-50"), leaf.ClassListContains("opacity-75")),
                 Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_HoverAndDarkWidths_When_BothHold_Then_TheDarkWidthWins()
+        {
+            // Arrange
+            var darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = true;
+            try
+            {
+                var leaf = MountLeaf("hover:w-[20px] dark:w-[10px]");
+
+                // Act — hovered after the dark width landed, so a shared layer would leave the hover width.
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+                // Assert
+                Assert.That(leaf.style.width.value.value, Is.EqualTo(10f));
+            }
+            finally
+            {
+                VelvetTheme.IsDark = darkBefore;
+            }
         }
 
         [Test]

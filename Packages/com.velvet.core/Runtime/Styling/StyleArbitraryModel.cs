@@ -12,39 +12,17 @@ namespace Velvet
     {
         public const int Base = 0;
         // [&>*]: child-combinator variant — an ambient blanket rule the PARENT imposes on every direct child.
-        // Ranked just above the base utility and below every self-condition (even mere sibling position): the
-        // file orders layers by how strong / intentional the activating condition is, and a rule the CHILD
-        // itself declares is a more intentional signal than one inherited from the container, so the child's
-        // own layers win. A distinct priority is also required for correctness — the arbitrary-value LayerMap
-        // is a per-property SortedList set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would
-        // let a child's own base arbitrary utility and this inherited one clobber the same slot.
+        // Ranked just above the base utility and below every condition the child declares itself (even mere
+        // sibling position), so the child's own layers win. A distinct priority is also required for
+        // correctness — the arbitrary-value LayerMap is a per-property SortedList set by an INDEXER, so reusing
+        // Base for a [&>*]: arbitrary payload would let a child's own base arbitrary utility and this inherited
+        // one clobber the same slot.
         public const int ChildVariant = 5;
 
         #region Structural
-        // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. Velvet orders these inline
-        // layers by how strong / intentional the activating condition is; a position in the sibling list is
-        // the WEAKEST condition, so it sits just above the base utility and yields to every layer below it
-        // (the context gates, the element's own has-/attribute conditions, and its interaction state).
+        // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. A position in the sibling list
+        // sits just above the base utility and yields to every layer declared after it here.
         public const int Structural = 10;
-        #endregion
-
-        #region Responsive and Supports
-        // Responsive breakpoints: a larger min-width wins while active.
-        public const int ResponsiveSm = 11;
-        public const int ResponsiveMd = 12;
-        public const int ResponsiveLg = 13;
-        public const int ResponsiveXl = 14;
-        public const int Responsive2xl = 15;
-        // supports-[prop:value] feature query. A feature query and a media query are sibling conditional
-        // group rules in CSS (the wrapper adds no specificity), so it sits in the same band as the
-        // responsive breakpoints — just above them, below theme/state. In UI Toolkit it is STATIC
-        // (always-applied when well-formed; see StyleSupportsVariantClass), so this layer never toggles
-        // off at runtime; the priority only orders it against other layers on the same property.
-        public const int Supports = 16;
-        #endregion
-
-        #region Theme and Context
-        public const int Dark = 20;
         #endregion
 
         #region Relational
@@ -86,10 +64,27 @@ namespace Velvet
         public const int Attribute = 71;
         #endregion
 
+        #region Supports, Responsive and Theme
+        // Tailwind registers supports, then the breakpoints, then dark after data, and a media or feature query
+        // adds no specificity to the rule it wraps, so these rank above every layer declared before them here:
+        // md:w-[10px] beats hover:w-[20px] on a hovered element wider than md.
+        // supports-[prop:value] is STATIC in UI Toolkit (always-applied when well-formed; see
+        // StyleSupportsVariantClass), so this layer never toggles off at runtime; the priority only orders it
+        // against other layers on the same property.
+        public const int Supports = 75;
+        // Responsive breakpoints: a larger min-width wins while active.
+        public const int ResponsiveSm = 76;
+        public const int ResponsiveMd = 77;
+        public const int ResponsiveLg = 78;
+        public const int ResponsiveXl = 79;
+        public const int Responsive2xl = 80;
+        public const int Dark = 85;
+        #endregion
+
         #region Important
         // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (Attribute, the highest,
-        // is 71) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
+        // its own variant priority, so the whole band sits above every ordinary layer (Dark, the highest,
+        // is 85) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
         // !w-[20px], the same way dark:w-[10px] beats w-[20px].
         public const int Important = 100;
 

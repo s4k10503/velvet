@@ -41,7 +41,7 @@ worth knowing, both when several variants name one such utility:
   take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
   lands on the children) rank nothing on this element, so adding one never moves what it paints.
   A stacked variant is ranked by its own position too: `dark:hover:` layers at the stronger of its two
-  parts, which is the plain `hover:` layer, so `"dark:hover:shadow-lg hover:shadow-sm"` resolves to the
+  parts, which is the plain `dark:` layer, so `"dark:hover:shadow-lg dark:shadow-sm"` resolves to the
   later-written `shadow-sm` while both are active.
 
 ## The variant set
@@ -154,23 +154,24 @@ the brackets.
 ### Precedence order
 
 Lowest first. Where members of one row also rank against each other, `<` shows that order; where they
-do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 7 and 8
-keep the order Tailwind emits them in, so `disabled:opacity-50 aria-[busy=true]:opacity-75` on a
-disabled, busy element resolves to 0.75 as it does there.
+do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 5 to 8
+keep the order Tailwind emits them in: `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled,
+busy element resolves to 0.75, and `hover:w-[20px] md:w-[10px]` on a hovered element wider than `md` to
+10 px, as they do there.
 
 | | Layer |
 |---|---|
 | 1 | The base utility |
 | 2 | `[&>*]:` — a rule the container imposes on its children |
 | 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
-| 4 | Responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < `supports-[…]:` |
-| 5 | Theme — `dark:` |
-| 6 | Relational — the `group-*` and `peer-*` states |
-| 7 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
-| 8 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
+| 4 | Relational — the `group-*` and `peer-*` states |
+| 5 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
+| 7 | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
+| 8 | Theme — `dark:` |
 | 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 7's `hover:`
+A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `dark:`
 layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
 with the stronger one; *Same family, different values* above settles such a tie.
 
