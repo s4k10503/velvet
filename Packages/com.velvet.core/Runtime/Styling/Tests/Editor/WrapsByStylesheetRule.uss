@@ -1,0 +1,3 @@
+/* A wrap that no Velvet class marker names: StyleGapManipulator can only learn it through resolvedStyle.
+   GapReverseRuntimeFlipTests reads it. */
+.test-wraps-by-rule { flex-wrap: wrap; }
