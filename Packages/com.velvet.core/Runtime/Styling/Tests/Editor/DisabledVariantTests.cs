@@ -26,6 +26,7 @@ namespace Velvet.Tests
         public override void TearDown()
         {
             base.TearDown();
+            s_setClass = default;
             VelvetTheme.IsDark = _darkBefore;
         }
 
@@ -38,6 +39,17 @@ namespace Velvet.Tests
                 }));
             var root = _window.rootVisualElement;
             return (root.Q<VisualElement>("outer"), root.Q<VisualElement>("leaf"));
+        }
+
+        private static string s_initialClass;
+        private static StateUpdater<string> s_setClass;
+
+        [Component]
+        private static VNode RenderSwitchable()
+        {
+            var (className, setClass) = Hooks.UseState(s_initialClass);
+            s_setClass = setClass;
+            return V.Div(name: "leaf", className: className);
         }
 
         private static void RegisterProbe<TEvent>(VisualElement element, Action onEvent)
@@ -85,6 +97,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(host.Q<VisualElement>("leaf").ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_AnElementWithAnotherVariant_When_ARenderAddsADisabledPayloadUnderADisabledHost_Then_ThePayloadIsApplied()
+        {
+            // Arrange — hover: already gives the element its manipulator, so the render updates rather than
+            // creates it.
+            var host = new VisualElement();
+            host.SetEnabled(false);
+            _window.rootVisualElement.Add(host);
+            s_initialClass = "hover:bg-cold";
+            _mounted = V.Mount(host, V.Component(RenderSwitchable));
+
+            // Act
+            s_setClass.Invoke("hover:bg-cold disabled:bg-hot");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(host.Q<VisualElement>("leaf").ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_AMountedDisabledPayload_When_ItsElementMovesUnderADisabledHost_Then_ThePayloadIsApplied()
+        {
+            // Arrange
+            var (_, leaf) = Mount("disabled:bg-hot");
+            var host = new VisualElement();
+            host.SetEnabled(false);
+            _window.rootVisualElement.Add(host);
+
+            // Act
+            host.Add(leaf);
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
         }
 
         [Test]
