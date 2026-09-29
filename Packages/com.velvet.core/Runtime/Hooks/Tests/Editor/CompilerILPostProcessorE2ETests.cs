@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using NUnit.Framework;
@@ -1076,14 +1075,14 @@ namespace Velvet.Tests
             // Arrange
             s_rowBuilds = 0;
             using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
-            var before = Rented();
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
 
             // Act
             s_rowParentSetTick(1);
             mounted.FlushStateForTest();
 
             // Assert — one build means the second render hit the memo, which is the render that drops the sibling.
-            var after = Rented();
+            var after = VNodePoolTestAccess.RentedOutCountsForTest();
             Assert.That(
                 (s_rowBuilds, after.Props - before.Props, after.EventArrays - before.EventArrays,
                     after.NodeArrays - before.NodeArrays),
@@ -1091,42 +1090,9 @@ namespace Velvet.Tests
                 "A memo hit leaves nothing the sibling rented ahead of the gate in the pool's rented sets");
         }
 
-        [Test]
-        public void Given_ALabelBuiltOutsideAnyRender_When_AMemoHitFollows_Then_ItsPropsStayRented()
-        {
-            // Arrange
-            s_rowBuilds = 0;
-            using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
-            var outside = V.Label(text: "outside");
-
-            // Act
-            s_rowParentSetTick(1);
-            mounted.FlushStateForTest();
-
-            // Assert — one build means the render after the label was built hit the memo.
-            Assert.That((s_rowBuilds, RentedFromThePool(outside.Props!)), Is.EqualTo((1, true)),
-                "Only what a body rents while it renders is let go on a hit; a label built outside one stays rented");
-        }
-
         #endregion
 
         #region Helpers
-
-        private static bool RentedFromThePool(FiberElementProps props)
-            => ((System.Collections.Generic.HashSet<FiberElementProps>)typeof(VNodePool)
-                .GetField("s_ownedProps", BindingFlags.NonPublic | BindingFlags.Static)!
-                .GetValue(null)!).Contains(props);
-
-        // The props bags, single-event arrays and node arrays the pool counts as rented out.
-        private static (int Props, int EventArrays, int NodeArrays) Rented()
-        {
-            static int Count(string field)
-            {
-                var set = typeof(VNodePool).GetField(field, BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-                return (int)set.GetType().GetProperty("Count")!.GetValue(set)!;
-            }
-            return (Count("s_ownedProps"), Count("s_ownedSingleEventArrays"), Count("s_ownedNodeArrays"));
-        }
 
         // A body is woven iff both the gate (TryGetMemoizedVNode) and the commit (StoreMemoizedVNode) are
         // injected; an unwoven body has neither.

@@ -62,11 +62,17 @@ namespace Velvet
         private static readonly List<object> s_rentalJournal = new();
         private static int s_rentalJournalDepth;
 
+        // One large render would otherwise leave the journal holding its array for the session.
+        private const int MaxRentalJournalCapacity = 256;
+
         internal static void BeginRentalJournal() => s_rentalJournalDepth++;
 
         internal static void EndRentalJournal()
         {
-            if (--s_rentalJournalDepth == 0) s_rentalJournal.Clear();
+            if (--s_rentalJournalDepth > 0) return;
+            s_rentalJournal.Clear();
+            // MUTANT_SURVIVES(equivalent): at the cap, assigning the cap leaves a List's capacity where it is.
+            if (s_rentalJournal.Capacity > MaxRentalJournalCapacity) s_rentalJournal.Capacity = MaxRentalJournalCapacity;
         }
 
         internal static void DisownJournaledRentals()
@@ -416,6 +422,10 @@ namespace Velvet
         private static void ResetStaticFields()
         {
             s_releaseScopeDepth = 0;
+            s_rentalJournalDepth = 0;
+            // MUTANT_SURVIVES(equivalent): EndRentalJournal empties the journal whenever the outermost render ends,
+            // in a finally, so no entry outlives a render for this to clear.
+            s_rentalJournal.Clear();
             s_stagedProps.Clear();
             s_stagedEventArrays.Clear();
             s_stagedNodeArrays.Clear();
