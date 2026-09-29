@@ -217,11 +217,6 @@ namespace Velvet
             if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
-                if (StyleRelationalVariantManipulator.SourceMarkersDiffer(
-                        oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>()))
-                {
-                    _ctx.RelationalVariantSourcesDirty = true;
-                }
             }
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class

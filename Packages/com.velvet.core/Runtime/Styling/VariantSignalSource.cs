@@ -457,7 +457,6 @@ namespace Velvet
         private readonly ReconcilerContext _ctx;
         private readonly Action<RelationalVariantSignal, bool> _emit;
         private readonly List<Source> _sources = new();
-        private readonly Stack<Source> _spare = new();
         private readonly int[] _holding = new int[RelationalSignalCount];
 
         private const int RelationalSignalCount = (int)RelationalVariantSignal.Checked + 1;
@@ -473,7 +472,7 @@ namespace Velvet
         {
             for (var i = _sources.Count - 1; i >= 0; i--)
             {
-                if (!sources.Contains(_sources[i].Element!))
+                if (!sources.Contains(_sources[i].Element))
                 {
                     Release(i);
                 }
@@ -482,8 +481,7 @@ namespace Velvet
             {
                 if (IndexOf(element) < 0)
                 {
-                    var source = _spare.Count > 0 ? _spare.Pop() : new Source(this);
-                    source.Element = element;
+                    var source = new Source(this, element);
                     _sources.Add(source);
                     Index(element).Add(this);
                     source.Signals.Hook(element, seedChecked, registerChecked);
@@ -497,8 +495,7 @@ namespace Velvet
             foreach (var source in _sources)
             {
                 source.Signals.Unhook();
-                Unindex(source.Element!);
-                Recycle(source);
+                Unindex(source.Element);
             }
             _sources.Clear();
             Array.Clear(_holding, 0, _holding.Length);
@@ -542,7 +539,7 @@ namespace Velvet
             var source = _sources[index];
             _sources.RemoveAt(index);
             source.Signals.Unhook();
-            Unindex(source.Element!);
+            Unindex(source.Element);
             for (var slot = 0; slot < RelationalSignalCount; slot++)
             {
                 if (source.Holding[slot] && --_holding[slot] == 0)
@@ -550,14 +547,6 @@ namespace Velvet
                     _emit((RelationalVariantSignal)slot, false);
                 }
             }
-            Recycle(source);
-        }
-
-        private void Recycle(Source source)
-        {
-            Array.Clear(source.Holding, 0, source.Holding.Length);
-            source.Element = null;
-            _spare.Push(source);
         }
 
         private List<RelationalSourceSet> Index(VisualElement element)
@@ -601,10 +590,13 @@ namespace Velvet
         {
             public readonly bool[] Holding = new bool[RelationalSignalCount];
             public readonly RelationalVariantSignals Signals;
-            public VisualElement? Element;
+            public readonly VisualElement Element;
 
-            public Source(RelationalSourceSet set)
-                => Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));
+            public Source(RelationalSourceSet set, VisualElement element)
+            {
+                Element = element;
+                Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));
+            }
         }
     }
 }

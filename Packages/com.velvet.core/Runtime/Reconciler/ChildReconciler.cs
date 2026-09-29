@@ -63,7 +63,7 @@ namespace Velvet
             _patcher = patcher;
             _factory = factory;
             _cleaner = cleaner;
-            _placement = new ChildElementPlacement(ctx);
+            _placement = new ChildElementPlacement(ctx.BufferPool);
             _keying = new ReconcileKeying();
             _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
         }

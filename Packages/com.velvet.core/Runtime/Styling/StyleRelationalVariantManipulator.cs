@@ -53,53 +53,16 @@ namespace Velvet
             return string.IsNullOrEmpty(name) ? baseClass : baseClass + "/" + name;
         }
 
-        // Whether cls marks a relational source of either relation, unnamed or named.
-        internal static bool IsSourceMarker(string cls)
-            => cls == PeerClass || cls == GroupClass
-                || cls.StartsWith(PeerClass + "/", StringComparison.Ordinal)
-                || cls.StartsWith(GroupClass + "/", StringComparison.Ordinal);
-
-        internal static bool DeclaresSourceMarker(string[]? classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (cls != null && IsSourceMarker(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Whether one list carries a source marker the other does not.
-        internal static bool SourceMarkersDiffer(string[] a, string[] b)
-            => HasMarkerMissingFrom(a, b) || HasMarkerMissingFrom(b, a);
-
-        private static bool HasMarkerMissingFrom(string[] from, string[] other)
-        {
-            foreach (var cls in from)
-            {
-                if (cls != null && IsSourceMarker(cls) && Array.IndexOf(other, cls) < 0)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Retargets every relational consumer's sources against the tree as it now stands (see
-        // ReconcilerContext.RelationalVariantSourcesDirty).
+        // Retargets every relational consumer's sources against the tree as it now stands. Runs at every
+        // top-level pass end, so a source a render inserts, moves, marks or unmarks is picked up or released.
+        // Rejected: a flag set only where a render creates, moves or re-marks a source. It saved the walk on a
+        // pass that changes nothing relational and nothing else, so no case could hold it to anything.
         internal static void RetargetAll(ReconcilerContext ctx)
         {
-            if (!ctx.RelationalVariantSourcesDirty)
+            if (ctx.RelationalVariantManipulators.Count == 0 && ctx.StackedVariantManipulators.Count == 0)
             {
                 return;
             }
-            ctx.RelationalVariantSourcesDirty = false;
             // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
             // removes from the stacked registry (see VariantSettleSweep.SnapshotStacked).
             foreach (var manipulator in new List<StyleRelationalVariantManipulator>(ctx.RelationalVariantManipulators.Values))
@@ -371,8 +334,8 @@ namespace Velvet
                 Retarget(target);
             }
 
-            // registerChecked only for peer (group has no checked state). seedChecked reflects an
-            // already-checked peer immediately; a source already hooked keeps the state it holds.
+            // Checked is registered and seeded only for peer (group has no checked state); a source already
+            // hooked keeps the state it holds.
             public void Retarget(VisualElement target)
             {
                 if (!HasAnyState())
@@ -381,8 +344,7 @@ namespace Velvet
                 }
                 FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
                 _signals ??= new RelationalSourceSet(_owner._ctx, OnSignal);
-                var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
-                _signals.Retarget(_found, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
+                _signals.Retarget(_found, seedChecked: _isPeer, registerChecked: _isPeer);
             }
 
             public void Unhook()

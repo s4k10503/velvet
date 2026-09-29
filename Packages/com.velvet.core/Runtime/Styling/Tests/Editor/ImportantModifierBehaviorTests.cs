@@ -83,6 +83,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantTransformAndAnImportantHoverTransform_When_Hovered_Then_TheHoverTransformWins()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Label(name: "leaf", className: "!uppercase hover:!lowercase", text: "Ab"));
+            var leaf = _root.Q<Label>("leaf");
+            var atRest = leaf.text;
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert
+            Assert.That((atRest, leaf.text), Is.EqualTo(("AB", "ab")));
+        }
+
+        [Test]
         public void Given_ImportantWidthWithHoverWidth_When_Hovered_Then_ImportantBeatsHover()
         {
             // Arrange — !w-[50px] (Important layer) alongside hover:w-[200px] (Hover layer).

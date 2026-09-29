@@ -100,10 +100,6 @@ namespace Velvet
         private VisualElement CreateForElementNode(ElementNode elementNode)
         {
             var element = _ctx.FiberElementFactory.Create(elementNode);
-            if (StyleRelationalVariantManipulator.DeclaresSourceMarker(elementNode.ClassNames))
-            {
-                _ctx.RelationalVariantSourcesDirty = true;
-            }
             // Stamps the ComponentFiber whose Body is mid-render right now (the element's
             // logical owner) onto the reserved userData slot — reset to null on pool reuse
             // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
@@ -264,10 +260,6 @@ namespace Velvet
             var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient,
                 out var variantClasses, out _);
             var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
-            if (StyleRelationalVariantManipulator.DeclaresSourceMarker(appliedClasses))
-            {
-                _ctx.RelationalVariantSourcesDirty = true;
-            }
             _ctx.MotionNodes[element] = motionNode;
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the
             // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record

@@ -383,10 +383,6 @@ namespace Velvet
         // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
         public Dictionary<VisualElement, List<RelationalSourceSet>> RelationalVariantSources { get; } = new();
 
-        // Set when a pass created an element carrying a relational source marker, moved an element, or changed an
-        // element's markers; the top-level pass end then retargets every relational consumer.
-        public bool RelationalVariantSourcesDirty { get; set; }
-
         // Structural variants (first:/last:/odd:/even:/only:/[&:nth-child(N)]:) declared on a CHILD but
         // evaluated against its position among siblings. Each such child registers its parsed rules here at
         // config time; the container's post-children pass (ApplyStructuralVariants) re-derives every rule's
