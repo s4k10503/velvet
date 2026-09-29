@@ -173,6 +173,7 @@ namespace Velvet
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
         }
 
@@ -232,6 +233,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         /// <summary>
@@ -327,6 +329,8 @@ namespace Velvet
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
+            StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
         }
 
@@ -361,6 +365,8 @@ namespace Velvet
             state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
             state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
