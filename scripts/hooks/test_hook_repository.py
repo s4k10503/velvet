@@ -351,8 +351,9 @@ class ReadingBudgetTests(unittest.TestCase):
     """A tripwire on the shared reading, and not a claim about a guard's worst case.
 
     Neither guard's worst case is bounded by anything here: both make their own 60-second calls, and
-    unsettled_pr.py makes up to three of them per pull request, so what they can spend rises with the
-    number of pull requests and no fixed sum describes it. What this holds is the one part that is
+    unsettled_pr.py makes up to six of them per pull request and one more per workflow run still
+    going, so what they can spend rises with the number of pull requests and no fixed sum describes
+    it. What this holds is the one part that is
     fixed — the reading in `repository`, whose cost is the number of ways of asking times the bound
     each one gets, and which is where a third way would be added.
 

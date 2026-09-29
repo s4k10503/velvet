@@ -31,8 +31,9 @@ Nine preconditions:
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
   merged branch from an abandoned one.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
-  Nor is a list complete while the head still has a workflow run to finish or lacks a context its
-  base requires; `expected_checks.py` owns why both are read.
+  Nor is a list complete while the head still has a workflow run to finish, carries a workflow
+  whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
+  of those is and why it is read.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
@@ -260,6 +261,18 @@ def head_runs(project, sha):
     return listed
 
 
+def run_jobs(project, runs, now):
+    """The jobs of each run in `expected_checks.open_runs`, by run id."""
+    slug = repository(project)
+    found = {}
+    for run in expected_checks.open_runs(runs, now):
+        payload = rest_json(expected_checks.jobs_path(slug, run))
+        listed = payload.get("jobs", [])
+        whole_page(payload, listed, "jobs")
+        found[run.get("id")] = listed
+    return found
+
+
 def required_contexts(project, base):
     """The status-check contexts the rulesets over `base` require."""
     contexts = expected_checks.required(rest_json(expected_checks.rules_path(repository(project),
@@ -349,7 +362,7 @@ def contains_commit(project, branch, sha):
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
-                 long_lived_head, runs, required):
+                 long_lived_head, runs_unfinished, runs_failed, required):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -357,8 +370,9 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     none either: a caller that stopped supplying it would read as a green base. It holds the base's
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
-    for the reason `unpublished_release` gives, and neither do `runs`, the head's workflow runs, and
-    `required`, the contexts the base requires.
+    for the reason `unpublished_release` gives, and neither do `runs_unfinished` and `runs_failed`,
+    `expected_checks`' reasons about the head's workflow runs, and `required`, the contexts the base
+    requires.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -381,15 +395,17 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")
 
-    waiting = expected_checks.unfinished(runs)
     absent = expected_checks.absent(required, (entry["name"] for entry in results))
-    if not results and not waiting:
+    if not results and not runs_unfinished:
         reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
     elif absent:
         reasons.append("required by {} and not reported at {}: {}".format(
             base, after[:7], ", ".join(absent)))
-    if waiting:
-        reasons.append("workflow runs not finished at {}: {}".format(after[:7], ", ".join(waiting)))
+    if runs_unfinished:
+        reasons.append("workflow runs not finished at {}: {}".format(after[:7],
+                                                                   ", ".join(runs_unfinished)))
+    if runs_failed:
+        reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
 
     unfinished = [entry["name"] for entry in results
                   if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
@@ -484,6 +500,8 @@ def blocking_reasons(project, number, base=None, states=None):
             project, f"origin/{target}", fetch=False, result=before.sha)
     results = checks(project, before.sha)
     runs = head_runs(project, before.sha)
+    now = time.time()
+    jobs = run_jobs(project, runs, now)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -502,7 +520,8 @@ def blocking_reasons(project, number, base=None, states=None):
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
                                  long_lived_head=long_lived_head,
-                                 runs=runs,
+                                 runs_unfinished=expected_checks.unfinished(runs, jobs, now),
+                                 runs_failed=expected_checks.failed(runs),
                                  required=state.required),
                     after, before.branch, results, target)
 

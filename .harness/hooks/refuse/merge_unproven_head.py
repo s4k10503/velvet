@@ -15,9 +15,9 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
-A list whose every check passed is refused too while the head still has a workflow run to finish or
-lacks a context its base requires, both read inside the same pair of head readings;
-`scripts/pr/expected_checks.py` owns why both are read.
+A list whose every check passed is refused too while the head still has a workflow run to finish,
+carries a workflow whose newest run failed, or lacks a context its base requires, all read inside
+the same pair of head readings; `scripts/pr/expected_checks.py` owns what each is and why.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
@@ -30,6 +30,7 @@ reporting is the convenience; these are what hold when nobody runs it.
 
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
@@ -94,6 +95,13 @@ def head_runs(cwd, sha):
         gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)]))
 
 
+def run_jobs(cwd, runs, now):
+    """The jobs of each run in `expected_checks.open_runs` by run id, None for one left unread."""
+    return {run.get("id"): expected_checks.listed_jobs(
+                gh_json(cwd, ["api", expected_checks.jobs_path("{owner}/{repo}", run)]))
+            for run in expected_checks.open_runs(runs, now)}
+
+
 def required_contexts(cwd, number):
     """(base, the contexts its rulesets require), the contexts None where either went unread."""
     payload = gh_json(cwd, ["pr", "view", *([number] if number else []), "--json", "baseRefName"])
@@ -129,6 +137,8 @@ def unproven(asked, cwd):
 
         listed = checks_of(cwd, number)
         runs = head_runs(cwd, before)
+        now = time.time()
+        jobs = run_jobs(cwd, runs or [], now)
         base, required = required_contexts(cwd, number)
         after = head_sha(cwd, number)
 
@@ -148,7 +158,8 @@ def unproven(asked, cwd):
         elif required is None:
             found.append((label, f"which checks {base} requires could not be read"))
         else:
-            waiting = expected_checks.unfinished(runs)
+            waiting = expected_checks.unfinished(runs, jobs, now)
+            failing = expected_checks.failed(runs)
             absent = expected_checks.absent(required, (entry["name"] for entry in listed))
             unfinished = sorted(entry["name"] for entry in listed
                                 if entry["bucket"] not in TERMINAL_PASS)
@@ -163,6 +174,9 @@ def unproven(asked, cwd):
             if waiting:
                 found.append((label, "workflow runs not finished at {}: {}".format(
                     before[:7], ", ".join(waiting))))
+            if failing:
+                found.append((label, "workflow runs failed at {}: {}".format(
+                    before[:7], ", ".join(failing))))
     return found
 
 

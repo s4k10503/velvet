@@ -40,8 +40,8 @@ settle = load_module()
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
-            fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs=(),
-            required=()):
+            fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
+            runs_failed=(), required=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -49,7 +49,8 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                unpublished_release=unpublished_release, draft=draft,
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
                                behind_release=behind_release, long_lived_head=long_lived_head,
-                               runs=runs, required=required)
+                               runs_unfinished=runs_unfinished, runs_failed=runs_failed,
+                               required=required)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -203,7 +204,7 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork runs state")
+    "Fabricated", "sha after branch base draft merge_state results holds held fork runs state jobs")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -217,8 +218,18 @@ SUITES_SKIPPED = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "skippi
 # so none of its jobs had put a check on the head.
 GENERATOR_CHECKS = [{"name": "Required checks (generators)", "bucket": "pass"},
                     {"name": "Source generators (dotnet)", "bucket": "pass"}]
-GENERATORS_DONE = {"name": "Source generators", "status": "completed", "conclusion": "success"}
-TEST_PENDING = {"name": "Test", "status": "pending", "conclusion": None}
+GENERATORS_DONE = {"id": 36512896257, "name": "Source generators", "workflow_id": 2,
+                   "run_number": 90, "status": "completed", "conclusion": "success"}
+TEST_PENDING = {"id": 36512896182, "name": "Test", "workflow_id": 1, "run_number": 70,
+                "status": "pending", "conclusion": None}
+TEST_PENDING_EXIT = "Test (pending, run 36512896182: `gh run cancel 36512896182` if it is stuck)"
+
+# A run GitHub left `queued` after every job of its latest attempt had completed. Its `updated_at` is
+# left out, so the jobs are all that separate it from a run still going.
+STUCK = {"id": 31128456870, "name": "Source generators", "workflow_id": 2, "run_number": 80,
+         "run_attempt": 1, "status": "queued", "conclusion": None}
+COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed"},
+                  {"name": "Required checks (generators)", "status": "completed"}]
 
 # The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
 # for anything else, so a case posing another base reads it green.
@@ -233,12 +244,13 @@ REQUIRED = ("Required checks (Unity)",)
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None, runs=(), state="open"):
+              held=False, moved=False, fork=False, base="main", branch=None, runs=(), state="open",
+              jobs=None):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork, runs=runs, state=state)
+                      held=held, fork=fork, runs=runs, state=state, jobs=jobs or {})
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -264,6 +276,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
     """
     by_sha = {state.sha: state for state in states.values()}
     by_branch = {state.branch: state for state in states.values()}
+    by_run = {run: jobs for state in states.values() for run, jobs in state.jobs.items()}
     with contextlib.ExitStack() as stack:
         for name, answer in (
             ("repository", lambda *_: "owner/name"),
@@ -277,6 +290,8 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 fork=states[number].fork, state=states[number].state)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_runs", lambda _project, sha: by_sha[sha].runs),
+            ("run_jobs", lambda _project, runs, _now: {
+                run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
@@ -431,7 +446,7 @@ class ExpectedCheckTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, ["workflow runs not finished at 0000000: Test (pending)"])
+        self.assertEqual(decided, [f"workflow runs not finished at 0000000: {TEST_PENDING_EXIT}"])
 
     def test_Given_EveryListedCheckPassedAndARequiredOneNeverReported_When_Decided_Then_ItIsNamed(self):
         # Arrange — every run has finished, so the absent context is all that is left to refuse on.
@@ -445,7 +460,7 @@ class ExpectedCheckTests(unittest.TestCase):
         self.assertEqual(decided,
                          ["required by main and not reported at 0000000: Required checks (Unity)"])
 
-    def test_Given_NoCheckYetAndARunQueued_When_Decided_Then_ItIsNotReadAsNeverTriggered(self):
+    def test_Given_NoCheckYetAndARunPending_When_Decided_Then_ItIsRefusedAsPendingNotNeverTriggered(self):
         # Arrange
         states = {1: fabricate(1, results=[], runs=(TEST_PENDING,))}
 
@@ -453,8 +468,82 @@ class ExpectedCheckTests(unittest.TestCase):
         with fabricated_readings(states):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
+        # Assert — the refusal rides along because a head merged with nothing said names no trigger
+        # either.
+        self.assertEqual((bool(decided), any("never triggered" in reason for reason in decided)),
+                         (True, False))
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run GitHub left queued holds nothing.
+    # What it pins is that the jobs end it: `if not (jobs.get(run.get("id"))` spelled `if not (False`
+    # reddens it.
+    def test_Given_ARunLeftQueuedWhoseJobsAllCompleted_When_Decided_Then_NothingBlocks(self):
+        # Arrange
+        states = {1: fabricate(1, runs=(STUCK,), jobs={STUCK["id"]: COMPLETED_JOBS})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
         # Assert
-        self.assertEqual([reason for reason in decided if "never triggered" in reason], [])
+        self.assertEqual(decided, [])
+
+    def test_Given_ARunLeftQueuedWithAJobStillGoing_When_Decided_Then_ItIsNamedWithItsExit(self):
+        # Arrange — one job completed and one not, so the jobs of the attempt do not end the run.
+        jobs = [COMPLETED_JOBS[0], {"name": "Required checks (generators)", "status": "queued"}]
+        states = {1: fabricate(1, runs=(STUCK,), jobs={STUCK["id"]: jobs})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs not finished at 0000000: Source generators "
+                                   "(queued, run 31128456870: `gh run cancel 31128456870` if it is "
+                                   "stuck)"])
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run untouched for weeks holds nothing.
+    # What it pins is the bound: `untouched_for(run, now) < STALE_AFTER` spelled `True` reddens it.
+    def test_Given_ARunUntouchedForLongerThanTheBound_When_Decided_Then_NothingBlocks(self):
+        # Arrange — no job listed at all, so the bound is all that ends it.
+        stale = dict(STUCK, updated_at="2026-08-06T21:55:26Z")
+        states = {1: fabricate(1, runs=(stale,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_TheNewestRunOfAWorkflowFailedWithNoCheck_When_Decided_Then_ItIsNamed(self):
+        # Arrange — a base requiring nothing, so no absent context stands in for the failed run.
+        failed = dict(TEST_PENDING, status="completed", conclusion="startup_failure")
+        states = {1: fabricate(1, base="4.x", results=GENERATOR_CHECKS,
+                               runs=(GENERATORS_DONE, failed))}
+
+        # Act
+        with fabricated_readings(states, required={"4.x": ()}):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs failed at 0000000: Test (startup_failure, run "
+                                   "36512896182)"])
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so an older failed run holds nothing.
+    # What it pins is that only the newest run of a workflow is read: `if workflow not in newest or
+    # order > newest[workflow][0]:` spelled `if True:` reddens it.
+    def test_Given_AFailedRunSupersededByANewerOne_When_Decided_Then_NothingBlocks(self):
+        # Arrange — newest first, the order the runs listing answers in.
+        newer = dict(TEST_PENDING, id=2, run_number=71, status="completed", conclusion="success")
+        older = dict(TEST_PENDING, id=1, run_number=70, status="completed", conclusion="failure")
+        states = {1: fabricate(1, runs=(newer, older))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
 
     # GREEN_ON_BASE(characterization): the base merges a head no ruleset asks anything more of.
     # What it pins is that neither reading is a wall: requiring the aggregates whatever the ruleset
@@ -544,6 +633,16 @@ class ExpectedCheckTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(asked, [f"repos/owner/name/actions/runs?head_sha={GREEN}&per_page=100"])
+
+    def test_Given_AJobsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the job that fell off the page could be the one still going.
+        truncated = {"total_count": 2, "jobs": [COMPLETED_JOBS[0]]}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: truncated))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.run_jobs, Path("."), [STUCK], 0)
 
     def test_Given_ARunsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
         # Arrange — the run that fell off the page could be the one still going.
@@ -1267,6 +1366,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("pull_request", lambda *_: state),
                 ("checks", lambda *_: PASSING),
                 ("head_runs", lambda *_: []),
+                ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),

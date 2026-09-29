@@ -80,9 +80,9 @@ import json, os, sys
 BY_NUMBER = json.loads(os.environ["VELVET_BASE_CHECK_PULLS"])
 # Per branch, the conclusion and commit every required workflow's last push run answers with.
 RUNS = json.loads(os.environ["VELVET_BASE_CHECK_RUNS"])
-# Per branch, the contexts its rules require. `pr checks` reports the first alone.
-REQUIRED = {"2.x": ["Required checks (Unity)"],
-            "main": ["Required checks (Unity)", "Required checks (generators)"]}
+# Per branch, the contexts its rules require: none on 2.x, as on the repository's own maintenance
+# line, and on main one that `pr checks` below never reports.
+REQUIRED = {"2.x": [], "main": ["Required checks (Unity)", "Required checks (generators)"]}
 
 
 def unmodelled():

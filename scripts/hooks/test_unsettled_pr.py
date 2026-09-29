@@ -132,7 +132,10 @@ class PendingBehindAWatcher(unittest.TestCase):
 
 PASSING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pass"}])
 NO_RUNS = json.dumps({"total_count": 0, "workflow_runs": []})
-TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [{"name": "Test", "status": "pending"}]})
+TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [
+    {"id": 36512896182, "name": "Test", "workflow_id": 1, "run_number": 70, "status": "pending"}]})
+TEST_PENDING_EXIT = "Test (pending, run 36512896182: `gh run cancel 36512896182` if it is stuck)"
+NO_JOBS = json.dumps({"total_count": 0, "jobs": []})
 REQUIRING_UNITY = json.dumps([{"type": "required_status_checks", "parameters": {
     "required_status_checks": [{"context": "Required checks (Unity)"}]}}])
 REQUIRING_BOTH = json.dumps([{"type": "required_status_checks", "parameters": {
@@ -143,9 +146,12 @@ REQUIRING_BOTH = json.dumps([{"type": "required_status_checks", "parameters": {
 class OwedChecks(unittest.TestCase):
     """A head whose check list is not yet everything it will carry, named for what it is owed."""
 
-    def judge_with(self, checks, state, runs=NO_RUNS, rules=REQUIRING_UNITY):
-        """`judge` with gh answering the check list, the merge state, the runs and the rules."""
+    def judge_with(self, checks, state, runs=NO_RUNS, rules=REQUIRING_UNITY, jobs=NO_JOBS):
+        """`judge` with gh answering the check list, the merge state, the runs, their jobs and the
+        rules."""
         def stub(args):
+            if args[0] == "api" and "/jobs?" in args[1]:
+                return jobs, "", 0
             if args[0] == "api" and "/actions/runs?" in args[1]:
                 return runs, "", 0
             if args[0] == "api" and "/rules/branches/main?" in args[1]:
@@ -166,7 +172,7 @@ class OwedChecks(unittest.TestCase):
         said = self.judge_with(PASSING, "BLOCKED", runs=TEST_PENDING)
 
         # Act / Assert
-        self.assertIn("workflow runs not finished: Test (pending)", said or "")
+        self.assertIn(f"workflow runs not finished: {TEST_PENDING_EXIT}", said or "")
 
     def test_Given_EveryCheckPassedAndARequiredOneNeverReported_When_Judged_Then_ItIsNamed(self):
         # Act
@@ -180,11 +186,38 @@ class OwedChecks(unittest.TestCase):
         said = self.judge_with("[]", "CLEAN", runs=TEST_PENDING)
 
         # Act / Assert
-        self.assertIn("workflow runs not finished: Test (pending)", said or "")
+        self.assertIn(f"workflow runs not finished: {TEST_PENDING_EXIT}", said or "")
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run GitHub left queued changes nothing.
+    # What it pins is that the jobs end it here too: `if not (jobs.get(run.get("id"))` spelled
+    # `if not (False` reddens it.
+    def test_Given_ARunLeftQueuedWhoseJobsAllCompleted_When_Judged_Then_ItStillSaysMergeIt(self):
+        # Arrange
+        stuck = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 31128456870, "name": "Source generators", "run_attempt": 1, "status": "queued"}]})
+        jobs = json.dumps({"total_count": 1, "jobs": [
+            {"name": "Source generators (dotnet)", "status": "completed"}]})
+
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs=stuck, jobs=jobs)
+
+        # Assert
+        self.assertIn("every check passed and it is unmerged", said or "")
+
+    def test_Given_TheNewestRunOfAWorkflowFailedWithNoCheck_When_Judged_Then_ItIsNamed(self):
+        # Arrange
+        failed = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 7, "name": "Test", "status": "completed", "conclusion": "startup_failure"}]})
+
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs=failed)
+
+        # Assert
+        self.assertIn("workflow runs failed: Test (startup_failure, run 7)", said or "")
 
     # GREEN_ON_BASE(characterization): a green, clean, unmerged head blocks with "merge it" on the base.
-    # What it pins is that nothing owed leaves that advice alone: `if still[0] or still[2] or True:`
-    # reddens it.
+    # What it pins is that nothing owed leaves that advice alone: `if still.waiting or still.failing or
+    # still.absent or True:` reddens it.
     def test_Given_NothingOwed_When_Judged_Then_ItStillSaysMergeIt(self):
         # Act
         said = self.judge_with(PASSING, "CLEAN")

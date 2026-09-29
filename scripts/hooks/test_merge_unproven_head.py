@@ -39,9 +39,9 @@ MERGE = "gh pr merge 7 --squash --delete-branch"
 HEAD = "abcdef1234567890"
 MOVED = "0123456789abcdef"
 
-# The readings the guard makes — the head, the check list, the head's workflow runs, its base, the
-# base's rules, the head again — so a verdict of `ALLOWED` can be told from a guard that never
-# recognised the command and read nothing.
+# The readings the guard makes where no run is still going — the head, the check list, the head's
+# workflow runs, its base, the base's rules, the head again — so a verdict of `ALLOWED` can be told
+# from a guard that never recognised the command and read nothing.
 READINGS = 6
 
 # `gh` as this fixture answers it. The base, the runs and the rules are told apart by what is asked,
@@ -54,6 +54,7 @@ calls=$((calls + 1))
 printf '%s\\n' "$calls" > "$VELVET_CALLS"
 case "$*" in
   *baseRefName*) printf '{"baseRefName":"main"}\\n'; exit 0 ;;
+  */jobs\\?*) printf '%s' "$VELVET_JOBS"; exit 0 ;;
   *actions/runs*) printf '%s' "$VELVET_RUNS"; exit "$VELVET_RUNS_EXIT" ;;
   *rules/branches/main*) printf '%s' "$VELVET_RULES"; exit "$VELVET_RULES_EXIT" ;;
 esac
@@ -75,7 +76,9 @@ PENDING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pending"}])
 BUCKETLESS = json.dumps([{"name": "Required checks (Unity)"}])
 
 NO_RUNS = json.dumps({"total_count": 0, "workflow_runs": []})
-TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [{"name": "Test", "status": "pending"}]})
+TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [
+    {"id": 36512896182, "name": "Test", "workflow_id": 1, "run_number": 70, "status": "pending"}]})
+NO_JOBS = json.dumps({"total_count": 0, "jobs": []})
 
 REQUIRING_UNITY = json.dumps([{"type": "required_status_checks", "parameters": {
     "required_status_checks": [{"context": "Required checks (Unity)"}]}}])
@@ -99,7 +102,7 @@ class HeadCheckVerdictTests(unittest.TestCase):
         shutil.rmtree(self.root, ignore_errors=True)
 
     def ask(self, checks=PASSING, head_again=HEAD, checks_exit=0, head_again_payload=None,
-            runs=NO_RUNS, runs_exit=0, rules=REQUIRING_UNITY, rules_exit=0):
+            runs=NO_RUNS, runs_exit=0, rules=REQUIRING_UNITY, rules_exit=0, jobs=NO_JOBS):
         """What the guard does with `MERGE`, against a `gh` answering as given."""
         environment = dict(os.environ)
         environment["PATH"] = str(self.binaries) + os.pathsep + environment.get("PATH", "")
@@ -107,7 +110,7 @@ class HeadCheckVerdictTests(unittest.TestCase):
                            VELVET_HEAD_AGAIN=head_again, VELVET_CHECKS=checks,
                            VELVET_CHECKS_EXIT=str(checks_exit),
                            VELVET_RUNS=runs, VELVET_RUNS_EXIT=str(runs_exit),
-                           VELVET_RULES=rules, VELVET_RULES_EXIT=str(rules_exit),
+                           VELVET_RULES=rules, VELVET_RULES_EXIT=str(rules_exit), VELVET_JOBS=jobs,
                            VELVET_HEAD_AGAIN_PAYLOAD=(head_again_payload if head_again_payload is not None
                                                       else json.dumps({"headRefOid": head_again})))
         event = {"tool_name": "Bash", "cwd": str(self.root), "tool_input": {"command": MERGE}}
@@ -215,7 +218,31 @@ class HeadCheckVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((result.returncode,
-                          f"workflow runs not finished at {HEAD[:7]}: Test (pending)" in result.stderr),
+                          f"workflow runs not finished at {HEAD[:7]}: Test (pending, run 36512896182: "
+                          f"`gh run cancel 36512896182` if it is stuck)" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_ARunLeftQueuedWhoseJobsAllCompleted_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange / Act — a run GitHub left `queued` after every job of its latest attempt completed.
+        stuck = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 31128456870, "name": "Source generators", "run_attempt": 1, "status": "queued"}]})
+        result = self.ask(runs=stuck, jobs=json.dumps({"total_count": 1, "jobs": [
+            {"name": "Source generators (dotnet)", "status": "completed"}]}))
+
+        # Assert — the reading count rides along: the jobs read is the one that ends the run, and a
+        # guard that let the merge through without it reads nothing about the run at all.
+        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS + 1))
+
+    def test_Given_TheNewestRunOfAWorkflowFailed_When_TheMergeIsAsked_Then_ItIsNamed(self):
+        # Arrange / Act — failed before its jobs reported a check, so the check list passes.
+        failed = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 7, "name": "Test", "status": "completed", "conclusion": "startup_failure"}]})
+        result = self.ask(runs=failed)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"workflow runs failed at {HEAD[:7]}: Test (startup_failure, run 7)"
+                          in result.stderr),
                          (REFUSED, True))
 
     def test_Given_EveryCheckPassingAndARequiredOneNeverReported_When_TheMergeIsAsked_Then_ItIsNamed(self):
