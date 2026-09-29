@@ -18,11 +18,6 @@ PATH = ".github/workflows/" + WORKFLOW
 RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
 
 
-def runs_path(slug, sha):
-    """The listing, below the API root, of every workflow run whose head is `sha`."""
-    return f"repos/{slug}/actions/runs?head_sha={sha}&per_page=100"
-
-
 def newest(runs):
     """The newest run of `WORKFLOW` among an Actions runs listing's entries, or None.
 
@@ -33,18 +28,27 @@ def newest(runs):
     return max(ours, key=lambda run: run.get("run_number") or 0, default=None)
 
 
-def state(runs):
+def state(runs, concluded):
     """None where no campaign ran on the head, and otherwise what the newest one concluded.
 
-    `success` alone is a pass, and a conclusion the table here does not name is a failure until
-    somebody classifies it.
+    `concluded` answers what a run concluded, or None while it has not finished:
+    `expected_checks.conclusion` over the head's jobs, so a campaign GitHub leaves open after its jobs
+    completed, or one untouched for its bound, is not running forever. `success` alone is a pass, and
+    a conclusion the table here does not name is a failure until somebody classifies it.
     """
     run = newest(runs)
     if run is None:
         return None
-    if run.get("status") != "completed":
+    found = concluded(run)
+    if found is None:
         return RUNNING
-    return {"success": PASSED, "cancelled": CANCELLED}.get(run.get("conclusion"), FAILED)
+    return {"success": PASSED, "cancelled": CANCELLED}.get(found, FAILED)
+
+
+def others(runs):
+    """The runs of every workflow but `WORKFLOW`: `reason` alone decides what a campaign owes, so a
+    reading of what the head's other runs owe leaves it out."""
+    return [run for run in runs if run.get("path") != PATH]
 
 
 def superseded_suites(runs):
@@ -54,8 +58,9 @@ def superseded_suites(runs):
             if run.get("path") == PATH and run is not kept}
 
 
-def reason(labels, found, head):
-    """Why the campaign on a head blocks its merge, or None. `found` is `state`'s answer.
+def reason(labels, found, head, stuck):
+    """Why the campaign on a head blocks its merge, or None. `found` is `state`'s answer, and
+    `stuck` is how to end the newest campaign where GitHub never will, which a running one names.
 
     One that ran has to have passed, and a head carrying the label has to have one that passed. A
     cancelled one measured nothing, so it holds a labelled head alone.
@@ -68,7 +73,7 @@ def reason(labels, found, head):
                 f"hand-off dispatches one for a branch of this repository whose base holds "
                 f"automerge.yml, and for any other the label comes off before a merge by hand")
     if found == RUNNING:
-        return f"its {WORKFLOW} run on {short} has not finished"
+        return f"its {WORKFLOW} run on {short} has not finished ({stuck})"
     if found == CANCELLED:
         return (f"its {WORKFLOW} run on {short} was cancelled: adding the label again dispatches "
                 f"another")

@@ -16,8 +16,8 @@ branch the head was cut from and in what the push runs answer, so one repository
 
 - `maintenance-current` — the pull request targets `2.x`, its head contains `origin/2.x`, `2.x`
   has published everything its CHANGELOG closed, and its push runs last passed. `main` is meanwhile
-  ahead, holds a closed version nobody published, and its push runs last failed at its tip. **Every
-  guard must allow**: each thing that would block this merge is true of `main` alone, and `main` is
+  ahead, holds a closed version nobody published, its push runs last failed at its tip, and its
+  rules require a check no head here reports. **Every guard must allow**: each thing that would block this merge is true of `main` alone, and `main` is
   not what the pull request names.
 - `maintenance-behind` — same, except the head does not contain `origin/2.x`. **Every guard must
   allow** here too: a head whose own checks passed merges while behind a green base.
@@ -80,6 +80,9 @@ import json, os, sys
 BY_NUMBER = json.loads(os.environ["VELVET_BASE_CHECK_PULLS"])
 # Per branch, the conclusion and commit every required workflow's last push run answers with.
 RUNS = json.loads(os.environ["VELVET_BASE_CHECK_RUNS"])
+# Per branch, the contexts its rules require: none on 2.x, as on the repository's own maintenance
+# line, and on main one that `pr checks` below never reports.
+REQUIRED = {"2.x": [], "main": ["Required checks (Unity)", "Required checks (generators)"]}
 
 
 def unmodelled():
@@ -111,6 +114,13 @@ def main():
         return 0
     if argv[0] == "api" and "/actions/runs?head_sha=" in argv[1] and "--jq" not in argv:
         sys.stdout.write(json.dumps({"total_count": 0, "workflow_runs": []}))
+        return 0
+    if argv[0] == "api" and "/rules/branches/" in argv[1] and "--jq" not in argv:
+        branch = argv[1].split("/rules/branches/", 1)[1].split("?", 1)[0]
+        if branch not in REQUIRED:
+            return unmodelled()
+        sys.stdout.write(json.dumps([{"type": "required_status_checks", "parameters": {
+            "required_status_checks": [{"context": context} for context in REQUIRED[branch]]}}]))
         return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
