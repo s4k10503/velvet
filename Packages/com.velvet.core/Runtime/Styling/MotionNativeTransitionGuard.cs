@@ -31,7 +31,9 @@ namespace Velvet
         // finer, which is a separate change from giving the driver a flag.
         Filter = 1 << 6,
         BackgroundPosition = 1 << 7,
-        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
+        // MotionLayoutIdDriver hides a layoutId member that another holder leads through `visibility`.
+        Visibility = 1 << 8,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
     }
 
     /// <summary>
@@ -298,6 +300,7 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
+            if (declared.Contains(StyleLonghand.Visibility)) slots |= MotionTransitionSlots.Visibility;
             return slots;
         }
 

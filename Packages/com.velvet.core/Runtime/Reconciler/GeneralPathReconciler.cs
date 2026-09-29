@@ -1755,6 +1755,7 @@ namespace Velvet
             {
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
+            MotionLayoutIdDriver.Relegate(ghostAnchor, _ctx);
             var capturedKey = key;
             var capturedState = pass.State;
             var capturedBoundary = pass.BoundaryFiber;
@@ -2008,6 +2009,7 @@ namespace Velvet
                 if (wasExiting)
                 {
                     CancelInterruptedPresenceExit(anchor, motionElement, motion, presence, node);
+                    MotionLayoutIdDriver.Present(anchor, _ctx);
                 }
                 else if (wasExitComplete)
                 {

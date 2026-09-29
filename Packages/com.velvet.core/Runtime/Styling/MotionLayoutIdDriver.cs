@@ -39,6 +39,11 @@ namespace Velvet
 
         private static int s_pass;
         private static readonly List<VisualElement> s_ended = new();
+        private static readonly List<VisualElement> s_faded = new();
+        // The owner of the transition suspension a member holds while another leads its id.
+        private static readonly object s_followOwner = new();
+        // The panel no member is on, for SyncFollows while nothing crossfades.
+        private static readonly VisualElement s_nowhere = new();
 
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
@@ -55,7 +60,7 @@ namespace Velvet
             var joins = heldId != layoutId;
             var previous = ctx.LayoutIdRegistry.GetValueOrDefault(layoutId);
             // The lead is the member that joined last, as Framer's NodeStack promotes the node mounted last, so a
-            // patch of any other member leaves it hidden wherever that patch moved it.
+            // patch of any other member leaves it following the lead wherever that patch moved it.
             if (!joins && !ReferenceEquals(previous.Element, element)) return;
 
             // The old box is read off whichever element the id is registered to — this one, or the lead it
@@ -63,15 +68,14 @@ namespace Velvet
             // element registers before its first layout, with no box to store, and a stored zero rect reads as
             // a real box at the parent's origin. The box an entry carries is the fallback for an element not
             // laid out yet, and the whole entry once teardown has taken its element.
-            var oldBox = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out var live)
-                ? live
-                : previous.Box;
+            LayoutIdBox live = default;
+            var readLive = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out live);
+            var oldBox = readLive ? live : previous.Box;
 
             if (joins)
             {
                 if (heldId != null) RemoveMember(element, heldId, ctx);
-                Show(element, ctx);
-                if (previous.Element != null) Hide(previous.Element, ctx);
+                Unfollow(element, ctx);
                 if (!ctx.LayoutIdMembers.TryGetValue(layoutId, out var members))
                 {
                     ctx.LayoutIdMembers[layoutId] = members = new List<VisualElement>();
@@ -80,6 +84,8 @@ namespace Velvet
             }
             ctx.ElementToLayoutId[element] = layoutId;
             ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
+            // The lead this one took over from is hidden until this one's tween, crossfading, draws it again.
+            if (joins) SyncFollows(layoutId, ctx);
 
             // A second patch before a layout settles the first replaces its wait rather than adding one.
             CancelPendingSettle(element, ctx);
@@ -87,7 +93,10 @@ namespace Velvet
             // a scaling Motion it mounted inside corrects it before that frame draws it.
             if (oldBox is { } fromBox)
             {
-                Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing) { ReadOffItself = ReferenceEquals(previous.Element, element) }, ctx);
+                Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing)
+                {
+                    ReadOffItself = readLive && ReferenceEquals(previous.Element, element),
+                }, ctx);
             }
             else if (!IsFiniteRect(element.layout))
             {
@@ -113,8 +122,10 @@ namespace Velvet
             ForgetFallbackParent(element, ctx);
             var host = element.panel?.visualTree;
             if (pending.From != null) Start(element, pending, ctx);
-            // MUTANT_SURVIVES(equivalent): a panel with no frame holds no projection, so no pass there creates one.
-            // A wait for a first layout settles from that layout, on an element in a panel.
+            // MUTANT_SURVIVES(unreachable): the frame check differs only on a panel holding a projection it has no frame for.
+            // Every projection is created on its element's panel with a frame there, so only an element moved to another
+            // panel without a teardown carries one to a panel without a frame, and Velvet moves none between panels: a
+            // portal given another target remounts its children (portals.md). A first-layout wait settles on an element in a panel.
             else if (host != null && ctx.LayoutIdFrames.ContainsKey(host)) Project(host, ctx);
         }
 
@@ -176,14 +187,22 @@ namespace Velvet
             var readScale = ReferenceEquals(fromBox.Parent, parent) ? fromBox.AncestorScale : parentScale;
             var drawnFrom = FromRect(element, fromBox, ctx);
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
-            var moves = pending.Timing.Animates() && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
+            // Framer crossfades a lead that took its box from another holder while more than one holds the id
+            // (setAnimationOrigin's shouldCrossfadeOpacity), and animates that and a promotion however little
+            // they move.
+            var layoutId = ctx.ElementToLayoutId[element];
+            var crossfades = !pending.ReadOffItself && ctx.LayoutIdMembers[layoutId].Count > 1;
+            var moves = pending.Timing.Animates()
+                && (crossfades || pending.Resumes || !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty);
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
             projection ??= CreateProjection(element, host, ctx);
             projection.From = from;
             projection.Moving = moves;
+            projection.Crossfade = crossfades;
             projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
+            SyncFollows(layoutId, ctx);
             Project(host, ctx);
             EnsureFrame(host, ctx);
         }
@@ -216,15 +235,14 @@ namespace Velvet
 
         // Computes and writes every projection on the panel, first giving one to each registered layoutId
         // Motion laid out under a scaling projection that has none, whether or not anything moved it. One not laid
-        // out yet is given one when its first layout settles its wait (OnPatched).
+        // out yet is given one when its first layout settles its wait (OnPatched), not here: a pass run inside a
+        // render reads its own transform before the style pass has resolved its classes.
         private static void Project(VisualElement host, ReconcilerContext ctx)
         {
             var pass = ++s_pass;
             foreach (var element in ctx.ElementToLayoutId.Keys)
             {
                 if (!ctx.LayoutIdProjections.ContainsKey(element) && element.panel?.visualTree == host
-                    // MUTANT_SURVIVES(equivalent): one not laid out computes nothing and writes nothing, and its frame
-                    // ends it having handed back no slot.
                     && IsFiniteRect(element.layout)
                     && element.hierarchy.parent is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
                 {
@@ -269,10 +287,69 @@ namespace Velvet
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
-            var delta = ComputeDelta(Drawn(projection, layout, projection.ParentScale), layout, TransformOrigin(element));
+            var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
+            var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
             projection.Scale = delta.Scale;
             Write(element, projection, delta.Translate);
+            WriteOpacity(element, projection, Fade(projection, ctx));
             return projection.Scale;
+        }
+
+        // Where the lead is drawn, in the frame of this member's parent: Framer projects a member behind the lead
+        // onto the lead's box. Read as the lead was last computed, in this pass or the one before.
+        private static Rect Followed(VisualElement element, VisualElement leader, ReconcilerContext ctx) =>
+            TryReadBox(leader, leader.layout, ctx, out var box) ? FromRect(element, box, ctx) : element.layout;
+
+        // Framer's crossfade (mix-values.ts): the lead fades in over the first half of its move, on circOut, and
+        // the members behind it fade out between halfway and 95% of the way, linearly. NaN leaves the slot alone.
+        private static float Fade(LayoutIdProjection projection, ReconcilerContext ctx)
+        {
+            if (projection.Leader != null)
+            {
+                var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
+                var progress = leading is { Crossfade: true, Moving: true } ? 1f - leading.Progress.Value : 1f;
+                return 1f - CrossfadeOut(progress);
+            }
+            // MUTANT_SURVIVES(equivalent): a lead's crossfade is over by the pass its tween arrives in, where the curve
+            // gives 1, and its frame then either ends the projection or clears the crossfade before the next pass.
+            return projection.Crossfade && projection.Moving ? CrossfadeIn(1f - projection.Progress.Value) : float.NaN;
+        }
+
+        // MUTANT_SURVIVES(equivalent): at 0 the curve gives 0 and at a half 1, as the bounds do.
+        private static float CrossfadeIn(float progress) =>
+            progress <= 0f ? 0f : progress >= 0.5f ? 1f : Mathf.Sin(Mathf.Acos(1f - progress / 0.5f));
+
+        // MUTANT_SURVIVES(equivalent): at a half the line gives 0 and at 0.95 1, as the bounds do.
+        private static float CrossfadeOut(float progress) =>
+            progress <= 0.5f ? 0f : progress >= 0.95f ? 1f : (progress - 0.5f) / 0.45f;
+
+        // The element's own opacity times the fade, handed back once the fade is over. Written over by someone
+        // else, the slot's value becomes the element's own, as AdoptForeignWrites takes it for the transform.
+        private static void WriteOpacity(VisualElement element, LayoutIdProjection projection, float fade)
+        {
+            var opacity = element.style.opacity;
+            if (projection.WritesOpacity && opacity != projection.WrittenOpacity)
+            {
+                projection.OwnInlineOpacity = opacity;
+                projection.OwnOpacity = opacity.keyword == StyleKeyword.Undefined ? opacity.value : element.resolvedStyle.opacity;
+            }
+            if (float.IsNaN(fade))
+            {
+                if (projection.WritesOpacity) element.style.opacity = projection.OwnInlineOpacity;
+                // MUTANT_SURVIVES(equivalent): a slot handed back is read back as the element's own just above, and the
+                // opacity suspension this projection took lasts until End.
+                projection.WritesOpacity = false;
+                return;
+            }
+            if (!projection.WritesOpacity)
+            {
+                projection.WritesOpacity = true;
+                projection.OwnInlineOpacity = opacity;
+                projection.OwnOpacity = opacity.keyword == StyleKeyword.Undefined ? opacity.value : element.resolvedStyle.opacity;
+                MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Opacity);
+            }
+            element.style.opacity = projection.OwnOpacity * fade;
+            projection.WrittenOpacity = element.style.opacity;
         }
 
         private static Rect Drawn(LayoutIdProjection projection, Rect layout, Vector2 parentScale)
@@ -352,14 +429,35 @@ namespace Velvet
             }
             Project(host, ctx);
 
+            // A crossfade ends with its lead's tween, and hides the members that faded out behind the lead.
+            foreach (var entry in ctx.LayoutIdProjections)
+            {
+                if (entry.Value.Crossfade && !entry.Value.Moving) s_faded.Add(entry.Key);
+            }
+            foreach (var element in s_faded)
+            {
+                // MUTANT_SURVIVES(equivalent): SyncFollows again over an id whose lead is not crossfading finds its other
+                // members hidden with no lead to follow, and leaves them so.
+                ctx.LayoutIdProjections[element].Crossfade = false;
+                SyncFollows(ctx.ElementToLayoutId[element], ctx);
+            }
+            s_faded.Clear();
+
             var remaining = false;
             foreach (var entry in ctx.LayoutIdProjections)
             {
                 var projection = entry.Value;
                 if (projection.Host != host) continue;
-                // One whose element left the panel with no teardown is ended too, since no pass projects it there.
-                if (entry.Key.panel?.visualTree != host || !projection.Moving && IsUnit(projection.ParentScale)) s_ended.Add(entry.Key);
-                else remaining = true;
+                // One whose element left the panel with no teardown is ended too, since no pass projects it there. A
+                // member following a lead lasts as long as the lead's crossfade, which SyncFollows ends.
+                if (entry.Key.panel?.visualTree != host || projection.Leader == null && !projection.Moving && IsUnit(projection.ParentScale))
+                {
+                    s_ended.Add(entry.Key);
+                }
+                else
+                {
+                    remaining = true;
+                }
             }
             foreach (var element in s_ended)
             {
@@ -376,6 +474,7 @@ namespace Velvet
             AdoptForeignWrites(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
+            WriteOpacity(element, projection, float.NaN);
             MotionNativeTransitionGuard.Release(element, projection);
         }
 
@@ -425,6 +524,64 @@ namespace Velvet
             CancelPendingSettle(element, ctx);
         }
 
+        // Called from FiberNodePatcher.PatchMotion for a Motion patched with no layoutId: one that held an id stops
+        // holding it, shown again, and its tween and its wait end.
+        internal static void Forget(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.ElementToLayoutId.Remove(element, out var layoutId)) return;
+            RemoveMember(element, layoutId, ctx);
+            Unfollow(element, ctx);
+            End(element, ctx);
+            CancelPendingSettle(element, ctx);
+        }
+
+        // Called from GeneralPathReconciler as a V.AnimatePresence child starts its exit. For each layoutId Motion in
+        // it, the latest member that joined before it and is not exiting takes the lead, as Framer's NodeStack.relegate
+        // promotes one when a node stops being present, whether or not that node led; with none, the lead stays.
+        internal static void Relegate(VisualElement root, ReconcilerContext ctx)
+        {
+            foreach (var element in RegisteredWithin(root, ctx))
+            {
+                ctx.LayoutIdExiting[element] = root;
+                var layoutId = ctx.ElementToLayoutId[element];
+                var members = ctx.LayoutIdMembers[layoutId];
+                for (var i = members.IndexOf(element) - 1; i >= 0; i--)
+                {
+                    if (ctx.LayoutIdExiting.ContainsKey(members[i])) continue;
+                    Resume(members[i], layoutId, ctx);
+                    break;
+                }
+            }
+        }
+
+        // Called from GeneralPathReconciler as a V.AnimatePresence child's exit is cancelled by its key coming back.
+        // Each layoutId Motion in it takes its id's lead again, as Framer promotes a node that is present again.
+        internal static void Present(VisualElement root, ReconcilerContext ctx)
+        {
+            foreach (var element in RegisteredWithin(root, ctx))
+            {
+                if (ctx.LayoutIdExiting.Remove(element)) Resume(element, ctx.ElementToLayoutId[element], ctx);
+            }
+        }
+
+        private static List<VisualElement> RegisteredWithin(VisualElement root, ReconcilerContext ctx)
+        {
+            var within = new List<VisualElement>();
+            foreach (var element in ctx.ElementToLayoutId.Keys)
+            {
+                for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
+                {
+                    if (!ReferenceEquals(e, root)) continue;
+                    within.Add(element);
+                    break;
+                }
+            }
+            return within;
+        }
+
+        private static LayoutIdBox? ReadBox(VisualElement element, ReconcilerContext ctx) =>
+            TryReadBox(element, element.layout, ctx, out var box) ? box : null;
+
         // Takes an element out of an id's members, at its teardown or as it joins another id. A lead that leaves
         // hands the lead to the member that joined last, as Framer's NodeStack.remove promotes the last remaining
         // member. With none left, a lead that leaves inside a pass leaves its box for a replacement later in
@@ -438,10 +595,10 @@ namespace Velvet
             var current = ctx.LayoutIdRegistry[layoutId];
             if (!ReferenceEquals(current.Element, element)) return;
 
-            var box = TryReadBox(element, element.layout, ctx, out var live) ? live : current.Box;
+            var box = ReadBox(element, ctx) ?? current.Box;
             if (members.Count > 0)
             {
-                Promote(members[members.Count - 1], layoutId, box, ctx);
+                Resume(members[members.Count - 1], layoutId, box, ctx);
             }
             else if (ctx.CurrentPass != null)
             {
@@ -454,35 +611,82 @@ namespace Velvet
             }
         }
 
-        // The promoted member tweens from where the lead that left was drawn, starting at once rather than
-        // waiting for a layout, since its own need not change. One not laid out yet has not been drawn anywhere,
+        // Hands the id's lead to a member, which tweens from where the lead before it was drawn, as Framer's
+        // NodeStack.promote resumes the promoted node from the previous lead. Started at once rather than on a
+        // layout, since the member's own need not change; a patch later in the render that moves it moves the box
+        // the tween runs to, which each pass reads off its layout. One not laid out yet has not been drawn anywhere,
         // and appears where it is first laid out.
-        private static void Promote(VisualElement element, string layoutId, LayoutIdBox? from, ReconcilerContext ctx)
+        private static void Resume(VisualElement element, string layoutId, LayoutIdBox? from, ReconcilerContext ctx)
         {
-            Show(element, ctx);
+            Unfollow(element, ctx);
             ctx.LayoutIdRegistry[layoutId] = (element, null);
-            if (from is not { } box) return;
-            // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
-            if (element.panel != null && IsFiniteRect(element.layout))
+            if (from is { } box)
             {
-                Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]), ctx);
+                // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
+                if (element.panel != null && IsFiniteRect(element.layout))
+                {
+                    Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]) { Resumes = true }, ctx);
+                }
+            }
+            // Start has drawn the rest already unless it did not start a tween.
+            SyncFollows(layoutId, ctx);
+        }
+
+        // Hands the lead to a member over the live lead, from where that lead is drawn; a no-op for the lead itself,
+        // as NodeStack.promote returns for the node that already leads.
+        private static void Resume(VisualElement element, string layoutId, ReconcilerContext ctx)
+        {
+            // A live member holds the id, so the id has a live lead.
+            var lead = ctx.LayoutIdRegistry[layoutId].Element!;
+            if (!ReferenceEquals(lead, element)) Resume(element, layoutId, ReadBox(lead, ctx), ctx);
+        }
+
+        // Draws every member but the lead the way Framer draws a node behind its stack's lead: over the lead's box
+        // and fading out while the lead crossfades, and hidden by `visibility: hidden` otherwise. The lead is the one
+        // LayoutIdRegistry names.
+        private static void SyncFollows(string layoutId, ReconcilerContext ctx)
+        {
+            if (!ctx.LayoutIdMembers.TryGetValue(layoutId, out var members)) return;
+            var lead = ctx.LayoutIdRegistry[layoutId].Element;
+            var leading = lead != null ? ctx.LayoutIdProjections.GetValueOrDefault(lead) : null;
+            // A member on another panel than the lead, or on none, has no box of the lead's to be drawn over.
+            var fadeHost = leading is { Crossfade: true, Moving: true } ? leading.Host : s_nowhere;
+            foreach (var member in members)
+            {
+                if (ReferenceEquals(member, lead)) continue;
+                Follow(member, ctx);
+                CancelPendingSettle(member, ctx);
+                if (ReferenceEquals(member.panel?.visualTree, fadeHost))
+                {
+                    member.style.visibility = ctx.LayoutIdFollows[member];
+                    var projection = ctx.LayoutIdProjections.GetValueOrDefault(member) ?? CreateProjection(member, fadeHost, ctx);
+                    projection.Leader = lead;
+                    projection.Moving = false;
+                }
+                else
+                {
+                    // Its own tween, if one is running, carries on out of sight.
+                    if (ctx.LayoutIdProjections.GetValueOrDefault(member)?.Leader != null) End(member, ctx);
+                    member.style.visibility = Visibility.Hidden;
+                }
             }
         }
 
-        // A member another has taken the lead from is not drawn until it leads again, as Framer's NodeStack.promote
-        // hides the previous lead where it does not crossfade: its tween and its wait end, and its transform slots
-        // are handed back.
-        private static void Hide(VisualElement element, ReconcilerContext ctx)
+        // Marks a member as following another's lead, keeping the inline visibility it held for when it leads again
+        // and suspending a transition that would carry its visibility across frames.
+        private static void Follow(VisualElement element, ReconcilerContext ctx)
         {
-            CancelPendingSettle(element, ctx);
-            End(element, ctx);
-            ctx.LayoutIdHidden[element] = element.style.visibility;
-            element.style.visibility = Visibility.Hidden;
+            if (ctx.LayoutIdFollows.ContainsKey(element)) return;
+            ctx.LayoutIdFollows[element] = element.style.visibility;
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
         }
 
-        private static void Show(VisualElement element, ReconcilerContext ctx)
+        private static void Unfollow(VisualElement element, ReconcilerContext ctx)
         {
-            if (ctx.LayoutIdHidden.Remove(element, out var visibility)) element.style.visibility = visibility;
+            if (!ctx.LayoutIdFollows.Remove(element, out var visibility)) return;
+            if (ctx.LayoutIdProjections.GetValueOrDefault(element)?.Leader != null) End(element, ctx);
+            element.style.visibility = visibility;
+            MotionNativeTransitionGuard.Release(element, s_followOwner);
         }
 
         // Called from FiberElementCleaner as it returns an element to the pool.
@@ -608,8 +812,11 @@ namespace Velvet
 
         // Null for a wait that only projects the element once it is first laid out.
         public LayoutIdBox? From { get; }
-        // From was read off this same element rather than off another holder of the id.
+        // From was read off this same element as it was drawn, rather than off another holder of the id or a
+        // fallback box.
         public bool ReadOffItself { get; init; }
+        // A promotion, which tweens however little the member moves.
+        public bool Resumes { get; init; }
         public Rect PatchedLayout { get; }
         public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
@@ -649,6 +856,15 @@ namespace Velvet
         public bool WritesScale;
         public StyleTranslate WrittenTranslate;
         public StyleScale WrittenScale;
+
+        // The lead this member is drawn over while the lead crossfades, or null for a projection of its own.
+        public VisualElement? Leader;
+        // This lead fades in and the members behind it fade out while it moves.
+        public bool Crossfade;
+        public StyleFloat OwnInlineOpacity;
+        public float OwnOpacity;
+        public bool WritesOpacity;
+        public StyleFloat WrittenOpacity;
     }
 
     // The transition a layoutId move takes: the Motion's own `transition`, or its Layout in place of it when

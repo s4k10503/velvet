@@ -68,6 +68,10 @@ namespace Velvet.Tests
             s_shared = null;
             s_bump = null;
             s_store = null;
+            s_bTransition = null;
+            s_sharedClasses = null;
+            s_cardTransition = null;
+            (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
         }
 
         [TearDown]
@@ -2366,11 +2370,15 @@ namespace Velvet.Tests
         }
 
         // Set before each render of SharedLiveIdRender: "a" stands at s_aLeft under s_aId while s_aMounted, and
-        // "b" stands 300px right under "card", after it, while s_bMounted.
+        // "b" stands at s_bLeft under "card", after it, on s_bTransition, while s_bMounted. Both carry
+        // s_sharedClasses.
         private static string s_aId;
         private static int s_aLeft;
         private static bool s_aMounted;
         private static bool s_bMounted;
+        private static int s_bLeft;
+        private static StyleTransitionConfig s_bTransition;
+        private static string s_sharedClasses;
         private static int s_sharedRenders;
 
         [Component]
@@ -2382,24 +2390,32 @@ namespace Velvet.Tests
             if (s_aMounted)
             {
                 children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_slowTween,
-                    className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px]"));
+                    className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses}"));
             }
             if (s_bMounted)
             {
-                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_slowTween,
-                    className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"));
+                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
+                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses}"));
             }
             return V.Div(children: children.ToArray());
         }
 
-        // Mounts "a" alone under "card", then "b" under the same id, and plays the frame after.
+        // Mounts "a" alone under "card", then "b" 300px right under the same id on a one-second linear tween, and
+        // plays the frame after.
         private MountedTree MountBOverA()
         {
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
-            Tick();
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_bTransition ?? s_slowTween, s_sharedClasses ?? "");
+            var mounted = MountAAlone();
             s_bMounted = true;
             RenderShared(mounted);
+            return mounted;
+        }
+
+        private MountedTree MountAAlone()
+        {
+            var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
+            Tick();
             return mounted;
         }
 
@@ -2411,10 +2427,110 @@ namespace Velvet.Tests
             Tick();
         }
 
+        // How far "b" is through its tween from "a", read off where it is drawn: the tween is linear over 300px.
+        private float BProgress() => 1f + TranslateX(Root.Q<VisualElement>("b")) / 300f;
+
         [Test]
-        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderIt_Then_TheFirstIsHidden()
+        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderItAndItsTweenEnds_Then_TheFirstIsHidden()
         {
-            // Arrange / Act
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderIt_Then_ItIsDrawnWhereTheOtherIsDrawn()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act — "b" some 50px on from "a".
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert
+            var b = DrawnBox(Root.Q<VisualElement>("b"));
+            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_AQuarterOfItsTweenHasPassed_Then_ItIsFadedInOnCircOut()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — Framer's easeCrossfadeIn: circOut over the first half of the move.
+            var progress = BProgress();
+            var expected = Mathf.Sin(Mathf.Acos(1f - progress / 0.5f));
+            Assert.That(Root.Q<VisualElement>("b").style.opacity.value, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_ThreeQuartersOfItsTweenHavePassed_Then_TheOneBehindItIsFadingOut()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 45; i++) Tick();
+
+            // Assert — Framer's easeCrossfadeOut: linear from halfway to 95% of the move.
+            var progress = BProgress();
+            var expected = 1f - (progress - 0.5f) / 0.45f;
+            Assert.That(Root.Q<VisualElement>("a").style.opacity.value, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_ItsTweenEnds_Then_ItsOpacityIsHandedBack()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            var b = Root.Q<VisualElement>("b");
+            var fading = b.style.opacity.keyword != StyleKeyword.Null;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((fading, b.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionJoiningAnId_When_ItIsPatchedAgainBeforeItsFirstLayout_Then_ItStillCrossfades()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_bMounted = true;
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+
+            // Act — a second render before any layout, then "b" some 50px on.
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 11; i++) Tick();
+
+            // Assert — "a" drawn where "b" is, fading behind it.
+            var b = DrawnBox(Root.Q<VisualElement>("b"));
+            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatTransitionsAll_When_AnotherTakesItsIdWithoutATween_Then_TheNextFrameHidesIt()
+        {
+            // Arrange — the bundled sheet, so that transition-all gives visibility a transition.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bTransition, s_sharedClasses) = (StyleTransitionConfig.None, "transition-all");
+
+            // Act
             using var mounted = MountBOverA();
 
             // Assert
@@ -2422,30 +2538,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionMidTween_When_AnotherMountsUnderItsId_Then_ItsTweenStopsWritingToIt()
-        {
-            // Arrange — "a" one frame into a move 100px right.
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            using var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
-            Tick();
-            s_aLeft = 100;
-            RenderShared(mounted);
-            var a = Root.Q<VisualElement>("a");
-            var midTween = a.style.translate.keyword != StyleKeyword.Null;
-
-            // Act
-            s_bMounted = true;
-            RenderShared(mounted);
-
-            // Assert
-            Assert.That((midTween, a.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
-        }
-
-        [Test]
         public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneMountedFirstMoves_Then_ItDoesNotTakeTheLead()
         {
             // Arrange
             using var mounted = MountBOverA();
+            AdvancePast(1f);
 
             // Act
             s_aLeft = 100;
@@ -2470,11 +2567,34 @@ namespace Velvet.Tests
             Assert.That(TranslateX(Root.Q<VisualElement>("a")), Is.GreaterThan(250f));
         }
 
+        // GREEN_ON_BASE(characterization): the base tweens a Motion that moves in the render its id's other holder leaves from that holder's box.
+        // A promotion started against the member's layout before the render moved it must still tween to where it moved.
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsAtOneBox_When_TheLeadLeavesAndTheOtherMovesInOneRender_Then_TheOtherTweens()
+        {
+            // Arrange — both at the left, "b" leading.
+            s_bLeft = 0;
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bTransition, s_sharedClasses) = (s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_bMounted = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Act
+            (s_bMounted, s_aLeft) = (false, 200);
+            RenderShared(mounted);
+
+            // Assert — back over the left, 200px short of its new box.
+            Assert.That(TranslateX(Root.Q<VisualElement>("a")), Is.LessThan(-150f));
+        }
+
         [Test]
         public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadLeaves_Then_TheOtherIsShownAgain()
         {
             // Arrange
             using var mounted = MountBOverA();
+            AdvancePast(1f);
             var whileBLeads = Root.Q<VisualElement>("a").resolvedStyle.visibility;
 
             // Act
@@ -2489,7 +2609,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base leaves a tween running when another Motion under its id leaves.
         // A member that leaves must not be taken for the lead and restart the lead's tween.
         [Test]
-        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheHiddenOneLeaves_Then_TheLeadsTweenCarriesOn()
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneBehindTheLeadLeaves_Then_TheLeadsTweenCarriesOn()
         {
             // Arrange — "b" part way into its one-second tween from "a".
             using var mounted = MountBOverA();
@@ -2509,6 +2629,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountBOverA();
+            AdvancePast(1f);
             var whileBLeads = Root.Q<VisualElement>("a").resolvedStyle.visibility;
 
             // Act
@@ -2520,6 +2641,41 @@ namespace Velvet.Tests
                 Is.EqualTo((Visibility.Hidden, Visibility.Visible)));
         }
 
+        [Test]
+        public void Given_AHiddenLayoutIdMotion_When_ItsLayoutIdIsRemoved_Then_ItIsShownAgain()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+            var whileBLeads = Root.Q<VisualElement>("a").resolvedStyle.visibility;
+
+            // Act
+            s_aId = null;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That((whileBLeads, Root.Q<VisualElement>("a").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Hidden, Visibility.Visible)));
+        }
+
+        [Test]
+        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItsLayoutIdIsRemovedAndAnotherMountsUnderIt_Then_TheOtherAppearsInPlace()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_aId = null;
+            RenderShared(mounted);
+
+            // Act
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         // GREEN_ON_BASE(characterization): the base starts no tween on a Motion when the holder of an id it left leaves.
         // A Motion that took another id must not stay behind as a member of the one it left.
         [Test]
@@ -2527,6 +2683,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountBOverA();
+            AdvancePast(1f);
             s_aId = "other";
             RenderShared(mounted);
 
@@ -2536,6 +2693,354 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base tweens a Motion that mounts as the only holder of the id a removed one held, and writes no opacity.
+        // A holder alone under its id must not crossfade.
+        [Test]
+        public void Given_ALayoutIdMotionRemovedAsAnotherMountsUnderItsId_When_TheOtherTweens_Then_ItDoesNotFade()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+
+            // Act
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Assert — back over "a", at its own opacity.
+            var b = Root.Q<VisualElement>("b");
+            Assert.That((TranslateX(b) < -250f, b.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadMovesOnItsOwn_Then_TheOtherStaysHidden()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act
+            s_bLeft = 400;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_ATransitionAllMotionJoiningAnIdAtTheHoldersBox_When_ItCrossfades_Then_ItsTransitionsAreSuspended()
+        {
+            // Arrange — the bundled sheet, and "b" mounted over "a" at the same box, so its crossfade moves nothing.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (0, s_slowTween, "transition-all");
+            using var mounted = MountAAlone();
+
+            // Act
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.transitionProperty.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionBehindANewLead_When_TheCrossfadeEnds_Then_ItsOpacityIsHandedBack()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            var fading = a.style.opacity.keyword != StyleKeyword.Null;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((fading, a.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithAPendingMove_When_ItsLayoutIdIsRemovedAsItMoves_Then_ItDoesNotTween()
+        {
+            // Arrange — "a" tweening a move 100px right, then patched where it stands.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            RenderShared(mounted);
+
+            // Act
+            (s_aId, s_aLeft) = (null, 200);
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionCrossfadingOverAnother_When_ItLeavesMidCrossfade_Then_TheOtherTweensFromWhereItWasDrawn()
+        {
+            // Arrange — "b" some 150px on from "a".
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert — back over where "b" was drawn, not over "b"'s box or at its own.
+            Assert.That(TranslateX(Root.Q<VisualElement>("a")), Is.InRange(100f, 200f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never suspends the transitions of a Motion another takes the id from.
+        // A member that leads again must hand back the suspension it held while hidden.
+        [Test]
+        public void Given_AHiddenTransitionAllMotion_When_ItLeadsAgainAndItsTweenEnds_Then_ItsTransitionsAreHandedBack()
+        {
+            // Arrange — the bundled sheet, and "b" taking the id without a tween, which hides "a" at once.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bTransition, s_sharedClasses) = (StyleTransitionConfig.None, "transition-all");
+            using var mounted = MountBOverA();
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // Set before each render of CardModalRender: whether the modal is open, and the card's transition when not
+        // the one-second tween.
+        private static bool s_modalOpen;
+        private static StyleTransitionConfig s_cardTransition;
+
+        // A card at the left, and a modal 300px right under the same id inside a V.AnimatePresence, with a
+        // one-second fade out as its exit.
+        [Component]
+        private static VNode CardModalRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(key: "card", name: "card", layoutId: "card", transition: s_cardTransition ?? s_slowTween,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+                V.AnimatePresence(key: "presence", children: s_modalOpen
+                    ? new VNode[]
+                    {
+                        V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
+                            exit: "hidden", transition: s_slowTween,
+                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"),
+                    }
+                    : Array.Empty<VNode>()),
+            });
+        }
+
+        // Mounts the card, opens the modal over it and lets its tween end, then closes it and plays the frame after.
+        private MountedTree OpenAndCloseTheModal()
+        {
+            s_modalOpen = false;
+            var mounted = V.Mount(Root, V.Component(CardModalRender, key: "root"));
+            Tick();
+            s_modalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_modalOpen = false;
+            RenderShared(mounted);
+            return mounted;
+        }
+
+        [Test]
+        public void Given_AModalLeadingACardsLayoutId_When_ItsExitStarts_Then_TheCardIsShownTweeningFromTheModal()
+        {
+            // Arrange / Act
+            using var mounted = OpenAndCloseTheModal();
+
+            // Assert — drawn, and one frame into its tween back from 300px right.
+            var card = Root.Q<VisualElement>("card");
+            Assert.That((card.resolvedStyle.visibility, TranslateX(card) > 250f), Is.EqualTo((Visibility.Visible, true)));
+        }
+
+        [Test]
+        public void Given_AModalWhoseExitHandedTheCardItsLayoutId_When_ItComesBackMidExit_Then_ItLeadsAgain()
+        {
+            // Arrange
+            using var mounted = OpenAndCloseTheModal();
+
+            // Act
+            s_modalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((Root.Q<VisualElement>("modal").resolvedStyle.visibility, Root.Q<VisualElement>("card").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Visible, Visibility.Hidden)));
+        }
+
+        [Test]
+        public void Given_ACardOnNoTransition_When_TheModalLeadingItsLayoutIdStartsItsExit_Then_TheModalIsHidden()
+        {
+            // Arrange / Act
+            s_cardTransition = StyleTransitionConfig.None;
+            using var mounted = OpenAndCloseTheModal();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("modal").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        // Set before each render of PresencePairRender: whether the card is mounted and whether each modal is open.
+        private static bool s_cardMounted;
+        private static bool s_m1Open;
+        private static bool s_m2Open;
+
+        // A card at the left, and two modals 300px and 600px right under the same id inside a V.AnimatePresence,
+        // each with a one-second fade out as its exit.
+        [Component]
+        private static VNode PresencePairRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode Modal(string key, int left) => V.Motion(key: key, name: key, layoutId: "card", variants: s_fade,
+                animate: "visible", exit: "hidden", transition: s_slowTween,
+                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]");
+            var modals = new List<VNode>();
+            if (s_m1Open) modals.Add(Modal("m1", 300));
+            if (s_m2Open) modals.Add(Modal("m2", 600));
+            var children = new List<VNode>();
+            if (s_cardMounted)
+            {
+                children.Add(V.Motion(key: "card", name: "card", layoutId: "card", transition: s_slowTween,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"));
+            }
+            children.Add(V.AnimatePresence(key: "presence", children: modals.ToArray()));
+            return V.Div(children: children.ToArray());
+        }
+
+        // Mounts PresencePairRender with the card as given, then opens the first modal and the second, letting
+        // each one's tween end.
+        private MountedTree OpenBothModals(bool withCard)
+        {
+            (s_cardMounted, s_m1Open, s_m2Open) = (withCard, false, false);
+            var mounted = V.Mount(Root, V.Component(PresencePairRender, key: "root"));
+            Tick();
+            s_m1Open = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_m2Open = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            return mounted;
+        }
+
+        [Test]
+        public void Given_TwoModalsOverACard_When_BothStartTheirExits_Then_TheCardTweensFromTheLeadingOne()
+        {
+            // Arrange
+            using var mounted = OpenBothModals(withCard: true);
+
+            // Act
+            (s_m1Open, s_m2Open) = (false, false);
+            RenderShared(mounted);
+
+            // Assert — drawn, and one frame into its tween back from 600px right.
+            var card = Root.Q<VisualElement>("card");
+            Assert.That((card.resolvedStyle.visibility, TranslateX(card) > 500f), Is.EqualTo((Visibility.Visible, true)));
+        }
+
+        [Test]
+        public void Given_TwoModalsOverACard_When_TheOneBehindTheLeadStartsItsExit_Then_TheCardTakesTheLead()
+        {
+            // Arrange
+            using var mounted = OpenBothModals(withCard: true);
+
+            // Act — Framer's NodeStack.relegate promotes the card whether or not the exiting modal led.
+            s_m1Open = false;
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((Root.Q<VisualElement>("card").resolvedStyle.visibility, Root.Q<VisualElement>("m2").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Visible, Visibility.Hidden)));
+        }
+
+        [Test]
+        public void Given_TwoModalsExitingWhileTheLaterLeads_When_TheLaterComesBack_Then_TheOtherStaysHidden()
+        {
+            // Arrange — no card, so the later one keeps the lead through its exit.
+            using var mounted = OpenBothModals(withCard: false);
+            (s_m1Open, s_m2Open) = (false, false);
+            RenderShared(mounted);
+
+            // Act
+            s_m2Open = true;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("m1").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        // Step 1 grows the outer one; step 2 mounts "late" inside it with the bundled stylesheet's scale-150; step 3
+        // removes "lead", which leads "held"'s id.
+        [Component]
+        private static VNode PromotionInsideGrowingRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var children = new List<VNode>
+            {
+                V.Motion(key: "held", name: "held", layoutId: "held-box", transition: s_layoutSpring,
+                    className: "left-[20px] top-[20px] w-[50px] h-[50px]"),
+            };
+            if (step >= 2)
+            {
+                children.Add(V.Motion(key: "late", name: "late", layoutId: "late-box", transition: s_layoutSpring,
+                    className: "left-[20px] top-[80px] w-[50px] h-[50px] scale-150"));
+            }
+            if (step < 3)
+            {
+                children.Add(V.Motion(key: "lead", name: "lead", layoutId: "held-box", transition: s_layoutSpring,
+                    className: "left-[80px] top-[20px] w-[50px] h-[50px]"));
+            }
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "outer", layoutId: "outer-box", transition: s_layoutSpring,
+                    className: $"left-[0px] top-[0px] w-[{(step == 0 ? 300 : 600)}px] h-[{(step == 0 ? 300 : 600)}px]",
+                    children: children.ToArray()),
+            });
+        }
+
+        [Test]
+        public void Given_AMotionMountedInsideOneStillGrowing_When_ARenderInThePanelsTickPromotesAnotherBeforeItIsLaidOut_Then_ItIsDrawnAtItsOwnScale()
+        {
+            // Arrange — the outer one part way through growing.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(PromotionInsideGrowingRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 4; i++) Tick();
+
+            // Act — inside the panel's own tick, after the frame that steps the projections: one render mounts "late",
+            // and the next removes "lead", handing its id to "held" before "late" is laid out.
+            Root.schedule.Execute(() =>
+            {
+                s_setStep.Invoke(2);
+                mounted.FlushStateForTest();
+                s_setStep.Invoke(3);
+                mounted.FlushStateForTest();
+            });
+            Tick();
+
+            // Assert — its own one and a half, drawn inside an outer one whose scale its own undoes.
+            var late = Root.Q<VisualElement>("late");
+            var outer = Root.Q<VisualElement>("outer");
+            Assert.That(late.style.scale.value.value.x * outer.style.scale.value.value.x, Is.EqualTo(1.5f).Within(0.01f));
         }
 
         [Test]

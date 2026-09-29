@@ -702,11 +702,13 @@ namespace Velvet
         public HashSet<string> LayoutIdSnapshots { get; } = new();
 
         // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
-        // them. Each member's layout transition, for a lead it takes without a patch of its own, and the inline
-        // visibility each member another leads over held before it was hidden.
+        // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
+        // visibility each member another leads held before it followed that lead; and the members inside a
+        // V.AnimatePresence child whose exit is running, with the element that child's exit started on.
         public Dictionary<string, List<VisualElement>> LayoutIdMembers { get; } = new();
         public Dictionary<VisualElement, LayoutIdTiming> LayoutIdTimings { get; } = new();
-        public Dictionary<VisualElement, StyleEnum<Visibility>> LayoutIdHidden { get; } = new();
+        public Dictionary<VisualElement, StyleEnum<Visibility>> LayoutIdFollows { get; } = new();
+        public Dictionary<VisualElement, VisualElement> LayoutIdExiting { get; } = new();
 
         // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
         // tweens from. A registered callback, so it is removed explicitly at teardown like
@@ -1920,7 +1922,8 @@ namespace Velvet
                 PresenceChildRoots,
                 ElementToLayoutId,
                 LayoutIdTimings,
-                LayoutIdHidden,
+                LayoutIdFollows,
+                LayoutIdExiting,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
