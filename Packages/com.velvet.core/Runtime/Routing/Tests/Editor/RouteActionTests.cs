@@ -56,6 +56,15 @@ namespace Velvet.Tests
 
         private static readonly SubmitOptions PostToItems = new() { Method = "post", Action = "/items" };
 
+        private static RouteDefinition ActionRoute(string path,
+            Func<RouteActionContext, CancellationToken, VelvetTask<object>> action,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? loader = null,
+            RouteDefinition[]? children = null,
+            ComponentNode? element = null,
+            ComponentNode? errorElement = null)
+            => V.Route(path, element ?? V.Component(StubA), loader: loader, errorElement: errorElement,
+                children: children, action: action);
+
         private Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> Loader(string name) => (_, _) =>
         {
             _log.Add(name);
@@ -66,7 +75,7 @@ namespace Velvet.Tests
             => BuildRouter(start,
                 Route("/", loader: Loader("root"), children: new[]
                 {
-                    Route("items", loader: Loader("items"), action: action, children: new[]
+                    ActionRoute("items", action, Loader("items"), children: new[]
                     {
                         Route(":id", loader: Loader("item")),
                     }),
@@ -186,7 +195,7 @@ namespace Velvet.Tests
             var router = BuildRouter("/other",
                 Route("/", loader: Loader("root"), children: new[]
                 {
-                    Route("items", loader: Loader("items"), errorElement: V.Component(StubB), action: Throws),
+                    ActionRoute("items", Throws, Loader("items"), errorElement: V.Component(StubB)),
                     Route("other"),
                 }));
             _log.Clear();
@@ -307,7 +316,7 @@ namespace Velvet.Tests
         #region Which action a submission goes to
 
         private Router IndexRouter(string start) => BuildRouter(start,
-            Route("/", action: Logged("layout"), children: new[] { Route("", action: Logged("index")) }));
+            ActionRoute("/", Logged("layout"), children: new[] { ActionRoute("", Logged("index")) }));
 
         private Func<RouteActionContext, CancellationToken, VelvetTask<object>> Logged(string name) => (_, _) =>
         {
@@ -347,7 +356,7 @@ namespace Velvet.Tests
         public void Given_ARouterWithNoLocationYet_When_ItIsPostedWithoutNamingAnAction_Then_TheRootsActionRuns()
         {
             // Arrange
-            var router = new Router(new[] { Route("/", action: (_, _) => VelvetTask.FromResult<object>("root")) });
+            var router = new Router(new[] { ActionRoute("/", (_, _) => VelvetTask.FromResult<object>("root")) });
 
             // Act
             Submit(router, null, new SubmitOptions { Method = "post" });
@@ -404,7 +413,7 @@ namespace Velvet.Tests
 
         private MountedTree MountItems(Func<RouteActionContext, CancellationToken, VelvetTask<object>> action)
         {
-            var router = BuildRouter("/items", Route("items", element: V.Component(SubmittingItems), action: action));
+            var router = BuildRouter("/items", ActionRoute("items", action, element: V.Component(SubmittingItems)));
             var mounted = V.Mount(_root, V.RouterProvider(router));
             mounted.FlushEffectsForTest();
             return mounted;
