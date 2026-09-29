@@ -38,12 +38,23 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
+        // Portal content is a component rather than a bare element, as in SamePanelPortalBubblingTests: the
+        // logical chain the bridge follows is stamped onto the component fibers a portal mounts.
         [Component]
         private static VNode TwoPortalsOnOneTarget() => V.Div(children: new VNode[]
         {
-            V.Portal(TargetId, key: "first", children: new VNode[] { V.Div(name: "first") }),
-            V.Portal(TargetId, key: "second", children: new VNode[] { V.Div(name: "second") }),
+            V.Portal(TargetId, key: "first", children: new VNode[] { V.Component(FirstChild) }),
+            V.Portal(TargetId, key: "second", children: new VNode[] { V.Component(SecondChild) }),
         });
+
+        [Component]
+        private static VNode FirstChild() => V.Div(name: "first");
+
+        [Component]
+        private static VNode SecondChild() => V.Div(name: "second");
+
+        [Component]
+        private static VNode ToggledChild() => V.Div(name: "toggled");
 
         [Component]
         private static VNode TogglingPortal()
@@ -52,7 +63,7 @@ namespace Velvet.Tests
             s_setShown = setShown;
             return V.Div(children: new VNode[]
             {
-                shown ? V.Portal(TargetId, key: "p", children: new VNode[] { V.Div(name: "toggled") }) : null,
+                shown ? V.Portal(TargetId, key: "p", children: new VNode[] { V.Component(ToggledChild) }) : null,
             });
         }
 
