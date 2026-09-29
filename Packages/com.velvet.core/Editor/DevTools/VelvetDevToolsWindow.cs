@@ -230,6 +230,7 @@ namespace Velvet.Editor.DevTools
             {
                 var entry = entries[i];
                 var isSelected = i == _selectedEntryIndex;
+                var label = entry.Label;
 
                 EditorGUILayout.BeginHorizontal();
 
@@ -241,7 +242,7 @@ namespace Velvet.Editor.DevTools
                     RefreshSelectedComponent();
                 }
 
-                GUILayout.Label(entry.Label, isSelected ? EditorStyles.selectionRect : EditorStyles.label);
+                GUILayout.Label(label, isSelected ? EditorStyles.selectionRect : EditorStyles.label);
                 GUILayout.FlexibleSpace();
                 GUILayout.Label(entry.TypeName, EditorStyles.miniLabel);
 

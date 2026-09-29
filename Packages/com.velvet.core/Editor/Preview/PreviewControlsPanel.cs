@@ -325,7 +325,7 @@ namespace Velvet.Editor.Preview
         {
             foreach (var field in type.GetFields(MemberFlags))
             {
-                if (!field.IsInitOnly && !field.IsLiteral) return true;
+                if (!field.IsInitOnly) return true;
             }
 
             return Array.Exists(type.GetProperties(MemberFlags), IsEditable);
