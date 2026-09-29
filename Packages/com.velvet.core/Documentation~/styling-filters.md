@@ -118,10 +118,11 @@ Anywhere else Velvet's tween runs the change, and a filter write the setter woul
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
 utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value.
 
-While `animate-hue` drives an element's filter, a filter utility's change under it starts no transition and is not
-painted, and the value the motion uncovers when it ends is written at once. A filter transition already running
-when the motion starts shows until it ends. Both follow CSS, where transitions sit above animations in the
-cascade and an animation's start or end starts no transition.
+While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
+transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion
+ends, the filter its layers compose, variant layers included, is written at once, or the transition still running
+shows again until it ends. This is CSS's order: a transition applies only while no animation runs on the property,
+and an animation's start or end starts no transition.
 
 > **`transition-filter` does not combine with another `transition-*` utility.** They all set the
 > same `transition-property`, and at equal specificity the one declared later in the bundled sheet

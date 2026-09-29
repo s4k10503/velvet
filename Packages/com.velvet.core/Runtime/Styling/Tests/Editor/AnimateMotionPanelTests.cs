@@ -450,7 +450,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_PulseAtStart_When_OpacityComputed_Then_FullyOpaque()
         {
-            // Cosine pulse: t=0 sits at the full-opacity peak.
             Assert.That(StyleAnimateDriver.PulseOpacity(0f), Is.EqualTo(1f));
         }
 
@@ -468,13 +467,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_PulseAtEighthPhase_When_OpacityComputed_Then_FollowsCosineEaseNotLinearRamp()
+        public void Given_PulseAnEighthIntoTheLoop_When_OpacityComputed_Then_TheFallingHalfFollowsTailwindsPulseCurve()
         {
-            // The keyframe vertices (t=0,0.5,1) and even t=0.25 coincide for a cosine ease and a linear triangle,
-            // so they cannot pin the SHAPE. t=0.125 separates them: cosine = 0.75 + 0.25*cos(pi/4) ≈ 0.9268,
-            // whereas a linear ramp would give 0.875. This locks the documented smooth ease (RED on a triangle).
-            var expectedCosine = 0.75f + (0.25f * UnityEngine.Mathf.Cos(UnityEngine.Mathf.PI / 4f));
-            Assert.That(StyleAnimateDriver.PulseOpacity(0.125f), Is.EqualTo(expectedCosine).Within(1e-4f));
+            // Arrange — a quarter of the way through the falling half; cubic-bezier(0.4, 0, 0.6, 1) is at
+            // 0.1353071650 there, solved independently of the evaluator under test.
+            const float expected = 1f - (0.5f * 0.1353071650f);
+
+            // Act
+            var opacity = StyleAnimateDriver.PulseOpacity(0.125f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_PulseFiveEighthsIntoTheLoop_When_OpacityComputed_Then_TheRisingHalfFollowsTailwindsPulseCurve()
+        {
+            // Arrange — a quarter of the way through the rising half, the same curve point from the trough.
+            const float expected = 0.5f + (0.5f * 0.1353071650f);
+
+            // Act
+            var opacity = StyleAnimateDriver.PulseOpacity(0.625f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(1e-4f));
         }
 
         [Test]

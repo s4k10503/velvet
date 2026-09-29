@@ -150,6 +150,11 @@ namespace Velvet
         /// </summary>
         public StyleTransitionConfig? Transition { get; init; }
 
+        // Set by V.Motion when its caller named no transition, duration, easing or delay: the Fade preset it
+        // gives Transition then stands in for a transition nobody chose, and a layoutId move takes Framer's
+        // default layout transition in its place (LayoutIdTiming.From).
+        internal bool TransitionDefaulted { get; init; }
+
         /// <summary>
         /// Callback invoked when the enter animation completes.
         /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under
@@ -165,24 +170,21 @@ namespace Velvet
         /// Named animation states: each label maps to a <see cref="MotionVariant"/> — a utility-class string
         /// and, optionally, the transition a swap into that pose plays on in place of <see cref="Transition"/>.
         /// Carried RAW (never baked into <see cref="BaseElementNode.ClassNames"/>): the effective label is
-        /// resolved at reconcile time — this node's <see cref="Animate"/>, else the nearest ANCESTOR Motion's
-        /// active label (parent→child propagation) — and applied against these variants.
+        /// resolved at reconcile time — this node's own labels, else, when it names none, the nearest ANCESTOR
+        /// Motion's active label (parent→child propagation) — and applied against these variants.
         /// </summary>
         public IReadOnlyDictionary<string, MotionVariant>? Variants { get; init; }
 
-        /// <summary>The active variant label for this node (a key of <see cref="Variants"/>); null inherits the
-        /// nearest ancestor Motion's active label.</summary>
+        /// <summary>The active variant label for this node (a key of <see cref="Variants"/>). A node naming none
+        /// of this, <see cref="Initial"/> and <see cref="Exit"/> inherits the nearest ancestor Motion's labels.</summary>
         public string? Animate { get; init; }
 
         /// <summary>
         /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
-        /// <c>variants[Animate]</c> (which it then rests at, persistently).
-        /// <see cref="MotionVariant.Transition"/> resolves the timing, and
-        /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
-        /// enter to play at all. AnimatePresence plays it when this Motion is a keyed child's anchor (the
-        /// motion guide's <i>Exits</i> section says which Motion that is); any other Motion plays it itself on
-        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal —
+        /// <c>variants[Animate]</c> (which it then rests at, persistently); with no <see cref="Animate"/> it rests
+        /// at <c>variants[Initial]</c>. <see cref="MotionVariant.Transition"/> resolves the timing. The motion
+        /// guide's <i>Enter on mount</i> section owns who plays the enter and when a presence withholds it —
         /// <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence is only required for
         /// <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
@@ -208,7 +210,7 @@ namespace Velvet
         /// the rect the SAME id last settled at — including a different physical element entirely, e.g. after
         /// a same-key type flip or a move to a different parent — it tweens from the old rect to the new one
         /// (FLIP: capture the old rect, let layout settle at the new one, apply an inverse transform, then
-        /// spring that inverse back to zero) instead of jump-cutting. Independent of <see cref="Variants"/>/
+        /// carry that inverse back to zero on the layout transition) instead of jump-cutting. Independent of <see cref="Variants"/>/
         /// <see cref="Animate"/>: a layoutId tween runs from the ACTUAL rect delta, not a class-defined
         /// from/to pair. Null = no layout animation (ordinary jump-cut on a rect change, matching every other
         /// element). Two Motions in the same tree must never share a live layoutId simultaneously — the
@@ -442,9 +444,8 @@ namespace Velvet
     /// Container node that manages mount / unmount animations of its children.
     /// When keyed children become null, it does not delete them immediately and retains them until the exit
     /// animation completes.
-    /// Children should preferably be MotionNode. Non-MotionNode children (e.g. ElementNode) also work as
-    /// transition-less (immediate deletion), but a Debug.LogWarning is emitted because they are not animation
-    /// targets. TextNode is skipped without a warning.
+    /// A keyed child is kept while the exits of the Motions under it play, however deep they sit;
+    /// the Exits section of Documentation~/motion.md owns which Motions play one.
     /// Note: FragmentNode cannot be included directly as a child (it is not expanded). Use MotionNode or a direct
     /// VNode.
     /// Children without a key receive a position-based automatic key, so reordering can cause unintended

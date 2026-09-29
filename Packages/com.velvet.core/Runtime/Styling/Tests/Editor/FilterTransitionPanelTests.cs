@@ -34,6 +34,7 @@ namespace Velvet.Tests
         // time function, so stepping this by hand makes every painted mid-animation value deterministic.
         private double _now;
         private readonly List<Object> _spawned = new();
+        private (VisualElement element, StyleAnimateBinding binding)? _hueLoop;
 
         protected override void LoadStyleSheets()
         {
@@ -46,6 +47,11 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
+            if (_hueLoop != null)
+            {
+                StyleAnimateDriver.Detach(_hueLoop.Value.element, _hueLoop.Value.binding);
+                _hueLoop = null;
+            }
             base.TearDown();
             foreach (var obj in _spawned)
             {
@@ -757,22 +763,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARunningTween_When_AnAnimateHueFrameIsApplied_Then_TheTweensFrameStays()
-        {
-            // Arrange — a live tween, then an animate-hue motion attached over it.
-            var element = MountResolved("transition-filter duration-300");
-            ApplyBlur(element, 12f);
-            StyleAnimateClass.TryExtract(new[] { "animate-hue" }, out var spec);
-            var hue = StyleAnimateDriver.Attach(element, spec, false);
-
-            // Act
-            StyleAnimateDriver.ApplyFrame(element, hue, 0.25f);
-
-            // Assert — a running transition overrides the animation, as the CSS cascade orders them.
-            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.Blur));
-        }
-
-        [Test]
         public void Given_AnimateHueBesideABlur_When_APatchRemovesIt_Then_TheBlurIsWrittenAtOnce()
         {
             // Arrange — the blur under an animate-hue motion, on an element carrying transition-filter.
@@ -791,6 +781,132 @@ namespace Velvet.Tests
             // animation starts none.
             Assert.That((binding.Scheduled == null, element.style.filter.value[0].GetParameter(0).floatValue),
                 Is.EqualTo((true, 12f)));
+        }
+
+        [Test]
+        public void Given_AnimateHueWithNoFilterUnderIt_When_APatchRemovesIt_Then_NoFilterIsPainted()
+        {
+            // Arrange — an animate-hue frame on an element carrying transition-filter and no filter utility.
+            const string animated = "transition-filter animate-hue";
+            const string plain = "transition-filter";
+            var element = MountResolved(animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.25f);
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+            AdvanceAndPaint(element.panel, 0.05);
+
+            // Assert — cleared at once, as an ended CSS animation starts no transition.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnimateHueOverAHoverBlur_When_APatchRemovesIt_Then_TheBlurIsWrittenAtOnce()
+        {
+            // Arrange — a hover layer's blur applied while animate-hue drove the filter.
+            const string animated = "transition-filter animate-hue";
+            const string plain = "transition-filter";
+            var element = MountResolved(animated);
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.FilterBlur, 12f, LengthUnit.Pixel), StyleLayerPriority.Hover);
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+
+            // Assert
+            var written = element.style.filter.value;
+            Assert.That(written != null && written.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ATweenRunningUnderAnimateHue_When_APatchRemovesIt_Then_TheTweenRunsOn()
+        {
+            // Arrange — a blur tween started, then animate-hue added over it.
+            const string before = "transition-filter duration-300 blur-sm";
+            const string tweening = "transition-filter duration-300 blur-md";
+            const string animated = "transition-filter duration-300 animate-hue blur-md";
+            var element = MountResolved(before);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            Reconcile(before, tweening);
+            Reconcile(tweening, animated);
+            var startedAt = binding.StartTime;
+
+            // Act
+            Reconcile(animated, tweening);
+
+            // Assert — the tween the animation hid runs on from where its clock is.
+            Assert.That((binding.Scheduled != null, binding.StartTime == startedAt), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ARunningTween_When_APatchRemovesAnimatePulse_Then_TheTweenRunsOn()
+        {
+            // Arrange — a blur tween started on an element carrying animate-pulse.
+            const string before = "transition-filter duration-300 animate-pulse blur-sm";
+            const string tweening = "transition-filter duration-300 animate-pulse blur-md";
+            const string plain = "transition-filter duration-300 blur-md";
+            var element = MountResolved(before);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            Reconcile(before, tweening);
+            var startedAt = binding.StartTime;
+
+            // Act
+            Reconcile(tweening, plain);
+
+            // Assert — the loop that ended animated no filter, so the tween runs on untouched.
+            Assert.That((binding.Scheduled != null, binding.StartTime == startedAt), Is.EqualTo((true, true)));
+        }
+
+        private void Reconcile(string from, string to)
+            => _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: from) },
+                new VNode[] { V.Div(name: "card", className: to) });
+
+        // Starts an animate-hue loop on the element, detached again at teardown.
+        private void RunHueLoop(VisualElement element)
+        {
+            var binding = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Hue, 4f), panVertical: false);
+            _hueLoop = (element, binding);
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_ATweenFrameIsWritten_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+        }
+
+        [Test]
+        public void Given_AHueLoopOverARunningTween_When_TheTweenSettles_Then_TheLoopsHueRotateStands()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            RunHueLoop(element);
+
+            // Act — a teardown while mounted settles the tween at its target.
+            StyleFilterTransitionDriver.Detach(element, binding);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
         }
 
         #endregion

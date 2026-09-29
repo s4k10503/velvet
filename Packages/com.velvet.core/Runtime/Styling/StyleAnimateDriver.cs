@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -37,17 +38,82 @@ namespace Velvet
         // SAME ~60fps cadence rather than a second (or third) hand-copied literal.
         internal const long TickMs = 16;
 
-        // The elements whose filter an animate-hue motion drives, which a filter utility's change does not reach
-        // while it runs (StyleFilterEngineWrite).
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, StyleAnimateBinding> s_filterDrivers = new();
-
-        internal static bool DrivesFilter(VisualElement element) => s_filterDrivers.TryGetValue(element, out _);
         // Oversize factor for the Gradient pan: the background is twice the box along the pan axis, so the
         // box window slides across the full gradient (offset range [-box, 0]) without revealing an edge.
         private const float GradientOversize = 200f;
         // Pulse opacity bounds: oscillates between full and half (matches the conventional attention pulse).
         private const float PulseMinOpacity = 0.5f;
         private const float PulseMaxOpacity = 1f;
+
+        // The loop each element runs, for ReassertLoop.
+        private static readonly ConditionalWeakTable<VisualElement, StyleAnimateBinding> s_running = new();
+
+        // The slots each driver on the element writes over its loop, by driver.
+        private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_held = new();
+
+        // The slots a Motion driver keeps from a loop while it drives them. Framer Motion hands opacity to
+        // the browser's own animation engine, whose animations outrank a CSS animation; the transform
+        // shorthands it writes as inline style on the main thread, which a CSS animation outranks.
+        private const MotionTransitionSlots MotionHeldSlots = MotionTransitionSlots.Opacity;
+
+        /// <summary>
+        /// Records which of <paramref name="drivenSlots"/> <paramref name="owner"/> keeps from the element's loop
+        /// until it calls this again: a Motion driver passes what it drives when it starts or drops channels,
+        /// and <see cref="MotionTransitionSlots.None"/> when it lets go.
+        /// </summary>
+        public static void HoldAgainstLoop(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            var held = s_held.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
+            held.Remove(owner);
+            var kept = drivenSlots & MotionHeldSlots;
+            if (kept != MotionTransitionSlots.None)
+            {
+                held[owner] = kept;
+            }
+        }
+
+        /// <summary>
+        /// Forgets every hold on an element being torn down or returned to a pool — the backstop for a teardown
+        /// that pre-empts a driver's own release, on the terms of <see cref="MotionNativeTransitionGuard.ReleaseAll"/>.
+        /// </summary>
+        public static void ForgetHolds(VisualElement element) => s_held.Remove(element);
+
+        /// <summary>
+        /// Writes the element's running loop over whatever a per-frame driver just wrote or released, unless a
+        /// driver holds the loop's slot (see <see cref="HoldAgainstLoop"/>) — so a loop keeps its slot the way a
+        /// CSS animation outranks an inline style. The spring and bezier drivers and the filter tween call this
+        /// after each of their writes; the loop's own tick runs on a separate scheduled item, so without it the
+        /// slot would show whichever of the two ran last in a frame.
+        /// </summary>
+        // True while an animate-hue loop drives the element's filter, which a filter utility's change does not reach
+        // (StyleFilterEngineWrite).
+        internal static bool DrivesFilter(VisualElement element)
+            => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Hue;
+
+        public static void ReassertLoop(VisualElement element)
+        {
+            if (s_running.TryGetValue(element, out var binding))
+            {
+                ApplyCurrentFrame(element, binding);
+            }
+        }
+
+        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding)
+        {
+            if (s_held.TryGetValue(element, out var held))
+            {
+                var slot = GuardedSlots(binding.Spec.Mode);
+                foreach (var slots in held.Values)
+                {
+                    if ((slots & slot) != MotionTransitionSlots.None)
+                    {
+                        return;
+                    }
+                }
+            }
+            var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
+            ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
+        }
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
         // once-per-attach background sizing for pan modes, takes the transition suspension, then schedules the
@@ -70,12 +136,9 @@ namespace Velvet
                 ApplyPanSizing(element, spec.Mode, panVertical);
             }
 
-            if (spec.Mode == AnimateMode.Hue)
-            {
-                s_filterDrivers.AddOrUpdate(element, binding);
-            }
             SyncTransitionSuspension(element, binding);
             ScheduleOrDefer(element, binding);
+            s_running.AddOrUpdate(element, binding);
             return binding;
         }
 
@@ -108,6 +171,7 @@ namespace Velvet
         public static void Detach(VisualElement element, StyleAnimateBinding binding)
         {
             MotionNativeTransitionGuard.Release(element, binding);
+            s_running.Remove(element);
             binding.Scheduled?.Pause();
             binding.Scheduled = null;
             if (binding.PendingAttach != null)
@@ -127,11 +191,12 @@ namespace Velvet
             }
             else if (binding.Spec.Mode == AnimateMode.Hue)
             {
-                // Hue owns the filter slot while active (a static filter-* is an unsupported combo — Hue wins).
-                // Null returns it to no-filter; a surviving class-driven filter is re-asserted by the reconciler
-                // right after Detach (a NAMED USS filter re-resolves, an inline-resolved one is re-applied).
-                s_filterDrivers.Remove(element);
-                element.style.filter = StyleKeyword.Null;
+                // The element's filter layers, variant ones included, were composed but not written while the loop
+                // ran. An animation that ends starts no transition, so they are written at once.
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    StyleArbitraryValueResolver.RecomposeFilter(element);
+                }
             }
             else if (binding.Spec.Mode == AnimateMode.Spin)
             {
@@ -200,15 +265,17 @@ namespace Velvet
         // as a stutter at the wrap because the loop restarts at full speed.
         public static float SpinAngleDeg(float t) => 360f * t;
 
-        // The opacity at loop position t: a smooth cosine ease between full (t=0,1) and half (t=0.5), so the
-        // pulse fades out and back in once per loop with no hard turn at the extremes. The cosine is a faithful
-        // approximation of the conventional cubic-bezier(0.4,0,0.6,1) pulse easing — it shares the (1,0.5,1)
-        // keyframe vertices and the same smooth in-out feel; the in-between curve differs imperceptibly.
+        // Tailwind's pulse: opacity at half by the loop's midpoint, each half eased with
+        // cubic-bezier(0.4, 0, 0.6, 1), since a keyframe animation applies its timing function per interval.
         public static float PulseOpacity(float t)
         {
-            var mid = (PulseMaxOpacity + PulseMinOpacity) * 0.5f;
-            var amp = (PulseMaxOpacity - PulseMinOpacity) * 0.5f;
-            return mid + (amp * Mathf.Cos(2f * Mathf.PI * t));
+            // MUTANT_SURVIVES(equivalent): at t = 0.5 the falling half ends and the rising half starts on the same
+            // half opacity, so `<=` changes nothing.
+            var falling = t < 0.5f;
+            var progress = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.6f, 1f, falling ? t * 2f : (t * 2f) - 1f);
+            return falling
+                ? Mathf.LerpUnclamped(PulseMaxOpacity, PulseMinOpacity, progress)
+                : Mathf.LerpUnclamped(PulseMinOpacity, PulseMaxOpacity, progress);
         }
 
         // Applies one frame at loop position t. Pan modes read the element's resolved box (so they need a
@@ -242,12 +309,6 @@ namespace Velvet
                 }
                 case AnimateMode.Hue:
                 {
-                    // A running transition overrides an animation of the same property, as the CSS cascade puts
-                    // transitions above animations.
-                    if (StyleFilterTransitionDriver.TweenRuns(element))
-                    {
-                        break;
-                    }
                     var fn = new FilterFunction(FilterFunctionType.HueRotate);
                     fn.AddParameter(new FilterParameter(HueAngleDeg(t)));
                     // A FRESH list every frame is REQUIRED, not wasteful: UI Toolkit's inline-filter setter
@@ -319,8 +380,7 @@ namespace Velvet
             var host = element.panel.visualTree;
             binding.Scheduled = host.schedule.Execute(() =>
             {
-                var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-                ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
+                ApplyCurrentFrame(element, binding);
             }).Every(TickMs);
         }
     }

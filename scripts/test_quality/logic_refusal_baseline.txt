@@ -24,13 +24,14 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberOutletScope.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs	7
+Packages/com.velvet.core/Runtime/Reconciler/PanelFocusMemory.cs	6
 Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ReconcileState.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs	2
 Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
-Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	5
+Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	12
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	1

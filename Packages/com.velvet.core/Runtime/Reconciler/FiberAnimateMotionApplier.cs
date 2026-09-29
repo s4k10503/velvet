@@ -95,10 +95,7 @@ namespace Velvet
         {
             if (!IsPanMode(detachedMode))
             {
-                using (StyleFilterEngineWrite.WithoutTransition())
-                {
-                    FiberNodePatcher.ReapplyArbitraryValues(element, classNames);
-                }
+                FiberNodePatcher.ReapplyArbitraryValues(element, classNames);
             }
         }
 

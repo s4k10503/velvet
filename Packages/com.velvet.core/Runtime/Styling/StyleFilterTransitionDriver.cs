@@ -45,8 +45,10 @@ namespace Velvet
     // site that composes and writes style.filter — so it covers every filter path (base blur-md, arbitrary
     // blur-[6px], custom filter-[name:args], and the variant path hover:blur-md) with no per-manipulator wiring.
     //
-    // animate-hue drives the filter the way a CSS animation does: a tween already running overrides it until it
-    // ends, and a change under it starts none (StyleAnimateDriver.DrivesFilter).
+    // animate-hue owns the filter while it runs, as a CSS animation hides a transition of the property it animates:
+    // each frame and settle here re-asserts the loop (StyleAnimateDriver.ReassertLoop), a change under it starts no
+    // tween (StyleAnimateDriver.DrivesFilter), and a tween already running keeps its clock and shows again once the
+    // motion ends.
     //
     // The phase math (ApplyFrame / channel alignment) is pure and unit-tested directly; the scheduler
     // wiring runs at runtime (the EditMode PlayerLoop does not tick, so tests drive ApplyFrame at explicit
@@ -87,9 +89,6 @@ namespace Velvet
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
 
-        internal static bool TweenRuns(VisualElement element)
-            => s_bindings.TryGetValue(element, out var b) && b.Scheduled != null;
-
         // Stops whatever tween the element has without writing to it, for an element about to serve another consumer.
         public static void Release(VisualElement element)
         {
@@ -105,6 +104,13 @@ namespace Velvet
         internal static bool TryStartOrRedirect(VisualElement element, List<FilterFunction>? to)
         {
             s_bindings.TryGetValue(element, out var bound);
+            // The value a running tween heads for is no change to it: it runs on, and its frame is written back over
+            // whatever the element shows now.
+            if (bound?.Scheduled != null && SameList(bound.Target, to))
+            {
+                ApplyFrame(element, bound, Progress(bound));
+                return true;
+            }
             // Off-panel: there is no host to tick and no paint to animate, so apply instantly (CSS does not
             // transition an off-render value either). The RESOLVED transition lists — not the class list — decide
             // which animator owns the change (see the note on the class), and the entry that runs for filter gives
@@ -265,6 +271,7 @@ namespace Velvet
                 list.Add(fn);
             }
             StyleFilterEngineWrite.WriteFrame(element, list);
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         private static void StartTick(VisualElement element, StyleFilterTransitionBinding b)
@@ -306,6 +313,7 @@ namespace Velvet
         private static void Settle(VisualElement element, StyleFilterTransitionBinding b)
         {
             StyleFilterEngineWrite.Write(element, b.Target);
+            StyleAnimateDriver.ReassertLoop(element);
             Cancel(b);
         }
 
@@ -467,6 +475,41 @@ namespace Velvet
                 neutral.AddParameter(parameter);
             }
             return neutral;
+        }
+
+        private static bool SameList(List<FilterFunction>? a, List<FilterFunction>? b)
+        {
+            var count = a?.Count ?? 0;
+            if (count != (b?.Count ?? 0))
+            {
+                return false;
+            }
+            for (var k = 0; k < count; k++)
+            {
+                var f = a![k];
+                var t = b![k];
+                if (!SameChannel(f, t) || !SameParameters(f, t))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool SameParameters(FilterFunction a, FilterFunction b)
+        {
+            if (a.parameterCount != b.parameterCount)
+            {
+                return false;
+            }
+            for (var k = 0; k < a.parameterCount; k++)
+            {
+                if (!ParamEqual(a.GetParameter(k), b.GetParameter(k)))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static bool ChannelsAreNoOp(Channel[] channels)
