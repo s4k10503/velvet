@@ -94,7 +94,9 @@ namespace Velvet
             (StyleVariantKind.PeerFocus, StackedInnerSource.Relational),
             (StyleVariantKind.PeerFocusWithin, StackedInnerSource.Relational),
             (StyleVariantKind.PeerActive, StackedInnerSource.Relational),
-            (StyleVariantKind.PeerChecked, StackedInnerSource.Relational));
+            (StyleVariantKind.PeerChecked, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupDisabled, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerDisabled, StackedInnerSource.Relational));
 
 #pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         // Edge-based inners survive an outer-gate close (see ReconcilerContext.GateStackedVariant):
@@ -111,6 +113,8 @@ namespace Velvet
         private bool TracksChecked =>
             _innerKind == StyleVariantKind.Checked
             || _relational is { State: StyleVariantClass.RelationalState.Checked };
+
+        private bool TracksRelationalDisabled => _relational is { State: StyleVariantClass.RelationalState.Disabled };
 
         // Forwards a drag session's synthetic release to the shared signal source (see
         // ElementLocalVariantSignals.SettleRelease); a non-element-local inner (dark:/sm:) has no press
@@ -266,10 +270,10 @@ namespace Velvet
             {
                 return;
             }
-            // A checked inner's value is seeded at hook time rather than arriving as an edge, so a re-resolve
-            // has to drop what the previous source seeded before reading the new one — the same order
+            // A checked or disabled inner's value is seeded at hook time rather than arriving as an edge, so a
+            // re-resolve has to drop what the previous source seeded before reading the new one — the same order
             // StyleRelationalVariantManipulator's Binding.Resolve keeps.
-            if (TracksChecked)
+            if (TracksChecked || TracksRelationalDisabled)
             {
                 SetInner(false);
             }
@@ -283,7 +287,8 @@ namespace Velvet
                 return;
             }
             _relSignals ??= new RelationalVariantSignals(OnRelSignal);
-            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked);
+            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked,
+                trackDisabled: TracksRelationalDisabled);
         }
 
         private void UnhookRelational()

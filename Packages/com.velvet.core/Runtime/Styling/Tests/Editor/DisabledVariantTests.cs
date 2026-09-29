@@ -7,8 +7,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>disabled:</c> variant: its payload holds while the element or an ancestor has
-    /// <c>enabledSelf</c> off, the condition UI Toolkit's <c>:disabled</c> pseudo-class matches. Mounted in a
+    /// Specifies the <c>disabled:</c> variant — its payload holds while the element or an ancestor has
+    /// <c>enabledSelf</c> off, the condition UI Toolkit's <c>:disabled</c> pseudo-class matches — and its
+    /// <c>group-disabled:</c> / <c>peer-disabled:</c> forms, which read the marked source the same way. Mounted in a
     /// real panel, since UI Toolkit announces an <c>enabledSelf</c> write only on an element that has one.
     /// </summary>
     [TestFixture]
@@ -158,6 +159,98 @@ namespace Velvet.Tests
 
             // Act
             outer.SetEnabled(false);
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        private (VisualElement Group, VisualElement Leaf) MountInGroup(string leafClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "group", className: "group", children: new VNode?[]
+                {
+                    V.Div(name: "leaf", className: leafClassName),
+                }));
+            var root = _window.rootVisualElement;
+            return (root.Q<VisualElement>("group"), root.Q<VisualElement>("leaf"));
+        }
+
+        private (VisualElement Peer, VisualElement Leaf) MountAfterPeer(string leafClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(children: new VNode?[]
+                {
+                    V.Div(name: "peer", className: "peer"),
+                    V.Div(name: "leaf", className: leafClassName),
+                }));
+            var root = _window.rootVisualElement;
+            return (root.Q<VisualElement>("peer"), root.Q<VisualElement>("leaf"));
+        }
+
+        [Test]
+        public void Given_AGroupDisabledPayload_When_TheGroupIsDisabled_Then_ThePayloadIsApplied()
+        {
+            // Arrange
+            var (group, leaf) = MountInGroup("group-disabled:bg-hot");
+
+            // Act
+            group.SetEnabled(false);
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_APeerDisabledPayload_When_ThePeerIsDisabled_Then_ThePayloadIsAppliedToTheEnabledSibling()
+        {
+            // Arrange
+            var (peer, leaf) = MountAfterPeer("peer-disabled:bg-hot");
+
+            // Act
+            peer.SetEnabled(false);
+
+            // Assert — the sibling stays enabled, so only the peer's state can have put the payload there.
+            Assert.That((leaf.enabledInHierarchy, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_APeerDisabledPayloadApplied_When_ThePeerIsEnabledAgain_Then_ThePayloadIsRemoved()
+        {
+            // Arrange
+            var (peer, leaf) = MountAfterPeer("peer-disabled:bg-hot");
+            peer.SetEnabled(false);
+            var appliedWhileDisabled = leaf.ClassListContains("bg-hot");
+
+            // Act
+            peer.SetEnabled(true);
+
+            // Assert
+            Assert.That((appliedWhileDisabled, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_GroupActiveAndGroupDisabledWidths_When_BothHold_Then_TheGroupDisabledWidthWins()
+        {
+            // Arrange — the group is pressed first, so its active width is in place when the disabled one arrives.
+            var (group, leaf) = MountInGroup("group-active:w-[10px] group-disabled:w-[20px]");
+            using (var evt = PointerDownEvent.GetPooled()) group.SimulateEvent(evt);
+
+            // Act
+            group.SetEnabled(false);
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_APeerDisabledInnerUnderDark_When_ThePeerIsDisabled_Then_TheLeafIsApplied()
+        {
+            // Arrange — dark: holds the outer gate open; peer-disabled: is the inner.
+            var (peer, leaf) = MountAfterPeer("dark:peer-disabled:bg-hot");
+            VelvetTheme.IsDark = true;
+
+            // Act
+            peer.SetEnabled(false);
 
             // Assert
             Assert.That(leaf.ClassListContains("bg-hot"), Is.True);

@@ -5,6 +5,10 @@
   it stacks with the other variants in either order (`dark:disabled:`, `disabled:hover:`). On a tie it ranks
   above `active:`, where Tailwind emits it. `StyleVariantKind.Disabled` is the new member.
 
+- `group-disabled:` and `peer-disabled:`, as Tailwind's. They read the marked `group` ancestor or `peer` sibling
+  on the same terms `disabled:` reads the element, and rank above the other relational states on a tie.
+  `StyleVariantKind.GroupDisabled` and `StyleVariantKind.PeerDisabled` are the new members.
+
 ### Changed
 
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` refuse a `StyleVariantKind` value naming

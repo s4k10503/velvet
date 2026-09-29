@@ -59,6 +59,10 @@ namespace Velvet
         // Toolkit's :disabled pseudo-class matches. Appended rather than grouped with the element-local
         // states above so the members already published keep their values.
         Disabled,
+
+        // Relational disabled states: the group ancestor / peer sibling is disabled, as Disabled reads it.
+        GroupDisabled,
+        PeerDisabled,
     }
 
     /// <summary>
@@ -136,6 +140,8 @@ namespace Velvet
             ["peer-active"] = StyleVariantKind.PeerActive,
             ["peer-checked"] = StyleVariantKind.PeerChecked,
             ["disabled"] = StyleVariantKind.Disabled,
+            ["group-disabled"] = StyleVariantKind.GroupDisabled,
+            ["peer-disabled"] = StyleVariantKind.PeerDisabled,
         };
 
         /// <summary>
@@ -216,7 +222,7 @@ namespace Velvet
 
         /// <summary>The per-source relational state a kind drives (hover / focus / focus-within / active /
         /// checked), shared by the group and peer families.</summary>
-        internal enum RelationalState { Hover, Focus, FocusWithin, Active, Checked }
+        internal enum RelationalState { Hover, Focus, FocusWithin, Active, Checked, Disabled }
 
         /// <summary>
         /// The length a per-state array is allocated at. Derived from the enum rather than written down:
@@ -239,6 +245,7 @@ namespace Velvet
             RelationalVariantSignal.FocusWithin => RelationalState.FocusWithin,
             RelationalVariantSignal.Active => RelationalState.Active,
             RelationalVariantSignal.Checked => RelationalState.Checked,
+            RelationalVariantSignal.Disabled => RelationalState.Disabled,
         };
 #pragma warning restore CS8524
 
@@ -259,6 +266,8 @@ namespace Velvet
             (StyleVariantKind.PeerFocusWithin, (true, RelationalState.FocusWithin)),
             (StyleVariantKind.PeerActive, (true, RelationalState.Active)),
             (StyleVariantKind.PeerChecked, (true, RelationalState.Checked)),
+            (StyleVariantKind.GroupDisabled, (false, RelationalState.Disabled)),
+            (StyleVariantKind.PeerDisabled, (true, RelationalState.Disabled)),
             (StyleVariantKind.Hover, null),
             (StyleVariantKind.Focus, null),
             (StyleVariantKind.FocusVisible, null),
@@ -311,6 +320,8 @@ namespace Velvet
             (StyleVariantKind.PeerFocus, 0f),
             (StyleVariantKind.PeerFocusWithin, 0f),
             (StyleVariantKind.PeerActive, 0f),
-            (StyleVariantKind.PeerChecked, 0f));
+            (StyleVariantKind.PeerChecked, 0f),
+            (StyleVariantKind.GroupDisabled, 0f),
+            (StyleVariantKind.PeerDisabled, 0f));
     }
 }

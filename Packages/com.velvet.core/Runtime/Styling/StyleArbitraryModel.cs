@@ -64,15 +64,18 @@ namespace Velvet
         #region Relational
         // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
         // group-active) occupy separate layers — clearing one must not remove the other.
-        public const int GroupHover = 30;
-        public const int GroupFocus = 31;
-        public const int GroupActive = 32;
-        public const int PeerHover = 33;
-        public const int PeerFocus = 34;
-        public const int PeerActive = 35;
-        public const int GroupFocusWithin = 36;
-        public const int PeerFocusWithin = 37;
-        public const int PeerChecked = 38;
+        public const int GroupHover = 27;
+        public const int GroupFocus = 28;
+        public const int GroupActive = 29;
+        public const int PeerHover = 30;
+        public const int PeerFocus = 31;
+        public const int PeerActive = 32;
+        public const int GroupFocusWithin = 33;
+        public const int PeerFocusWithin = 34;
+        public const int PeerChecked = 35;
+        // The disabled states top the band, as disabled: tops the element-state one.
+        public const int GroupDisabled = 36;
+        public const int PeerDisabled = 37;
         #endregion
 
         #region Element state
@@ -123,7 +126,9 @@ namespace Velvet
             (StyleVariantKind.FocusVisible, FocusVisible),
             (StyleVariantKind.Active, Active),
             (StyleVariantKind.Checked, Checked),
-            (StyleVariantKind.Disabled, Disabled));
+            (StyleVariantKind.Disabled, Disabled),
+            (StyleVariantKind.GroupDisabled, GroupDisabled),
+            (StyleVariantKind.PeerDisabled, PeerDisabled));
     }
     // The style property an arbitrary-value utility targets (e.g. w-[120px] → Width,
     // bg-[#fff] → background color, rotate-[45deg] → rotation). Shorthand members fan out to

@@ -321,6 +321,7 @@ namespace Velvet
         FocusWithin,
         Active,
         Checked,
+        Disabled,
     }
 
     // Detects relational interaction state on a resolved group/peer SOURCE element and reports each on/off
@@ -335,6 +336,7 @@ namespace Velvet
         private readonly Action<RelationalVariantSignal, bool> _emit;
         private VisualElement? _source;    // non-null only while hooked
         private bool _registerChecked;    // captured in Hook so Unhook stays symmetric
+        private DisabledVariantSignal? _disabled;
 
         public RelationalVariantSignals(Action<RelationalVariantSignal, bool> emit) => _emit = emit;
 
@@ -342,10 +344,15 @@ namespace Velvet
         // (ChangeEvent + the initial already-checked read via seedChecked, since ChangeEvent fires only on
         // change); group bindings pass false. The seed reads any control reporting a bool, for the reason
         // ElementLocalVariantSignals.Hook gives.
-        public void Hook(VisualElement source, bool seedChecked, bool registerChecked)
+        public void Hook(VisualElement source, bool seedChecked, bool registerChecked, bool trackDisabled)
         {
             _source = source;
             _registerChecked = registerChecked;
+            if (trackDisabled)
+            {
+                _disabled ??= new DisabledVariantSignal(on => _emit(RelationalVariantSignal.Disabled, on));
+                _disabled.Hook(source);
+            }
 
             source.RegisterCallback<PointerOverEvent>(OnPointerOver);
             source.RegisterCallback<PointerOutEvent>(OnPointerOut);
@@ -381,6 +388,7 @@ namespace Velvet
             {
                 _source.UnregisterCallback<ChangeEvent<bool>>(OnChange);
             }
+            _disabled?.Unhook();
 
             _source = null;
         }

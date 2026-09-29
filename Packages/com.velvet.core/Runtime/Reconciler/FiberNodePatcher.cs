@@ -2281,13 +2281,15 @@ namespace Velvet
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked])),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Disabled])),
                     new VariantDeclarations(
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]))));
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Disabled]))));
             }
             return configs;
         }

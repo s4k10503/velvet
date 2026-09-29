@@ -51,8 +51,8 @@ worth knowing, both when several variants name one such utility:
 | **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
-| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
+| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.

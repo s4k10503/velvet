@@ -30,7 +30,7 @@ namespace Velvet
     // Toggles relational variant payloads — the group/peer variants:
     // group-hover: / group-focus: / group-active: react to the nearest ANCESTOR marked with the group class.
     // peer-hover: / peer-focus: / peer-active: / peer-checked: react to the nearest preceding SIBLING marked
-    // with the peer class.
+    // with the peer class. group-disabled: / peer-disabled: react to that source being disabled.
     // The NAMED forms are supported too: group-hover/sidebar: reacts to the nearest ancestor marked
     // `group/sidebar`, peer-checked/email: to the nearest preceding sibling marked `peer/email`. One element
     // may consume several distinct named (and the unnamed) sources at once, so the manipulator holds a LIST of
@@ -260,11 +260,13 @@ namespace Velvet
             {
                 Unhook();
 
-                // peer-checked is the one state seeded by Resolve itself (the initial-checked read below), not
-                // purely by events. Clear any prior application up front so each Resolve re-derives it from
-                // scratch against the (possibly changed) source.
+                // peer-checked and the disabled states are seeded at hook time rather than arriving only as
+                // edges. Clear any prior application up front so each Resolve re-derives them from scratch
+                // against the (possibly changed) source.
                 var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
                 if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
+                var disabledSlot = (int)StyleVariantClass.RelationalState.Disabled;
+                if (_applied[disabledSlot]) { _applied[disabledSlot] = false; Apply(disabledSlot, false); }
 
                 var source = _isPeer
                     ? FindPrevSiblingWithClass(target, SourceClass, _owner._ctx)
@@ -277,7 +279,8 @@ namespace Velvet
                 _signals ??= new RelationalVariantSignals(OnSignal);
                 // registerChecked only for peer (group has no checked state). seedChecked reflects an
                 // already-checked peer immediately (the slot was cleared above, so no double-apply).
-                _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
+                _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer,
+                    trackDisabled: _payloads[disabledSlot].Length > 0);
             }
 
             public void Unhook()
@@ -330,6 +333,7 @@ namespace Velvet
                     StyleVariantClass.RelationalState.FocusWithin => payloads.FocusVisible,
                     StyleVariantClass.RelationalState.Active => payloads.Active,
                     StyleVariantClass.RelationalState.Checked => payloads.Checked,
+                    StyleVariantClass.RelationalState.Disabled => payloads.Disabled,
                 }) ?? Array.Empty<string>();
 
             private static int[] DeclarationFor(VariantDeclarations declarations, StyleVariantClass.RelationalState state)
@@ -340,6 +344,7 @@ namespace Velvet
                     StyleVariantClass.RelationalState.FocusWithin => declarations.FocusVisible,
                     StyleVariantClass.RelationalState.Active => declarations.Active,
                     StyleVariantClass.RelationalState.Checked => declarations.Checked,
+                    StyleVariantClass.RelationalState.Disabled => declarations.Disabled,
                 }) ?? Array.Empty<int>();
 
             // Each sub-state gets its OWN priority so two active on the same property layer independently and
@@ -362,6 +367,8 @@ namespace Velvet
                 StyleVariantClass.RelationalState.Active
                     => _isPeer ? StyleLayerPriority.PeerActive : StyleLayerPriority.GroupActive,
                 StyleVariantClass.RelationalState.Checked => StyleLayerPriority.PeerChecked,
+                StyleVariantClass.RelationalState.Disabled
+                    => _isPeer ? StyleLayerPriority.PeerDisabled : StyleLayerPriority.GroupDisabled,
             };
 #pragma warning restore CS8524
         }
