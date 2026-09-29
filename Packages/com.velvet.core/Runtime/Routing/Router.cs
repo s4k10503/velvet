@@ -50,15 +50,13 @@ namespace Velvet
 
         private static Router? NewestEarlierRouter()
         {
-            for (var index = s_constructed.Count - 1; index >= 0; index--)
+            ForgetFinishedRouters();
+            if (s_constructed.Count == 0)
             {
-                s_constructed[index].TryGetTarget(out var router);
-                if (router != null && !router._disposed)
-                {
-                    return router;
-                }
+                return null;
             }
-            return null;
+            s_constructed[s_constructed.Count - 1].TryGetTarget(out var router);
+            return router;
         }
 
         // Entries whose router was collected or disposed, dropped so the list tracks what is live.
@@ -301,14 +299,12 @@ namespace Velvet
 
         private static bool HasBareIndex(string path)
         {
+            var bare = false;
             foreach (var value in RouteQuery.ParseQuery(path).GetAll("index"))
             {
-                if (value.Length == 0)
-                {
-                    return true;
-                }
+                bare |= value.Length == 0;
             }
-            return false;
+            return bare;
         }
 
         private static string WithoutBareIndex(string search)
