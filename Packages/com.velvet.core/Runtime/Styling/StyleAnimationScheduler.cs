@@ -1227,14 +1227,11 @@ namespace Velvet
         // propagates into every inline style write and never compares equal to anything (including itself), so
         // IsSettled never returns true. Left unvalidated, the panel-root tick this drives would run
         // indefinitely and its completion callback — the ONLY thing that removes a presence exit's ghost —
-        // would never fire. Mass gets its own numeric safety clamp inside SpringIntegrator.Step (a non-positive
-        // mass would otherwise divide by zero or flip the restoring force's sign), but that clamp has no way to
-        // warn the caller, so it is still validated here for the same failure modes.
+        // would never fire. A non-positive or non-finite mass does the same through the square roots
+        // SpringIntegrator.Solve takes.
         internal static bool ValidateSpringParameters(float stiffness, float damping, float mass)
         {
-            if (float.IsFinite(stiffness) && stiffness > 0f
-                && float.IsFinite(damping) && damping > 0f
-                && float.IsFinite(mass) && mass > 0f)
+            if (SpringIntegrator.AreValidParameters(stiffness, damping, mass))
             {
                 return true;
             }
