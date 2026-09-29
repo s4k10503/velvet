@@ -8,6 +8,8 @@ namespace Velvet.Tests
     internal sealed class GCAllocationProbeSurfaceTests
     {
         // No single window is public, for the reason MedianBlocksDuring's remarks give.
+        // GREEN_ON_BASE(construction): base-red carries TestUtilities onto the base, so both sides are
+        // this branch's probe. Make `SampleBlocksDuring` public again and this is what reddens.
         [Test]
         public void Given_TheAllocationProbe_When_ItsPublicMethodsAreListed_Then_EachCountsOverThreeWindows()
         {
