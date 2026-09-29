@@ -403,6 +403,33 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpaceRowWhoseLastChildCarriesARing_When_Reconciled_Then_ItsOverlayIsNotTheLastChild()
+        {
+            // Arrange — the ring overlay Velvet inserts after its element is not the author's, so the ringed
+            // child stays the last one. The second reconcile re-applies the row once the overlay is placed.
+            using var scope = new ReconcilerScope();
+            VNode RowOf() => V.Div(className: "flex flex-row space-x-4", children: new VNode[]
+            {
+                V.Div(className: "child"),
+                V.Div(className: "child"),
+                V.Div(className: "child ring-2"),
+            });
+            var tree1 = new VNode[] { RowOf() };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+
+            // Act
+            var tree2 = new VNode[] { RowOf() };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            var container = Container(scope.Root);
+
+            // Assert — the overlay's presence and the second child's margin ride along, so a row whose ring
+            // never landed or whose space never ran cannot pass.
+            Assert.That((container.childCount, container[1].style.marginRight.value.value,
+                    container[2].style.marginRight.keyword),
+                Is.EqualTo((4, Space4, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_ASpaceRowWhoseLastChildIsAbsolute_When_Reconciled_Then_TheChildBeforeItTakesTheMargin()
         {
             // Arrange — Tailwind's `:not(:last-child)` counts an absolutely positioned last child.
@@ -2051,6 +2078,37 @@ namespace Velvet.Tests
 
             // Assert — the space margin before the child's own class arrived rides along.
             Assert.That((spaced, a.style.marginBottom.keyword), Is.EqualTo((16f, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a stylesheet's wrap through resolvedStyle once a
+        // layout pass has run. What reddens it is OnGeometryChanged leaving the wrap class-left window open,
+        // which keeps answering from the inline flex-wrap, unset here, instead of from resolvedStyle.
+        [Test]
+        public void Given_ARowThatAStylesheetRuleWraps_When_ItsWrapClassLeaves_Then_TheRuleIsReadAfterTheNextLayout()
+        {
+            // Arrange — the rule wraps the row too, so dropping the class marker must end back on the wrap path
+            // once resolvedStyle has caught up.
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/WrapsByStylesheetRule.uss");
+            Assume.That(sheet, Is.Not.Null, "Precondition: the test stylesheet loads");
+            Root.styleSheets.Add(sheet);
+            using var store = new ClassNameStore("flex flex-row flex-wrap test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+
+            // Act
+            store.Set("flex flex-row test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+            Tick();
+
+            // Assert — the half-margin: the leading path writes no margin-top on a row.
+            Assert.That(b.style.marginTop.value.value, Is.EqualTo(8f));
         }
 
         [Component]
