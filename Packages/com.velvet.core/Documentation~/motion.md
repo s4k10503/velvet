@@ -323,11 +323,22 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
   layout box (position and/or size) different from the box the SAME id stood at, it
   tweens from the old box to the new one — FLIP: the old box is captured, layout settles at the
-  new one, an inverse inline transform is applied immediately, then it springs back to zero —
+  new one, an inverse inline transform is applied immediately, then its transition carries it back to zero —
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
-  compared, so a Motion nested in a moving one tweens only its own move inside it. An outer Motion's
-  change of size is not accounted for in an inner one's start.
+  compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
+  inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
+  by its own class inside an outer one stretching by different factors on its two axes is not kept
+  exactly: no scale and translate undo a stretch at an angle to the element's axes. A move that
+  lands while a tween is still running starts from where the element is drawn, not from its last layout.
+  A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
+  unrotated over the same centre, at the drawn lengths of its sides.
+- The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
+  the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
+  held before the tween, or whatever something else wrote there while the tween ran, which the tween
+  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
+  its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
@@ -337,15 +348,20 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
-  also changed variants. Its spring knobs come off the Motion's own `transition:` rather than an
-  active pose's — a rect delta is not a swap into a pose — and fall back to
-  `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
-  Motion declares no `Transition`.
-- **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
-  averages the two axis scale factors rather than distorting the element on two independent axes
-  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y. The scale holds the
-  element's transform origin still (its centre unless an `origin-*` class or style moves it), and the translate
-  places the element so that it starts over the old box.
+  also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
+  rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
+  (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
+  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing` on the curve UI Toolkit eases a
+  USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
+  zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
+  `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
+  `cubic-bezier(0.4, 0, 0.1, 1)`. A transition the scheduler rejects lands the move at once, its warning
+  logged where the move settles rather than on every render.
+- **Each axis scales by its own factor.** A box whose width and height change by different factors
+  starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
+  the stretch as for any change of size. The scale holds the element's transform origin still (its
+  centre unless an `origin-*` class or style moves it), and the translate places the element so that it
+  starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
