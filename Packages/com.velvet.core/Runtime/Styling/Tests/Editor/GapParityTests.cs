@@ -383,6 +383,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARowWhoseFirstChildIsHiddenInline_When_TheRowReapplies_Then_TheFirstShownChildTakesNoGap()
+        {
+            // Arrange — the same box rule as the hidden utility, for an inline display:none set outside the
+            // class list; the second reconcile is what re-applies the gap after it.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container[0].style.display = DisplayStyle.None;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-row gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the next child still takes the gap, so the gap did run.
+            Assert.That((container[1].style.marginLeft.keyword, container[2].style.marginLeft.value.value),
+                Is.EqualTo((StyleKeyword.Null, Space4)));
+        }
+
+        [Test]
         public void Given_ASpaceRowWhoseLastChildIsAbsolute_When_Reconciled_Then_TheChildBeforeItTakesTheMargin()
         {
             // Arrange — Tailwind's `:not(:last-child)` counts an absolutely positioned last child.
@@ -416,8 +436,10 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var container = Container(scope.Root);
 
-            // Assert — nothing inline, so the payload's class applies.
-            Assert.That(container[0].style.marginBottom.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — nothing inline, so the payload's class applies; the second child's top edge rides along,
+            // since Tailwind's space-y never writes it.
+            Assert.That((container[0].style.marginBottom.keyword, container[1].style.marginTop.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         // GREEN_ON_BASE(characterization): the base already lets flex-nowrap outrank flex-wrap, the order

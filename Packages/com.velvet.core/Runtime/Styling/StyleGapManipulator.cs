@@ -146,8 +146,7 @@ namespace Velvet
         {
             _spec = spec;
             // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
-            _hasSignature = false;
-            Apply();
+            Reapply();
         }
 
         // A class of a child's own changed: a space margin may now give way to it, or a display:none child
@@ -293,35 +292,43 @@ namespace Velvet
         {
             if (wrap)
             {
-                AddGapAxis(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap / 2f);
-                AddGapAxis(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap / 2f);
+                AddGapPair(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap / 2f);
+                AddGapPair(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap / 2f);
                 return;
             }
             if (gapIndex == 0)
             {
                 return;
             }
-            if (gapSlot == HeldSlot.MarginLeft || gapSlot == HeldSlot.MarginRight)
+            if (MainGap(gapSlot, out var gap))
             {
-                AddGapAxis(gapSlot, gapSlot, _spec.HasColumnGap, _spec.ColumnGap);
-            }
-            else
-            {
-                AddGapAxis(gapSlot, gapSlot, _spec.HasRowGap, _spec.RowGap);
+                AddGap(gapSlot, gap);
             }
         }
 
-        private void AddGapAxis(HeldSlot start, HeldSlot end, bool has, float value)
+        // The main axis's gap, which gapSlot lies on: the column gap along a row, the row gap down a column.
+        private bool MainGap(HeldSlot gapSlot, out float gap)
+        {
+            switch (gapSlot)
+            {
+                case HeldSlot.MarginLeft:
+                case HeldSlot.MarginRight:
+                    gap = _spec.ColumnGap;
+                    return _spec.HasColumnGap;
+                default:
+                    gap = _spec.RowGap;
+                    return _spec.HasRowGap;
+            }
+        }
+
+        private void AddGapPair(HeldSlot start, HeldSlot end, bool has, float value)
         {
             if (!has)
             {
                 return;
             }
             AddGap(start, value);
-            if (end != start)
-            {
-                AddGap(end, value);
-            }
+            AddGap(end, value);
         }
 
         // Adds Tailwind's space margins for a child that is not the last. A space margin gives way to one the

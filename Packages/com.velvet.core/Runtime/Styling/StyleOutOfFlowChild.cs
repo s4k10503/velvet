@@ -82,19 +82,20 @@ namespace Velvet
         // overlay) are passed over.
         internal static int LastSpacedIndex(VisualElement container)
         {
-            for (var i = container.childCount - 1; i >= 0; i--)
+            var last = -1;
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
             {
-                var child = container[i];
-                if (!IsInserted(child))
+                if (!IsInserted(container[i]))
                 {
-                    return i;
+                    last = i;
                 }
             }
-            return -1;
+            return last;
         }
 
         // A child Velvet inserts itself rather than one the author wrote: the filter bounds-spacer or a ring
-        // overlay. Both are absolutely positioned, which off a panel only these markers can tell.
+        // overlay. Both are absolutely positioned, which IsOutOfFlow's off-panel class check cannot see.
         private static bool IsInserted(VisualElement child)
             => SilhouetteBoundsSpacer.IsSpacer(child) || child.ClassListContains(RingOverlay.MarkerClass);
 
