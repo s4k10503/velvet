@@ -233,16 +233,47 @@ namespace Velvet
         private static void ShiftPortalRangesAround(ComponentFiber fiber, VisualElement? mountPoint, int delta)
         {
             var portalState = fiber.Reconciler?.Context.PortalState;
+            if (portalState == null)
+            {
+                return;
+            }
             var owning = OwningPortalOf(fiber, mountPoint);
-            if (portalState == null
-                || owning == null
-                || !portalState.TryGetValue(owning, out var range)
+            if (owning == null)
+            {
+                // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates,
+                // and one has a MountPoint.
+                PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
+                return;
+            }
+            if (!portalState.TryGetValue(owning, out var range)
                 || !ReferenceEquals(range.Target, mountPoint))
             {
                 return;
             }
             portalState[owning] = range with { SlotLength = range.SlotLength + delta };
             PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning, range, delta);
+        }
+
+        // Follows a reconcile of a Portal target's own children, which places those rows and nothing behind
+        // them, so the change in their count moves every range on the target and the fibers mounted in those
+        // ranges here. rowsBehindBefore is PortalSlotTracker.RowsBehindRanges read before that reconcile:
+        // measured behind the ranges rather than as a count, so that a Portal patch or a propagation nested
+        // in that reconcile, which moves the ranges itself, is not counted a second time.
+        internal static void FollowOwnRows(ReconcilerContext ctx, VisualElement target, int rowsBehindBefore)
+        {
+            // No range left on target (the reconcile unmounted the last Portal on it) moves nothing.
+            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            var delta = rowsBehindAfter.GetValueOrDefault(rowsBehindBefore) - rowsBehindBefore;
+            PortalSlotTracker.ShiftRangesOn(ctx.PortalState, target, delta);
+            var tenancy = ctx.ComponentRegistry.TenancyOf(target);
+            if (tenancy == null)
+            {
+                return;
+            }
+            foreach (var tenant in tenancy.Fibers)
+            {
+                if (OwningPortalOf(tenant, target) != null) MoveTenant(tenant, delta);
+            }
         }
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining

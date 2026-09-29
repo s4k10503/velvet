@@ -451,9 +451,14 @@ namespace Velvet
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
             // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
             // would put an element between this container and each Component's output.
+            var rowsBehindRanges = PortalSlotTracker.RowsBehindRanges(_ctx.PortalState, childContainer);
             _host.ReconcileChildren(childContainer,
                 oldNode.Children ?? Array.Empty<VNode>(),
                 newNode.Children ?? Array.Empty<VNode>());
+            if (rowsBehindRanges != null)
+            {
+                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
+            }
 
             _ctx.SyncRefCallback(element, newNode.RefCallback);
         }

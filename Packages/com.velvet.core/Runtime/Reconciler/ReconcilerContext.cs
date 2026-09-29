@@ -122,6 +122,42 @@ namespace Velvet
             }
         }
 
+        // The rows target holds behind the end of the last range on it, or null when no range is on target.
+        // Target's own children sit ahead of every range, so a change in their count moves this while the
+        // recorded ends stand still.
+        internal static int? RowsBehindRanges(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target)
+        {
+            int? lastEnd = null;
+            foreach (var info in portalState.Values)
+            {
+                if (!ReferenceEquals(info.Target, target)) continue;
+                var end = info.SlotStart + info.SlotLength;
+                // MUTANT_SURVIVES(equivalent): where the two are equal, either arm is the same number.
+                lastEnd = lastEnd > end ? lastEnd : end;
+            }
+            return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;
+        }
+
+        // Moves by delta every range on target, which a change in target's own children does.
+        internal static void ShiftRangesOn(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target, int delta)
+        {
+            // MUTANT_SURVIVES(equivalent): a zero delta rewrites every start it visits to its own value.
+            if (delta == 0) return;
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in portalState)
+            {
+                if (!ReferenceEquals(entry.Value.Target, target)) continue;
+                placeholders ??= new List<VisualElement>();
+                placeholders.Add(entry.Key);
+            }
+            if (placeholders == null) return;
+            foreach (var ph in placeholders)
+            {
+                var state = portalState[ph];
+                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
+            }
+        }
+
         // Document order between two distinct Portal placeholders, which hold no children, so neither is an
         // ancestor of the other; elements in separate trees are unordered.
         internal static bool PrecedesInTree(VisualElement first, VisualElement second)

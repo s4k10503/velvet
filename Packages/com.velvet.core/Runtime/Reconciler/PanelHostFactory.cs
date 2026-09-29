@@ -86,6 +86,7 @@ namespace Velvet
             record.DeclaringResolved = declaring != null;
             settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
+            RecordDeclaringRoot(record, declaringPanel);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             return record;
         }
@@ -102,6 +103,7 @@ namespace Velvet
             settings.renderMode = PanelRenderMode.WorldSpace;
             record.Document.transform.SetPositionAndRotation(node.Position, node.Rotation);
             AttachDocument(record.Document, settings);
+            RecordDeclaringRoot(record, declaringPanel);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
@@ -113,6 +115,15 @@ namespace Velvet
             record.Document.worldSpaceSizeMode = WorldSpaceSizeMode.Fixed;
             AttachWorldSpaceCollider(record.Document, node.PanelSize);
             return record;
+        }
+
+        // The host's breakpoints answer the declaring panel's width: StyleResponsiveScope owns why.
+        private static void RecordDeclaringRoot(PanelHostRecord record, IPanel? declaringPanel)
+        {
+            if (declaringPanel != null)
+            {
+                StyleResponsiveScope.RecordDeclaringRoot(record.Document.rootVisualElement.panel.visualTree, declaringPanel.visualTree);
+            }
         }
 
         // Unity's own runtime input system (the implicit "default event system" every Play session

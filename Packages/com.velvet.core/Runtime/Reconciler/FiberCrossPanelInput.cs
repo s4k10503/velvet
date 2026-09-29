@@ -76,7 +76,7 @@ namespace Velvet
         // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
         // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
         // or below that point. Matches the event set FiberEventBindingManager.TryInvokeSynthetic
-        // supports — see its own comment for why ClickedBinding/ChangeEventBinding<T> are excluded.
+        // supports.
         // Returns the delegate that undoes every registration below, for a caller that needs to detach
         // it later (see the class comment above); a caller that never needs to (a framework-owned host
         // root, destroyed wholesale) is free to discard it.
@@ -92,6 +92,11 @@ namespace Velvet
             EventCallback<KeyUpEvent> onKeyUp = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             EventCallback<FocusInEvent> onFocusIn = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             EventCallback<FocusOutEvent> onFocusOut = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ClickEvent> onClick = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<float>> onFloatChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<bool>> onBoolChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<string>> onStringChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<int>> onIntChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             // FocusEvent/BlurEvent are deliberately NOT registered here, even though
             // FiberEventBindingManager.TryInvokeSynthetic has a case for both (kept there for symmetry
             // with the other binding kinds, and reachable if some other caller ever synthesizes one).
@@ -117,6 +122,11 @@ namespace Velvet
             bridgeAnchor.RegisterCallback(onKeyUp);
             bridgeAnchor.RegisterCallback(onFocusIn);
             bridgeAnchor.RegisterCallback(onFocusOut);
+            bridgeAnchor.RegisterCallback(onClick);
+            bridgeAnchor.RegisterCallback(onFloatChange);
+            bridgeAnchor.RegisterCallback(onBoolChange);
+            bridgeAnchor.RegisterCallback(onStringChange);
+            bridgeAnchor.RegisterCallback(onIntChange);
 
             return () =>
             {
@@ -130,6 +140,11 @@ namespace Velvet
                 bridgeAnchor.UnregisterCallback(onKeyUp);
                 bridgeAnchor.UnregisterCallback(onFocusIn);
                 bridgeAnchor.UnregisterCallback(onFocusOut);
+                bridgeAnchor.UnregisterCallback(onClick);
+                bridgeAnchor.UnregisterCallback(onFloatChange);
+                bridgeAnchor.UnregisterCallback(onBoolChange);
+                bridgeAnchor.UnregisterCallback(onStringChange);
+                bridgeAnchor.UnregisterCallback(onIntChange);
             };
         }
 

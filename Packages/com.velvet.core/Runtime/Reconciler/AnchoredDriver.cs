@@ -6,15 +6,16 @@ namespace Velvet
 {
     // Reconciler-side bookkeeping for one Anchored element, keyed in ReconcilerContext.AnchoredBindings by
     // the element itself. Holds the current settings (target/camera/offset), the recurring per-frame tick
-    // that re-projects the target's position (see AnchoredDriver.Sync) so it can be paused on detach, the
-    // registered geometry callback (so it can be unregistered on detach), and a one-shot flag so the
-    // Editor-context degradation warns exactly once per binding instead of every tick.
+    // that re-projects the target's position (see AnchoredDriver.Sync) so it can be paused on detach, and the
+    // registered geometry callback (so it can be unregistered on detach).
     internal sealed class AnchoredBinding
     {
         public AnchoredSettings Settings;
         public IVisualElementScheduledItem? Tick;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
-        public bool WarnedAboutUnsupportedPanel;
+        // The world-space document AnchoredDriver.DocumentHolding last resolved, and the root it resolved it for.
+        public VisualElement? DocumentRoot;
+        public UIDocument? Document;
         // Tracks whether THIS binding is the one currently holding element.style.scale, so it only ever
         // clears a value it actually wrote — see AnchoredDriver.ClearAppliedScale.
         public bool HasAppliedDistanceFactorScale;
@@ -26,25 +27,14 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Drives an Anchored element's screen position: every tick, projects <see cref="AnchoredSettings.Target"/>'s
-    /// world position through <see cref="AnchoredSettings.Camera"/> (or <see cref="Camera.main"/> when null) via
-    /// <see cref="RuntimePanelUtils.CameraTransformWorldToPanel"/>, converts the result from panel-root space into
-    /// the element's own PARENT-relative space (subtracting the parent's <c>worldBound.position</c> — UI
-    /// Toolkit resolves <c>position: absolute</c> <c>left</c>/<c>top</c> against the immediate parent, not the
-    /// panel root, unlike CSS's nearest-positioned-ancestor walk), and writes the result as inline
-    /// <c>left</c>/<c>top</c> — a screen-space projection (unlike <c>V.WorldSpace</c>, which renders content
-    /// INTO the 3D scene and is depth-tested for free, this is ordinary 2D UI with no inherent scene depth —
-    /// <see cref="AnchoredSettings.Occlude"/> opts into an explicit physics stand-in for that test).
-    /// <c>RuntimePanelUtils.CameraTransformWorldToPanel</c> is correct here specifically
-    /// because the element lives in an ordinary screen-space (Overlay/Camera) panel: <c>PanelSettings.
-    /// ApplyPanelSettings</c> only resolves the scale factor this API divides by (<c>ScreenToPanel</c>'s
-    /// <c>screen / scale</c>) for non-WorldSpace render modes — the same API returns the input essentially
-    /// unchanged for a <c>V.WorldSpace</c>-hosted panel (see <c>PanelHostFactory</c>'s own note on this API's dual,
-    /// panel-mode-dependent behavior). <b>Not supported:</b> nesting a <c>V.Anchored</c> element inside a
-    /// <c>V.WorldSpace</c> panel's children — that panel is still <c>ContextType.Player</c> (the guard below can't
-    /// distinguish it from an ordinary screen-space runtime panel without reflecting into an internal engine
-    /// property), so it silently gets the same near-raw-world-space values the API is documented to degrade to
-    /// there. <c>V.Anchored</c> targets an ordinary screen-space panel only.
+    /// Drives an Anchored element's position: every tick, projects <see cref="AnchoredSettings.Target"/>'s
+    /// world position through <see cref="AnchoredSettings.Camera"/> (or <see cref="Camera.main"/> when null)
+    /// into the element's panel and writes it, relative to the element's parent, as inline
+    /// <c>left</c>/<c>top</c> — ordinary 2D UI with no inherent scene depth, unlike <c>V.WorldSpace</c>
+    /// (<see cref="AnchoredSettings.Occlude"/> opts into a physics stand-in for that test). A screen-space
+    /// runtime panel projects through <see cref="RuntimePanelUtils.CameraTransformWorldToPanel"/>, an editor
+    /// panel lays the camera's viewport over itself, and a world-space panel takes the point where the
+    /// camera's ray to the target crosses it.
     /// </summary>
     internal static class AnchoredDriver
     {
@@ -158,40 +148,11 @@ namespace Velvet
                 return;
             }
 
-            // View-space depth test: a target behind the camera
-            // plane projects through WorldToScreenPoint with its x/y mirrored, which CameraTransformWorldToPanel
-            // would otherwise turn into a wildly wrong on-screen position rather than an obviously-off-screen
-            // one — including when HideWhenBehindCamera is false, so that opt-out does not attempt this
-            // projection at all rather than "tracking" a mirrored/garbage point. Checked before the panel-type
-            // guard below: whether the target even faces the camera is independent of what kind of panel this
-            // element happens to live in.
+            // drei's Html hides a target behind the camera, and where an onOcclude handler takes that hide
+            // over it keeps writing the projection rather than holding the last position.
             var toTarget = target.position - camera.transform.position;
-            var isBehindCamera = Vector3.Dot(camera.transform.forward, toTarget) < 0f;
-            if (isBehindCamera)
+            if (binding.Settings.HideWhenBehindCamera && Vector3.Dot(camera.transform.forward, toTarget) < 0f)
             {
-                if (binding.Settings.HideWhenBehindCamera)
-                {
-                    HideAndClearScale(element, binding);
-                }
-                return;
-            }
-
-            // RuntimePanelUtils.CameraTransformWorldToPanel casts its panel argument to BaseRuntimePanel
-            // internally — correct and necessary for the ordinary ScreenSpaceOverlay/ScreenSpaceCamera panel
-            // V.Anchored targets, but an InvalidCastException for an EDITOR panel (contextType.Editor, e.g.
-            // Velvet content mounted into an EditorWindow's rootVisualElement — a supported Velvet scenario,
-            // see the preview-tooling docs). An unsupported panel has no well-defined position at all, so it
-            // is treated the same as "no camera" above rather than showing at a stale/never-set position.
-            if (panel.contextType != ContextType.Player)
-            {
-                if (!binding.WarnedAboutUnsupportedPanel)
-                {
-                    binding.WarnedAboutUnsupportedPanel = true;
-                    FiberLogger.LogWarning("Anchored",
-                        "This element's panel is not a runtime (Player-context) panel, so its screen "
-                        + "projection is undefined here (e.g. Velvet content mounted into an EditorWindow). "
-                        + "Hiding it instead of showing a stale or arbitrary position.");
-                }
                 HideAndClearScale(element, binding);
                 return;
             }
@@ -210,29 +171,30 @@ namespace Velvet
                 return;
             }
 
-            // Clears any inline override from a previous behind-camera/no-camera/unsupported-panel hide,
-            // rather than forcing DisplayStyle.Flex: an inline display would otherwise permanently outrank
-            // the "hidden" USS class Props.Visible = false toggles (FiberPropApplier.ApplyVisible), since a
-            // non-!important stylesheet rule never beats an inline style. StyleKeyword.Null lets the normal
-            // class-driven cascade (including Visible = false) decide instead.
             var box = ClipPathLayoutBox.Of(element);
-            box.style.display = StyleKeyword.Null;
-
-            var panelPoint = RuntimePanelUtils.CameraTransformWorldToPanel(panel, target.position, camera);
-            // CameraTransformWorldToPanel returns a point in PANEL-ROOT space; position: absolute resolves
-            // left/top against the element's own PARENT, not the panel root (UI Toolkit/Yoga, unlike CSS, has
-            // no nearest-positioned-ancestor walk — it is always parent-relative). worldBound reports an
-            // element's rect already resolved into panel-root space, so subtracting the parent's own
-            // worldBound origin converts panelPoint into the parent-relative point position: absolute needs.
-            // (VisualElement.WorldToLocal looked like the more principled tool for this, but empirically
-            // returns its input unchanged for an ordinary layout-positioned — not CSS-transformed — parent,
-            // i.e. it is NOT a general panel-to-parent-layout-space converter; worldBound subtraction is the
-            // one that was verified correct via a real nested-margin PlayMode test.) No conversion needed
-            // only when the element sits directly on the panel root (no parent), which already coincides
-            // with panel space.
-            var localPoint = panelPoint;
-            if (box.parent != null)
+            Vector2 localPoint;
+            if (panel is IRuntimePanel { panelSettings: { renderMode: PanelRenderMode.WorldSpace } })
             {
+                // A world-space panel has no screen to project into: the element goes where the camera's ray
+                // to the target crosses the panel's plane.
+                var document = DocumentHolding(box, binding);
+                var ray = new Ray(camera.transform.position, toTarget);
+                var enter = 0f;
+                if (document == null
+                    || !new Plane(document.transform.forward, document.transform.position).Raycast(ray, out enter))
+                {
+                    HideAndClearScale(element, binding);
+                    return;
+                }
+                // The panel's own space is its root document's local space, so the parent's inverse world
+                // transform takes the crossing point into the space left/top resolve against.
+                var crossing = document.transform.InverseTransformPoint(ray.GetPoint(enter));
+                localPoint = box.parent.WorldToLocal(new Vector2(crossing.x, crossing.y));
+            }
+            else
+            {
+                // position: absolute resolves left/top against the element's own PARENT (UI Toolkit has no
+                // nearest-positioned-ancestor walk), so the panel point is taken to the parent's origin.
                 var parentOrigin = (Vector2)box.parent.worldBound.position;
                 // A parent that has never been laid out reports a NaN-sized worldBound whose origin cannot
                 // be trusted yet — skip this write and let the geometry callback registered in Attach re-sync
@@ -241,8 +203,14 @@ namespace Velvet
                 {
                     return;
                 }
-                localPoint = panelPoint - parentOrigin;
+                localPoint = PanelPoint(panel, target.position, camera) - parentOrigin;
             }
+            // Clears any inline override from a previous hide rather than forcing DisplayStyle.Flex: an inline
+            // display would otherwise permanently outrank the "hidden" USS class Props.Visible = false toggles
+            // (FiberPropApplier.ApplyVisible), since a non-!important stylesheet rule never beats an inline
+            // style. StyleKeyword.Null lets the normal class-driven cascade (including Visible = false) decide
+            // instead.
+            box.style.display = StyleKeyword.Null;
             var offset = binding.Settings.Offset;
             box.style.left = localPoint.x + offset.x;
             box.style.top = localPoint.y + offset.y;
@@ -268,6 +236,46 @@ namespace Velvet
                 // same element is left entirely to whichever of those systems is actually driving it.
                 ClearAppliedScale(element, binding);
             }
+        }
+
+        // RuntimePanelUtils.CameraTransformWorldToPanel casts its panel to BaseRuntimePanel, which an editor
+        // panel (Velvet content mounted into an EditorWindow) is not. There the camera's viewport is laid
+        // over the panel root, which is how drei's Html maps a projection onto its canvas.
+        private static Vector2 PanelPoint(IPanel panel, Vector3 worldPosition, Camera camera)
+        {
+            if (panel.contextType == ContextType.Player)
+            {
+                return RuntimePanelUtils.CameraTransformWorldToPanel(panel, worldPosition, camera);
+            }
+            var viewport = camera.WorldToViewportPoint(worldPosition);
+            var size = panel.visualTree.layout.size;
+            return new Vector2(viewport.x * size.x, (1f - viewport.y) * size.y);
+        }
+
+        // The document whose root, directly under the panel's visual tree, holds box: several world-space
+        // documents can share one panel, each placed by its own GameObject. Remembered per root so the scan
+        // runs when box arrives under a root rather than every tick.
+        private static UIDocument? DocumentHolding(VisualElement box, AnchoredBinding binding)
+        {
+            var root = box;
+            while (root.hierarchy.parent != box.panel.visualTree)
+            {
+                root = root.hierarchy.parent;
+            }
+            if (binding.DocumentRoot != root)
+            {
+                binding.DocumentRoot = root;
+                binding.Document = null;
+                foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
+                {
+                    if (document.rootVisualElement == root)
+                    {
+                        binding.Document = document;
+                        break;
+                    }
+                }
+            }
+            return binding.Document;
         }
     }
 }
