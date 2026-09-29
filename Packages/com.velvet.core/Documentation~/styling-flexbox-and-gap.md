@@ -34,8 +34,8 @@ Two family-specific facts survive that:
   `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so a literal
   `"flex-col flex-row"` lays out as a row. Write one, or mark the winner important —
   `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
-  direction: Tailwind's `flex-[…]` is the `flex` shorthand, so its `flex-[column]` writes a declaration
-  the browser drops, and Velvet's changes nothing either.
+  direction: `flex-[…]` is the `flex` shorthand in both (see "Proportional splits" below), so
+  `flex-[column]` is a value the shorthand rejects and changes nothing.
 - **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
   displaces them — it holds only part of what they write — and takes the direction from them by
   declaration order instead, both being declared before all four.
@@ -316,7 +316,7 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
 
-## Proportional splits: `grow-N` / `shrink-N`
+## Proportional splits: `grow-N` / `shrink-N` and `flex-N`
 
 `grow` / `shrink` set a factor of 1, `grow-0` / `shrink-0` a factor of 0, and `grow-<N>` / `shrink-<N>`
 any other whole number, as Tailwind's bare values do: a sidebar carrying `grow` beside a content pane
@@ -326,6 +326,12 @@ carrying `grow-3` divides the leftover space one to three. The bracket form take
 The value is a plain number. `grow-1.5`, `grow-02`, `grow-[50%]`, `grow-[2rem]` and `-grow-[2]` are not
 recognized — a factor has no unit and no sign, the bare form is a whole number spelled as Tailwind
 spells it, and the percent form especially would otherwise read as a factor of fifty.
+
+The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow N, shrink 1, basis 0%),
+`flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
+`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_auto]`. A
+value the CSS shorthand rejects, such as `flex-[column]`, is not recognized. `flex-1`, `flex-auto`,
+`flex-initial` and `flex-none` are the USS classes they always were.
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.

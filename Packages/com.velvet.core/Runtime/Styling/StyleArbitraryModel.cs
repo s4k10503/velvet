@@ -265,6 +265,10 @@ namespace Velvet
         FlexGrow,     // grow-[2]         -> flex-grow
         FlexShrink,   // shrink-[2]       -> flex-shrink
 
+        // The flex shorthand: Value is the grow factor, Value3 the shrink factor, and Value2 / Unit2 the basis,
+        // NaN for auto.
+        Flex,         // flex-3, flex-1/2, flex-[2_1_0%] -> flex-grow + flex-shrink + flex-basis
+
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
     }
@@ -282,6 +286,8 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
+        // The third component of a three-valued property (Flex's shrink factor); 0 for every other property.
+        public float Value3 { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
@@ -296,6 +302,7 @@ namespace Velvet
             Unit = unit;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Color = default;
             Custom = null;
         }
@@ -309,6 +316,24 @@ namespace Velvet
             Unit = unit;
             Value2 = value2;
             Unit2 = unit2;
+            Value3 = 0f;
+            Color = default;
+            Custom = null;
+        }
+
+        // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
+        public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
+            => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        private ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit, float value2,
+            LengthUnit unit2, float value3)
+        {
+            Property = property;
+            Value = value;
+            Unit = unit;
+            Value2 = value2;
+            Unit2 = unit2;
+            Value3 = value3;
             Color = default;
             Custom = null;
         }
@@ -322,6 +347,7 @@ namespace Velvet
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Custom = null;
         }
 
@@ -334,6 +360,7 @@ namespace Velvet
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Color = default;
         }
     }
