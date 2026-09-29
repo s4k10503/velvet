@@ -7,8 +7,9 @@
   registering 400 and 600 now renders the 400 face, where it used to render the 600 one. The face's
   style also narrows before its weight, as in CSS: `font-bold italic` over a family whose only italic
   face is the regular one renders that italic with synthesized bold, where it used to render the bold
-  upright with synthesized italic. `VelvetFontFamily.FindClosestWeight` returns the entry this order
-  selects.
+  upright with synthesized italic. Of two entries registered at one weight the later is used, as the
+  later of two `@font-face` rules for one face is in CSS; the earlier used to be. `VelvetFontFamily.FindClosestWeight`
+  returns the entry this order selects.
 
 - `text-balance` alone makes text wrap, as CSS's `text-wrap: balance` sets the wrap mode to `wrap`.
   It used to set no white-space, so on a label that did not already wrap it had no effect without a

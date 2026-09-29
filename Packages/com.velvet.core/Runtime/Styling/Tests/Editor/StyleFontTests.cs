@@ -357,6 +357,21 @@ namespace Velvet.Tests
             Assert.That((int)entry.weight, Is.EqualTo(expected));
         }
 
+        [Test]
+        public void Given_TwoEntriesAtTheRequestedWeight_When_Matched_Then_TheLaterIsSelected()
+        {
+            // Arrange
+            var earlier = new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal };
+            var later = new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal };
+            var family = new VelvetFontFamily("sans", earlier, later);
+
+            // Act
+            var entry = family.FindClosestWeight(VelvetFontWeight.Normal);
+
+            // Assert
+            Assert.That(entry, Is.SameAs(later));
+        }
+
         private static VelvetFontFamily FamilyWithWeights(int[] weights)
         {
             var entries = new VelvetFontWeightEntry[weights.Length];

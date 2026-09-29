@@ -79,6 +79,9 @@ namespace Velvet
         // How far text-pretty's width backs off the pixel grid; see FindPrettyWidth.
         private const float PixelGridMarginPx = 1f;
 
+        // The characters text-pretty breaks words at.
+        private static readonly char[] BreakChars = { ' ', '\t', '\n', '\r' };
+
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
         private readonly ReconcilerContext _ctx;
 
@@ -314,59 +317,59 @@ namespace Velvet
 
         // text-pretty's short-last-line avoidance, on Chromium's trigger: the last line holds a single word
         // (no break opportunity) and is narrower than a third of the line. Chromium then re-breaks the last
-        // lines with a penalty on leaving that word alone; this narrows the box instead, to the widest width
-        // at which the text before the last word fills every line, so a word moves down to join it, and
-        // keeps that width only if the whole text still takes the same number of lines. Null leaves the box
-        // to its cascade. A word here is a run between whitespace.
+        // lines with a penalty on leaving that word alone; this narrows the box instead, to about the widest
+        // width at which the text before the last word fills every line, so a word moves down to join it,
+        // and keeps that width only if the whole text still takes the same number of lines. Null leaves the
+        // box to its cascade. A word here is a run between spaces, tabs or line breaks.
         private static float? FindPrettyWidth(
             TextElement textElement, string text, float lo, float hi, float naturalHeight)
         {
-            var end = text.Length;
-            while (end > 0 && char.IsWhiteSpace(text[end - 1]))
+            var end = text.TrimEnd(BreakChars).Length;
+            if (end == 0)
             {
-                end--;
+                return null;
             }
-            var start = end;
-            while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
+            var start = text.LastIndexOfAny(BreakChars, end - 1) + 1;
+            if (start == 0)
             {
-                start--;
+                return null;
             }
             var lastWord = textElement.MeasureTextSize(
                 text.Substring(start, end - start), float.NaN, VisualElement.MeasureMode.Undefined,
                 float.NaN, VisualElement.MeasureMode.Undefined).x;
+            // MUTANT_SURVIVES(equivalent, boundary): the two differ only for a last word measuring a third of
+            // the line to the last bit, where Chromium's rule does not optimize either.
             if (lastWord >= hi / ShortLineDenominator)
             {
                 return null;
             }
             var head = text.Substring(0, start);
+            // MUTANT_SURVIVES(equivalent, boundary): heights measured here are whole lines apart, far wider
+            // than the epsilon, so none sits on it.
             if (MeasureHeight(textElement, head, hi) >= naturalHeight - HeightEpsilonPx)
             {
                 return null;
             }
-            if (MeasureHeight(textElement, head, lo) < naturalHeight - HeightEpsilonPx)
+            // The widest whole point at which the head no longer fits its lines, so a word of it moves down
+            // beside the last one. Whole points because layout rounds the written width to the panel's
+            // pixel grid: a 126.5 write read back as 127 on a runner with one pixel per point.
+            var width = Mathf.Floor(hi);
+            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
+            while (MeasureHeight(textElement, head, width) < naturalHeight - HeightEpsilonPx)
             {
-                return null;
-            }
-            for (var i = 0; i < MaxIterations; i++)
-            {
-                var mid = (lo + hi) * 0.5f;
-                if (MeasureHeight(textElement, head, mid) >= naturalHeight - HeightEpsilonPx)
+                width--;
+                // MUTANT_SURVIVES(unreachable, boundary): the head needs its extra line once the box is
+                // narrower than its last line, which the last-word check leaves wider than two thirds of the
+                // line less a space, far above the floor at a tenth of it.
+                if (width < lo)
                 {
-                    lo = mid;
-                }
-                else
-                {
-                    hi = mid;
+                    return null;
                 }
             }
-            // Layout rounds the written width to the panel's pixel grid: a 126.5 write read back as 127 on a
-            // runner with one pixel per point, undoing a narrowing of half a point. So the width backs off to
-            // a whole point one point below the search's result, and the line count is checked a point
-            // narrower still.
-            var width = Mathf.Floor(lo) - PixelGridMarginPx;
-            return MeasureHeight(textElement, text, width - PixelGridMarginPx) <= naturalHeight + HeightEpsilonPx
-                ? width
-                : null;
+            // One point further for the same rounding, kept only if the whole text still takes its lines.
+            width -= PixelGridMarginPx;
+            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
+            return MeasureHeight(textElement, text, width) <= naturalHeight + HeightEpsilonPx ? width : null;
         }
 
         private static float MeasureHeight(TextElement textElement, string text, float width) =>

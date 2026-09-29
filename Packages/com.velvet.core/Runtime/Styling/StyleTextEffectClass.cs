@@ -131,8 +131,9 @@ namespace Velvet
         }
 
         // True when no axis carries a token (nothing to track for this element).
+        // A white-space class always sets Whitespace too (Parse), so it needs no term of its own.
         public bool IsEmpty => Transform == null && Decoration == null && Whitespace == null && Leading == null
-            && WhiteSpaceClass == null && Wraps == null;
+            && Wraps == null;
     }
 
     // Parses the text-transform / text-decoration / white-space / leading-* utilities and text-balance /
@@ -187,13 +188,13 @@ namespace Velvet
             // pre-line request from a FARTHER ancestor from still reaching this element through the normal
             // cascade — the same explicit-reset semantics normal-case / no-underline already give
             // Transform/Decoration.
-            if (facets.WhiteSpaceRank >= 0)
+            var whiteSpaceClass = facets.WhiteSpaceClass;
+            if (whiteSpaceClass != null)
             {
                 whitespace = WhitespaceCollapseKind.None;
             }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
-                facets.WhiteSpaceRank < 0 ? null : WhiteSpaceClassesInSheetOrder[facets.WhiteSpaceRank].Value,
-                facets.Wraps);
+                whiteSpaceClass, facets.Wraps);
         }
 
         // The axes Parse folds a class array into, bundled so the
@@ -204,7 +205,8 @@ namespace Velvet
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
             public LeadingValue? Leading;
-            // Index into WhiteSpaceClassesInSheetOrder of the latest-declared white-space class seen, or -1.
+            // The latest-declared white-space class seen, and its index in WhiteSpaceClassesInSheetOrder.
+            public WhiteSpace? WhiteSpaceClass;
             public int WhiteSpaceRank;
             public bool? Wraps;
         }
@@ -254,7 +256,12 @@ namespace Velvet
                 {
                     continue;
                 }
-                facets.WhiteSpaceRank = Math.Max(facets.WhiteSpaceRank, rank);
+                // MUTANT_SURVIVES(equivalent, boundary): at an equal rank the class is the one already held.
+                if (rank >= facets.WhiteSpaceRank)
+                {
+                    facets.WhiteSpaceRank = rank;
+                    facets.WhiteSpaceClass = WhiteSpaceClassesInSheetOrder[rank].Value;
+                }
                 return true;
             }
             if (s_leadingPresets.TryGetValue(cls, out var em))

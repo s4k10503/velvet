@@ -316,6 +316,23 @@ namespace Velvet.Tests
                 Is.EqualTo($"{(StyleKeyword.Null, WhiteSpace.Normal)} {(StyleKeyword.Undefined, WhiteSpace.Pre)} {StyleKeyword.Null}"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already re-resolves a variant whitespace-* payload.
+        [Test]
+        public void Given_ADarkWhitespacePreUnderPreLine_When_TheThemeTurnsDark_Then_ThePreLineStops()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var label = MountAndFindLabel(scope,
+                V.Div(className: "whitespace-pre-line", V.Label(className: "dark:whitespace-pre", text: "a   b")));
+            var light = label.text;
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That((light, label.text), Is.EqualTo(("a b", "a   b")));
+        }
+
         [TestCase("!whitespace-pre-line")]
         [TestCase("whitespace-pre-line!")]
         public void Given_AnImportantPreLine_When_Reconciled_Then_TheSpacesCollapse(string cls)

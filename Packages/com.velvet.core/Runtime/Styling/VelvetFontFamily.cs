@@ -63,7 +63,8 @@ namespace Velvet
         /// weight if one is registered; otherwise, for a request from 400 to 500, the lightest entry from
         /// the request up to 500, then the heaviest below the request, then the lightest above 500; for a
         /// request under 400, the heaviest at or below it, then the lightest above; for a request over 500,
-        /// the lightest at or above it, then the heaviest below. Returns null when the family has no entries.
+        /// the lightest at or above it, then the heaviest below. Of two entries at one weight, the later is
+        /// picked. Returns null when the family has no entries.
         /// </summary>
         public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested) => Match(requested, italicFace: null);
 
@@ -91,7 +92,9 @@ namespace Velvet
                 }
 
                 var (tier, key) = Rank((int)requested, (int)entry.weight);
-                if (tier < bestTier || (tier == bestTier && key < bestKey))
+                // At an equal weight the later entry wins, as the later of two @font-face rules for one face
+                // does in CSS.
+                if (tier < bestTier || (tier == bestTier && key <= bestKey))
                 {
                     best = entry;
                     bestTier = tier;
@@ -124,6 +127,7 @@ namespace Velvet
             {
                 return (0, candidate);
             }
+            // MUTANT_SURVIVES(unreachable, boundary): a candidate equal to the request returned in tier 0 above.
             return candidate < desired ? (1, -candidate) : (2, candidate);
         }
     }
