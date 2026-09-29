@@ -364,12 +364,31 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): pins the engine cap the registry's four-parameter check exists for.
+        // When UI Toolkit lifts it, this reddens and the registry's check can go.
+        [Test]
+        public void Given_AFilterFunctionHoldingFourParameters_When_AFifthIsAdded_Then_TheEngineThrows()
+        {
+            // Arrange
+            var fn = new FilterFunction(FilterFunctionType.Custom);
+            for (var i = 0; i < 4; i++)
+            {
+                fn.AddParameter(new FilterParameter(0f));
+            }
+
+            // Act
+            TestDelegate addFifth = () => fn.AddParameter(new FilterParameter(0f));
+
+            // Assert
+            Assert.That(addFifth, Throws.TypeOf<System.ArgumentOutOfRangeException>());
+        }
+
         [Test]
         public void Given_ADefinitionDeclaringMoreThanFourParameters_When_Registered_Then_TheRegistrationIsRejected()
         {
-            // Arrange — a filter function holds at most 4 parameters (a fixed buffer that throws past its
-            // cap), so a definition declaring more can never compose; rejecting it at registration keeps
-            // the failure at the API boundary instead of a throw during style resolution.
+            // Arrange — a filter function holds at most 4 parameters (the case above pins the engine's cap), so
+            // a definition declaring more can never compose; rejecting it at registration keeps the failure at
+            // the API boundary instead of a throw during style resolution.
             LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*4"));
             var wide = CreateDefinition(new FilterParameter(0f), new FilterParameter(0f),
                 new FilterParameter(0f), new FilterParameter(0f), new FilterParameter(0f));
@@ -406,6 +425,8 @@ namespace Velvet.Tests
             Assert.That(isVariant, Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): drops a list clear the pool scrub no longer performs.
+        // A Null assignment already leaves no inline filter list to clear.
         [Test]
         public void Given_AScrubbedElement_When_ReappliedFromItsClassList_Then_TheCustomFilterIsRestored()
         {
@@ -414,7 +435,6 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
             StyleArbitraryValueResolver.ClearAll(el);
             el.style.filter = StyleKeyword.Null;
-            el.style.filter.value?.Clear();
 
             // Act — the class-diff reapply path rebuilds inline values from the surviving class list.
             FiberNodePatcher.ReapplyArbitraryValues(el, new[] { "filter-[fade:1]", "w-[10px]" });

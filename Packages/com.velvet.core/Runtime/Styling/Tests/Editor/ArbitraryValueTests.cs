@@ -2233,6 +2233,19 @@ namespace Velvet.Tests
             Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FilterBlur, 6f)));
         }
 
+        // GREEN_ON_BASE(characterization): pins the blur bracket grammar styling-filters.md states.
+        // A rem resolves at 16px, and a percentage is rejected, as CSS blur() rejects one.
+        [Test]
+        public void Given_RemAndPercentBlurBrackets_When_Parsed_Then_RemResolvesToPixelsAndPercentIsRejected()
+        {
+            // Act
+            var rem = StyleArbitraryValueResolver.TryParse("blur-[0.5rem]", out var s);
+            var percent = StyleArbitraryValueResolver.TryParse("blur-[50%]", out _);
+
+            // Assert
+            Assert.That((rem, s.Property, s.Value, percent), Is.EqualTo((true, ArbitraryProperty.FilterBlur, 8f, false)));
+        }
+
         [Test]
         public void Given_BlurArbitrary_When_Applied_Then_SetsAOneFunctionBlurFilter()
         {
