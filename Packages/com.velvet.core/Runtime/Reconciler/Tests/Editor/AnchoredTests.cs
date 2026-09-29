@@ -91,6 +91,8 @@ namespace Velvet.Tests
             Assert.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base hides every element of an editor panel, this one included.
+        // This pins the hide with no camera to project through, which that editor-panel hide used to mask.
         [Test]
         public void Given_NoCameraIsSuppliedAndNoMainCameraExists_When_Ticked_Then_TheElementIsHidden()
         {
