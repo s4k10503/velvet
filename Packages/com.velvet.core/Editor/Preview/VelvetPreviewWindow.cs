@@ -176,8 +176,9 @@ namespace Velvet.Editor.Preview
             _viewport = EditorPrefs.GetString(ViewportKey, ViewportFull);
             _viewportWidth = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportWidthKey, DefaultCustomViewportWidth));
             _viewportHeight = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportHeightKey, DefaultCustomViewportHeight));
-            _panelSettings = AssetDatabase.LoadAssetAtPath<PanelSettings>(
-                AssetDatabase.GUIDToAssetPath(EditorPrefs.GetString(PanelSettingsKey, string.Empty)));
+            _panelSettings = GlobalObjectId.TryParse(EditorPrefs.GetString(PanelSettingsKey, string.Empty), out var id)
+                ? GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as PanelSettings
+                : null;
 
             if (!IsKnownViewportLabel(_viewport))
             {
@@ -696,11 +697,13 @@ namespace Velvet.Editor.Preview
         internal void SetPanelSettings(PanelSettings settings)
         {
             _panelSettings = settings;
-            var path = settings == null ? string.Empty : AssetDatabase.GetAssetPath(settings);
-            EditorPrefs.SetString(PanelSettingsKey, AssetDatabase.AssetPathToGUID(path));
+            // A sub-asset shares its file's GUID, so the id names the object itself.
+            EditorPrefs.SetString(
+                PanelSettingsKey, settings == null ? string.Empty : GlobalObjectId.GetGlobalObjectIdSlow(settings).ToString());
             _panelSettingsField?.SetValueWithoutNotify(settings);
+            // Remounted as a viewport change is, since the canvas's scope and units both move.
             ApplyCanvasSize(_selected);
-            ApplyZoom();
+            MountWithCurrentArgs(_selected);
         }
 
         // Screen pixels per layout unit on the chosen PanelSettings, for a screen the size of the Custom viewport
@@ -851,7 +854,8 @@ namespace Velvet.Editor.Preview
         // <item>Else a fixed viewport (preset or custom) sizes the canvas to that reference W x H and marks it a
         // responsive scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
         // <item>Else ("Full", no explicit size): the canvas fills the stage — its reference size IS the measured
-        // stage size, and it is not a responsive scope (matches the panel root instead).</item>
+        // stage size. It is a responsive scope only with PanelSettings chosen, standing in for the game panel's
+        // root; without them breakpoints match the editor panel root, as that panel is the one shown.</item>
         // </list>
         private (float Width, float Height, bool IsResponsiveScope) ComputeReferenceSize(VelvetPreviewStory story)
         {
@@ -874,7 +878,7 @@ namespace Velvet.Editor.Preview
             viewportH /= panelScale;
             if (viewportW > 0f && viewportH > 0f) return (viewportW, viewportH, true);
 
-            return (stageW, stageH, false);
+            return (stageW, stageH, _panelSettings != null);
         }
 
         // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A

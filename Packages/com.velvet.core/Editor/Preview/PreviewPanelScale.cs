@@ -5,11 +5,15 @@ namespace Velvet.Editor.Preview
 {
     // The layout units per screen pixel a runtime panel on these settings takes for a screen of this size, as
     // PanelSettings resolves it. PanelSettings keeps its own resolution internal; PreviewPanelScaleTests compares
-    // this against it for each scale and match mode.
+    // this against it for each scale and match mode, a world-space panel, and a panel rendering into a texture.
     internal static class PreviewPanelScale
     {
         internal static float Resolve(PanelSettings settings, Vector2 screen, float screenDpi)
         {
+            if (settings.renderMode == PanelRenderMode.WorldSpace) return 1f;
+            var texture = settings.targetTexture;
+            if (texture != null) screen = new Vector2(texture.width, texture.height);
+
             var unitsPerPixel = 1f;
             switch (settings.scaleMode)
             {
@@ -28,7 +32,7 @@ namespace Velvet.Editor.Preview
                     {
                         PanelScreenMatchMode.Expand => Mathf.Min(ratio.x, ratio.y),
                         PanelScreenMatchMode.Shrink => Mathf.Max(ratio.x, ratio.y),
-                        _ => Mathf.Lerp(ratio.x, ratio.y, Mathf.Clamp01(settings.match)),
+                        _ => Mathf.Lerp(ratio.x, ratio.y, settings.match),
                     };
                     if (factor != 0f) unitsPerPixel = 1f / factor;
                     break;

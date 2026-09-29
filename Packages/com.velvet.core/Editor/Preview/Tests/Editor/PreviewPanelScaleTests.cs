@@ -59,6 +59,60 @@ namespace Velvet.Tests
         }
     }
 
+    internal sealed class PreviewPanelScaleRenderTargetTests
+    {
+        private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+        private PanelSettings _settings;
+        private RenderTexture _texture;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+            _settings.referenceResolution = new Vector2Int(1024, 1024);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            UnityEngine.Object.DestroyImmediate(_settings);
+            if (_texture != null) UnityEngine.Object.DestroyImmediate(_texture);
+        }
+
+        // ApplyPanelSettings, which is internal, resolves a world-space panel to 1 without asking ResolveScale.
+        [Test]
+        public void Given_WorldSpacePanelSettings_When_TheWindowResolvesTheirScale_Then_ItIsOne()
+        {
+            // Arrange
+            _settings.renderMode = PanelRenderMode.WorldSpace;
+
+            // Act
+            var resolved = PreviewPanelScale.Resolve(_settings, new Vector2(512f, 512f), 0f);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_PanelSettingsRenderingIntoATexture_When_TheWindowResolvesTheirScale_Then_TheTextureIsTheScreen()
+        {
+            // Arrange
+            _texture = new RenderTexture(512, 512, 0);
+            _settings.targetTexture = _texture;
+            var displayRect = (Rect)typeof(PanelSettings).GetMethod("GetDisplayRect", Private)!.Invoke(_settings, null);
+            var runtime = (float)typeof(PanelSettings).GetMethod("ResolveScale", Private)!
+                .Invoke(_settings, new object[] { displayRect, 0f });
+
+            // Act
+            var resolved = PreviewPanelScale.Resolve(_settings, new Vector2(1600f, 1200f), 0f);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo(runtime).Within(1e-6f));
+        }
+    }
+
     internal sealed class PreviewPanelScaleWindowTests
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -66,6 +120,8 @@ namespace Velvet.Tests
 
         // ScaleWithScreenSize at a 1280x720 reference, matching width and height equally.
         private const string StarterPanelSettings = "Assets/VelvetStarterSample/StarterAppPanelSettings.asset";
+
+        private const string SubAssetPath = "Assets/VelvetPreviewPanelSettingsSubAssetProbe.asset";
 
         private VelvetPreviewWindow _window;
         private PanelSettings _settings;
@@ -85,6 +141,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            AssetDatabase.DeleteAsset(SubAssetPath);
             EditorPrefs.SetString(PanelSettingsKey, string.Empty);
             if (_window == null) return;
             _window.Close();
@@ -105,6 +162,9 @@ namespace Velvet.Tests
 
         private T Field<T>(string field) =>
             (T)typeof(VelvetPreviewWindow).GetField(field, Private)?.GetValue(_window);
+
+        private object MountedTree() =>
+            typeof(VelvetPreviewHost).GetField("_mounted", Private)?.GetValue(Field<VelvetPreviewHost>("_host"));
 
         private void SetCustomViewport(int width, int height)
         {
@@ -148,6 +208,51 @@ namespace Velvet.Tests
             Assert.That(
                 Field<VisualElement>("_canvas").style.width.value.value,
                 Is.EqualTo(screen.x * unitsPerPixel).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasIsTheResponsiveScope()
+        {
+            // Act
+            Choose(_settings);
+
+            // Assert
+            Assert.That(Field<VisualElement>("_canvas").ClassListContains(VelvetResponsive.ContainerClass), Is.True);
+        }
+
+        [Test]
+        public void Given_AMountedStory_When_ThePanelSettingsAreChosen_Then_TheStoryIsMountedAgain()
+        {
+            // Arrange
+            var responsive = VelvetPreviewRegistry.DiscoverStories().Find(s => s.Id == "Examples/Responsive");
+            typeof(VelvetPreviewWindow).GetMethod("Select", Private)?.Invoke(_window, new object[] { responsive });
+            var before = MountedTree();
+
+            // Act
+            Choose(_settings);
+
+            // Assert
+            Assert.That((before != null, ReferenceEquals(before, MountedTree())), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_PanelSettingsChosenFromASubAsset_When_TheWindowReopens_Then_ThatSubAssetIsStillChosen()
+        {
+            // Arrange
+            var main = ScriptableObject.CreateInstance<PanelSettings>();
+            var sub = ScriptableObject.CreateInstance<PanelSettings>();
+            sub.name = "Sub";
+            AssetDatabase.CreateAsset(main, SubAssetPath);
+            AssetDatabase.AddObjectToAsset(sub, main);
+            AssetDatabase.SaveAssets();
+            Choose(sub);
+            _window.Close();
+
+            // Act
+            Open();
+
+            // Assert
+            Assert.That(Field<PanelSettings>("_panelSettings"), Is.SameAs(sub));
         }
 
         [Test]
