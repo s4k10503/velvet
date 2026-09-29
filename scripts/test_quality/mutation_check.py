@@ -94,7 +94,7 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest of each setup phase and, where the platform is
-# narrowed, an area's own launch for each area, fit that platform's shard job's timeout in test.yml,
+# narrowed, an area's own launch for each area, fit that platform's shard job's timeout in mutation.yml,
 # and that case holds each pair together. The charge is not a worst case -- the EditMode one is a mutant
 # 18 of 645 measured runs exceeded -- so a full shard holding a slower mutant or a hang can still
 # outrun the job, and the mutants it had not reached are then recorded by no shard.

@@ -393,6 +393,9 @@ namespace Velvet
             fiber.IsDisposed = true;
 
             Unmount(fiber);
+#if UNITY_EDITOR
+            DevTools.VelvetDevToolsRegistry.Unregister(fiber);
+#endif
             // Defensively force false against the early-return path of Unmount() (when !IsMounted).
             fiber.IsDirty = false;
             // Drop the reference entirely and leave it to GC (avoids unnecessary allocation by EnsureLanes()
