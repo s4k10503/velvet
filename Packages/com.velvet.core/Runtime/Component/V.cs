@@ -1830,14 +1830,16 @@ namespace Velvet
         /// container exists yet. Style it like any Div.
         /// </summary>
         /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
-        /// snapped back within the same event flush (a press on empty space that clears focus to nothing
-        /// re-focuses on the panel's next tick).</param>
+        /// snapped back within the same event flush unless it lands in a contained scope created after this
+        /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
+        /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
+        /// in a contained scope created after this one).</param>
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
         /// when it first entered the scope.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
-        /// arrow/dpad navigation inside is untouched.</param>
+        /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
@@ -2138,7 +2140,9 @@ namespace Velvet
         /// </summary>
         /// <param name="children">Child VNodes whose enter / exit transitions are tracked.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <param name="initial">When false, suppresses enter animations on the very first mount.</param>
+        /// <param name="initial">When false, suppresses the enter animations of the children the first render
+        /// mounts, and of the Motions mounting under them for as long as they stay, other than an inner
+        /// presence's children.</param>
         /// <param name="staggerSec">Delay (seconds) staggered between sequential children.</param>
         /// <param name="mode">Exit / enter sequencing. <see cref="AnimatePresenceMode.Sync"/> (default) overlaps
         /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight
@@ -2222,17 +2226,14 @@ namespace Velvet
         /// <paramref name="variants"/> but leaves <paramref name="animate"/> null inherits the nearest ANCESTOR
         /// Motion's active label and resolves it against its OWN variants — so setting <paramref name="animate"/>
         /// on a parent drives the whole subtree.</param>
-        /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When null, the
-        /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
-        /// <param name="initial">Mount-time starting variant label. When this Motion also sets
-        /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
-        /// and transitions to <c>variants[animate]</c> (its persistent resting state) — played by
-        /// AnimatePresence when this Motion is a keyed child's anchor, and by the Motion itself on mount
-        /// anywhere else (the motion guide's <i>Exits</i> section says which Motion is the anchor); a
-        /// presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal.
-        /// <see cref="MotionVariant.Transition"/>
-        /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
-        /// must apply for the enter to play at all.</param>
+        /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When this Motion
+        /// names none of <paramref name="animate"/>, <paramref name="initial"/> and <paramref name="exit"/>, the
+        /// nearest ancestor Motion's labels are inherited; naming any of them, it inherits none.</param>
+        /// <param name="initial">Mount-time starting variant label. The enter starts at <c>variants[initial]</c>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state); with no
+        /// <paramref name="animate"/>, the Motion rests at <c>variants[initial]</c>. The motion guide's
+        /// <i>Enter on mount</i> section owns who plays the enter and when a presence withholds it.
+        /// <see cref="MotionVariant.Transition"/> resolves the timing.</param>
         /// <param name="exit">Exit variant label. When the keyed AnimatePresence child this Motion sits in,
         /// however deep, is removed, the Motion animates from its resting pose to <c>variants[exit]</c> before
         /// the child unmounts, and hands the label down to the Motions inheriting its labels.
@@ -2280,6 +2281,7 @@ namespace Velvet
                 Name = name,
                 ClassNames = ParseClassNames(className),
                 Transition = resolvedTransition,
+                TransitionDefaulted = transition == null && duration == null && easing == null && delay == null,
                 Children = children ?? EmptyChildren,
                 Props = props,
                 Events = events ?? EmptyEvents,

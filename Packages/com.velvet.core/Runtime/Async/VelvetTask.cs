@@ -25,6 +25,19 @@ namespace Velvet
 
             Debug.LogException(exception);
         }
+
+        internal static void PublishUnobservedFaults(IReadOnlyList<ExceptionDispatchInfo>? faults)
+        {
+            if (faults == null)
+            {
+                return;
+            }
+
+            foreach (var fault in faults)
+            {
+                PublishUnobservedException(fault.SourceException);
+            }
+        }
     }
 
     [AsyncMethodBuilder(typeof(VelvetTaskMethodBuilder))]
@@ -59,8 +72,8 @@ namespace Velvet
                 return this;
             }
 
-            var preserved = new PreservedVelvetTaskSource<AsyncUnit>();
-            VelvetTaskOutcome.OnSettled(this, preserved.Settle);
+            var preserved = new MultiAwaitVelvetTaskSource<AsyncUnit>();
+            VelvetTaskOutcome.OnSettled(this, outcome => preserved.TrySettle(outcome));
             return new VelvetTask(preserved);
         }
 
@@ -309,8 +322,8 @@ namespace Velvet
                 return this;
             }
 
-            var preserved = new PreservedVelvetTaskSource<T>();
-            VelvetTaskOutcome.OnSettled(this, preserved.Settle);
+            var preserved = new MultiAwaitVelvetTaskSource<T>();
+            VelvetTaskOutcome.OnSettled(this, outcome => preserved.TrySettle(outcome));
             return new VelvetTask<T>(preserved);
         }
 

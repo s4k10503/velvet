@@ -10,6 +10,8 @@ namespace Velvet.Tests
 
         static async VelvetTask<VelvetTaskStatus> AwaitSuppressingThrows(VelvetTask<int> task) => await task.SuppressThrowing();
 
+        static async VelvetTask Relay(VelvetTaskCompletionSource source) => await source.Task;
+
         [Test]
         public void Given_ATaskCanceledWhileAwaited_When_AwaitedWithSuppressThrowing_Then_TheAwaitReturnsCanceled()
         {
@@ -50,12 +52,14 @@ namespace Velvet.Tests
             Assert.That(status, Is.EqualTo(VelvetTaskStatus.Faulted));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_AFaultedTaskAlreadyConsumed_When_ReadWithSuppressThrowing_Then_ItStillThrowsAlreadyConsumed()
         {
             // Arrange
             var source = new VelvetTaskCompletionSource();
-            var task = source.Task;
+            var task = Relay(source);
             source.SetException(new InvalidOperationException("boom"));
             try
             {
