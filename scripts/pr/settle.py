@@ -256,7 +256,7 @@ _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "e
 def checks(project, sha, runs=()):
     """Check results for one head, or an empty list when no workflow ever ran for it.
 
-    `runs` is `head_runs`' reading of the same head, whose superseded campaigns' checks are left
+    `runs` is `campaign_runs`' reading of the same head, whose superseded campaigns' checks are left
     out.
     """
     slug = repository(project)
@@ -265,8 +265,9 @@ def checks(project, sha, runs=()):
                          campaign.superseded_suites(runs))
 
 
-def head_runs(project, sha):
-    """Every workflow run whose head is `sha`, which `expected_checks` and `campaign` both read."""
+def campaign_runs(project, sha):
+    """Every workflow run whose head is `sha`, which `campaign.py` reads the campaign out of and
+    `expected_checks.py` reads every other workflow's runs out of."""
     payload = rest_json(expected_checks.runs_path(repository(project), sha))
     listed = payload.get("workflow_runs", [])
     whole_page(payload, listed, "workflow runs")
@@ -515,7 +516,7 @@ def blocking_reasons(project, number, base=None, states=None):
     if unpublished:
         unpublished = published_check.unpublished_reason(
             project, f"origin/{target}", fetch=False, result=before.sha)
-    runs = head_runs(project, before.sha)
+    runs = campaign_runs(project, before.sha)
     results = checks(project, before.sha, runs)
     now = time.time()
     others = campaign.others(runs)

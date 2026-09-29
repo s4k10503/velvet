@@ -305,7 +305,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 draft=states[number].draft, merge_state=states[number].merge_state,
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state)),
             ("checks", lambda _project, sha, *_: by_sha[sha].results),
-            ("head_runs", lambda _project, sha: by_sha[sha].runs),
+            ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
                 run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
             ("head_sha", lambda _project, number: states[number].after),
@@ -637,6 +637,8 @@ class ExpectedCheckTests(unittest.TestCase):
             # Act / Assert
             self.assertRaises(RuntimeError, settle.required_contexts, Path("."), "main")
 
+    # GREEN_ON_BASE(characterization): the base reads the same runs listing for the campaign.
+    # What it pins is that the one runs reading both rules share keeps its page size.
     def test_Given_AHead_When_ItsRunsAreRead_Then_ThePathNamesItsShaAndAPageSize(self):
         # Arrange
         asked = []
@@ -647,7 +649,7 @@ class ExpectedCheckTests(unittest.TestCase):
                 lambda path: (asked.append(path), {"total_count": 0, "workflow_runs": []})[1]))
 
             # Act
-            settle.head_runs(Path("."), GREEN)
+            settle.campaign_runs(Path("."), GREEN)
 
         # Assert
         self.assertEqual(asked, [f"repos/owner/name/actions/runs?head_sha={GREEN}&per_page=100"])
@@ -662,6 +664,8 @@ class ExpectedCheckTests(unittest.TestCase):
             # Act / Assert
             self.assertRaises(RuntimeError, settle.run_jobs, Path("."), [STUCK], 0)
 
+    # GREEN_ON_BASE(characterization): the base raises on a partial runs page for the campaign too.
+    # What it pins is that the one runs reading both rules share keeps doing so.
     def test_Given_ARunsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
         # Arrange — the run that fell off the page could be the one still going.
         truncated = {"total_count": 2, "workflow_runs": [GENERATORS_DONE]}
@@ -670,7 +674,7 @@ class ExpectedCheckTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: truncated))
 
             # Act / Assert
-            self.assertRaises(RuntimeError, settle.head_runs, Path("."), GREEN)
+            self.assertRaises(RuntimeError, settle.campaign_runs, Path("."), GREEN)
 
 
 class ClosedPullRequestTests(unittest.TestCase):
@@ -1023,7 +1027,7 @@ class RetirementTests(unittest.TestCase):
 def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
     """A head read over REST: its check runs, its workflow runs, and nothing else blocking it.
 
-    Patched at `rest_json`, so `checks` and `head_runs` both run.
+    Patched at `rest_json`, so `checks` and `campaign_runs` both run.
     """
     state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                   merge_state="clean", fork=False, labels=frozenset(labels),
@@ -1556,7 +1560,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("repository", lambda *_: "owner/name"),
                 ("pull_request", lambda *_: state),
                 ("checks", lambda *_: PASSING),
-                ("head_runs", lambda *_: []),
+                ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),

@@ -151,7 +151,7 @@ def hand_off(project, number, run_id):
     if reason:
         print(f"PR#{number} left alone: {reason}")
         return
-    found = settle.campaign.state(settle.head_runs(project, head["sha"]))
+    found = settle.campaign.state(settle.campaign_runs(project, head["sha"]))
     if found == settle.campaign.RUNNING:
         print(f"PR#{number}: the campaign on {head['sha'][:7]} is still running, and asks for the "
               f"merge once it passes")

@@ -275,6 +275,8 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert — the exit code rides along because a guard allowing the merge says nothing either.
         self.assertEqual((result.returncode, "never triggered" in result.stderr), (REFUSED, False))
 
+    # GREEN_ON_BASE(characterization): the base refuses an unread runs reading for the campaign too.
+    # What it pins is that the one runs reading both rules share keeps doing so.
     def test_Given_ARunsReadingThatFails_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
         # Arrange / Act
         result = self.ask(runs="", runs_exit=1)
@@ -313,6 +315,17 @@ class HeadCheckVerdictTests(unittest.TestCase):
                           f"its mutation.yml run on {HEAD[:7]} failed" in result.stderr),
                          (REFUSED, True))
 
+    # GREEN_ON_BASE(characterization): the base names a failed campaign once, by the campaign's rule.
+    # What it pins is that the runs rule leaves the campaign to that one: `others =
+    # campaign.others(runs or [])` spelled `others = runs or []` reddens it.
+    def test_Given_AFailedCampaign_When_TheMergeIsAsked_Then_OnlyTheCampaignsRuleNamesIt(self):
+        # Arrange / Act
+        result = self.ask(runs=workflow_runs((2, "completed", "failure")))
+
+        # Assert — the refusal rides along because a guard that let the merge through names nothing.
+        self.assertEqual((result.returncode, "workflow runs failed" in result.stderr),
+                         (REFUSED, False))
+
     def test_Given_AnUnlabelledHeadWhoseCampaignIsRunning_When_TheMergeIsAsked_Then_ItIsRefused(self):
         # Arrange / Act — a dispatched run carries no check `gh pr checks` lists.
         result = self.ask(runs=workflow_runs((2, "queued", None)))
@@ -341,6 +354,8 @@ class HeadCheckVerdictTests(unittest.TestCase):
                           f"the workflow runs of {HEAD[:7]} could not all be read" in result.stderr),
                          (REFUSED, True))
 
+    # GREEN_ON_BASE(characterization): the base refuses a partial runs page for the campaign too.
+    # What it pins is that the one runs reading both rules share keeps doing so.
     def test_Given_ARunsPageCarryingLessThanItsTotal_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
         # Arrange / Act — the run that fell off the page could be the one still going.
         result = self.ask(runs=json.dumps({"total_count": 2, "workflow_runs": [

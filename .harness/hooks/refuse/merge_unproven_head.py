@@ -105,7 +105,7 @@ def checks_of(cwd, number):
     return listed
 
 
-def head_runs(cwd, sha):
+def campaign_runs(cwd, sha):
     """Every workflow run whose head is `sha`, or None where they could not all be read."""
     return expected_checks.listed_runs(
         gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)]))
@@ -150,7 +150,7 @@ def unproven(asked, cwd):
             continue
 
         listed = checks_of(cwd, number)
-        runs = head_runs(cwd, before)
+        runs = campaign_runs(cwd, before)
         now = time.time()
         others = campaign.others(runs or [])
         jobs = run_jobs(cwd, others, now)

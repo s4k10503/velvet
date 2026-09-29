@@ -110,7 +110,7 @@ class Invocation:
                 stack.enter_context(mock.patch.object(automerge.settle, "merge", merge))
                 stack.enter_context(mock.patch.object(automerge.settle, "gh", gh))
                 # `create`, so these cases are posed to a settle without the reading as well.
-                stack.enter_context(mock.patch.object(automerge.settle, "head_runs",
+                stack.enter_context(mock.patch.object(automerge.settle, "campaign_runs",
                                                       lambda _project, _sha: list(runs), create=True))
                 stack.enter_context(contextlib.redirect_stdout(self.printed))
                 environ = {"GH_TOKEN": token, "GITHUB_RUN_ID": "99"} if token else {}
