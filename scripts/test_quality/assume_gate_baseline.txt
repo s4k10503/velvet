@@ -246,7 +246,6 @@ gates-in-assert	Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkT
 gates-in-assert	Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs	Velvet.Tests.RouteLinkTests.Given_NavLink_When_LocationDoesNotMatchTarget_Then_OmitsActiveClass	button
 gates-in-assert	Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs	Velvet.Tests.RouteLinkTests.Given_NavLink_When_LocationMatchesTarget_Then_AppliesActiveClass	button
 gates-in-assert	Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs	Velvet.Tests.RouteLinkTests.Given_NonEndNavLink_When_LocationIsSubPathOfTarget_Then_IsActive	button
-gates-in-assert	Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkTests.cs	Velvet.Tests.RouteLinkTests.Given_RootNavLink_When_ThereIsNoLocation_Then_OmitsActiveClass	button
 gates-in-assert	Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs	Velvet.Tests.DashedBorderPainterTests.Given_ARoundedRectPolyline_When_Built_Then_ItHasMorePointsThanASquare	square
 unreadable	Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs	Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Inspected_Then_ChildFiberHasRenderBody	no // Act marker, so a gate over what the Act made is not read
 unreadable	Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs	Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Inspected_Then_ChildFiberPointsBackToRoot	no // Act marker, so a gate over what the Act made is not read

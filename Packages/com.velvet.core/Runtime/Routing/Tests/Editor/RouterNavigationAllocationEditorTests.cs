@@ -18,10 +18,9 @@ namespace Velvet.Tests
             return 42;
         }
 
-        // `CreateRouter` is inside the measured call, so construction counts -- and a router built per
-        // navigation pays what a long-lived one amortises: the blocker manager's reusable pass snapshot
-        // is two blocks the first time and none after, where the array it replaced was one every time.
-        // Moving the number is the answer when the change that moved it is understood.
+        // `CreateRouter` is inside the measured call, so the router's construction and its Blocker's
+        // registration count toward the pin. Moving the number is the answer when the change that moved it
+        // is understood.
         static Router CreateRouter()
         {
             var router = new Router(new[]
@@ -42,7 +41,7 @@ namespace Velvet.Tests
             });
 
             router.RouteBlockerManager.Register(
-                (_, ct) => VelvetTask.FromResult(false),
+                _ => false,
                 new RouteBlockerState());
 
             return router;
@@ -76,7 +75,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(96));
+            Assert.That(blocks, Is.EqualTo(88));
         }
 
 #if UNITY_EDITOR
@@ -98,7 +97,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(96));
+            Assert.That(blocks, Is.EqualTo(88));
         }
 #endif
     }

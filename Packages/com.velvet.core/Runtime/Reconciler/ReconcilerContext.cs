@@ -52,7 +52,7 @@ namespace Velvet
             List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
             ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
         {
-            EnclosingSnapshot = enclosingSnapshot;
+            EnclosingSnapshot = MotionContext.OutlivingPass(enclosingSnapshot);
             DescendantNodes = descendantNodes;
             Anchor = anchor;
             LogicalParent = logicalParent;
@@ -1000,11 +1000,11 @@ namespace Velvet
 
         // Same-panel portal TARGET elements — a registered id's element (V.Portal(targetId:)) or one the
         // caller passed outright (V.Portal(target:)) — that already carry
-        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge, mapped to the delegate that
-        // detaches it. Doubles as the attach-once guard: ChildReconciler's same-panel drain branch
-        // checks this before calling AttachBridge, since multiple Portals — or repeated mounts of the
-        // same Portal — commonly resolve to the SAME target (see PortalSlotInfo's own multi-Portal-per-
-        // target contract), and re-attaching would stack duplicate callbacks. The guard is scoped to
+        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge and the missing-sheet watch, mapped to
+        // the delegate that releases both. Doubles as the attach-once guard BindPortalTarget checks, since
+        // multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
+        // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
+        // duplicate callbacks. The guard is scoped to
         // this one context: a second, independently mounted reconciler whose own Portal resolves to the
         // same registered target attaches its own bridge through its own instance of this dictionary,
         // since it has no way to see this one. Harmless — Continue's ancestor walk itself is ctx-agnostic
@@ -1023,6 +1023,21 @@ namespace Velvet
         // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
         // roots... can outlive this reconciler" teardown rationale.
         public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
+
+        // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
+        // deferred-mount drain and FiberNodePatcher's retarget or heal of a portal mounted before its id was
+        // registered.
+        internal void BindPortalTarget(VisualElement target)
+        {
+            if (SamePanelPortalBridges.ContainsKey(target)) return;
+            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
+            var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
+            SamePanelPortalBridges[target] = () =>
+            {
+                detachBridge();
+                sheetWatch.Dispose();
+            };
+        }
 
         // The declaring panel's driving UIDocument per panel, filled by
         // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
@@ -1454,6 +1469,9 @@ namespace Velvet
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
             public readonly List<(string key, VNode node)> Committed = new();
 
+            // Keys present at the first render under initial: false and not removed since (see LiveEntrySite).
+            public readonly HashSet<string> InitialBlocked = new();
+
             // Keys whose exit animation is running; the leaf is kept mounted as a ghost.
             public readonly HashSet<string> Exiting = new();
 
@@ -1511,11 +1529,7 @@ namespace Velvet
         // inside that child's own subtree does not lose the OUTER anchor once its own expansion returns). Null
         // outside any presence expansion, and also null for a keyed child whose FindFirstMotionDescendant walk
         // found no Motion (e.g. a plain Div wrapper). FiberNodeFactory's standalone-enter gate compares a
-        // freshly created MotionNode against this BY REFERENCE, so only the ONE
-        // node the presence itself already plays an enter for (via PlayVariantEnter/PlayEnter) skips its
-        // redundant standalone enter; every OTHER Motion created while the expansion is on the stack (nested
-        // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) plays its own mount enter unless
-        // PresenceSuppressesInitial holds it back.
+        // freshly created MotionNode against this BY REFERENCE (see CreateForMotionNode).
         internal MotionNode? PresenceAnchorMotion;
 
         // The live element CreateElement / PatchMotion resolved for PresenceAnchorMotion during the
@@ -1527,10 +1541,12 @@ namespace Velvet
         // Motion's resting set and be clobbered by the wrapper's own class patching.
         internal VisualElement? PresenceAnchorMotionElement;
 
-        // Whether the keyed child being emitted is on its presence's first render under initial: false, so a
-        // Motion it creates skips its mount enter. Set and restored around each presence-child emission, so an
-        // inner presence answers for its own children.
-        internal bool PresenceSuppressesInitial;
+        // Set by the create path when it plays, or withholds, the enter of PresenceAnchorMotion itself. Same
+        // set/restore discipline.
+        internal bool PresenceAnchorEnterHandled;
+
+        // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
+        internal float PresenceAnchorEnterDelaySec;
 
         // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
         internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);

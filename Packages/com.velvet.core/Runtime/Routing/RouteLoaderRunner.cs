@@ -25,13 +25,9 @@ namespace Velvet
 
             internal readonly Dictionary<string?, Exception> Errors = new();
 
-            internal int Pending;
-
             internal readonly RouteCancellationSource? Cancellation;
 
             internal LoaderRound(RouteCancellationSource? cancellation) => Cancellation = cancellation;
-
-            internal bool Settled => Pending == 0;
         }
 
         private LoaderRound _currentRound;
@@ -42,10 +38,6 @@ namespace Velvet
         private bool _disposed;
 
         public RouteLoaderRunner() => _currentRound = new LoaderRound(null);
-
-        // The events fire only after the live-round check, so a subscriber reading this from inside one of
-        // them is reading its own round.
-        internal LoaderRound? LiveRound => _liveRound;
 
         // Cancellation can overlap rounds, so this counts live tasks across all rounds.
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
@@ -103,7 +95,6 @@ namespace Velvet
                 }
                 else
                 {
-                    round.Pending++;
                     RunSuspendLoader(key, task, round).Forget();
                 }
             }
@@ -127,14 +118,6 @@ namespace Velvet
 
             return round;
         }
-
-        /// <summary>
-        /// A round that ran no loaders, already settled. A Back/Forward step served from the history cache
-        /// runs none and still needs a round to promote: promoting the round it is leaving instead would let
-        /// that round's late results announce themselves into the entry the step restored, which shares its
-        /// RouteId whenever both entries matched the same route.
-        /// </summary>
-        public LoaderRound EmptyRound() => BeginRound(null);
 
         // The outgoing round is retired here unless it is the live one: the live round belongs to the
         // location on screen, and Promote — called by the commit that leaves that location — is what ends it.
@@ -207,23 +190,17 @@ namespace Velvet
                 }
                 catch (OperationCanceledException)
                 {
-                    round.Pending--;
                     return;
                 }
                 catch (Exception ex)
                 {
-                    round.Pending--;
-                    // A round that is not live suppresses announcements, not its own accounting.
+                    // A round that is not live suppresses announcements, not its own record of the failure.
                     round.Errors[routeId] = ex;
                     if (!ReferenceEquals(round, _liveRound)) return;
                     Announce(OnSuspendLoaderFailed, routeId, ex);
                     return;
                 }
 
-                // Above the live-round return: Settled is Pending == 0, and a round that never settles
-                // is one HistoryEntry.LoadersSettled keeps unservable, so Back onto that entry re-runs its
-                // loaders every time.
-                round.Pending--;
                 round.Results[routeId] = result;
                 // A round that is not live has no location of the caller's to be announced into: either it
                 // has not been promoted yet, in which case the caller reads its results at the promotion, or
