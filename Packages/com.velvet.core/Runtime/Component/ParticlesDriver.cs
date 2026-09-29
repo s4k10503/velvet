@@ -372,7 +372,6 @@ namespace Velvet
             }
             // Editor-side replay: a Simulate()-driven clock clamps at a finished non-looping timeline
             // and Play() merely resumes the pause there, so a drained host restarts from zero first.
-            // MUTANT_SURVIVES(equivalent, logic): in Play Mode the editor clock reads drained only for a host with no particle and nothing emitting on its own, where a restart before Play() shows nothing different.
             if (!Application.isPlaying && !AnySystemLive(binding, false))
             {
                 binding.Host.Simulate(0f, withChildren: true, restart: true, fixedTimeStep: false);
