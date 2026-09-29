@@ -9,8 +9,8 @@ namespace Velvet
     /// <c>active:</c> / <c>disabled:</c> prefixes.
     /// </summary>
     /// <remarks>
-    /// Every site that CLASSIFIES these kinds — which signal source drives one, which layer it occupies — is a
-    /// <see cref="VariantKindTable{T}"/> built from one entry per member, and <c>VariantKindTableTests</c>
+    /// A classification answering for every kind — which signal source drives one, which layer it occupies — is
+    /// a <see cref="VariantKindTable{T}"/> built from one entry per member, and <c>VariantKindTableTests</c>
     /// fails for a table missing a member. A set of independent <c>is X or Y</c> predicates cannot report a
     /// member matching none, and that is what left <c>checked:</c>, the two focus-within relationals and
     /// <c>peer-checked:</c> unclassified and inert as the inner of a stacked variant.
