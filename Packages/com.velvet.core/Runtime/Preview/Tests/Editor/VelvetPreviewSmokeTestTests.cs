@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -44,6 +45,55 @@ namespace Velvet.Tests
         private static VNode UpdateThrows() => V.Component(ThrowAfterEffectUpdateRender, key: "child");
 
         private static VNode BoundaryCatches() => V.Component(BoundaryRender, key: "boundary");
+
+        private static VNode SecondCommitEffectThrows() => V.Component(ThrowOnReadyEffectRender, key: "child");
+
+        private static VNode TransitionThrows() => V.Component(ThrowAfterTransitionRender, key: "child");
+
+        private static VNode ReadsItsPanel() => V.Component(PanelReadingRender, key: "child");
+
+        [Component]
+        private static VNode ThrowOnReadyEffectRender()
+        {
+            var (ready, setReady) = Hooks.UseState(false);
+            Hooks.UseEffect(() =>
+            {
+                setReady.Invoke(true);
+                return (Action)null;
+            }, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                if (ready) throw new InvalidOperationException("ready boom");
+                return (Action)null;
+            }, new object[] { ready });
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode ThrowAfterTransitionRender()
+        {
+            var (moved, setMoved) = Hooks.UseState(false);
+            var (_, startTransition) = Hooks.UseTransition();
+            Hooks.UseEffect(() =>
+            {
+                startTransition.Invoke(() => setMoved.Invoke(true));
+                return (Action)null;
+            }, Array.Empty<object>());
+            if (moved) throw new InvalidOperationException("transition boom");
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode PanelReadingRender()
+        {
+            var target = Hooks.UseRef<VisualElement>();
+            Hooks.UseLayoutEffect(() =>
+            {
+                _ = target.Current.panel.visualTree;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div(refCallback: target.SetElement);
+        }
 
         [Component]
         private static VNode ThrowingRender() => throw new InvalidOperationException("render boom");
@@ -178,19 +228,71 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheProjectsStories_When_SmokeTested_Then_EachMountsWithoutAnError()
+        public void Given_TheProjectsStories_When_SmokeTested_Then_EachExampleMountsWithoutAnError()
         {
-            // Arrange
-            var stories = VelvetPreviewRegistry.DiscoverStories();
-
             // Act
             var results = VelvetPreviewSmokeTest.Run();
 
-            // Assert
+            // Assert — the example stories Velvet.Editor declares are this project's whole set.
             Assert.That(
-                (results.Count, string.Join(" | ", results.Where(r => r.Failure != null)
-                    .Select(r => r.Story.Id + ": " + r.Failure))),
-                Is.EqualTo((stories.Count, string.Empty)));
+                string.Join(" | ", results.Select(r => r.Story.Id + ": " + (r.Failure ?? "passed"))),
+                Is.EqualTo("Examples/Card: passed | Examples/Responsive: passed | Examples/Tall List: passed"));
         }
+
+        [Test]
+        public void Given_AnEffectThatThrowsOnlyOnTheSecondCommit_When_SmokeTested_Then_ItFails()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: ready boom");
+
+            // Act
+            var failure = FailureOf(nameof(SecondCommitEffectThrows));
+
+            // Assert
+            Assert.That(failure, Is.EqualTo("InvalidOperationException: ready boom"));
+        }
+
+        [Test]
+        public void Given_ARenderThatThrowsOnlyAfterATransition_When_SmokeTested_Then_ItFails()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: transition boom");
+
+            // Act
+            var failure = FailureOf(nameof(TransitionThrows));
+
+            // Assert
+            Assert.That(failure, Is.EqualTo("InvalidOperationException: transition boom"));
+        }
+
+        [Test]
+        public void Given_ALayoutEffectReadingItsElementsPanel_When_SmokeTested_Then_ItPasses()
+        {
+            // Act
+            var failure = FailureOf(nameof(ReadsItsPanel));
+
+            // Assert
+            Assert.That(failure, Is.Null);
+        }
+
+        [Test]
+        public void Given_ASmokeRun_When_ItFinishes_Then_ItLeavesNoPanelObjectBehind()
+        {
+            // Arrange
+            var before = PanelObjectCounts();
+
+            // Act
+            FailureOf(nameof(Plain));
+
+            // Assert
+            Assert.That(PanelObjectCounts(), Is.EqualTo(before));
+        }
+
+        private static string PanelObjectCounts() =>
+            string.Join(",",
+                Resources.FindObjectsOfTypeAll<UIDocument>().Length,
+                Resources.FindObjectsOfTypeAll<PanelSettings>().Length,
+                Resources.FindObjectsOfTypeAll<ThemeStyleSheet>().Length,
+                Resources.FindObjectsOfTypeAll<RenderTexture>().Length);
     }
 }

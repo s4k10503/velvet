@@ -13,6 +13,7 @@ namespace Velvet
     {
         private readonly VisualElement _target;
         private readonly MountOptions _options;
+        private const int SettleRounds = 100;
         private VelvetPreviewEnvironment? _environment;
         private MountedTree? _mounted;
         private readonly List<StyleSheet> _appliedStyleSheets = new();
@@ -118,13 +119,19 @@ namespace Velvet
             }
         }
 
-        // Runs the passive effects the mount left pending, then the renders they scheduled, so a smoke run sees
-        // an error either raises without waiting for the panel scheduler.
+        // Runs pending passive effects, then the renders and transitions they scheduled, round after round, so a
+        // smoke run sees an error any of them raises without waiting for the panel scheduler. A fixed count rather
+        // than a pending check: a round with nothing queued renders nothing, and the count bounds a story whose
+        // effects keep scheduling one another.
         internal void Settle()
         {
             var scheduler = _mounted?.Root.Reconciler?.Context.BatchScheduler;
-            scheduler?.FlushPendingPassiveEffects();
-            scheduler?.FlushImmediate();
+            for (var round = 0; round != SettleRounds; round++)
+            {
+                scheduler?.FlushPendingPassiveEffects();
+                scheduler?.FlushImmediate();
+                scheduler?.DrainDelayed();
+            }
         }
 
         // Track only a sheet this host added; Unmount must not remove a sheet the target already owned.

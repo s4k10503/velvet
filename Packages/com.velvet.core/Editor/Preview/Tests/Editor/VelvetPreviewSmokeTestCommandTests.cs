@@ -70,5 +70,18 @@ namespace Velvet.Tests
             // Assert
             Assert.That(code, Is.EqualTo(1));
         }
+
+        [Test]
+        public void Given_NoStoryFound_When_RunFromTheCommandLine_Then_TheExitCodeIsOne()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Error, "[VelvetPreview] smoke test: No stories found.");
+
+            // Act
+            var code = VelvetPreviewSmokeTestCommand.ExitCode(Array.Empty<VelvetPreviewSmokeResult>);
+
+            // Assert
+            Assert.That(code, Is.EqualTo(1));
+        }
     }
 }

@@ -8,7 +8,7 @@ namespace Velvet.Editor.Preview
     /// <summary>
     /// Runs <see cref="VelvetPreviewSmokeTest"/> over every story from the menu, or from a batch-mode editor:
     /// <c>-batchmode -executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit</c> exits 1
-    /// when a story fails or discovery is refused, and 0 when every story passes.
+    /// when a story fails, no story is found or discovery is refused, and 0 when every story found passes.
     /// </summary>
     public static class VelvetPreviewSmokeTestCommand
     {
@@ -18,12 +18,20 @@ namespace Velvet.Editor.Preview
         /// <summary>The batch-mode entry point; exits the editor with the run's outcome.</summary>
         public static void RunAndExit() => EditorApplication.Exit(ExitCode(VelvetPreviewSmokeTest.Run));
 
-        // A refused story index is reported as a failed run rather than thrown out of -executeMethod.
+        // A refused story index is reported as a failed run rather than thrown out of -executeMethod, and an empty
+        // one fails as Storybook's test runner fails when it finds no test.
         internal static int ExitCode(Func<IReadOnlyList<VelvetPreviewSmokeResult>> run)
         {
             try
             {
-                return Report(run()) == 0 ? 0 : 1;
+                var results = run();
+                if (results.Count == 0)
+                {
+                    Debug.LogError("[VelvetPreview] smoke test: No stories found.");
+                    return 1;
+                }
+
+                return Report(results) == 0 ? 0 : 1;
             }
             catch (InvalidOperationException ex)
             {

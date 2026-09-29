@@ -52,11 +52,11 @@ namespace Velvet
                 }
             });
 
-            var target = new VisualElement();
             Application.logMessageReceived += OnLog;
             try
             {
-                using var host = new VelvetPreviewHost(target, options);
+                using var panel = new SmokePanel();
+                using var host = new VelvetPreviewHost(panel.Root, options);
                 host.Mount(story);
                 if (host.MountError != null) return Describe(host.MountError);
                 host.Settle();
@@ -70,6 +70,46 @@ namespace Velvet
         }
 
         private static string Describe(Exception exception) => exception.GetType().Name + ": " + exception.Message;
+
+        // A runtime panel, the kind the game renders through, so attach-time and panel-reading code runs as it
+        // would there. It renders into a texture rather than a display, and leaves nothing behind in the scene or
+        // the project.
+        private sealed class SmokePanel : IDisposable
+        {
+            private const int Width = 1280;
+            private const int Height = 720;
+
+            private readonly GameObject _host;
+            private readonly PanelSettings _settings;
+            private readonly ThemeStyleSheet _theme;
+            private readonly RenderTexture _texture;
+
+            public SmokePanel()
+            {
+                _texture = new RenderTexture(Width, Height, 0) { hideFlags = HideFlags.HideAndDontSave };
+                _theme = ScriptableObject.CreateInstance<ThemeStyleSheet>();
+                _theme.hideFlags = HideFlags.HideAndDontSave;
+                _settings = ScriptableObject.CreateInstance<PanelSettings>();
+                _settings.hideFlags = HideFlags.HideAndDontSave;
+                _settings.themeStyleSheet = _theme;
+                _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+                _settings.targetTexture = _texture;
+                _host = new GameObject("VelvetPreviewSmokeTest") { hideFlags = HideFlags.HideAndDontSave };
+                var document = _host.AddComponent<UIDocument>();
+                document.panelSettings = _settings;
+                Root = document.rootVisualElement;
+            }
+
+            public VisualElement Root { get; }
+
+            public void Dispose()
+            {
+                UnityEngine.Object.DestroyImmediate(_host);
+                UnityEngine.Object.DestroyImmediate(_settings);
+                UnityEngine.Object.DestroyImmediate(_theme);
+                UnityEngine.Object.DestroyImmediate(_texture);
+            }
+        }
     }
 
     /// <summary>One story's outcome in a <see cref="VelvetPreviewSmokeTest"/> run.</summary>
