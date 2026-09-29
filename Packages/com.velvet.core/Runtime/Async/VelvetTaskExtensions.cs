@@ -21,19 +21,8 @@ namespace Velvet
 
         public static void Forget<T>(this VelvetTask<T> task) => ((VelvetTask)task).Forget();
 
-        static void PublishUnobserved(VelvetTask task)
-        {
-            var faults = VelvetTaskOutcome.Consume(task).Faults;
-            if (faults == null)
-            {
-                return;
-            }
-
-            foreach (var fault in faults)
-            {
-                VelvetTaskScheduler.PublishUnobservedException(fault.SourceException);
-            }
-        }
+        static void PublishUnobserved(VelvetTask task) =>
+            VelvetTaskScheduler.PublishUnobservedFaults(VelvetTaskOutcome.Consume(task).Faults);
 
         public static VelvetTask AttachExternalCancellation(this VelvetTask task, CancellationToken cancellationToken)
         {
@@ -48,7 +37,9 @@ namespace Velvet
                 return FromCanceled(cancellationToken);
             }
 
-            return new VelvetTask(new AttachExternalCancellationVelvetTaskSource(task, cancellationToken));
+            var attached = new AttachExternalCancellationVelvetTaskSource<AsyncUnit>(cancellationToken);
+            VelvetTaskOutcome.OnSettled(task, attached.Complete);
+            return new VelvetTask(attached);
         }
 
         public static VelvetTask<T> AttachExternalCancellation<T>(this VelvetTask<T> task, CancellationToken cancellationToken)
@@ -64,7 +55,9 @@ namespace Velvet
                 return FromCanceled<T>(cancellationToken);
             }
 
-            return new VelvetTask<T>(new AttachExternalCancellationVelvetTaskSource<T>(task, cancellationToken));
+            var attached = new AttachExternalCancellationVelvetTaskSource<T>(cancellationToken);
+            VelvetTaskOutcome.OnSettled(task, attached.Complete);
+            return new VelvetTask<T>(attached);
         }
 
         public static IEnumerator ToCoroutine(Func<VelvetTask> taskFactory)

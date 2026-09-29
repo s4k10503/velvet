@@ -10,6 +10,13 @@ namespace Velvet.Tests
 {
     internal sealed class VelvetTaskHelperEditorTests
     {
+        sealed class UpstreamCanceledException : OperationCanceledException
+        {
+            public UpstreamCanceledException(string message) : base(message)
+            {
+            }
+        }
+
         static string ExceptionsLoggedDuring(Action action)
         {
             var logged = new List<string>();
@@ -78,8 +85,7 @@ namespace Velvet.Tests
             Assert.That(attached.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
-        // GREEN_ON_BASE(characterization): an attached result task carrying the result it waited for is the
-        // base's behaviour.
+        // GREEN_ON_BASE(characterization): the base's attached result task carries the result it waited for.
         [Test]
         public void Given_AnAttachedResultTask_When_TheTaskItWaitsForSucceeds_Then_TheAttachedTaskCarriesItsResult()
         {
@@ -156,6 +162,55 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Assert.Throws<OperationCanceledException>(() => attached.GetAwaiter().GetResult())!.CancellationToken,
                 Is.EqualTo(ownCts.Token));
+        }
+
+        [Test]
+        public void Given_AnAttachedTask_When_TheTaskItWaitsForIsCancelledWithItsOwnException_Then_TheAttachedTaskThrowsThatException()
+        {
+            // Arrange
+            using var cts = new CancellationTokenSource();
+            var source = new VelvetTaskCompletionSource();
+            var attached = source.Task.AttachExternalCancellation(cts.Token);
+            var cancellation = new UpstreamCanceledException("upstream");
+
+            // Act
+            source.SetException(cancellation);
+
+            // Assert
+            Assert.That(Assert.Catch(() => attached.GetAwaiter().GetResult()), Is.SameAs(cancellation));
+        }
+
+        [Test]
+        public void Given_AnAttachedTaskTakenAsATaskOnTheMainThread_When_AnotherThreadCompletesTheTaskItWaitsFor_Then_AWaitThereReturns()
+        {
+            // Arrange
+            using var cts = new CancellationTokenSource();
+            var source = new VelvetTaskCompletionSource();
+            var attached = source.Task.AttachExternalCancellation(cts.Token).AsTask();
+
+            // Act
+            ThreadPool.QueueUserWorkItem(_ => source.SetResult());
+            var completed = attached.Wait(TimeSpan.FromSeconds(10));
+
+            // Assert
+            Assert.That(completed, Is.True);
+        }
+
+        [Test]
+        public void Given_AnAttachedTaskItsTokenCancelled_When_TheTaskItWaitedForFailsLater_Then_TheFaultIsLogged()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            using var cts = new CancellationTokenSource();
+            var source = new VelvetTaskCompletionSource();
+            var attached = source.Task.AttachExternalCancellation(cts.Token);
+            cts.Cancel();
+
+            // Act
+            var logged = ExceptionsLoggedDuring(() => source.SetException(new InvalidOperationException("late")));
+
+            // Assert
+            Assert.That((attached.Status, logged), Is.EqualTo((VelvetTaskStatus.Canceled, "InvalidOperationException: late")));
         }
 
         [Test]

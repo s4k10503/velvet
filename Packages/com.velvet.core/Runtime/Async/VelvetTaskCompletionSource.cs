@@ -5,17 +5,13 @@ namespace Velvet
 {
     public sealed class VelvetTaskCompletionSource
     {
-        readonly VelvetTaskSource _source = new();
+        readonly MultiAwaitVelvetTaskSource<AsyncUnit> _source = new();
 
-        // Built once: a view built per read would carry the source's version after a consume, and so could
-        // be consumed again.
-        public VelvetTaskCompletionSource() => Task = new(_source);
-
-        public VelvetTask Task { get; }
+        public VelvetTask Task => new(_source);
 
         public void SetResult()
         {
-            if (!_source.TrySetResult())
+            if (!TrySetResult())
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
@@ -28,7 +24,7 @@ namespace Velvet
                 throw new ArgumentNullException(nameof(exception));
             }
 
-            if (!_source.TrySetException(exception))
+            if (!TrySetException(exception))
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
@@ -36,30 +32,30 @@ namespace Velvet
 
         public void SetCanceled(CancellationToken cancellationToken = default)
         {
-            if (!_source.TrySetCanceled(cancellationToken))
+            if (!TrySetCanceled(cancellationToken))
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
         }
 
-        public bool TrySetResult() => _source.TrySetResult();
+        public bool TrySetResult() => _source.TrySettle(default);
 
-        public bool TrySetException(Exception exception) => _source.TrySetException(exception);
+        public bool TrySetException(Exception exception) =>
+            _source.TrySettle(VelvetTaskOutcome.FromException<AsyncUnit>(exception));
 
-        public bool TrySetCanceled(CancellationToken cancellationToken = default) => _source.TrySetCanceled(cancellationToken);
+        public bool TrySetCanceled(CancellationToken cancellationToken = default) =>
+            _source.TrySettle(new VelvetTaskOutcome<AsyncUnit>(default, null, new OperationCanceledException(cancellationToken)));
     }
 
     public sealed class VelvetTaskCompletionSource<T>
     {
-        readonly VelvetTaskSource<T> _source = new();
+        readonly MultiAwaitVelvetTaskSource<T> _source = new();
 
-        public VelvetTaskCompletionSource() => Task = new(_source);
-
-        public VelvetTask<T> Task { get; }
+        public VelvetTask<T> Task => new(_source);
 
         public void SetResult(T result)
         {
-            if (!_source.TrySetResult(result))
+            if (!TrySetResult(result))
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
@@ -72,7 +68,7 @@ namespace Velvet
                 throw new ArgumentNullException(nameof(exception));
             }
 
-            if (!_source.TrySetException(exception))
+            if (!TrySetException(exception))
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
@@ -80,16 +76,18 @@ namespace Velvet
 
         public void SetCanceled(CancellationToken cancellationToken = default)
         {
-            if (!_source.TrySetCanceled(cancellationToken))
+            if (!TrySetCanceled(cancellationToken))
             {
                 throw new InvalidOperationException("The VelvetTaskCompletionSource is already completed.");
             }
         }
 
-        public bool TrySetResult(T result) => _source.TrySetResult(result);
+        public bool TrySetResult(T result) => _source.TrySettle(new VelvetTaskOutcome<T>(result, null, null));
 
-        public bool TrySetException(Exception exception) => _source.TrySetException(exception);
+        public bool TrySetException(Exception exception) =>
+            _source.TrySettle(VelvetTaskOutcome.FromException<T>(exception));
 
-        public bool TrySetCanceled(CancellationToken cancellationToken = default) => _source.TrySetCanceled(cancellationToken);
+        public bool TrySetCanceled(CancellationToken cancellationToken = default) =>
+            _source.TrySettle(new VelvetTaskOutcome<T>(default!, null, new OperationCanceledException(cancellationToken)));
     }
 }

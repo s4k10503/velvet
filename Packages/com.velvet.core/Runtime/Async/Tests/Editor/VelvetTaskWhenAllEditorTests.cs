@@ -8,6 +8,10 @@ namespace Velvet.Tests
 {
     internal sealed class VelvetTaskWhenAllEditorTests
     {
+        static async VelvetTask Relay(VelvetTaskCompletionSource source) => await source.Task;
+
+        static async VelvetTask<int> Relay(VelvetTaskCompletionSource<int> source) => await source.Task;
+
         static readonly FieldInfo ResultTaskSourceField =
             typeof(VelvetTask<int[]>).GetField("_source", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -35,8 +39,6 @@ namespace Velvet.Tests
                 .GetValue(core)!;
         }
 
-        // GREEN_ON_BASE(characterization): the combination staying pending is the base's behaviour; the member's status
-        // read beside it went, since the combination has consumed that member and a re-read of its Task now says so.
         [Test]
         public void Given_TwoPendingTasks_When_OnlyOneCompletes_Then_WhenAllStaysPending()
         {
@@ -47,10 +49,11 @@ namespace Velvet.Tests
 
             // Act
             first.SetResult();
+            var settled = first.Task.Status;
             var afterFirst = all.Status;
 
             // Assert
-            Assert.That(afterFirst, Is.EqualTo(VelvetTaskStatus.Pending));
+            Assert.That((settled, afterFirst), Is.EqualTo((VelvetTaskStatus.Succeeded, VelvetTaskStatus.Pending)));
         }
 
         [Test]
@@ -128,8 +131,6 @@ namespace Velvet.Tests
             Assert.That(results, Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the combination staying pending is the base's behaviour; the member's status
-        // read beside it went, since the combination has consumed that member and a re-read of its Task now says so.
         [Test]
         public void Given_TwoPendingTasks_When_OnlyOneFaults_Then_WhenAllStaysPending()
         {
@@ -140,10 +141,11 @@ namespace Velvet.Tests
 
             // Act
             first.SetException(new InvalidOperationException("boom"));
+            var settled = first.Task.Status;
             var afterFault = all.Status;
 
             // Assert
-            Assert.That(afterFault, Is.EqualTo(VelvetTaskStatus.Pending));
+            Assert.That((settled, afterFault), Is.EqualTo((VelvetTaskStatus.Faulted, VelvetTaskStatus.Pending)));
         }
 
         [Test]
@@ -353,32 +355,36 @@ namespace Velvet.Tests
                 Is.EqualTo("The VelvetTask has already been consumed."));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_OnePendingTaskPassedTwice_When_WhenAllCalled_Then_ThrowsAlreadyAwaited()
         {
             // Arrange
-            var shared = new VelvetTaskCompletionSource();
+            var shared = Relay(new VelvetTaskCompletionSource());
 
             // Act
-            void PassTwice() => VelvetTask.WhenAll(shared.Task, shared.Task);
+            void PassTwice() => VelvetTask.WhenAll(shared, shared);
 
             // Assert
             Assert.That(Assert.Throws<InvalidOperationException>(PassTwice)!.Message,
                 Is.EqualTo("The VelvetTask has already been awaited."));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_ACompletedTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
         {
             // Arrange
-            var ahead = new VelvetTaskCompletionSource();
+            var ahead = Relay(new VelvetTaskCompletionSource());
             var duplicated = VelvetTask.FromException(new InvalidOperationException("boom"));
 
             // Act
             var fromCall = Assert.Throws<InvalidOperationException>(
-                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+                () => VelvetTask.WhenAll(ahead, duplicated, duplicated))!.Message;
             var fromAhead = Assert.Throws<InvalidOperationException>(
-                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+                () => ahead.GetAwaiter().OnCompleted(() => { }))!.Message;
 
             // Assert
             Assert.That((fromCall, fromAhead), Is.EqualTo((
@@ -386,18 +392,20 @@ namespace Velvet.Tests
                 "The VelvetTask has already been awaited.")));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_ACompletedResultTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
         {
             // Arrange
-            var ahead = new VelvetTaskCompletionSource<int>();
+            var ahead = Relay(new VelvetTaskCompletionSource<int>());
             var duplicated = VelvetTask.FromException<int>(new InvalidOperationException("boom"));
 
             // Act
             var fromCall = Assert.Throws<InvalidOperationException>(
-                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+                () => VelvetTask.WhenAll(ahead, duplicated, duplicated))!.Message;
             var fromAhead = Assert.Throws<InvalidOperationException>(
-                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+                () => ahead.GetAwaiter().OnCompleted(() => { }))!.Message;
 
             // Assert
             Assert.That((fromCall, fromAhead), Is.EqualTo((
@@ -498,12 +506,14 @@ namespace Velvet.Tests
             Assert.That(all.GetAwaiter().GetResult(), Is.EqualTo(new[] { 7, 7 }));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_AConsumedResultTask_When_ViewedAsATaskCarryingNothing_Then_TheViewIsConsumedToo()
         {
             // Arrange
             var source = new VelvetTaskCompletionSource<int>();
-            var task = source.Task;
+            var task = Relay(source);
             source.SetResult(1);
             task.GetAwaiter().GetResult();
 

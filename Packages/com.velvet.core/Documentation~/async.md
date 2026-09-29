@@ -77,15 +77,21 @@ itself a faulted combination contributing all of its own, and a cancelled member
 `AsTask()` hands them to the `Task`'s `Exception` as `Task.WhenAll` holds them, so await
 `VelvetTask.WhenAll(…).AsTask()` where each failure matters. `AttachExternalCancellation` keeps all of them,
 as Task.WaitAsync does, and `Forget()` logs each one. `Forget()` logs nothing for a cancelled task.
+`AttachExternalCancellation` settles on the thread that completes the task it waits for, and a
+cancellation of that task comes out as the task's own `OperationCanceledException`. A fault that arrives
+after the attached token has cancelled is logged, as `Forget()` logs it.
 
 The combination consumes each member, and a `VelvetTask` carrying a source allows one consume, the rule
-.NET's ValueTask carries — unless `Preserve()` returned it. So a member that was not preserved must not
-also be awaited elsewhere, and must not be passed twice into a single call: that throws out of the call
-rather than out of the await. A task that carries a value instead — `VelvetTask.FromResult`,
-`VelvetTask.CompletedTask`, and an `async` method that returned without suspending — has no version to
-consume, so the same one may sit at two argument positions, as a preserved one may. Consume what the
-combination returns once as well. `VelvetTaskCompletionSource.Task` is the same task on every read, so a
-read after it was consumed is consumed too.
+.NET's ValueTask carries — unless `Preserve()` returned it or it is a `VelvetTaskCompletionSource`'s. So
+any other member must not also be awaited elsewhere, and must not be passed twice into a single call:
+that throws out of the call rather than out of the await. A task that carries a value instead —
+`VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
+suspending — has no version to consume, so the same one may sit at two argument positions, as a
+preserved one may. Consume what the combination returns once as well.
+
+A `VelvetTaskCompletionSource`'s `Task` is the same task on every read, and any number of awaiters may
+await and read it, before and after it completes, as they may a TaskCompletionSource's.
+`VelvetTaskDoubleConsumeEditorTests` pins it.
 
 Where a task has to be consumed more than once, `Preserve()` — the counterpart of
 ValueTask.Preserve() — consumes it and returns one that any number of awaiters may await and read, a

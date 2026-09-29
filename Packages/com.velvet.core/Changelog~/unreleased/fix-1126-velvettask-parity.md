@@ -3,7 +3,7 @@
 - `VelvetTask.Preserve()` and `VelvetTask<T>.Preserve()` consume a task once and return one that any
   number of awaiters may await and read, as .NET's ValueTask.Preserve() does; `AsTask()` returns a `Task` or
   `Task<T>` instead. Both settle on the thread that completes the original task. Any other task carrying a
-  source still allows one consume, the rule a ValueTask carries.
+  source, a `VelvetTaskCompletionSource`'s aside, still allows one consume, the rule a ValueTask carries.
 
 - A `VelvetTask<T>` converts implicitly to a `VelvetTask` sharing its source, as a `Task<T>` is a
   `Task`, so members of different result types combine in one `VelvetTask.WhenAll` and are read from

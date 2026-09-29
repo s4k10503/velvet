@@ -36,36 +36,87 @@ namespace Velvet.Tests
         }
 
         static async VelvetTask<int> AsyncFromResult() => await VelvetTask.FromResult(42);
+        static async VelvetTask<int> Relay(VelvetTaskCompletionSource<int> source) => await source.Task;
+
+        static async VelvetTask AwaitReady(VelvetTask ready) => await ready;
+
         [Test]
-        public void Given_ACompletionSourceWhoseTaskWasConsumed_When_ItsTaskIsReadAgainAndConsumed_Then_ThrowsAlreadyConsumed()
+        public void Given_ACompletionSourceTaskAlreadyConsumed_When_ItsStatusIsRead_Then_ItReportsTheOutcome()
         {
             // Arrange
             var source = new VelvetTaskCompletionSource();
+            var task = source.Task;
             source.SetResult();
-            source.Task.GetAwaiter().GetResult();
+            task.GetAwaiter().GetResult();
 
             // Act
-            void ConsumeAgain() => source.Task.GetAwaiter().GetResult();
+            var status = task.Status;
 
             // Assert
-            Assert.That(Assert.Throws<InvalidOperationException>(ConsumeAgain)!.Message,
-                Is.EqualTo("The VelvetTask has already been consumed."));
+            Assert.That(status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
         [Test]
-        public void Given_AResultCompletionSourceWhoseTaskWasConsumed_When_ItsTaskIsReadAgainAndConsumed_Then_ThrowsAlreadyConsumed()
+        public void Given_AResultCompletionSourceTaskAlreadyConsumed_When_ItIsConsumedAgain_Then_ItReturnsTheResultAgain()
         {
             // Arrange
             var source = new VelvetTaskCompletionSource<int>();
+            var task = source.Task;
             source.SetResult(5);
-            source.Task.GetAwaiter().GetResult();
+            task.GetAwaiter().GetResult();
 
             // Act
-            void ConsumeAgain() => source.Task.GetAwaiter().GetResult();
+            var again = task.GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(Assert.Throws<InvalidOperationException>(ConsumeAgain)!.Message,
-                Is.EqualTo("The VelvetTask has already been consumed."));
+            Assert.That(again, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void Given_AReadyLatchOneCallerAwaited_When_ASecondCallerAwaitsItAfterItCompleted_Then_BothComplete()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource();
+            var ready = source.Task;
+            var first = AwaitReady(ready);
+            source.SetResult();
+
+            // Act
+            var second = AwaitReady(ready);
+
+            // Assert
+            Assert.That((first.Status, second.Status), Is.EqualTo((VelvetTaskStatus.Succeeded, VelvetTaskStatus.Succeeded)));
+        }
+
+        // GREEN_ON_BASE(characterization): a completion source already completed refuses a second outcome on the base.
+        [Test]
+        public void Given_ACompletedCompletionSource_When_ASecondResultIsOffered_Then_ItIsRefusedAndTheFirstStands()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            source.SetResult(1);
+
+            // Act
+            var accepted = source.TrySetResult(2);
+
+            // Assert
+            Assert.That((accepted, source.Task.GetAwaiter().GetResult()), Is.EqualTo((false, 1)));
+        }
+
+        [Test]
+        public void Given_TwoCallersAwaitingOneCompletionSourceTask_When_ItCompletes_Then_BothComplete()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource();
+            var ready = source.Task;
+            var first = AwaitReady(ready);
+            var second = AwaitReady(ready);
+
+            // Act
+            source.SetResult();
+
+            // Assert
+            Assert.That((first.Status, second.Status), Is.EqualTo((VelvetTaskStatus.Succeeded, VelvetTaskStatus.Succeeded)));
         }
 
         [Test]
@@ -131,13 +182,15 @@ namespace Velvet.Tests
             Assert.That(thrown, Is.SameAs(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_RunnerBackedCompletedVelvetTask_When_GetResultTwice_Then_ThrowsInvalidOperationException()
         {
             // Arrange
             var source = new VelvetTaskCompletionSource<int>();
+            var task = Relay(source);
             source.SetResult(42);
-            var task = source.Task;
             task.GetAwaiter().GetResult();
 
             // Act
