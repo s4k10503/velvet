@@ -563,7 +563,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoContainedScopes_When_APointerStyleMoveCrossesBetweenThem_Then_TheReceivingScopeKeepsFocus()
         {
-            // Arrange — pinned as a terminal-recursion guard: a landing inside a contain scope stands
+            // Arrange — pinned as a terminal-recursion guard: a landing inside a newer contain scope stands
             // (the receiving scope claims focus), which is what makes cross-scope moves converge. UI
             // Toolkit QUEUES focus events raised from inside a dispatch, so any design that snaps this
             // landing back degenerates into two scopes queueing Focus calls at each other forever — a
