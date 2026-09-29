@@ -2309,7 +2309,7 @@ namespace Velvet
         }
 
         // Where a classic enter or exit plays: the keyed child's anchor, which holds the Motion or is it, unless the
-        // Motion's element sits outside it — a keyed Fragment placing another element ahead of its Motion.
+        // Motion's element sits outside it, as when the child places another element ahead of its Motion.
         private static VisualElement ClassicTarget(VisualElement anchor, VisualElement? motionElement)
             => motionElement != null && !anchor.Contains(motionElement) ? motionElement : anchor;
 
