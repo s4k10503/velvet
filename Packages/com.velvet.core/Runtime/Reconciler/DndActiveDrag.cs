@@ -802,6 +802,8 @@ namespace Velvet
             // closed session; the unregister releases the session and keeps the chain's callback lists
             // from growing with every drag.
             UnregisterFromObserved(_onDragDown);
+            // MUTANT_SURVIVES(equivalent): the pointer-cancel handler also only reaches Cancel, for the
+            // same reason as the line above.
             UnregisterFromObserved(_onDragCancel);
             if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             if (_onEscape != null)
@@ -898,6 +900,8 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): OnPendingUp returns at once once the session is active or
             // closed, for the same reason as the line above.
             UnregisterFromObserved(_onPendingUp);
+            // MUTANT_SURVIVES(equivalent): the pending pointer-cancel handler reaches DiscardPending, which
+            // returns at once once the session is active or closed, for the same reason as the lines above.
             UnregisterFromObserved(_onPendingCancel);
             _onPendingMove = null;
             _onPendingUp = null;

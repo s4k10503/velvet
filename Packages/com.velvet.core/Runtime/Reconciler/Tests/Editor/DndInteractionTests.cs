@@ -844,6 +844,8 @@ namespace Velvet.Tests
             Assert.That((pressedDuringTheDrag, grip.ClassListContains("pressed")), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): a pending session the base already discards on a pointer cancel, which its root and source
+        // registrations see here; this branch moves those registrations onto the press chain.
         [Test]
         public void Given_APendingPress_When_APointerCancelArrives_Then_LaterTravelPastTheDistanceStartsNoDrag()
         {
@@ -864,6 +866,8 @@ namespace Velvet.Tests
             Assert.That(s_started, Is.Empty);
         }
 
+        // GREEN_ON_BASE(characterization): an active session the base already cancels on a pointer cancel, delivered to the capturing
+        // source here; this branch moves that registration onto the press chain.
         [Test]
         public void Given_AnActiveDrag_When_APointerCancelArrives_Then_TheDragCancels()
         {
@@ -893,6 +897,8 @@ namespace Velvet.Tests
             target.SendEvent(evt);
         }
 
+        // GREEN_ON_BASE(characterization): the base already cancels a touch drag on a second press under the same finger id, delivered
+        // to the capturing source here; this branch moves that registration onto the press chain.
         [Test]
         public void Given_ATouchDragWhoseReleaseWentUnseen_When_TheSameFingerPressesAgain_Then_TheStaleDragCancels()
         {
