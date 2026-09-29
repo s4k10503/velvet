@@ -90,12 +90,8 @@ def checks_of(cwd, number):
 
 def head_runs(cwd, sha):
     """Every workflow run whose head is `sha`, or None where they could not all be read."""
-    payload = gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)])
-    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
-    if not isinstance(runs, list) or payload.get("total_count", len(runs)) > len(runs) or not all(
-            isinstance(run, dict) for run in runs):
-        return None
-    return runs
+    return expected_checks.listed_runs(
+        gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)]))
 
 
 def required_contexts(cwd, number):
@@ -104,10 +100,8 @@ def required_contexts(cwd, number):
     base = payload.get("baseRefName") if isinstance(payload, dict) else None
     if not (isinstance(base, str) and base):
         return "its base", None
-    rules = gh_json(cwd, ["api", expected_checks.rules_path("{owner}/{repo}", base)])
-    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
-        return base, None
-    return base, expected_checks.required(rules)
+    return base, expected_checks.listed_required(
+        gh_json(cwd, ["api", expected_checks.rules_path("{owner}/{repo}", base)]))
 
 
 def merges(command):

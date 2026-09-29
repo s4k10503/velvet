@@ -13,7 +13,8 @@ The first reading waits only on runs that exist, so a workflow a path filter sto
 The second asks only for what the ruleset names: `generators.yml`'s repository-settings job holds
 that to the two required-checks aggregates, and
 `WorkflowTriggerCoverageTests` holds their workflows to subscribing to `pull_request` unfiltered.
-`settle.py` and `refuse/merge_unproven_head.py` both decide from here.
+`settle.py` and `refuse/merge_unproven_head.py` decide from here, and
+`diagnostics/unsettled_pr.py` names what it finds.
 """
 
 RUN_PAGE = 100
@@ -50,6 +51,22 @@ def required(rules):
                    for rule in rules if rule.get("type") == "required_status_checks"
                    for check in (rule.get("parameters") or {}).get("required_status_checks") or []
                    if check.get("context")})
+
+
+def listed_runs(payload):
+    """The runs a runs listing carries, or None where it is not one or does not carry them all."""
+    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
+    if not isinstance(runs, list) or payload.get("total_count", len(runs)) > len(runs) or not all(
+            isinstance(run, dict) for run in runs):
+        return None
+    return runs
+
+
+def listed_required(payload):
+    """`required` over a rules listing, or None where the payload is not one."""
+    if not isinstance(payload, list) or not all(isinstance(rule, dict) for rule in payload):
+        return None
+    return required(payload)
 
 
 def absent(contexts, names):

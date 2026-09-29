@@ -11,7 +11,7 @@ match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script 
 them that shape is its own change. What this adds is reporting them together: one run names
 everything wrong rather than costing a round of CI per reason.
 
-**One has no hook: a draft head**, or one whose merge state is `dirty`.
+**One has no hook: a draft head**, or one whose merge state is `dirty`, or one no longer open.
 
 Nine preconditions:
 
@@ -35,7 +35,8 @@ Nine preconditions:
   base requires; `expected_checks.py` owns why both are read.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
-- **A draft is not merged**, and neither is one whose merge state is `dirty`.
+- **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
+  or already merged.
 - **A head on another repository is not merged from here.** Its branch is a ref this checkout has
   not got, so neither containment above is asked of it, and the branch deleted after a merge is
   addressed on origin by that name.
@@ -208,7 +209,7 @@ def head_sha(project, number):
 
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
-PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork")
+PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork state")
 
 
 def pull_request(project, number):
@@ -229,7 +230,8 @@ def pull_request(project, number):
     home = ((head.get("repo") or {}).get("full_name") or "")
     base_repository = ((base.get("repo") or {}).get("full_name") or "")
     return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
-                       payload.get("mergeable_state") or "", home != base_repository)
+                       payload.get("mergeable_state") or "", home != base_repository,
+                       "merged" if payload.get("merged") else payload.get("state") or "unnamed")
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -465,6 +467,11 @@ def blocking_reasons(project, number, base=None, states=None):
     """
     before = pull_request(project, number)
     target = base or before.base
+    # Ahead of every other reading, and with no check results, so `watch` has nothing to print or
+    # record for a pull request that closed after the listing named it.
+    if before.state != "open":
+        return Blocking([f"it is {before.state}, not open: there is nothing to merge"],
+                        before.sha, before.branch, [], target)
     states = {} if states is None else states
     if target not in states:
         states[target] = project_state(project, target)

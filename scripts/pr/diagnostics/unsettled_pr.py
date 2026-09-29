@@ -41,6 +41,7 @@ sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
 from watcher_state import HEARTBEAT, alive, unreadable_beat  # noqa: E402
+import expected_checks  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
 
@@ -142,6 +143,41 @@ def unreadable(attempts):
     return 2
 
 
+def owed(pr, checks):
+    """(unfinished runs, base, required contexts absent from `checks`), `expected_checks` deciding
+    both, or None when a reading did not answer."""
+    out, _, code = gh(["pr", "view", pr, "--json", "headRefOid,baseRefName"])
+    try:
+        payload = json.loads(out) if code == 0 else None
+    except ValueError:
+        payload = None
+    sha = payload.get("headRefOid") if isinstance(payload, dict) else None
+    base = payload.get("baseRefName") if isinstance(payload, dict) else None
+    if not (isinstance(sha, str) and sha and isinstance(base, str) and base):
+        return None
+    answers = []
+    for path in (expected_checks.runs_path("{owner}/{repo}", sha),
+                 expected_checks.rules_path("{owner}/{repo}", base)):
+        out, _, code = gh(["api", path])
+        try:
+            answers.append(json.loads(out) if code == 0 else None)
+        except ValueError:
+            answers.append(None)
+    runs = expected_checks.listed_runs(answers[0])
+    required = expected_checks.listed_required(answers[1])
+    if runs is None or required is None:
+        return None
+    return (expected_checks.unfinished(runs), base,
+            expected_checks.absent(required, (check.get("name") for check in checks)))
+
+
+def owed_reason(pr, waiting, base, absent):
+    """The block for a head whose check list is not yet everything it will carry."""
+    parts = ([f"workflow runs not finished: {', '.join(waiting)}"] if waiting else []) + (
+        [f"required by {base} and not reported: {', '.join(absent)}"] if absent else [])
+    return f"  PR #{pr} — its head is still owed checks, {'; '.join(parts)}."
+
+
 def unread(pr, what):
     """A pull request this guard learned nothing about, said as a fact about the guard."""
     return (f"  PR #{pr} — {what} could not be read. {SELF_REPORT} PR #{pr}, and nothing here says "
@@ -165,6 +201,12 @@ def judge(pr):
             return unread(pr, "its merge state")
         if state in EXPECTED_WITHOUT_CHECKS:
             return None
+        # A run still going is named instead of the sentence below; an unread answer keeps that
+        # sentence, which is true of a head with no check either way. The absent contexts are every
+        # required one here, which "no check" already says.
+        still = owed(pr, checks)
+        if still is not None and still[0]:
+            return owed_reason(pr, still[0], still[1], [])
         return (f"  PR #{pr} — no check ever ran for its head, and the merge state is "
                 f"{state or 'unnamed'}.\n    Every workflow subscribes to pull_request without a "
                 "path filter, so this is a run that\n    did not start rather than one nothing "
@@ -185,6 +227,11 @@ def judge(pr):
             return (f"  PR #{pr} — {len(fails)} check(s) failed or were cancelled. Read the run, fix "
                     "or say why it is not yours\n    to fix. A cancelled run does not restart on "
                     "its own.")
+        still = owed(pr, checks)
+        if still is None:
+            return unread(pr, "what its head is still owed")
+        if still[0] or still[2]:
+            return owed_reason(pr, *still)
         if state == "CLEAN":
             return (f"  PR #{pr} — every check passed and it is unmerged. Merge it, or say what it "
                     "is waiting on and arm\n    something that brings you back when that arrives.")

@@ -203,7 +203,7 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork runs")
+    "Fabricated", "sha after branch base draft merge_state results holds held fork runs state")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -233,12 +233,12 @@ REQUIRED = ("Required checks (Unity)",)
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None, runs=()):
+              held=False, moved=False, fork=False, base="main", branch=None, runs=(), state="open"):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork, runs=runs)
+                      held=held, fork=fork, runs=runs, state=state)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -274,7 +274,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("pull_request", lambda _project, number: types.SimpleNamespace(
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
-                fork=states[number].fork)),
+                fork=states[number].fork, state=states[number].state)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_runs", lambda _project, sha: by_sha[sha].runs),
             ("head_sha", lambda _project, number: states[number].after),
@@ -502,6 +502,23 @@ class ExpectedCheckTests(unittest.TestCase):
         self.assertEqual(getattr(state, "required", None),
                          ["Required checks (Unity)", "Required checks (generators)"])
 
+    def test_Given_ARuleOfAnotherTypeCarryingContexts_When_Read_Then_TheyAreNotRequired(self):
+        # Arrange — the same parameter key under a rule that is not a status-check rule, so the rule's
+        # type is all that separates the two.
+        rules = [{"type": "workflows", "parameters": {"required_status_checks": [
+                     {"context": "Deploy"}]}},
+                 {"type": "required_status_checks", "parameters": {"required_status_checks": [
+                     {"context": "Required checks (Unity)"}]}}]
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: rules))
+
+            # Act
+            required = settle.required_contexts(Path("."), "main")
+
+        # Assert
+        self.assertEqual(required, ["Required checks (Unity)"])
+
     def test_Given_RulesFillingAWholePage_When_Read_Then_ItRaisesRatherThanDeciding(self):
         # Arrange — the listing carries no total, so a full page is read as one that may have
         # dropped a rule.
@@ -537,6 +554,46 @@ class ExpectedCheckTests(unittest.TestCase):
 
             # Act / Assert
             self.assertRaises(RuntimeError, settle.head_runs, Path("."), GREEN)
+
+
+class ClosedPullRequestTests(unittest.TestCase):
+    """A pull request the listing named and that stopped being open before it was decided."""
+
+    def test_Given_AMergedPullRequestWhoseChecksPassed_When_ItsMergeIsDryRun_Then_ItIsRefusedByItsState(self):
+        # Arrange — every other reading is clean, so the state is all that is left to refuse on.
+        printed = io.StringIO()
+        with fabricated_readings({1157: fabricate(1157, state="merged")}):
+            with contextlib.redirect_stderr(printed), contextlib.redirect_stdout(io.StringIO()):
+                # Act
+                code = settle.merge(Path("."), 1157, None, dry_run=True)
+
+        # Assert
+        self.assertEqual((code, "it is merged, not open" in printed.getvalue()), (1, True))
+
+    def test_Given_APullRequestClosedAfterTheListing_When_TheWatcherPolls_Then_NothingIsSaidOrRecorded(self):
+        # Arrange
+        table = {1: fabricate(1, state="closed")}
+
+        # Act
+        outcome = poll(table)
+
+        # Assert
+        self.assertEqual((outcome.ready, outcome.output), (set(), ""))
+
+    def test_Given_APayloadOfAMergedPullRequest_When_Read_Then_ItsStateIsMerged(self):
+        # Arrange — GitHub reports a merged pull request as `closed`, with `merged` beside it.
+        payload = {"head": {"sha": GREEN, "ref": "topic", "repo": {"full_name": "o/v"}},
+                   "base": {"ref": "main", "repo": {"full_name": "o/v"}},
+                   "state": "closed", "merged": True}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "o/v"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda *_: payload))
+
+            # Act
+            read = settle.pull_request(Path("."), 1)
+
+        # Assert
+        self.assertEqual(getattr(read, "state", None), "merged")
 
 
 class HeartbeatDuringAPollTests(unittest.TestCase):
@@ -1202,7 +1259,7 @@ class RedBaseMergeTests(unittest.TestCase):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
-                                      merge_state="clean", fork=False)
+                                      merge_state="clean", fork=False, state="open")
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
