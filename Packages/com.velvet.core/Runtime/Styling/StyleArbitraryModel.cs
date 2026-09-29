@@ -293,6 +293,9 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // The class this result was parsed from; null for one StyleArbitraryValueResolver.TryParse did not
+        // build. A Flex result is ranked by it against a flex-* class at its priority (StyleCandidateOrder).
+        public string? Candidate { get; }
 
         // Creates a length/angle result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
@@ -305,6 +308,7 @@ namespace Velvet
             Value3 = 0f;
             Color = default;
             Custom = null;
+            Candidate = null;
         }
 
         // Creates a pair-valued length result.
@@ -319,11 +323,15 @@ namespace Velvet
             Value3 = 0f;
             Color = default;
             Custom = null;
+            Candidate = null;
         }
 
         // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
         public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
             => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        // This result, parsed from candidate.
+        public ArbitraryStyle WithCandidate(string candidate) => new(this, candidate);
 
         private ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit, float value2,
             LengthUnit unit2, float value3)
@@ -336,6 +344,20 @@ namespace Velvet
             Value3 = value3;
             Color = default;
             Custom = null;
+            Candidate = null;
+        }
+
+        private ArbitraryStyle(in ArbitraryStyle source, string candidate)
+        {
+            Property = source.Property;
+            Value = source.Value;
+            Unit = source.Unit;
+            Value2 = source.Value2;
+            Unit2 = source.Unit2;
+            Value3 = source.Value3;
+            Color = source.Color;
+            Custom = source.Custom;
+            Candidate = candidate;
         }
 
         // Creates a color result.
@@ -349,6 +371,7 @@ namespace Velvet
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
             Custom = null;
+            Candidate = null;
         }
 
         // Creates a FilterCustom result.
@@ -362,6 +385,7 @@ namespace Velvet
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
             Color = default;
+            Candidate = null;
         }
     }
 

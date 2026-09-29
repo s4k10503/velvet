@@ -64,8 +64,18 @@ namespace Velvet
         public static bool IsInlineResolved(string core)
             => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
 
-        // Parses using IndexOf + string operations rather than regex — a per-class hot path.
         public static bool TryParse(string className, out ArbitraryStyle result)
+        {
+            if (!TryParseClass(className, out result))
+            {
+                return false;
+            }
+            result = result.WithCandidate(className);
+            return true;
+        }
+
+        // Parses using IndexOf + string operations rather than regex — a per-class hot path.
+        private static bool TryParseClass(string className, out ArbitraryStyle result)
         {
             result = default;
             if (className == null)
@@ -1509,7 +1519,9 @@ namespace Velvet
             {
                 shorthandPriority = top;
             }
-            var classes = RankFlexClasses(element, map.Projection);
+            var classes = shorthandPriority == null
+                ? default
+                : RankFlexClasses(element, map.Projection, shorthand.Candidate!);
             var style = ClipPathLayoutBox.StyleFor(element, ArbitraryProperty.Flex);
             if (ShorthandSets(element, map, ArbitraryProperty.FlexGrow, shorthandPriority, classes.Grow))
             {
@@ -1558,10 +1570,10 @@ namespace Velvet
         // Per flex longhand, the priority of the highest live class writing it. The live list is read rather
         // than the projection, and a class the projection holds no entry for is a base one, so a class a
         // gesture, motion or drag channel wrote counts the same with a projection as without one. A class
-        // writing all three is the shorthand's own family, where Tailwind breaks a tie by candidate order:
-        // flex-auto, flex-initial and flex-none sort after every flex-<N>, flex-<a>/<b> and flex-[…] and so
-        // count, and flex-1 does not.
-        private static FlexClassRanks RankFlexClasses(VisualElement element, StyleClassProjection.Model? model)
+        // writing all three is the shorthand's own family, and counts only where it sorts after the
+        // shorthand's candidate.
+        private static FlexClassRanks RankFlexClasses(VisualElement element, StyleClassProjection.Model? model,
+            string shorthandCandidate)
         {
             var ranks = default(FlexClassRanks);
             var classes = element.GetClasses() as IReadOnlyList<string> ?? new List<string>(element.GetClasses());
@@ -1570,7 +1582,10 @@ namespace Velvet
                 var cls = classes[i];
                 StyleUtilityProperties.TryGet(cls, out var rule);
                 var properties = rule.Properties;
-                if (properties.Union(s_flexLonghands) == properties && !char.IsLetter(cls["flex-".Length]))
+                // MUTANT_SURVIVES(equivalent): a class and the shorthand never share a candidate, since no class
+                // writing all three flex longhands is parsed inline, so the comparison is never zero.
+                if (properties.Union(s_flexLonghands) == properties
+                    && StyleCandidateOrder.Compare(cls, shorthandCandidate) < 0)
                 {
                     continue;
                 }

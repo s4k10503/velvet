@@ -336,11 +336,12 @@ rejects, such as `flex-[column]` or `flex-[1_1_-10px]`, is not recognized, and n
 `flex-<N>`), `flex-auto`, `flex-initial` and `flex-none` are USS classes.
 
 Tailwind declares `flex` before `grow`, `shrink` and `basis`, so a longhand beside the shorthand takes
-its own part whatever the class order: `flex-2 shrink-0` grows at 2 and does not shrink. Tailwind
-orders `flex-auto`, `flex-initial` and `flex-none` after every `flex-<N>`, `flex-<a>/<b>` and `flex-[…]`,
-so at one priority they win over one beside them: `flex-2 flex-none` neither grows nor shrinks. A
-variant still outranks the base, so `md:flex-2` overrides a base `shrink-0` from the `md` breakpoint
-up.
+its own part whatever the class order: `flex-2 shrink-0` grows at 2 and does not shrink. A `flex-1`,
+`flex-auto`, `flex-initial` or `flex-none` beside a `flex-<N>`, `flex-<a>/<b>` or `flex-[…]` at one
+priority resolves as Tailwind orders the two names, the later one winning — `flex-0` < `flex-0/2` <
+`flex-1` < `flex-1/2` < `flex-2` < `flex-[2]` < `flex-auto` < `flex-initial` < `flex-none` — so
+`flex-2 flex-none` neither grows nor shrinks and `flex-0 flex-1` grows at 1. A variant still outranks
+the base, so `md:flex-2` overrides a base `shrink-0` from the `md` breakpoint up.
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute for the grow and shrink factors:
 they fix a size, where the factors divide what is left over after every sibling's basis is taken.

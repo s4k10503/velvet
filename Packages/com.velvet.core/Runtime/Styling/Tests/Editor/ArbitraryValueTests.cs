@@ -3111,7 +3111,13 @@ namespace Velvet.Tests
                 Is.EqualTo((3f, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
-        private static ArbitraryStyle FlexTwo => ArbitraryStyle.Flex(2f, 1f, 0f, LengthUnit.Percent);
+        private static ArbitraryStyle Parsed(string cls)
+        {
+            StyleArbitraryValueResolver.TryParse(cls, out var style);
+            return style;
+        }
+
+        private static ArbitraryStyle FlexTwo => Parsed("flex-2");
 
         [Test]
         public void Given_AShrinkClass_When_AFlexShorthandIsApplied_Then_TheClassKeepsTheShrink()
@@ -3250,6 +3256,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFlexOneClass_When_AFlexZeroShorthandIsAppliedAtItsPriority_Then_TheClassSetsTheGrow()
+        {
+            // Arrange — Tailwind orders flex-0 before flex-1, so the class wins over the shorthand.
+            var el = new VisualElement();
+            el.AddToClassList("flex-1");
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, Parsed("flex-0"));
+
+            // Assert
+            Assert.That(el.style.flexGrow.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_ABasisClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheClassKeepsTheBasis()
         {
             // Arrange
@@ -3263,7 +3283,7 @@ namespace Velvet.Tests
             Assert.That((el.style.flexGrow.value, el.style.flexBasis.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
         }
 
-        private static ArbitraryStyle FlexTwoThree => ArbitraryStyle.Flex(2f, 3f, 0f, LengthUnit.Percent);
+        private static ArbitraryStyle FlexTwoThree => Parsed("flex-[2_3]");
 
         private static void Hover(VisualElement element, bool on)
         {
