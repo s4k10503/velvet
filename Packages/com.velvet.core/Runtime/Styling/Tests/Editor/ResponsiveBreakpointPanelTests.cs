@@ -38,16 +38,18 @@ namespace Velvet.Tests
             leaf.panel.visualTree.SimulateEvent(evt);
         }
 
+        // GREEN_ON_BASE(characterization): the payload lands above the breakpoint on the base too; what
+        // changed is that a host narrower than requested now fails, where it read as Inconclusive.
         [Test]
         public void Given_AnMdVariantLeaf_When_TheRootIsWiderThanTheMdBreakpoint_Then_ThePayloadIsApplied()
         {
             // Arrange/Act — an md:bg-wide leaf in a 1000px-wide panel (≥ md 768).
             var leaf = MountAndResolveAt(1000f, "md:bg-wide");
-            Assume.That(leaf.panel.visualTree.resolvedStyle.width, Is.GreaterThanOrEqualTo(MdBreakpoint),
-                "Precondition: the panel root resolved at least the md breakpoint wide");
 
-            // Assert — the md payload is applied above the breakpoint.
-            Assert.IsTrue(leaf.ClassListContains("bg-wide"));
+            // Assert — the md payload is applied above the breakpoint. The width the host got rides along, so a
+            // host narrower than requested fails here rather than passing on a breakpoint it never crossed.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -106,9 +108,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): unscoped trees evaluate against the panel root on the base too;
-        // what changed is that a host narrower than requested now reads as a verdict, not as Inconclusive.
+        // what changed is that a host narrower than requested now fails, where it read as Inconclusive.
         [Test]
-        public void Given_NoScope_When_TheBreakpointResolves_Then_ThePanelRootWidthDecidesIt()
+        public void Given_NoScope_When_PanelIsWiderThanMd_Then_PanelWidthStillDrivesTheBreakpoint()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "leaf", className: "md:bg-wide", text: "x"));
@@ -117,10 +119,10 @@ namespace Velvet.Tests
             // Act
             Resolve(leaf, leaf.panel.visualTree);
 
-            // Assert — without a scope the panel root's width decides. The host does not always get the width
-            // it asked for, so the expectation is read off the width it got rather than gated on it.
-            Assert.That(leaf.ClassListContains("bg-wide"),
-                Is.EqualTo(leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint));
+            // Assert — without a scope the panel root's width (≥ md) turns the breakpoint on. The width the host
+            // got rides along, so a host narrower than requested fails here rather than passing unmeasured.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, true)));
         }
 
         // A narrow scope around a leaf in a wide panel: the scope's width (< md), not the panel's (≥ md), decides.
