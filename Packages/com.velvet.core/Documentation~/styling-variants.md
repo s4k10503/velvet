@@ -36,8 +36,8 @@ worth knowing, both when several variants name one such utility:
 - *Same family, different values* — `"bg-white md:shadow-sm dark:shadow-lg"` resolves by the
   precedence table, not by the order the two signals fired. `dark:` outranks `md:`, so both lit paint
   `shadow-lg` whichever way the window got there. Where the precedence table cannot separate them —
-  two `data-[…]:` rules, two `has-[.class]:` rules — the one written later in the className wins, the
-  way source order settles a tie between equal-specificity CSS rules. Only rules that actually apply
+  two `data-[…]:` rules, two `has-[.class]:` rules — they order as Tailwind emits them, as the precedence
+  order below describes, whatever order the className writes them in. Only rules that actually apply
   take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
   lands on the children) rank nothing on this element, so adding one never moves what it paints.
   A stacked variant is ranked by its own position too, which the precedence table below gives: so
@@ -153,9 +153,13 @@ feature query adds no specificity, so `md:w-[10px] hover:w-[20px]` on a hovered 
 is 20 px wide; an attribute selector carries a pseudo-class's and is emitted after the states, so
 `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves to 0.75.
 
-Lowest first, each row in the order `<` shows. Two rules of one rank that write an arbitrary value —
-`nth-1:bg-[#f00]` beside `nth-2:bg-[#0f0]`, two `data-[…]:w-[…]` rules — keep a value each, so turning
-one off leaves the other's standing.
+Lowest first, each row in the order `<` shows. Two variant rules of one rank — `nth-1:` beside `nth-2:`,
+two `data-[…]:` rules — keep their payloads apart, so turning one off leaves the other's standing. While
+both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in:
+first by their variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
+`group-hover/card:`, `[&:first-child]:` before `[&:nth-child(1)]:`), then by the first property they
+differ on in Tailwind's property order (`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate
+itself, digits read as numbers (`hover:w-[10px]` before `hover:w-[20px]`).
 
 | | Specificity | Layer |
 |---|---|---|

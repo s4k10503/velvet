@@ -710,7 +710,7 @@ namespace Velvet
                 var priorities = pair.Value.Keys;
                 for (var i = 0; i < priorities.Count; i++)
                 {
-                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, StyleLayerPriority.RankOf(priorities[i])));
+                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, priorities[i]));
                 }
             }
         }
@@ -775,8 +775,7 @@ namespace Velvet
                 return false;
             }
             var top = layers.Count - 1;
-            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor)
-                && StyleLayerPriority.RankOf(layers.Keys[top]) <= floor)
+            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor) && layers.Keys[top] <= floor)
             {
                 return false;
             }

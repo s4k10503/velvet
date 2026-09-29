@@ -25,9 +25,9 @@ namespace Velvet
         // payload layers over the base and the lower-priority variants rather than tying with them, and
         // turning it off falls back to whatever is still active.
         //
-        // declarations gives each payload, by position, where its rule sits in the element's className, which
-        // settles a tie between two gate payloads that layer at ONE priority the way source order settles a
-        // tie between two equal-specificity CSS rules (see ReconcilerContext.TrackVariantGateClass). It rides
+        // declarations gives each payload, by position, its rule's place among the element's rules
+        // (StyleRuleOrder), which every layer's key carries, so two payloads at ONE rank order the way Tailwind
+        // emits the two rules (see StyleLayerPriority.WithRule). It rides
         // in from the caller rather than being read back out of the class array, because the array cannot say
         // whether a rule is LIT: a `lg:shadow-lg` below the breakpoint, a `peer-checked:` with no peer, a
         // `[&>*]:shadow-lg` that lands on the children, and a `first:hover:shadow-lg` the structural config
@@ -120,8 +120,9 @@ namespace Velvet
             VisualElement target, string core, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
-            // An inline layer is keyed by the rule as well as its rank, so a rule turning off clears its own value
-            // and not that of another rule on the same rank (nth-1: beside nth-2:). Both inline paths below take it.
+            // Every layer is keyed by the rule as well as its rank, so a rule turning off clears its own value and
+            // not that of another rule on the same rank (nth-1: beside nth-2:), and two that hold at once order by
+            // the place StyleRuleOrder gave the rule's declaration.
             var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
                 && StyleArbitraryValueResolver.TryParse(core, out var style))
@@ -144,7 +145,7 @@ namespace Velvet
             if (StyleFontClass.IsArbitraryFontClass(core)
                 || StyleTextEffectClass.IsArbitraryLeadingClass(core))
             {
-                return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on), false);
+                return (TrackVariantGate(ctx, target, core, key, declaration, on), false);
             }
 
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
@@ -157,14 +158,14 @@ namespace Velvet
 
             if (on)
             {
-                StyleClassProjection.Add(target, core, effectivePriority);
+                StyleClassProjection.Add(target, core, key);
             }
             else
             {
-                StyleClassProjection.Remove(target, core, effectivePriority);
+                StyleClassProjection.Remove(target, core, key);
             }
 
-            return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on),
+            return (TrackVariantGate(ctx, target, core, key, declaration, on),
                 StyleTextBalanceClass.IsWidthDeclaringToken(core));
         }
 

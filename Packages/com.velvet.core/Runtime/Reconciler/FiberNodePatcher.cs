@@ -2208,7 +2208,7 @@ namespace Velvet
                 if (StyleVariantClass.TryParse(classNames[i], out var k, out var payload) && k == kind)
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
-                    (positions ??= new List<int>()).Add(i);
+                    (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
                 }
             }
 
@@ -2288,7 +2288,7 @@ namespace Velvet
                 }
                 var slot = (int)relational.State;
                 (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
-                (positions![key][slot] ??= new List<int>()).Add(i);
+                (positions![key][slot] ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
             }
 
             if (map == null)
@@ -2381,7 +2381,7 @@ namespace Velvet
                     && !StyleSupportsVariantClass.IsSupports(payload))
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
-                    (positions ??= new List<int>()).Add(i);
+                    (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
                 }
             }
 
@@ -2424,7 +2424,7 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(string? ClassName, string?[] Payloads, int[] Declarations)>())
-                            .Add((className, new[] { payload }, new[] { i }));
+                            .Add((className, new[] { payload }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
                     }
                 }
             }
@@ -2663,7 +2663,8 @@ namespace Velvet
                     {
                         if (payload == null) continue;
                         (rules ??= new List<(StyleAttributeNamespace, string, string?, string[], int[])>())
-                            .Add((ns, key ?? string.Empty, value, new[] { payload }, new[] { i }));
+                            .Add((ns, key ?? string.Empty, value, new[] { payload },
+                                new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
                     }
                 }
             }
@@ -2791,7 +2792,7 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(string[], int[])>())
-                            .Add((new string[] { payload ?? string.Empty }, new[] { i }));
+                            .Add((new string[] { payload ?? string.Empty }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) }));
                     }
                 }
             }
@@ -2846,7 +2847,7 @@ namespace Velvet
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
                                 int[] Declarations, long Priority)>())
-                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i },
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { StyleRuleOrder.OrdinalOf(classNames, i) },
                                 StyleStructuralVariantClass.PriorityOf(cls, kind)));
                     }
                 }
