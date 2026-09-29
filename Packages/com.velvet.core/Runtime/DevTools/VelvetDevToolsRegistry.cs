@@ -5,13 +5,12 @@ using System.Collections.Generic;
 namespace Velvet.DevTools
 {
     /// <summary>
-    /// Registry of fibers observed by the DevTools window. <see cref="V.Mount"/> registers its root, and
-    /// disposing the mounted tree unregisters it.
+    /// Registry of fibers observed by the DevTools window. <see cref="V.Mount"/> registers its root, and a
+    /// fiber leaves the registry when it is disposed, whoever registered it.
     /// <para>
-    /// Register and unregister an interior subtree explicitly when it needs its own label:
+    /// Register an interior subtree explicitly when it needs its own label:
     /// <code>
     ///   VelvetDevToolsRegistry.Register(myFiber, "MyPage");
-    ///   VelvetDevToolsRegistry.Unregister(myFiber);
     /// </code>
     /// </para>
     /// It lives in the runtime assembly rather than beside the window in <c>Editor/DevTools/</c> because
@@ -23,7 +22,7 @@ namespace Velvet.DevTools
         {
             public ComponentFiber Fiber { get; }
 
-            public string Label { get; }
+            public string Label { get; internal set; }
 
             public string TypeName { get; }
 
@@ -44,7 +43,7 @@ namespace Velvet.DevTools
         public static IReadOnlyList<ComponentEntry> Entries => s_entries;
 
         /// <summary>
-        /// Adds a fiber, or replaces its existing entry when registered again.
+        /// Adds a fiber, or relabels its existing entry when registered again. A disposed fiber is not added.
         /// </summary>
         /// <param name="fiber">The fiber to observe.</param>
         /// <param name="label">Display name in the EditorWindow. Defaults to the component's name when omitted.</param>
@@ -55,12 +54,14 @@ namespace Velvet.DevTools
                 throw new ArgumentNullException(nameof(fiber));
             }
 
+            if (fiber.IsDisposed) return;
+
             var resolvedLabel = label ?? Hooks.ComponentName(fiber);
-            for (var i = 0; i < s_entries.Count; i++)
+            foreach (var entry in s_entries)
             {
-                if (ReferenceEquals(s_entries[i].Fiber, fiber))
+                if (ReferenceEquals(entry.Fiber, fiber))
                 {
-                    s_entries[i] = new ComponentEntry(fiber, resolvedLabel);
+                    entry.Label = resolvedLabel;
                     RegistryChanged?.Invoke();
                     return;
                 }
