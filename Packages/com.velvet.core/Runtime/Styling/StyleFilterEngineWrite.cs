@@ -34,12 +34,40 @@ namespace Velvet
             }
         }
 
+        private static int s_withheld;
+
+        internal static bool TransitionsWithheld => s_withheld > 0;
+
+        // Within the scope a filter change is written at once. A CSS animation that ends uncovers the value under it
+        // without a transition, since the after-change style is computed with the animations of the before-change
+        // style.
+        internal static WithheldTransitions WithoutTransition()
+        {
+            s_withheld++;
+            return default;
+        }
+
+        internal readonly struct WithheldTransitions : IDisposable
+        {
+            public void Dispose() => s_withheld--;
+        }
+
         // A null list clears the inline filter.
         public static void Write(VisualElement element, List<FilterFunction>? to)
         {
+            // The animation's value shows while it runs.
+            if (StyleAnimateDriver.DrivesFilter(element))
+            {
+                return;
+            }
             if (element.panel == null)
             {
                 WritePlain(element, to);
+                return;
+            }
+            if (TransitionsWithheld)
+            {
+                WriteSuspended(element, to);
                 return;
             }
             if (StyleFilterTransitionDriver.EngineTimesFilterWrites(element))

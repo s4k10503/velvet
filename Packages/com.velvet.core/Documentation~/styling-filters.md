@@ -18,13 +18,13 @@ Every filter utility on an element — built-in or custom — composes into the 
 | Utility | Values | Notes |
 |---|---|---|
 | `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px) or a bare number (px); no `%`, as CSS `blur()` takes none. Other CSS lengths (`em`, `vw`, `pt`, …) are not recognized |
-| `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0 | |
-| `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
-| `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
-| `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
-| `hue-rotate-<deg>` / `hue-rotate-[N<unit>]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`, or a bare number (degrees) |
-| `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
-| `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
+| `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
+| `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
+| `hue-rotate-<deg>` / `hue-rotate-[N<unit>]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
+| `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
+| `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
 
 `brightness` and `saturate` are the only two utilities UI Toolkit has no native filter type
 for. Rather than approximate them through a built-in (which clamps to the darken/desaturate
@@ -37,9 +37,10 @@ the encoded pixel before the engine's Linear-colorspace conversion, so a Linear 
 over-darken). Only negative amounts are rejected, as CSS disallows them. Both shaders are put in front of the
 build by the step [player-builds.md](player-builds.md) describes, which needs nothing from you.
 
-Stacked filters compose in the canonical CSS order (blur, brightness, contrast, grayscale,
-hue-rotate, invert, saturate, sepia) regardless of class order, matching how browsers apply a
-multi-function `filter` value.
+Stacked filters compose in a fixed order (blur, brightness, contrast, grayscale, hue-rotate, invert,
+saturate, sepia) regardless of class order, as Tailwind composes its filter utilities into one `filter`
+value. A browser applies a `filter` list in the order it is written, and the list Tailwind writes is in this
+order.
 
 Filter utilities work everywhere other utilities do: under variants
 (`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. A filter change
@@ -116,6 +117,11 @@ Velvet leaves the engine's animation in place, which keeps UI Toolkit's shorteni
 Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
 utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value.
+
+While `animate-hue` drives an element's filter, a filter utility's change under it starts no transition and is not
+painted, and the value the motion uncovers when it ends is written at once. A filter transition already running
+when the motion starts shows until it ends. Both follow CSS, where transitions sit above animations in the
+cascade and an animation's start or end starts no transition.
 
 > **`transition-filter` does not combine with another `transition-*` utility.** They all set the
 > same `transition-property`, and at equal specificity the one declared later in the bundled sheet

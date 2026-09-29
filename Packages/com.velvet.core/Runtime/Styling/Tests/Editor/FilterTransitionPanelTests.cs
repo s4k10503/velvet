@@ -739,6 +739,60 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [Test]
+        public void Given_AnimateHue_When_AFilterChanges_Then_NoTweenStartsAndNoBlurIsWritten()
+        {
+            // Arrange — an animate-hue motion driving the filter of an element carrying transition-filter.
+            var element = MountResolved("transition-filter animate-hue");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert — the animation masks the change, as a CSS animation masks it in both the before- and the
+            // after-change style, so nothing transitions and the animation's value stays.
+            var written = element.style.filter.value;
+            Assert.That((binding.Scheduled == null, written != null && written.Any(f => f.type == FilterFunctionType.Blur)),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ARunningTween_When_AnAnimateHueFrameIsApplied_Then_TheTweensFrameStays()
+        {
+            // Arrange — a live tween, then an animate-hue motion attached over it.
+            var element = MountResolved("transition-filter duration-300");
+            ApplyBlur(element, 12f);
+            StyleAnimateClass.TryExtract(new[] { "animate-hue" }, out var spec);
+            var hue = StyleAnimateDriver.Attach(element, spec, false);
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(element, hue, 0.25f);
+
+            // Assert — a running transition overrides the animation, as the CSS cascade orders them.
+            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.Blur));
+        }
+
+        [Test]
+        public void Given_AnimateHueBesideABlur_When_APatchRemovesIt_Then_TheBlurIsWrittenAtOnce()
+        {
+            // Arrange — the blur under an animate-hue motion, on an element carrying transition-filter.
+            const string animated = "transition-filter animate-hue blur-md";
+            const string plain = "transition-filter blur-md";
+            var element = MountResolved(animated);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+
+            // Assert — the value the ended animation uncovers is written without a transition, as an ended CSS
+            // animation starts none.
+            Assert.That((binding.Scheduled == null, element.style.filter.value[0].GetParameter(0).floatValue),
+                Is.EqualTo((true, 12f)));
+        }
+
         #endregion
 
         #region Group C — what the panel actually paints

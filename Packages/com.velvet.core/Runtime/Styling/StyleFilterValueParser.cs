@@ -87,6 +87,11 @@ namespace Velvet
             if (prefix == "hue-rotate-")
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
+                // CSS takes an angle here, and a number only where it is zero.
+                if (deg != 0f && IsUnitless(valueSpan))
+                {
+                    return false;
+                }
                 result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
                 return true;
             }
@@ -113,10 +118,26 @@ namespace Velvet
             {
                 return null;
             }
-            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var amount) || amount < 0f) return false;
+            var amount = 0f;
+            if (!TryParseAmount(valueSpan, out amount) || amount < 0f) return false;
             result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
             return true;
         }
+
+        // A number, or a percentage of 1, as each of these CSS functions takes.
+        private static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
+        {
+            if (valueSpan.EndsWith("%"))
+            {
+                var parsed = StyleArbitraryValueResolver.TryParseFloat(valueSpan.Slice(0, valueSpan.Length - 1), out amount);
+                amount /= 100f;
+                return parsed;
+            }
+            return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
+        }
+
+        // Called only on a value TryParseAngleDegrees accepted, which is never empty.
+        private static bool IsUnitless(ReadOnlySpan<char> valueSpan) => !char.IsLetter(valueSpan[valueSpan.Length - 1]);
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every

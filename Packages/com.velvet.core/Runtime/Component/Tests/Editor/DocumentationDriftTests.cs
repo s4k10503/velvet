@@ -60,7 +60,7 @@ namespace Velvet.Tests
         // shipped CHANGELOG, so it fails when that heading stops matching.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
-            "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
+            "Foo", "SomeFixture", "MyRender", "MyStore", "Npx", "ResolveDirection", "Inter", "CS",
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",

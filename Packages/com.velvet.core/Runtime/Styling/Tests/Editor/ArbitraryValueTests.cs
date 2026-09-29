@@ -2121,6 +2121,47 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterSepia, 1f)));
         }
 
+        [Test]
+        public void Given_AGrayscaleBracketInPercent_When_Parsed_Then_ItIsTheFraction()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[50%]", out var s);
+
+            // Assert — Tailwind writes grayscale(50%), which CSS reads as 0.5.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterGrayscale, 0.5f)));
+        }
+
+        [Test]
+        public void Given_AContrastBracketInPercent_When_Parsed_Then_ItIsTheFraction()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[150%]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterContrast, 1.5f)));
+        }
+
+        [Test]
+        public void Given_AUnitlessHueRotateBracket_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[30]", out _);
+
+            // Assert — CSS hue-rotate() takes an angle, and a number only where it is zero.
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a unitless zero stays accepted, as CSS accepts hue-rotate(0).
+        [Test]
+        public void Given_AUnitlessZeroHueRotateBracket_When_Parsed_Then_ItResolvesToZero()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[0]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterHueRotate, 0f)));
+        }
+
         // GREEN_ON_BASE(characterization): contrast is not clamped, as CSS leaves contrast() unbounded above 1.
         [Test]
         public void Given_AContrastBracketAboveOne_When_Parsed_Then_ItIsKept()

@@ -78,22 +78,6 @@ namespace Velvet.Tests
                 ? "<unset>"
                 : string.Join(",", element.style.transitionProperty.value.Select(p => p.ToString() ?? string.Empty));
 
-        // What a swap's `all` becomes once a driver takes the named longhands out, joined the way
-        // InlineTransitionProperty joins it. Filter is never in it (MotionNativeTransitionGuard says why).
-        private static string EveryLonghandBut(string ussName)
-        {
-            var names = new List<string>();
-            for (var i = 0; i < StyleUtilityProperties.LonghandCount; i++)
-            {
-                var name = StyleUtilityProperties.UssName((StyleLonghand)i);
-                if (name != ussName && name != "filter")
-                {
-                    names.Add(name);
-                }
-            }
-            return string.Join(",", names);
-        }
-
         [Test]
         public void Given_GradientPanAtMidLoop_When_FrameApplied_Then_BackgroundPannedByBoxWidth()
         {
@@ -164,8 +148,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_StaticFilterAndHue_When_FrameApplied_Then_HueOwnsTheFilterSlot()
         {
-            // Documented limitation: animate-hue OWNS style.filter while active — it does not compose with a
-            // static filter-* on the same element. After a hue frame the slot holds only the hue rotation.
+            // animate-hue OWNS style.filter while active, as a CSS animation of filter replaces the whole value:
+            // after a hue frame the slot holds only the hue rotation.
             var (element, binding) = Mount("w-[100px] h-[40px] bg-red-500 grayscale-[.5] animate-hue");
             StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
 
@@ -341,8 +325,10 @@ namespace Velvet.Tests
             // suspension; the swap's own list stays on the element, with the opacity the pulse writes left out.
             var (beforeSwap, afterSwap) = SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 animate-pulse");
 
-            // Assert
-            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", EveryLonghandBut("opacity"))));
+            // Assert — `all` expands to every longhand but the one the pulse drives, filter among them.
+            var expected = string.Join(",", Enumerable.Range(0, StyleUtilityProperties.LonghandCount)
+                .Select(i => StyleUtilityProperties.UssName((StyleLonghand)i)).Where(name => name != "opacity"));
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", expected)));
         }
 
         [Test]
@@ -354,8 +340,10 @@ namespace Velvet.Tests
             var (beforeSwap, afterSwap) =
                 SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 transition-opacity animate-pulse");
 
-            // Assert
-            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", EveryLonghandBut("opacity"))));
+            // Assert — `all` expands to every longhand but the one the pulse drives, filter among them.
+            var expected = string.Join(",", Enumerable.Range(0, StyleUtilityProperties.LonghandCount)
+                .Select(i => StyleUtilityProperties.UssName((StyleLonghand)i)).Where(name => name != "opacity"));
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", expected)));
         }
 
         [Test]

@@ -45,8 +45,8 @@ namespace Velvet
     // site that composes and writes style.filter — so it covers every filter path (base blur-md, arbitrary
     // blur-[6px], custom filter-[name:args], and the variant path hover:blur-md) with no per-manipulator wiring.
     //
-    // animate-hue writes style.filter every tick while active and bypasses this driver, so combining a filter
-    // transition with animate-hue on one element is unsupported: while a tween runs, their writes alternate.
+    // animate-hue drives the filter the way a CSS animation does: a tween already running overrides it until it
+    // ends, and a change under it starts none (StyleAnimateDriver.DrivesFilter).
     //
     // The phase math (ApplyFrame / channel alignment) is pure and unit-tested directly; the scheduler
     // wiring runs at runtime (the EditMode PlayerLoop does not tick, so tests drive ApplyFrame at explicit
@@ -87,6 +87,9 @@ namespace Velvet
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
 
+        internal static bool TweenRuns(VisualElement element)
+            => s_bindings.TryGetValue(element, out var b) && b.Scheduled != null;
+
         // Stops whatever tween the element has without writing to it, for an element about to serve another consumer.
         public static void Release(VisualElement element)
         {
@@ -110,7 +113,11 @@ namespace Velvet
             var delayMs = 0;
             var easing = EasingMode.Ease;
             var channels = Array.Empty<Channel>();
-            var runs = element.panel != null && !EngineTimesFilterWrites(element)
+            // An animate-hue motion masks a filter utility's change, so it starts no transition, as a CSS
+            // animation masks the change in both the before- and after-change styles; and nor does the change an
+            // ended motion uncovers (StyleFilterEngineWrite.WithoutTransition).
+            var runs = element.panel != null && !StyleAnimateDriver.DrivesFilter(element)
+                && !StyleFilterEngineWrite.TransitionsWithheld && !EngineTimesFilterWrites(element)
                 && TryFindTransition(element, FilterPropertyName, null, out durationMs, out delayMs, out easing);
             // Read the CURRENT applied list as the from-side. During an in-flight tween this is last frame's
             // interpolated list, so a redirect starts from where the eye is — not the tween's original start.

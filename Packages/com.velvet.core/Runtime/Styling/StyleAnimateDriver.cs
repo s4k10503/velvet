@@ -36,6 +36,12 @@ namespace Velvet
         // Internal: shared with StyleAnimationScheduler's spring tick and ring co-fade tick, which want the
         // SAME ~60fps cadence rather than a second (or third) hand-copied literal.
         internal const long TickMs = 16;
+
+        // The elements whose filter an animate-hue motion drives, which a filter utility's change does not reach
+        // while it runs (StyleFilterEngineWrite).
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, StyleAnimateBinding> s_filterDrivers = new();
+
+        internal static bool DrivesFilter(VisualElement element) => s_filterDrivers.TryGetValue(element, out _);
         // Oversize factor for the Gradient pan: the background is twice the box along the pan axis, so the
         // box window slides across the full gradient (offset range [-box, 0]) without revealing an edge.
         private const float GradientOversize = 200f;
@@ -64,6 +70,10 @@ namespace Velvet
                 ApplyPanSizing(element, spec.Mode, panVertical);
             }
 
+            if (spec.Mode == AnimateMode.Hue)
+            {
+                s_filterDrivers.AddOrUpdate(element, binding);
+            }
             SyncTransitionSuspension(element, binding);
             ScheduleOrDefer(element, binding);
             return binding;
@@ -120,6 +130,7 @@ namespace Velvet
                 // Hue owns the filter slot while active (a static filter-* is an unsupported combo — Hue wins).
                 // Null returns it to no-filter; a surviving class-driven filter is re-asserted by the reconciler
                 // right after Detach (a NAMED USS filter re-resolves, an inline-resolved one is re-applied).
+                s_filterDrivers.Remove(element);
                 element.style.filter = StyleKeyword.Null;
             }
             else if (binding.Spec.Mode == AnimateMode.Spin)
@@ -231,6 +242,12 @@ namespace Velvet
                 }
                 case AnimateMode.Hue:
                 {
+                    // A running transition overrides an animation of the same property, as the CSS cascade puts
+                    // transitions above animations.
+                    if (StyleFilterTransitionDriver.TweenRuns(element))
+                    {
+                        break;
+                    }
                     var fn = new FilterFunction(FilterFunctionType.HueRotate);
                     fn.AddParameter(new FilterParameter(HueAngleDeg(t)));
                     // A FRESH list every frame is REQUIRED, not wasteful: UI Toolkit's inline-filter setter
