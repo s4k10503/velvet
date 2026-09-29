@@ -7,6 +7,7 @@
 [Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.Push(Velvet.Editor.DevTools.StateHistoryEntry): System.Void
 [Velvet.Editor] method Velvet.Editor.DevTools.VelvetDevToolsWindow.ShowWindow(): System.Void
 [Velvet.Editor] method Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer(): System.Void
+[Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit(): System.Void
 [Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewWindow.ShowWindow(): System.Void
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Capacity: System.Int32
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Count: System.Int32
@@ -17,6 +18,7 @@
 [Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryEntry
 [Velvet.Editor] type Velvet.Editor.DevTools.VelvetDevToolsWindow
 [Velvet.Editor] type Velvet.Editor.PlayerBuild.PlayerScriptCompilation
+[Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand
 [Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewWindow
 [Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
@@ -521,12 +523,15 @@
 [Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
 [Velvet] method Velvet.VelvetFonts.TryLoadAddressableFont(System.String?, UnityEngine.TextCore.Text.FontAsset?&): System.Boolean
 [Velvet] method Velvet.VelvetFonts.Unregister(System.String?): System.Void
+[Velvet] method Velvet.VelvetPreviewEnvironment.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
 [Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
-[Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): System.IDisposable?
+[Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): Velvet.VelvetPreviewEnvironment?
+[Velvet] method Velvet.VelvetPreviewSmokeTest.Run(): System.Collections.Generic.IReadOnlyList`1[Velvet.VelvetPreviewSmokeResult]
+[Velvet] method Velvet.VelvetPreviewSmokeTest.Run(System.Collections.Generic.IEnumerable`1[Velvet.VelvetPreviewStory]): System.Collections.Generic.IReadOnlyList`1[Velvet.VelvetPreviewSmokeResult]
 [Velvet] method Velvet.VelvetPreviewStory.Build(): Velvet.VNode?
 [Velvet] method Velvet.VelvetPreviewStory.Build(System.Object?): Velvet.VNode?
 [Velvet] method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object?
@@ -940,8 +945,11 @@
 [Velvet] property Velvet.VelvetPreviewAttribute.Height: System.Int32
 [Velvet] property Velvet.VelvetPreviewAttribute.Name: System.String?
 [Velvet] property Velvet.VelvetPreviewAttribute.Width: System.Int32
+[Velvet] property Velvet.VelvetPreviewEnvironment.StyleSheets: System.Collections.Generic.IReadOnlyList`1[UnityEngine.UIElements.StyleSheet]
 [Velvet] property Velvet.VelvetPreviewHost.MountError: System.Exception?
 [Velvet] property Velvet.VelvetPreviewHost.Story: Velvet.VelvetPreviewStory?
+[Velvet] property Velvet.VelvetPreviewSmokeResult.Failure: System.String?
+[Velvet] property Velvet.VelvetPreviewSmokeResult.Story: Velvet.VelvetPreviewStory
 [Velvet] property Velvet.VelvetPreviewStory.ArgsType: System.Type?
 [Velvet] property Velvet.VelvetPreviewStory.Assembly: System.Reflection.Assembly?
 [Velvet] property Velvet.VelvetPreviewStory.Group: System.String
@@ -1136,9 +1144,12 @@
 [Velvet] type Velvet.VelvetFontWeightEntry
 [Velvet] type Velvet.VelvetFonts
 [Velvet] type Velvet.VelvetPreviewAttribute
+[Velvet] type Velvet.VelvetPreviewEnvironment
 [Velvet] type Velvet.VelvetPreviewHost
 [Velvet] type Velvet.VelvetPreviewRegistry
 [Velvet] type Velvet.VelvetPreviewSetupAttribute
+[Velvet] type Velvet.VelvetPreviewSmokeResult
+[Velvet] type Velvet.VelvetPreviewSmokeTest
 [Velvet] type Velvet.VelvetPreviewStory
 [Velvet] type Velvet.VelvetResponsive
 [Velvet] type Velvet.VelvetRuntimeAssets
