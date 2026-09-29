@@ -77,6 +77,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
+- A key whose Motion is created again while the key stays, as an `elementType` change does, enters
+  again, unless `initial: false` still withholds that key's enter (below).
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
