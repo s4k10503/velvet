@@ -1131,7 +1131,7 @@ namespace Velvet
         /// Velvet's timeline primitive: the hook owns the clock (via <see cref="UseFrame"/>) and the step
         /// walk, so a caller never hand-rolls
         /// <see cref="UseEffect(Func{Action},object[])"/> plus a timer plus <see cref="UseState{T}(T)"/> to
-        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes with no own <c>animate</c>
+        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes naming no label of their own
         /// inherit the coordinator's label exactly as they already do for any hand-toggled label change; "one
         /// at a time" fan-out across a list of such descendants is <c>StaggerChildrenSec</c> on a step's own
         /// <see cref="AnimationSequenceStep.Transition"/> — there is no separate multi-target API.

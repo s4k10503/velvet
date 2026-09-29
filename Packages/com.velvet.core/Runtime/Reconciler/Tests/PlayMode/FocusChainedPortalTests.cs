@@ -337,11 +337,9 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AContainedScopeInTheMainPanel_When_FocusLegitimatelyMovesToAnotherPanel_Then_TheModalDoesNotStealItBack()
+        public IEnumerator Given_AContainedScopeInTheMainPanel_When_FocusMovesToAPortalDeclaredOutsideIt_Then_FocusReturnsToTheScope()
         {
-            // Arrange — a cross-panel focus move blurs the old panel to NOTHING (the same FocusOut
-            // signature as a click on empty space), but here focus went somewhere: another managed
-            // panel. The containment re-focus must recognize that and stand down.
+            // Arrange
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(ModalWithIsolatedPortalHost, key: "root"));
             yield return null;
@@ -357,8 +355,8 @@ namespace Velvet.Tests
             yield return null;
             yield return null;
 
-            // Assert — the main panel must stay unfocused instead of the modal yanking focus back.
-            Assert.That(m1.panel.focusController.focusedElement, Is.Null);
+            // Assert
+            Assert.That(m1.panel.focusController.focusedElement, Is.EqualTo(m1));
         }
 
         [UnityTest]

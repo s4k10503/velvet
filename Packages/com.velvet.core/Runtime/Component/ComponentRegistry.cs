@@ -227,6 +227,8 @@ namespace Velvet
             var isInline = site.IsInline;
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
             _ctx.FiberStack.Current?.AppendChild(fiber);
+            fiber.BlocksInitialEnters = (_ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
+                ?? _ctx.FiberStack.Current?.BlocksInitialEnters) == true;
             fiber.ExternalRef = node.ExternalRef;
             fiber.Props = node.Props;
             // Written before the mount: the FiberSuspendSignal arm below registers the fiber and

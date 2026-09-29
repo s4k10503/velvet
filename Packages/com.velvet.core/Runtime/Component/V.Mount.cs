@@ -47,11 +47,11 @@ namespace Velvet
             // root and attaches there once; a target with no panel yet defers to its own AttachToPanelEvent
             // so ring predictions are never computed from a non-root subtree.
             FiberFocusNavigator.EnsureAttached(target, ctx);
-            VelvetStyleUtilities.ReportIfMissing(target);
+            var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif
-            return new MountedTree(rootFiber, target);
+            return new MountedTree(rootFiber, sheetWatch);
         }
 
 #if UNITY_EDITOR
@@ -86,13 +86,13 @@ namespace Velvet
     public sealed class MountedTree : IDisposable
     {
         internal readonly ComponentFiber Root;
-        private readonly VisualElement _target;
+        private readonly IDisposable _sheetWatch;
         private bool _disposed;
 
-        internal MountedTree(ComponentFiber root, VisualElement target)
+        internal MountedTree(ComponentFiber root, IDisposable sheetWatch)
         {
             Root = root ?? throw new ArgumentNullException(nameof(root));
-            _target = target;
+            _sheetWatch = sheetWatch;
         }
 
         /// <summary>
@@ -106,7 +106,7 @@ namespace Velvet
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Unregister(Root);
 #endif
-            VelvetStyleUtilities.StopReporting(_target);
+            _sheetWatch.Dispose();
             // Unmounting a root is terminal — subsequent hook setters / async
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,
