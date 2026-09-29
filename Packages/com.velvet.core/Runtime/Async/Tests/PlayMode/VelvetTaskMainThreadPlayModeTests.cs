@@ -33,6 +33,7 @@ namespace Velvet.Tests
                 Assert.That(resumedOnMainThread, Is.True);
             }).Bounded();
 
+        // GREEN_ON_BASE(characterization): the base already resumes this await on the main thread.
         [UnityTest]
         public IEnumerator Given_AnAsyncVelvetTaskAwaitedOnTheMainThread_When_ItFinishesOffTheMainThread_Then_TheAwaitResumesOnTheMainThread()
         {
@@ -42,8 +43,11 @@ namespace Velvet.Tests
             _resumedThreadId = 0;
             AwaitOneThatFinishesOffTheMainThread(gate.Task).Forget();
 
-            // Act
-            Task.Run(() => gate.SetResult(1));
+            // Act — joined before the first frame is counted, so the budget measures the handoff to the
+            // main thread rather than how soon another thread is scheduled.
+            var finisher = new Thread(() => gate.SetResult(1));
+            finisher.Start();
+            finisher.Join();
             for (var frame = 0; frame < ResumeFrameBudget && _resumedThreadId == 0; frame++)
             {
                 yield return null;
