@@ -627,15 +627,12 @@ namespace Velvet
         internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
-        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
-        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller is matching or loading
-        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as
-        /// the router's status transitions.
+        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Submitting"/> while
+        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller runs a submission's
+        /// guards or action, <see cref="NavigationLifecycle.Loading"/> while it is matching or loading the next
+        /// location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the
+        /// router's status transitions.
         /// </summary>
-        /// <remarks>
-        /// A <c>submitting</c> state is intentionally not modelled because Velvet has no route action /
-        /// form-submission model.
-        /// </remarks>
         public static NavigationState UseNavigation()
         {
             _ = Resolve("UseNavigation");
@@ -667,13 +664,26 @@ namespace Velvet
 
         private static NavigationState ReadNavigationState(Router router)
         {
-            var lifecycle = router.Status is RouterStatus.Matching or RouterStatus.Loading
-                ? NavigationLifecycle.Loading
-                : NavigationLifecycle.Idle;
+            var lifecycle = router.Status switch
+            {
+                RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
+                RouterStatus.Submitting => NavigationLifecycle.Submitting,
+                _ => NavigationLifecycle.Idle,
+            };
+            if (lifecycle == NavigationLifecycle.Idle)
+            {
+                return default;
+            }
 
-            var location = lifecycle == NavigationLifecycle.Loading ? router.PendingLocation : null;
-
-            return new NavigationState { State = lifecycle, Location = location };
+            var submission = router.PendingSubmission;
+            return new NavigationState
+            {
+                State = lifecycle,
+                Location = router.PendingLocation,
+                FormMethod = submission?.Method,
+                FormAction = submission?.Action,
+                FormData = submission?.FormData,
+            };
         }
 
         /// <summary>
@@ -764,6 +774,47 @@ namespace Velvet
         {
             _ = Resolve("UseAsyncError");
             return UseContext(RouteAwait.Outcome)?.Error;
+        }
+
+        /// <summary>
+        /// Returns a function that submits form data to a route's action, or with a <c>get</c> method navigates
+        /// with it as the query string: React Router's <c>useSubmit</c>. With no
+        /// <see cref="SubmitOptions.Action"/> it submits to the route the calling component renders in, and a
+        /// relative one resolves from there; <see cref="Router.SubmitAsync(object, SubmitOptions, System.Threading.CancellationToken)"/>
+        /// states the rest. The function keeps its identity across renders while the router and that route do.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static SubmitFunction UseSubmit()
+        {
+            _ = Resolve("UseSubmit");
+            var router = UseRouterOrThrow("UseSubmit");
+            var baseRouteIndex = UseBaseRouteIndex();
+            return UseCallback<SubmitFunction>(
+                (formData, options) => router.SubmitAsync(formData, options, baseRouteIndex, default),
+                router, baseRouteIndex);
+        }
+
+        /// <summary>
+        /// Returns the result of the action that committed the current location, when the action belongs to the
+        /// route at the current Outlet depth, cast to <typeparamref name="T"/>: React Router's
+        /// <c>useActionData</c>. Returns <c>default</c> otherwise.
+        /// </summary>
+        /// <typeparam name="T">Expected action result type.</typeparam>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static T? UseActionData<T>()
+        {
+            _ = Resolve("UseActionData");
+            _ = UseRouterOrThrow("UseActionData");
+            var routeId = CurrentRouteId();
+            var data = UseContext(RouterContext.ActionData);
+            if (routeId == null)
+            {
+                return default;
+            }
+            data.TryGetValue(routeId, out var value);
+            return value is T typed ? typed : default;
         }
 
         /// <summary>

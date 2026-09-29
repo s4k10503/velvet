@@ -42,7 +42,8 @@ namespace Velvet.Tests
             LoaderMode loaderMode = LoaderMode.Await,
             RouteDefinition[] children = null,
             ComponentNode errorElement = null,
-            bool caseSensitive = false)
+            bool caseSensitive = false,
+            Func<RouteActionContext, CancellationToken, VelvetTask<object>> action = null)
             => new RouteDefinition
             {
                 Path = path,
@@ -54,6 +55,7 @@ namespace Velvet.Tests
                 Children = children,
                 ErrorElement = errorElement,
                 CaseSensitive = caseSensitive,
+                Action = action,
             };
 
         /// <summary>

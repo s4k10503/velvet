@@ -131,9 +131,16 @@ namespace Velvet
                 return -1;
             }
 
+            return NearestErrorBoundary(matches, deepestErrored);
+        }
+
+        // The route at or above index that renders an error there: the nearest with an ErrorElement, or the
+        // root, which renders the default one.
+        internal static int NearestErrorBoundary(IReadOnlyList<RouteMatch> matches, int index)
+        {
             // MUTANT_SURVIVES(equivalent): the root iteration and the fallthrough below both answer 0.
             // Stopping one short of the root therefore cannot change what this returns.
-            for (var i = deepestErrored; i >= 0; i--)
+            for (var i = index; i >= 0; i--)
             {
                 if (matches[i].Route?.ErrorElement != null)
                 {
@@ -141,8 +148,6 @@ namespace Velvet
                 }
             }
 
-            // No route at or above the errored route defines an ErrorElement: bubble to the implicit root
-            // boundary.
             return 0;
         }
     }

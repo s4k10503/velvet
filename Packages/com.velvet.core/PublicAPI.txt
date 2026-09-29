@@ -88,6 +88,7 @@
 [Velvet] ctor Velvet.PureAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.RouteActionContext.ctor(): System.Void
 [Velvet] ctor Velvet.RouteBlockerManager.ctor(): System.Void
 [Velvet] ctor Velvet.RouteBlockerState.ctor(): System.Void
 [Velvet] ctor Velvet.RouteDefinition.ctor(): System.Void
@@ -111,6 +112,8 @@
 [Velvet] ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
 [Velvet] ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]]], System.Collections.Generic.Dictionary`2[System.String, System.String]?, Velvet.StyleSlotRecipe+SlotCompoundVariant[]?): System.Void
 [Velvet] ctor Velvet.StyleTransitionConfig.ctor(): System.Void
+[Velvet] ctor Velvet.SubmitFunction.ctor(System.Object~, System.IntPtr): System.Void
+[Velvet] ctor Velvet.SubmitOptions.ctor(): System.Void
 [Velvet] ctor Velvet.SuspenseNode.ctor(): System.Void
 [Velvet] ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean], System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): System.Void
 [Velvet] ctor Velvet.TextNode.ctor(): System.Void
@@ -168,6 +171,7 @@
 [Velvet] field Velvet.MutationStatus.Success: Velvet.MutationStatus
 [Velvet] field Velvet.NavigationLifecycle.Idle: Velvet.NavigationLifecycle
 [Velvet] field Velvet.NavigationLifecycle.Loading: Velvet.NavigationLifecycle
+[Velvet] field Velvet.NavigationLifecycle.Submitting: Velvet.NavigationLifecycle
 [Velvet] field Velvet.NavigationMode.Back: Velvet.NavigationMode
 [Velvet] field Velvet.NavigationMode.Forward: Velvet.NavigationMode
 [Velvet] field Velvet.NavigationMode.Push: Velvet.NavigationMode
@@ -188,6 +192,7 @@
 [Velvet] field Velvet.RouteBlockerStatus.Blocked: Velvet.RouteBlockerStatus
 [Velvet] field Velvet.RouteBlockerStatus.Idle: Velvet.RouteBlockerStatus
 [Velvet] field Velvet.RouteBlockerStatus.Proceeding: Velvet.RouteBlockerStatus
+[Velvet] field Velvet.RouterContext.ActionData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]
 [Velvet] field Velvet.RouterContext.Depth: Velvet.ComponentContext`1[System.Int32]
 [Velvet] field Velvet.RouterContext.Errors: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Exception]]
 [Velvet] field Velvet.RouterContext.LoaderData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]
@@ -200,6 +205,7 @@
 [Velvet] field Velvet.RouterStatus.Matching: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.NotFound: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.Ready: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.Submitting: Velvet.RouterStatus
 [Velvet] field Velvet.StyleOverrides.Empty: Velvet.StyleOverrides
 [Velvet] field Velvet.StyleTransition.Fade: Velvet.StyleTransitionConfig
 [Velvet] field Velvet.StyleTransition.FadeSlideUp: Velvet.StyleTransitionConfig
@@ -296,6 +302,7 @@
 [Velvet] method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]?
 [Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
 [Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
+[Velvet] method Velvet.Hooks.UseActionData`1(): T?
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Boolean, System.Boolean): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseAsyncError(): System.Exception?
 [Velvet] method Velvet.Hooks.UseAsyncValue`1(): T?
@@ -345,6 +352,7 @@
 [Velvet] method Velvet.Hooks.UseState`1(System.Func`1[T]): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
+[Velvet] method Velvet.Hooks.UseSubmit(): Velvet.SubmitFunction
 [Velvet] method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
 [Velvet] method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object?): T
 [Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object?): T
@@ -376,6 +384,7 @@
 [Velvet] method Velvet.Router.GoForward(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.SubmitAsync(System.Object?, Velvet.SubmitOptions?, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.SearchParams.Append(System.String, System.String): System.Void
 [Velvet] method Velvet.SearchParams.Get(System.String): System.String?
 [Velvet] method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
@@ -423,6 +432,9 @@
 [Velvet] method Velvet.StyleVariantClass.IsResponsive(Velvet.StyleVariantKind): System.Boolean
 [Velvet] method Velvet.StyleVariantClass.IsVariant(System.String?): System.Boolean
 [Velvet] method Velvet.StyleVariantClass.TryParse(System.String?, Velvet.StyleVariantKind&, System.String?&): System.Boolean
+[Velvet] method Velvet.SubmitFunction.BeginInvoke(System.Object?, Velvet.SubmitOptions?, System.AsyncCallback~, System.Object~): System.IAsyncResult~
+[Velvet] method Velvet.SubmitFunction.EndInvoke(System.IAsyncResult~): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.SubmitFunction.Invoke(System.Object?, Velvet.SubmitOptions?): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.TransitionStarter.Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
 [Velvet] method Velvet.TransitionStarter.GetHashCode(): System.Int32
@@ -497,7 +509,7 @@
 [Velvet] method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode?[]?, System.String?): Velvet.ContextProviderNode`1[T]
 [Velvet] method Velvet.V.RadioButton(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.RadioButtonGroup(System.String?, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String]?, System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean): Velvet.RouteDefinition
+[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean, System.Func`3[Velvet.RouteActionContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?): Velvet.RouteDefinition
 [Velvet] method Velvet.V.RouterProvider(Velvet.Router, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
 [Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
@@ -829,6 +841,9 @@
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Variables: TVariables?
+[Velvet] property Velvet.NavigationState.FormAction: System.String?
+[Velvet] property Velvet.NavigationState.FormData: System.Object?
+[Velvet] property Velvet.NavigationState.FormMethod: System.String?
 [Velvet] property Velvet.NavigationState.Location: Velvet.RouterLocation?
 [Velvet] property Velvet.NavigationState.State: Velvet.NavigationLifecycle
 [Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
@@ -851,10 +866,15 @@
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.RouteActionContext.FormData: System.Object?
+[Velvet] property Velvet.RouteActionContext.Method: System.String
+[Velvet] property Velvet.RouteActionContext.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] property Velvet.RouteActionContext.Path: System.String?
 [Velvet] property Velvet.RouteBlockerState.Location: Velvet.RouterLocation?
 [Velvet] property Velvet.RouteBlockerState.Proceed: System.Action?
 [Velvet] property Velvet.RouteBlockerState.Reset: System.Action?
 [Velvet] property Velvet.RouteBlockerState.Status: Velvet.RouteBlockerStatus
+[Velvet] property Velvet.RouteDefinition.Action: System.Func`3[Velvet.RouteActionContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?
 [Velvet] property Velvet.RouteDefinition.CaseSensitive: System.Boolean
 [Velvet] property Velvet.RouteDefinition.Children: Velvet.RouteDefinition[]?
 [Velvet] property Velvet.RouteDefinition.Element: Velvet.ComponentNode?
@@ -875,6 +895,7 @@
 [Velvet] property Velvet.Router.CanGoBack: System.Boolean
 [Velvet] property Velvet.Router.CanGoForward: System.Boolean
 [Velvet] property Velvet.Router.Current: Velvet.Router?
+[Velvet] property Velvet.Router.CurrentActionData: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Object]
 [Velvet] property Velvet.Router.CurrentLoaderData: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Object]
 [Velvet] property Velvet.Router.CurrentLoaderErrors: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Exception]
 [Velvet] property Velvet.Router.CurrentLocation: Velvet.RouterLocation?
@@ -925,6 +946,9 @@
 [Velvet] property Velvet.StyleTransitionConfig.Stiffness: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Type: Velvet.TransitionType
 [Velvet] property Velvet.StyleTransitionConfig.When: Velvet.TransitionWhen
+[Velvet] property Velvet.SubmitOptions.Action: System.String?
+[Velvet] property Velvet.SubmitOptions.Method: System.String
+[Velvet] property Velvet.SubmitOptions.Replace: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SuspenseNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.SuspenseNode.Fallback: Velvet.VNode
 [Velvet] property Velvet.TextFieldSettings.IsDelayed: System.Nullable`1[System.Boolean]
@@ -1083,6 +1107,7 @@
 [Velvet] type Velvet.PureAttribute
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.ResolvedFont
+[Velvet] type Velvet.RouteActionContext
 [Velvet] type Velvet.RouteBlockerManager
 [Velvet] type Velvet.RouteBlockerState
 [Velvet] type Velvet.RouteBlockerStatus
@@ -1119,6 +1144,8 @@
 [Velvet] type Velvet.StyleTransitionConfig
 [Velvet] type Velvet.StyleVariantClass
 [Velvet] type Velvet.StyleVariantKind
+[Velvet] type Velvet.SubmitFunction
+[Velvet] type Velvet.SubmitOptions
 [Velvet] type Velvet.SuspenseNode
 [Velvet] type Velvet.TextFieldSettings
 [Velvet] type Velvet.TextNode

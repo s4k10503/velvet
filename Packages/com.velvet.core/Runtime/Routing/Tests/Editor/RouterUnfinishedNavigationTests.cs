@@ -206,6 +206,8 @@ namespace Velvet.Tests
                 "A Loader's own cancellation callback must not take down the navigation superseding its round");
         }
 
+        // GREEN_ON_BASE(refactor): the base also takes the disposed router out of Router.Current.
+        // Current can now name an earlier router still alive, so the case asks whether it names this one.
         [Test]
         public void Given_AParkedLoadersCancellationCallbackThatThrows_When_TheRouterIsDisposed_Then_TheTeardownStillCompletes()
         {
@@ -237,8 +239,8 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"threw={caught != null} current={(Router.Current == null ? "none" : "set")}",
-                Is.EqualTo("threw=False current=none"),
+            Assert.That($"threw={caught != null} current={ReferenceEquals(Router.Current, router)}",
+                Is.EqualTo("threw=False current=False"),
                 "A Loader's own cancellation callback must not take down the teardown that ends its round");
         }
 

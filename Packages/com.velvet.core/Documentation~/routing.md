@@ -78,8 +78,11 @@ navigation is sequenced against it.
 that never commits. Loaders of one navigation all start before any of them is awaited, so the matched
 chain's loaders — a parent layout's and its child's — run concurrently rather than one after the next.
 
-Stepping `GoBack` / `GoForward` runs the destination route's loaders as a push to it does: React Router
-keeps no loader data per history entry either.
+A navigation runs only the loaders React Router's default `shouldRevalidate` would. A route at the same
+place in the committed chain, over the same pathname — the layouts above a changed child — keeps its data
+and its loader's token. The loader runs again when the search changes, when the URL is the one already
+committed, after a route action, and where the route holds no settled data yet. Stepping `GoBack` /
+`GoForward` decides the same way as a push: React Router keeps no loader data per history entry either.
 
 A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
 belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
@@ -157,29 +160,54 @@ public static class Product
 value throws, and `Hooks.UseAsyncError` returns the exception beneath it; without one the exception
 propagates to the nearest error boundary. Any number of `V.Await` may read one `Deferred<T>`.
 
+## Route actions
+
+A route's `action` is React Router's route `action`: it runs for a submission, and its result is what
+`Hooks.UseActionData` returns. `Hooks.UseSubmit()` is `useSubmit()`, handing back a `SubmitFunction` that
+takes the form data and a `SubmitOptions` (`Method`, `Action`, `Replace`); `Router.SubmitAsync` is the
+same submission for a host object with no component to hook from. With no `Action` named, a submission
+goes to the route the submitting component renders in, with the current query string — for an index
+route, with a bare `index` in front of it — as a `<Form>` with no `action` does.
+
+- The method defaults to `get`, which runs no action: it navigates to the action's path with the form
+  data, an `ISearchParams`, as the query string.
+- Any other method — `post`, `put`, `patch`, `delete` — calls the action of the route the path matches:
+  the deepest route with a path, or the index route when the query string holds a bare `index`. The
+  action receives a `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the
+  `FormData` as it was handed to the submit function.
+- Every matched loader then runs, and the location commits with the action's result keyed to its route.
+  The next navigation that commits clears it.
+- An action that throws, and a route with no action, commit the exception as that route's error, rendered
+  by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, and
+  no action data commits.
+- A mutation submitted to the location already committed replaces that history entry, unless its action
+  fails or `Replace` says otherwise, as React Router's does.
+
 ## Pending UI
 
 `Hooks.UseNavigation()` is `useNavigation()`, returning `NavigationState`:
 
-- `State` is `NavigationLifecycle.Loading` from the moment a navigation has matched a route until it
-  commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that matches none never
-  reports `Loading`.
-- `Location` is the location being navigated **to** while `State` is `Loading` — resolved, so it
+- `State` is `NavigationLifecycle.Submitting` from the moment a submission other than `get` has matched
+  a route until its action returns, `NavigationLifecycle.Loading` from the moment a navigation has
+  matched a route until it commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that
+  matches none never reports either.
+- `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.
+- `FormMethod`, `FormAction` and `FormData` describe the submission in flight, a `get` one included, and
+  are null while `State` is `Idle` or the navigation in flight is not a submission.
 
 `Router.PendingLocation` is the same destination read imperatively, for a host object that has no
 component to hook from.
 
 ## Where this deviates from React Router
 
-**No route actions.** Velvet has no form-submission model: a route declares no action, nothing reads
-an action's result, and `NavigationLifecycle` therefore has no `submitting` beside its two values.
-
 **Guards.** A route's `guard` and `redirectTo` are declarative properties of the route with no React
 Router counterpart, where the same job there is a `redirect` thrown from a loader or from middleware. A
-guard runs after the blocker, and its redirect is not put to the blocker, as React Router does not put a
-loader's redirect to its blocker; [routing-blockers.md](routing-blockers.md) owns where the blocker sits.
+guard runs after the blocker and before an action, and its redirect is not put to the blocker, as React
+Router does not put a loader's redirect to its blocker; [routing-blockers.md](routing-blockers.md) owns
+where the blocker sits. A submission a guard redirects reaches the target as a plain navigation, running
+no action, as React Router's redirect out of an action does.
 
 **No URL.** There is no browser to own the address bar, so `Router` is `createMemoryRouter`'s
 counterpart and holds its own history stack, which grows without a bound as a memory history's does.
