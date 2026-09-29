@@ -65,6 +65,23 @@ namespace Velvet.Tests
             Assert.That(_host.Root.ClassListContains(VelvetStyleUtilities.DarkThemeClass), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps every root bound on a panel following the theme.
+        [Test]
+        public void Given_TwoRootsBound_When_DarkModeTurnsOn_Then_TheFirstStillCarriesTheDarkClass()
+        {
+            // Arrange — binding the second must leave the first's binding in place.
+            _host = new HeadlessEditorPanelHost();
+            using var second = new HeadlessEditorPanelHost();
+            VelvetStyleUtilities.BindThemeTo(_host.Root);
+            VelvetStyleUtilities.BindThemeTo(second.Root);
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That(_host.Root.ClassListContains(VelvetStyleUtilities.DarkThemeClass), Is.True);
+        }
+
         [Test]
         public void Given_TheSheetAttachedToTheRootsOfPanelsSinceDisposed_When_CollectionRuns_Then_MostOfThoseRootsAreCollected()
         {
