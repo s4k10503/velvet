@@ -126,7 +126,7 @@
         "hooks": [
           {
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_unproven_head.py\"",
-            "timeout": 25.0,
+            "timeout": 45.0,
             "type": "command"
           }
         ],

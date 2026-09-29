@@ -40,14 +40,16 @@ settle = load_module()
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
-            fork=False, failing_runs=(), behind_release=None, long_lived_head=False):
+            fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs=(),
+            required=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
                                held_by_worktree=held_by_worktree,
                                unpublished_release=unpublished_release, draft=draft,
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
-                               behind_release=behind_release, long_lived_head=long_lived_head)
+                               behind_release=behind_release, long_lived_head=long_lived_head,
+                               runs=runs, required=required)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -201,7 +203,7 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork")
+    "Fabricated", "sha after branch base draft merge_state results holds held fork runs")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -211,6 +213,13 @@ SUITES_RAN = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "pass"},
 SUITES_SKIPPED = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "skipping"},
                             {"name": "Unity tests (PlayMode)", "bucket": "skipping"}]
 
+# The head that was called mergeable: `Source generators` had finished green, and `Test` was pending,
+# so none of its jobs had put a check on the head.
+GENERATOR_CHECKS = [{"name": "Required checks (generators)", "bucket": "pass"},
+                    {"name": "Source generators (dotnet)", "bucket": "pass"}]
+GENERATORS_DONE = {"name": "Source generators", "status": "completed", "conclusion": "success"}
+TEST_PENDING = {"name": "Test", "status": "pending", "conclusion": None}
+
 # The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
 # for anything else, so a case posing another base reads it green.
 RED = "1.x"
@@ -218,30 +227,36 @@ RED = "1.x"
 # The base whose newest release commit is `RELEASED`, dating 2.1.0. No case poses it for anything else.
 RELEASING = "3.x"
 
+# What every base in the tables below requires, unless a case hands `fabricated_readings` another
+# answer for it.
+REQUIRED = ("Required checks (Unity)",)
+
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None):
+              held=False, moved=False, fork=False, base="main", branch=None, runs=()):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork)
+                      held=held, fork=fork, runs=runs)
 
 
-def base_state(held, base, red=(RED,), releasing=(RELEASING,)):
-    """What `project_state` answers for one base, with each base in `red` failing at `BROKE` and
-    each in `releasing` last released at `RELEASED`.
+def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
+    """What `project_state` answers for one base, with each base in `red` failing at `BROKE`, each
+    in `releasing` last released at `RELEASED`, and each requiring what `required` maps it to, or
+    `REQUIRED`.
 
     The attributes the decision reads rather than settle.ProjectState itself, for the reason
     `fabricated_readings` gives about the pull request.
     """
     return types.SimpleNamespace(held=held, unpublished_release=None,
                                  red=[failing()] if base in red else [],
-                                 release=(RELEASED, "2.1.0") if base in releasing else None)
+                                 release=(RELEASED, "2.1.0") if base in releasing else None,
+                                 required=(required or {}).get(base, REQUIRED))
 
 
 @contextlib.contextmanager
-def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
+def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -261,15 +276,18 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
                 draft=states[number].draft, merge_state=states[number].merge_state,
                 fork=states[number].fork)),
             ("checks", lambda _project, sha: by_sha[sha].results),
+            ("head_runs", lambda _project, sha: by_sha[sha].runs),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
                 else sha in by_branch[branch].holds)),
             ("project_state", lambda _project, base: base_state(
                 {state.branch for state in states.values() if state.held}, base, red,
-                releasing)),
+                releasing, required)),
         ):
-            stack.enter_context(mock.patch.object(settle, name, answer))
+            # `create` so the readings still answer on a tree without one of these names, where the
+            # alternative is a case that stops before it disagrees.
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         yield stack
 
 
@@ -364,6 +382,8 @@ class ReadinessTests(unittest.TestCase):
         13: fabricate(13, base=RED, holds=(BROKE,), results=SUITES_SKIPPED),
         14: fabricate(14, base=RELEASING),
         15: fabricate(15, base=RELEASING, holds=(RELEASED,)),
+        16: fabricate(16, runs=(TEST_PENDING,)),
+        17: fabricate(17, results=GENERATOR_CHECKS),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -397,6 +417,126 @@ class ReadinessTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(polled(table), {592})
+
+
+class ExpectedCheckTests(unittest.TestCase):
+    """A head is not green on the checks it lists while it is still owed others."""
+
+    def test_Given_EveryListedCheckPassedAndARunNotStarted_When_Decided_Then_TheRunIsNamed(self):
+        # Arrange — the required context has reported, so the run is all that is left to refuse on.
+        states = {1: fabricate(1, runs=(GENERATORS_DONE, TEST_PENDING))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs not finished at 0000000: Test (pending)"])
+
+    def test_Given_EveryListedCheckPassedAndARequiredOneNeverReported_When_Decided_Then_ItIsNamed(self):
+        # Arrange — every run has finished, so the absent context is all that is left to refuse on.
+        states = {1: fabricate(1, results=GENERATOR_CHECKS, runs=(GENERATORS_DONE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided,
+                         ["required by main and not reported at 0000000: Required checks (Unity)"])
+
+    def test_Given_NoCheckYetAndARunQueued_When_Decided_Then_ItIsNotReadAsNeverTriggered(self):
+        # Arrange
+        states = {1: fabricate(1, results=[], runs=(TEST_PENDING,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual([reason for reason in decided if "never triggered" in reason], [])
+
+    # GREEN_ON_BASE(characterization): the base merges a head no ruleset asks anything more of.
+    # What it pins is that neither reading is a wall: requiring the aggregates whatever the ruleset
+    # says, or counting a completed run as unfinished, reddens it.
+    def test_Given_ABaseRequiringNothingAndAWorkflowThatNeverStarted_When_Decided_Then_NothingBlocks(self):
+        # Arrange — `Test` has no run at all on this head, the way a path filter leaves one.
+        states = {1: fabricate(1, base="4.x", results=GENERATOR_CHECKS, runs=(GENERATORS_DONE,))}
+
+        # Act
+        with fabricated_readings(states, required={"4.x": ()}):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AHeadWhoseRunHasNotStarted_When_TheWatcherPolls_Then_ItIsNotRecordedAsReady(self):
+        # Arrange
+        table = {1: fabricate(1, runs=(TEST_PENDING,))}
+
+        # Act / Assert
+        self.assertEqual(polled(table), set())
+
+    def test_Given_ABase_When_ItsStateIsRead_Then_ItCarriesWhatItsRulesetsRequire(self):
+        # Arrange — answered for 2.x alone, so a reading that asks about another base raises.
+        rules = [{"type": "pull_request", "parameters": {}},
+                 {"type": "required_status_checks", "parameters": {"required_status_checks": [
+                     {"context": "Required checks (generators)"},
+                     {"context": "Required checks (Unity)"}]}}]
+        answers = {"repos/owner/name/rules/branches/2.x?per_page=100": rules}
+        with contextlib.ExitStack() as stack:
+            for name, answer in (("gh_git", lambda *_: ""),
+                                 ("repository", lambda *_: "owner/name"),
+                                 ("worktree_branches", lambda *_: set()),
+                                 ("rest_json", lambda path: answers[path] if "/rules/" in path
+                                  else {"workflow_runs": []}),
+                                 ("release_commit", lambda *_: None)):
+                stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
+                                                  lambda *_, **__: None))
+
+            # Act
+            state = settle.project_state(Path("."), "2.x")
+
+        # Assert
+        self.assertEqual(getattr(state, "required", None),
+                         ["Required checks (Unity)", "Required checks (generators)"])
+
+    def test_Given_RulesFillingAWholePage_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the listing carries no total, so a full page is read as one that may have
+        # dropped a rule.
+        rules = [{"type": "pull_request", "parameters": {}}] * 100
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: rules))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.required_contexts, Path("."), "main")
+
+    def test_Given_AHead_When_ItsRunsAreRead_Then_ThePathNamesItsShaAndAPageSize(self):
+        # Arrange
+        asked = []
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(
+                settle, "rest_json",
+                lambda path: (asked.append(path), {"total_count": 0, "workflow_runs": []})[1]))
+
+            # Act
+            settle.head_runs(Path("."), GREEN)
+
+        # Assert
+        self.assertEqual(asked, [f"repos/owner/name/actions/runs?head_sha={GREEN}&per_page=100"])
+
+    def test_Given_ARunsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the run that fell off the page could be the one still going.
+        truncated = {"total_count": 2, "workflow_runs": [GENERATORS_DONE]}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: truncated))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.head_runs, Path("."), GREEN)
 
 
 class HeartbeatDuringAPollTests(unittest.TestCase):
@@ -1056,6 +1196,8 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
+    # GREEN_ON_BASE(characterization): a branch behind a green base merges on the base as well.
+    # Its readings gained the head's workflow runs, answered as none, which the base does not read.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -1067,11 +1209,12 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("repository", lambda *_: "owner/name"),
                 ("pull_request", lambda *_: state),
                 ("checks", lambda *_: PASSING),
+                ("head_runs", lambda *_: []),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
-                stack.enter_context(mock.patch.object(settle, name, answer))
+                stack.enter_context(mock.patch.object(settle, name, answer, create=True))
 
             # Act
             decided = settle.blocking_reasons(Path("."), 1).reasons
@@ -1079,6 +1222,8 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    # GREEN_ON_BASE(characterization): the base keeps the one failing workflow as well.
+    # Its listing now answers the rules reading too, which the base does not take.
     def test_Given_OneRequiredWorkflowFailedOnTheBase_When_ItsStateIsRead_Then_ThatOneIsKept(self):
         # Arrange — a base other than main, so a reading that asks about main answers wrong here.
         payloads = {"test.yml": {"workflow_runs": [workflow_run(1, "success", GREEN)]},
@@ -1089,6 +1234,8 @@ class RedBaseMergeTests(unittest.TestCase):
         asked = []
 
         def listing(path):
+            if "/rules/branches/" in path:
+                return []
             asked.append(path)
             return payloads[path.split("/actions/workflows/")[1].split("/")[0]]
 
@@ -1116,7 +1263,8 @@ def project_readings(release_commit):
         for name, answer in (("gh_git", lambda *_: ""),
                              ("repository", lambda *_: "owner/name"),
                              ("worktree_branches", lambda *_: set()),
-                             ("rest_json", lambda _path: {"workflow_runs": []})):
+                             ("rest_json", lambda path: [] if "/rules/branches/" in path
+                              else {"workflow_runs": []})):
             stack.enter_context(mock.patch.object(settle, name, answer))
         stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                               lambda *_, **__: None))

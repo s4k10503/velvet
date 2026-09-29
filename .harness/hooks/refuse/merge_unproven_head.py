@@ -15,6 +15,10 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
+A list whose every check passed is refused too while the head still has a workflow run to finish or
+lacks a context its base requires, both read inside the same pair of head readings;
+`scripts/pr/expected_checks.py` owns why both are read.
+
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
 head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
@@ -32,6 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             program_invocations, unexpanded)
 import repository
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import expected_checks
 
 
 HOOK_TOOLS = {"Bash"}
@@ -81,6 +88,28 @@ def checks_of(cwd, number):
     return listed
 
 
+def head_runs(cwd, sha):
+    """Every workflow run whose head is `sha`, or None where they could not all be read."""
+    payload = gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)])
+    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
+    if not isinstance(runs, list) or payload.get("total_count", len(runs)) > len(runs) or not all(
+            isinstance(run, dict) for run in runs):
+        return None
+    return runs
+
+
+def required_contexts(cwd, number):
+    """(base, the contexts its rulesets require), the contexts None where either went unread."""
+    payload = gh_json(cwd, ["pr", "view", *([number] if number else []), "--json", "baseRefName"])
+    base = payload.get("baseRefName") if isinstance(payload, dict) else None
+    if not (isinstance(base, str) and base):
+        return "its base", None
+    rules = gh_json(cwd, ["api", expected_checks.rules_path("{owner}/{repo}", base)])
+    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+        return base, None
+    return base, expected_checks.required(rules)
+
+
 def merges(command):
     """The operands of each `gh pr merge` in the command."""
     return program_invocations(command, "gh", ("pr", "merge"))
@@ -105,6 +134,8 @@ def unproven(asked, cwd):
             continue
 
         listed = checks_of(cwd, number)
+        runs = head_runs(cwd, before)
+        base, required = required_contexts(cwd, number)
         after = head_sha(cwd, number)
 
         # Past the first reading a reading that failed is refused, where the arm above lets one
@@ -118,13 +149,26 @@ def unproven(asked, cwd):
             found.append((label, f"head moved from {before[:7]} to {after[:7]} while its checks were read"))
         elif listed is None:
             found.append((label, f"the check list for {before[:7]} could not be read"))
-        elif not listed:
-            found.append((label, f"no check ran for {before[:7]}: a workflow was never triggered for it"))
+        elif runs is None:
+            found.append((label, f"the workflow runs of {before[:7]} could not all be read"))
+        elif required is None:
+            found.append((label, f"which checks {base} requires could not be read"))
         else:
+            waiting = expected_checks.unfinished(runs)
+            absent = expected_checks.absent(required, (entry["name"] for entry in listed))
             unfinished = sorted(entry["name"] for entry in listed
                                 if entry["bucket"] not in TERMINAL_PASS)
+            if not listed and not waiting:
+                found.append((label, f"no check ran for {before[:7]}: a workflow was never "
+                                     f"triggered for it"))
+            elif absent:
+                found.append((label, "required by {} and not reported at {}: {}".format(
+                    base, before[:7], ", ".join(absent))))
             if unfinished:
                 found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+            if waiting:
+                found.append((label, "workflow runs not finished at {}: {}".format(
+                    before[:7], ", ".join(waiting))))
     return found
 
 

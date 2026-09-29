@@ -31,6 +31,8 @@ Nine preconditions:
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
   merged branch from an abandoned one.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
+  Nor is a list complete while the head still has a workflow run to finish or lacks a context its
+  base requires; `expected_checks.py` owns why both are read.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty`.
@@ -90,6 +92,9 @@ published_check = load_published_check()
 red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
 
 long_lived = load_by_path(Path(__file__).resolve().with_name("long_lived.py"), "long_lived")
+
+expected_checks = load_by_path(Path(__file__).resolve().with_name("expected_checks.py"),
+                               "expected_checks")
 
 # The three files this writes and two hooks read; watcher_state.py owns their format.
 watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
@@ -245,6 +250,23 @@ def checks(project, sha):
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)))
 
 
+def head_runs(project, sha):
+    """Every workflow run whose head is `sha`."""
+    payload = rest_json(expected_checks.runs_path(repository(project), sha))
+    listed = payload.get("workflow_runs", [])
+    whole_page(payload, listed, "workflow runs")
+    return listed
+
+
+def required_contexts(project, base):
+    """The status-check contexts the rulesets over `base` require."""
+    contexts = expected_checks.required(rest_json(expected_checks.rules_path(repository(project),
+                                                                             base)))
+    if contexts is None:
+        raise RuntimeError(f"the rules over {base} filled a whole page, so one may not have been read")
+    return contexts
+
+
 def whole_page(payload, listed, kind):
     """Raises when a payload says more entries exist for this head than its page carried.
 
@@ -325,7 +347,7 @@ def contains_commit(project, branch, sha):
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
-                 long_lived_head):
+                 long_lived_head, runs, required):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -333,7 +355,8 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     none either: a caller that stopped supplying it would read as a green base. It holds the base's
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
-    for the reason `unpublished_release` gives.
+    for the reason `unpublished_release` gives, and neither do `runs`, the head's workflow runs, and
+    `required`, the contexts the base requires.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -356,8 +379,15 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")
 
-    if not results:
+    waiting = expected_checks.unfinished(runs)
+    absent = expected_checks.absent(required, (entry["name"] for entry in results))
+    if not results and not waiting:
         reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
+    elif absent:
+        reasons.append("required by {} and not reported at {}: {}".format(
+            base, after[:7], ", ".join(absent)))
+    if waiting:
+        reasons.append("workflow runs not finished at {}: {}".format(after[:7], ", ".join(waiting)))
 
     unfinished = [entry["name"] for entry in results
                   if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
@@ -393,11 +423,12 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
 Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
 
 # The readings that answer for something wider than one pull request: the publication state of a
-# base, its newest release commit, its required workflows' last push verdicts, and the branches this
+# base, its newest release commit, its required workflows' last push verdicts, the contexts its
+# rulesets require, and the branches this
 # checkout's worktrees hold, which is the repository's. Taken once per base and handed down, so a watcher poll over N pull
-# requests costs one fetch, one `git ls-remote --tags` and one runs listing per workflow per base
-# rather than N of each.
-ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release")
+# requests costs one fetch, one `git ls-remote --tags`, one rules listing and one runs listing per
+# workflow per base rather than N of each.
+ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release required")
 
 
 def project_state(project, base):
@@ -411,7 +442,7 @@ def project_state(project, base):
            if failing]
     return ProjectState(worktree_branches(project),
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
-                        red, release_commit(project, base))
+                        red, release_commit(project, base), required_contexts(project, base))
 
 
 def release_commit(project, base):
@@ -445,6 +476,7 @@ def blocking_reasons(project, number, base=None, states=None):
         unpublished = published_check.unpublished_reason(
             project, f"origin/{target}", fetch=False, result=before.sha)
     results = checks(project, before.sha)
+    runs = head_runs(project, before.sha)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -462,7 +494,9 @@ def blocking_reasons(project, number, base=None, states=None):
                                  fork=before.fork,
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
-                                 long_lived_head=long_lived_head),
+                                 long_lived_head=long_lived_head,
+                                 runs=runs,
+                                 required=state.required),
                     after, before.branch, results, target)
 
 

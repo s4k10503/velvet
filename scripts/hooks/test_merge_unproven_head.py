@@ -39,17 +39,24 @@ MERGE = "gh pr merge 7 --squash --delete-branch"
 HEAD = "abcdef1234567890"
 MOVED = "0123456789abcdef"
 
-# The three readings the guard makes, so a verdict of `ALLOWED` can be told from a guard that never
+# The readings the guard makes — the head, the check list, the head's workflow runs, its base, the
+# base's rules, the head again — so a verdict of `ALLOWED` can be told from a guard that never
 # recognised the command and read nothing.
-READINGS = 3
+READINGS = 6
 
-# `gh` as this fixture answers it: the head, then the check list, then the head again, told apart by
-# a call count kept on disk. An empty `VELVET_HEAD_AGAIN` is the second head reading failing.
+# `gh` as this fixture answers it. The base, the runs and the rules are told apart by what is asked,
+# and the two head readings by a call count kept on disk. An empty `VELVET_HEAD_AGAIN` is the second
+# head reading failing.
 STUB_GH = """#!/bin/sh
 calls=0
 [ -r "$VELVET_CALLS" ] && read calls < "$VELVET_CALLS"
 calls=$((calls + 1))
 printf '%s\\n' "$calls" > "$VELVET_CALLS"
+case "$*" in
+  *baseRefName*) printf '{"baseRefName":"main"}\\n'; exit 0 ;;
+  *actions/runs*) printf '%s' "$VELVET_RUNS"; exit "$VELVET_RUNS_EXIT" ;;
+  *rules/branches/main*) printf '%s' "$VELVET_RULES"; exit "$VELVET_RULES_EXIT" ;;
+esac
 case "$2" in
   view)
     [ "$calls" -eq 1 ] && { printf '{"headRefOid":"%s"}\\n' "$VELVET_HEAD"; exit 0; }
@@ -67,6 +74,15 @@ SKIPPED = json.dumps([{"name": "Required checks (Unity)", "bucket": "skipping"}]
 PENDING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pending"}])
 BUCKETLESS = json.dumps([{"name": "Required checks (Unity)"}])
 
+NO_RUNS = json.dumps({"total_count": 0, "workflow_runs": []})
+TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [{"name": "Test", "status": "pending"}]})
+
+REQUIRING_UNITY = json.dumps([{"type": "required_status_checks", "parameters": {
+    "required_status_checks": [{"context": "Required checks (Unity)"}]}}])
+REQUIRING_BOTH = json.dumps([{"type": "required_status_checks", "parameters": {
+    "required_status_checks": [{"context": "Required checks (Unity)"},
+                               {"context": "Required checks (generators)"}]}}])
+
 
 class HeadCheckVerdictTests(unittest.TestCase):
     """Putting `MERGE` to the guard against a `gh` that answers as each case arranges."""
@@ -82,13 +98,16 @@ class HeadCheckVerdictTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def ask(self, checks=PASSING, head_again=HEAD, checks_exit=0, head_again_payload=None):
+    def ask(self, checks=PASSING, head_again=HEAD, checks_exit=0, head_again_payload=None,
+            runs=NO_RUNS, runs_exit=0, rules=REQUIRING_UNITY, rules_exit=0):
         """What the guard does with `MERGE`, against a `gh` answering as given."""
         environment = dict(os.environ)
         environment["PATH"] = str(self.binaries) + os.pathsep + environment.get("PATH", "")
         environment.update(VELVET_CALLS=str(self.calls), VELVET_HEAD=HEAD,
                            VELVET_HEAD_AGAIN=head_again, VELVET_CHECKS=checks,
                            VELVET_CHECKS_EXIT=str(checks_exit),
+                           VELVET_RUNS=runs, VELVET_RUNS_EXIT=str(runs_exit),
+                           VELVET_RULES=rules, VELVET_RULES_EXIT=str(rules_exit),
                            VELVET_HEAD_AGAIN_PAYLOAD=(head_again_payload if head_again_payload is not None
                                                       else json.dumps({"headRefOid": head_again})))
         event = {"tool_name": "Bash", "cwd": str(self.root), "tool_input": {"command": MERGE}}
@@ -187,6 +206,61 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode,
                           f"the check list for {HEAD[:7]} could not be read" in result.stderr),
+                         (REFUSED, True))
+
+
+    def test_Given_EveryCheckPassingAndARunNotStarted_When_TheMergeIsAsked_Then_TheRunIsNamed(self):
+        # Arrange / Act — the check list is what a head whose `Test` run is pending carries.
+        result = self.ask(checks=PASSING, runs=TEST_PENDING)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"workflow runs not finished at {HEAD[:7]}: Test (pending)" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_EveryCheckPassingAndARequiredOneNeverReported_When_TheMergeIsAsked_Then_ItIsNamed(self):
+        # Arrange / Act
+        result = self.ask(checks=PASSING, rules=REQUIRING_BOTH)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"required by main and not reported at {HEAD[:7]}: Required checks "
+                          f"(generators)" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_NoCheckYetAndARunPending_When_TheMergeIsAsked_Then_ItIsNotCalledNeverTriggered(self):
+        # Arrange / Act
+        result = self.ask(checks="[]", runs=TEST_PENDING)
+
+        # Assert — the exit code rides along because a guard allowing the merge says nothing either.
+        self.assertEqual((result.returncode, "never triggered" in result.stderr), (REFUSED, False))
+
+    def test_Given_ARunsReadingThatFails_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
+        # Arrange / Act
+        result = self.ask(runs="", runs_exit=1)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"the workflow runs of {HEAD[:7]} could not all be read" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_ARunsPageCarryingLessThanItsTotal_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
+        # Arrange / Act — the run that fell off the page could be the one still going.
+        result = self.ask(runs=json.dumps({"total_count": 2, "workflow_runs": [
+            {"name": "Source generators", "status": "completed"}]}))
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          f"the workflow runs of {HEAD[:7]} could not all be read" in result.stderr),
+                         (REFUSED, True))
+
+    def test_Given_ARulesReadingThatFails_When_TheMergeIsAsked_Then_TheUnreadRulesAreNamed(self):
+        # Arrange / Act
+        result = self.ask(rules="", rules_exit=1)
+
+        # Assert
+        self.assertEqual((result.returncode,
+                          "which checks main requires could not be read" in result.stderr),
                          (REFUSED, True))
 
 
