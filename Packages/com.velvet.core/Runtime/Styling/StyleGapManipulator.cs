@@ -85,7 +85,7 @@ namespace Velvet
     // The wrap half-margin path's container negative margin (-gap/2 on all four sides)
     // bleeds gap/2 OUTWARD, overlapping the container's own siblings or its parent's padding by
     // gap/2. Non-wrap containers never bleed (they write no container margin).
-    internal sealed class StyleGapManipulator : Manipulator
+    internal sealed class StyleGapManipulator : Manipulator, IChildClassWatcher
     {
         private static readonly HeldSlot[] s_marginSlots =
         {
@@ -132,7 +132,8 @@ namespace Velvet
         // left since the last GeometryChangedEvent. See ResolveDirection and IsWrap.
         private bool _wrapFromMarker;
         private bool _directionFromClass;
-        private bool _classLeft;
+        private bool _directionClassLeft;
+        private bool _wrapClassLeft;
 
         public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
         {
@@ -145,6 +146,14 @@ namespace Velvet
         {
             _spec = spec;
             // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
+            _hasSignature = false;
+            Apply();
+        }
+
+        // A class of a child's own changed: a space margin may now give way to it, or a display:none child
+        // take no gap slot.
+        public void Reapply()
+        {
             _hasSignature = false;
             Apply();
         }
@@ -193,7 +202,8 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt)
         {
-            _classLeft = false;
+            _directionClassLeft = false;
+            _wrapClassLeft = false;
             Apply();
         }
 
@@ -213,7 +223,7 @@ namespace Velvet
                 return;
             }
 
-            var wrap = _spec.HasGap && IsWrap(container);
+            var wrap = (_spec.HasColumnGap || _spec.HasRowGap) && IsWrap(container);
             var gapSlot = ResolveGapSlot(container);
             var signature = ComputeSignature(container, wrap, gapSlot);
             if (_hasSignature && signature == _lastSignature)
@@ -225,9 +235,11 @@ namespace Velvet
             ResetStaleMargined(container);
             _margined.Clear();
 
-            var lastIndex = StyleOutOfFlowChild.LastInFlowIndex(container);
+            // Tailwind's `:last-child` counts an absolutely positioned child, so the space rule reads the raw index;
+            // CSS gap spaces only boxed in-flow children, so the gap reads its own count.
+            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
             var count = container.childCount;
-            var logicalIndex = 0;
+            var gapIndex = 0;
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
@@ -240,20 +252,33 @@ namespace Velvet
                 {
                     continue;
                 }
-                SumMargins(child, logicalIndex, lastIndex, wrap, gapSlot);
+                System.Array.Clear(_margins, 0, _margins.Length);
+                System.Array.Clear(_wanted, 0, _wanted.Length);
+                System.Array.Clear(_gapWanted, 0, _gapWanted.Length);
+                // A display:none child has no box, so CSS gap neither spaces it nor counts it as the first.
+                if (!StyleOutOfFlowChild.HasNoBox(child))
+                {
+                    SumGap(gapIndex, wrap, gapSlot);
+                    gapIndex++;
+                }
+                if (i != lastIndex)
+                {
+                    SumSpace(child);
+                }
                 WriteMargins(child);
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
-                logicalIndex++;
             }
 
+            var box = ClipPathLayoutBox.Of(container);
             if (wrap)
             {
-                HoldMargins(ClipPathLayoutBox.Of(container), new StyleLength(-_spec.Gap / 2f));
+                HoldContainerAxis(box, HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap);
+                HoldContainerAxis(box, HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap);
             }
             else if (_containerHeld)
             {
-                HandBackMargins(ClipPathLayoutBox.Of(container));
+                HandBackMargins(box);
             }
             _containerHeld = wrap;
 
@@ -261,29 +286,48 @@ namespace Velvet
             _hasSignature = true;
         }
 
-        // Fills _margins / _wanted with what the gap and the two space axes ask of the in-flow child at
-        // logicalIndex. A space margin gives way to one the child's own classes set on that edge: a USS utility
-        // here, an arbitrary value through a yielding hold.
-        private void SumMargins(VisualElement child, int logicalIndex, int lastIndex, bool wrap, HeldSlot gapSlot)
+        // Adds what CSS gap asks of the boxed child at gapIndex. Without wrap only the main axis is spaced: the
+        // column gap along a row, the row gap down a column, each on every child but the first. Under wrap every
+        // child takes half of each gap on both edges of that axis.
+        private void SumGap(int gapIndex, bool wrap, HeldSlot gapSlot)
         {
-            System.Array.Clear(_margins, 0, _margins.Length);
-            System.Array.Clear(_wanted, 0, _wanted.Length);
-            System.Array.Clear(_gapWanted, 0, _gapWanted.Length);
             if (wrap)
             {
-                foreach (var slot in s_marginSlots)
-                {
-                    AddGap(slot, _spec.Gap / 2f);
-                }
+                AddGapAxis(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap / 2f);
+                AddGapAxis(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap / 2f);
+                return;
             }
-            else if (_spec.HasGap && logicalIndex != 0)
-            {
-                AddGap(gapSlot, _spec.Gap);
-            }
-            if (logicalIndex == lastIndex)
+            if (gapIndex == 0)
             {
                 return;
             }
+            if (gapSlot == HeldSlot.MarginLeft || gapSlot == HeldSlot.MarginRight)
+            {
+                AddGapAxis(gapSlot, gapSlot, _spec.HasColumnGap, _spec.ColumnGap);
+            }
+            else
+            {
+                AddGapAxis(gapSlot, gapSlot, _spec.HasRowGap, _spec.RowGap);
+            }
+        }
+
+        private void AddGapAxis(HeldSlot start, HeldSlot end, bool has, float value)
+        {
+            if (!has)
+            {
+                return;
+            }
+            AddGap(start, value);
+            if (end != start)
+            {
+                AddGap(end, value);
+            }
+        }
+
+        // Adds Tailwind's space margins for a child that is not the last. A space margin gives way to one the
+        // child's own classes set on that edge: a USS utility here, an arbitrary value through a yielding hold.
+        private void SumSpace(VisualElement child)
+        {
             var space = _spec.Space;
             AddSpace(child, space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight, space.X);
             AddSpace(child, space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom, space.Y);
@@ -379,12 +423,18 @@ namespace Velvet
             }
         }
 
-        private static void HoldMargins(VisualElement element, StyleLength value)
+        // The wrap path's negative margin on one axis of the container: -gap/2 on both edges, or nothing held
+        // there when that axis has no gap.
+        private static void HoldContainerAxis(VisualElement box, HeldSlot start, HeldSlot end, bool has, float gap)
         {
-            foreach (var slot in s_marginSlots)
+            if (!has)
             {
-                StyleArbitraryValueResolver.Hold(element, slot, value);
+                StyleArbitraryValueResolver.HandBackIfHeld(box, start);
+                StyleArbitraryValueResolver.HandBackIfHeld(box, end);
+                return;
             }
+            StyleArbitraryValueResolver.Hold(box, start, new StyleLength(-gap / 2f));
+            StyleArbitraryValueResolver.Hold(box, end, new StyleLength(-gap / 2f));
         }
 
         private static void HandBackMargins(VisualElement element)
@@ -404,21 +454,22 @@ namespace Velvet
         private static int ComputeSignature(VisualElement container, bool wrap, HeldSlot gapSlot)
             => StyleOutOfFlowChild.HashChildSequence(wrap ? HeldSlotGroups.SlotCount : (int)gapSlot, container);
 
-        // The slot a non-wrap gap writes on every child but the first: the leading edge of its axis, or the
-        // trailing one when the resolved direction reverses that same axis, which keeps it between the
-        // visually adjacent pair. GapAxis.Horizontal / Vertical fix the axis; GapAxis.Auto (plain gap-*)
-        // follows the resolved one. A space-* marker never reaches it: CSS gap has none.
+        // The slot a non-wrap gap writes on every child but the first: the leading edge of the main axis, or the
+        // trailing one when the resolved direction reverses it, which keeps it between the visually adjacent
+        // pair. A space-* marker never reaches it: CSS gap has none.
         private HeldSlot ResolveGapSlot(VisualElement container)
         {
-            var direction = ResolveDirection(container);
-            var horizontal = _spec.Axis == GapAxis.Horizontal
-                || (_spec.Axis == GapAxis.Auto
-                    && (direction == FlexDirection.Row || direction == FlexDirection.RowReverse));
-            if (horizontal)
+            switch (ResolveDirection(container))
             {
-                return direction == FlexDirection.RowReverse ? HeldSlot.MarginRight : HeldSlot.MarginLeft;
+                case FlexDirection.Row:
+                    return HeldSlot.MarginLeft;
+                case FlexDirection.RowReverse:
+                    return HeldSlot.MarginRight;
+                case FlexDirection.ColumnReverse:
+                    return HeldSlot.MarginBottom;
+                default:
+                    return HeldSlot.MarginTop;
             }
-            return direction == FlexDirection.ColumnReverse ? HeldSlot.MarginBottom : HeldSlot.MarginTop;
         }
 
         // The class verdict first (StyleFlexDirectionResolver). Once every direction/display class has left the
@@ -436,9 +487,9 @@ namespace Velvet
             }
             if (hadClass)
             {
-                _classLeft = true;
+                _directionClassLeft = true;
             }
-            if (_classLeft)
+            if (_directionClassLeft)
             {
                 return container.style.flexDirection.value;
             }
@@ -474,9 +525,9 @@ namespace Velvet
             }
             if (hadMarker)
             {
-                _classLeft = true;
+                _wrapClassLeft = true;
             }
-            if (_classLeft)
+            if (_wrapClassLeft)
             {
                 return container.style.flexWrap.value != Wrap.NoWrap;
             }

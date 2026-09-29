@@ -307,10 +307,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_GapXWrap_When_Reconciled_Then_StillSpacesBothAxesViaHalfMargin()
+        public void Given_GapXWrap_When_Reconciled_Then_OnlyTheColumnAxisTakesHalfMargins()
         {
-            // Arrange — under wrap the axis hint is irrelevant: wrapping requires both axes spaced,
-            // so gap-x-4 + flex-wrap uses the same four-side half-margin polyfill as plain gap.
+            // Arrange — gap-x-4 is CSS column-gap alone: under wrap it spaces the items along each line, and
+            // with no row-gap nothing separates the wrapped lines.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row flex-wrap gap-x-4", 3) };
 
@@ -318,10 +318,106 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var container = Container(scope.Root);
 
+            // Assert — the child's and the container's horizontal halves, and neither one's top edge.
+            var child = container[0].style;
+            Assert.That(
+                (child.marginLeft.value.value, child.marginRight.value.value, child.marginTop.keyword,
+                    container.style.marginLeft.value.value, container.style.marginTop.keyword),
+                Is.EqualTo((Half4, Half4, StyleKeyword.Null, -Half4, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AWrappingRowWithDifferentColumnAndRowGaps_When_Reconciled_Then_EachAxisTakesItsOwnHalf()
+        {
+            // Arrange — CSS keeps column-gap and row-gap apart; the later gap-y-2 must not replace gap-x-4.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row flex-wrap gap-x-4 gap-y-2", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
             // Assert
-            AssertFourSideMargin(container[0], Half4, "child[0]");
-            AssertFourSideMargin(container[2], Half4, "child[2]");
-            AssertFourSideMargin(container, -Half4, "container");
+            var child = container[0].style;
+            Assert.That((child.marginLeft.value.value, child.marginTop.value.value), Is.EqualTo((Half4, Space2 / 2f)));
+        }
+
+        [Test]
+        public void Given_ARowWithAColumnAndARowGap_When_Reconciled_Then_OnlyTheColumnGapSpacesTheLine()
+        {
+            // Arrange — a single-line row is spaced by column-gap; row-gap only separates wrapped lines.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row gap-x-4 gap-y-2", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That((container[1].style.marginLeft.value.value, container[1].style.marginTop.keyword),
+                Is.EqualTo((Space4, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ARowWhoseFirstChildIsHidden_When_Reconciled_Then_TheFirstShownChildTakesNoGap()
+        {
+            // Arrange — a display:none child has no box, so CSS gap neither spaces it nor counts it as the first.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-4", children: new VNode[]
+                {
+                    V.Div(className: "hidden"),
+                    V.Div(className: "child"),
+                    V.Div(className: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert — the next child still takes the gap, so the gap did run.
+            Assert.That((container[1].style.marginLeft.keyword, container[2].style.marginLeft.value.value),
+                Is.EqualTo((StyleKeyword.Null, Space4)));
+        }
+
+        [Test]
+        public void Given_ASpaceRowWhoseLastChildIsAbsolute_When_Reconciled_Then_TheChildBeforeItTakesTheMargin()
+        {
+            // Arrange — Tailwind's `:not(:last-child)` counts an absolutely positioned last child.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row space-x-2", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child"),
+                    V.Div(className: "absolute"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space2));
+        }
+
+        [Test]
+        public void Given_ASpaceYColumnWithAZeroBottomMarginPayload_When_Reconciled_Then_ThePayloadWins()
+        {
+            // Arrange — `[&>*]:mb-0` outranks Tailwind's zero-specificity space rule on the edge both set.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col space-y-4 [&>*]:mb-0", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert — nothing inline, so the payload's class applies.
+            Assert.That(container[0].style.marginBottom.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base already lets flex-nowrap outrank flex-wrap, the order
@@ -1053,11 +1149,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexColReverseGapX4_When_Reconciled_Then_TheHorizontalGapStaysOnTheLeadingEdge()
+        public void Given_FlexColReverseGapX4_When_Reconciled_Then_TheColumnGapSpacesNothing()
         {
-            // Arrange — the direction half of per-axis independence: gap-x-4 (explicit Horizontal axis) on
-            // a flex-col-reverse container must NOT flip, because flex-col-reverse only reverses the
-            // VERTICAL axis. The gap stays on margin-left.
+            // Arrange — gap-x-4 is column-gap alone, which a single-line column never uses: the items stack on
+            // the row axis.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-col-reverse gap-x-4", 3) };
 
@@ -1066,15 +1161,14 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            Assert.That((container[1].style.marginLeft.keyword, container[1].style.marginBottom.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
-        public void Given_FlexRowReverseGapY4_When_Reconciled_Then_TheVerticalGapStaysOnTheLeadingEdge()
+        public void Given_FlexRowReverseGapY4_When_Reconciled_Then_TheRowGapSpacesNothing()
         {
-            // Arrange — the symmetric direction half: gap-y-4 (explicit Vertical axis) on a
-            // flex-row-reverse container must NOT flip, because flex-row-reverse only reverses the
-            // HORIZONTAL axis. The gap stays on margin-top.
+            // Arrange — the symmetric case: gap-y-4 is row-gap alone, which a single-line row never uses.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse gap-y-4", 3) };
 
@@ -1083,7 +1177,8 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
+            Assert.That((container[1].style.marginTop.keyword, container[1].style.marginRight.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
@@ -1825,12 +1920,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGapXRowReverseContainer_When_ToggledToColumnReverse_Then_TheMarginMovesFromRightToLeft()
+        public void Given_AGapXRowReverseContainer_When_ToggledToColumnReverse_Then_TheColumnGapLeavesTheItems()
         {
-            // Arrange — the cross-axis hole: an explicit gap-x-4 (Horizontal axis) container starts
-            // flex-row-reverse (trailing = margin-right), then patches straight to flex-col-reverse — no
-            // row-family class survives the patch at all, so a same-family-only check (as opposed to one
-            // resolved verdict) would find nothing to update and keep the stale Right edge.
+            // Arrange — the cross-axis hole: a gap-x-4 container starts flex-row-reverse (trailing =
+            // margin-right), then patches straight to flex-col-reverse — no row-family class survives the patch
+            // at all, so a same-family-only check would keep the stale Right edge. In a single-line column the
+            // column gap spaces nothing.
             using var store = new ClassNameStore("flex-row-reverse gap-x-4");
             s_classNameStore = store;
             using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
@@ -1838,19 +1933,17 @@ namespace Velvet.Tests
             Tick();
             Tick();
             var b = Root.Q<Label>("b");
-            Assume.That(b.style.marginRight.value.value, Is.EqualTo(16f),
-                "Precondition: the row-reverse container settled on the trailing (right) edge");
+            var spaced = b.style.marginRight.value.value;
 
-            // Act — patch straight to flex-col-reverse (no synthesized event); gap-x-4 stays horizontal
-            // regardless, but flex-row-reverse is gone so the reversed bit must re-derive from scratch.
+            // Act — patch straight to flex-col-reverse (no synthesized event).
             store.Set("flex-col-reverse gap-x-4");
             scheduler.DrainImmediateForTest();
             Tick();
             Tick();
 
-            // Assert — the margin moved back to the leading (left) edge; flex-col-reverse does not reverse
-            // the horizontal axis.
-            Assert.That(b.style.marginLeft.value.value, Is.EqualTo(16f));
+            // Assert — the row's gap before the patch rides along.
+            Assert.That((spaced, b.style.marginRight.keyword, b.style.marginLeft.keyword),
+                Is.EqualTo((16f, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
@@ -1900,6 +1993,42 @@ namespace Velvet.Tests
 
             // Assert — the row's gap before the change rides along, since a child never spaced reads 0 too.
             Assert.That((spaced, b.style.marginTop.value.value), Is.EqualTo((16f, 16f)));
+        }
+
+        [Component]
+        private static VNode ClassDrivenLabel()
+        {
+            var className = Hooks.UseStore(s_classNameStore, s => s.ClassName);
+            return V.Label(name: "a", className: className, text: "a");
+        }
+
+        [Component]
+        private static VNode SpaceColumnWithAClassDrivenChild()
+            => V.Div(name: "col", className: "flex flex-col space-y-4", children: new VNode[]
+            {
+                V.Component(ClassDrivenLabel, key: "a"),
+                V.Label(name: "b", text: "b"),
+            });
+
+        [Test]
+        public void Given_ASpaceColumn_When_AChildRerendersAloneWithABottomMarginClass_Then_TheClassWins()
+        {
+            // Arrange — only the child's own component re-renders, so the column's patch never runs; the class
+            // change on the child is what has to bring the space margin's yield back into question.
+            using var store = new ClassNameStore("child");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(SpaceColumnWithAClassDrivenChild, key: "col"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            var a = Root.Q<Label>("a");
+            var spaced = a.style.marginBottom.value.value;
+
+            // Act
+            store.Set("child mb-8");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the space margin before the child's own class arrived rides along.
+            Assert.That((spaced, a.style.marginBottom.keyword), Is.EqualTo((16f, StyleKeyword.Null)));
         }
 
         [Component]

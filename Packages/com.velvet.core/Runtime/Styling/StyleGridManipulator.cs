@@ -137,7 +137,7 @@ namespace Velvet
                 ? Mathf.Max(0f, (width - (n - 1) * _spec.ColumnGap) / n - WrapSafetyPx)
                 : 0f;
 
-            var lastIndex = StyleOutOfFlowChild.LastInFlowIndex(container);
+            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
             var count = container.childCount;
             var logicalIndex = 0;
             for (var i = 0; i < count; i++)
@@ -151,7 +151,7 @@ namespace Velvet
                 }
                 var col = logicalIndex % n;
                 var row = logicalIndex / n;
-                var spaced = logicalIndex != lastIndex;
+                var spaced = i != lastIndex;
                 var spaceX = spaced ? _spec.Space.X : 0f;
                 var spaceY = spaced ? _spec.Space.Y : 0f;
                 var left = col == 0 ? 0f : _spec.ColumnGap;

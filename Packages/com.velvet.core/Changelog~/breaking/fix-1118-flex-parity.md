@@ -1,14 +1,15 @@
 ### Changed
 
 - `space-x-*` / `space-y-*` follow Tailwind v4's margin rule rather than CSS `gap`: `margin-right` /
-  `margin-bottom` on every in-flow child except the last, moved to `margin-left` / `margin-top` by
+  `margin-bottom` on every in-flow child except the last child — an absolutely positioned one counting, as
+  it does for `:last-child` — moved to `margin-left` / `margin-top` by
   `space-x-reverse` / `space-y-reverse`, whatever the container's direction and whether or not it wraps.
   They used to put `margin-left` / `margin-top` on every child except the first, move to the trailing
   edge on their own in a reversed container, and switch to the half-margin strategy under `flex-wrap`. A
   reversed row that relied on `space-x-4` alone adds `space-x-reverse`, as it would with Tailwind.
 
 - `divide-x-*` / `divide-y-*` follow Tailwind v4's divider rule: `border-right` / `border-bottom` on every
-  in-flow child except the last, moved to `border-left` / `border-top` by `divide-x-reverse` /
+  in-flow child except the last child, counted the same way, moved to `border-left` / `border-top` by `divide-x-reverse` /
   `divide-y-reverse`. They used to rule the left / top edge of every child except the first and move to
   the trailing edge on their own in a reversed container. A `divide-{color}` colors all four edges of a
   divided child, as Tailwind's `border-color` does, where it colored only the divider's edge.
@@ -26,3 +27,9 @@
   the later of the two used to replace the other. On a `grid` container, `space-x-*` is a margin on the
   children taken out of their column width rather than the grid's column gap, and `space-y-*` a margin
   rather than its row gap.
+
+- `gap-x-*` and `gap-y-*` are CSS's `column-gap` and `row-gap`, kept apart. A single-line row takes only the
+  column gap and a single-line column only the row gap; under `flex-wrap` each axis takes half of its own gap.
+  The last gap token used to replace the other, `gap-x-*` used to indent the children of a column and
+  `gap-y-*` to push down those of a row, and `flex-wrap gap-x-4 gap-y-2` spaced both axes by the row gap.
+  A `display: none` child no longer takes a gap slot.

@@ -20,10 +20,10 @@ namespace Velvet
         // StyleFlexDirectionResolver / StyleGapManipulator.IsWrap already use for flex-direction / flex-wrap.
         internal static bool IsOutOfFlow(VisualElement child)
         {
-            // The filter bounds-spacer is always out of flow (position:absolute) and must never occupy a
-            // gap / grid / divide slot; recognize it by its marker so it does not need the "absolute" utility
-            // class (which would leak into a user's has-[.absolute]: selector).
-            if (SilhouetteBoundsSpacer.IsSpacer(child))
+            // The filter bounds-spacer and the ring overlay are always out of flow (position:absolute) and must
+            // never occupy a gap / grid / divide slot; recognize them by their markers so they do not need the
+            // "absolute" utility class (which would leak into a user's has-[.absolute]: selector).
+            if (IsInserted(child))
             {
                 return true;
             }
@@ -76,20 +76,31 @@ namespace Velvet
             }
         }
 
-        // The logical index of container's last in-flow child, -1 when there is none — the child the
-        // manipulators following Tailwind's `> :not(:last-child)` exempt.
-        internal static int LastInFlowIndex(VisualElement container)
+        // The index of container's last child that is the author's, -1 when there is none — the child the
+        // manipulators following Tailwind's `> :not(:last-child)` exempt. `:last-child` counts an absolutely
+        // positioned child, so only the children Velvet inserts itself (the filter bounds-spacer and the ring
+        // overlay) are passed over.
+        internal static int LastSpacedIndex(VisualElement container)
         {
-            var last = -1;
-            var count = container.childCount;
-            for (var i = 0; i < count; i++)
+            for (var i = container.childCount - 1; i >= 0; i--)
             {
-                if (!IsOutOfFlow(container[i]))
+                var child = container[i];
+                if (!IsInserted(child))
                 {
-                    last++;
+                    return i;
                 }
             }
-            return last;
+            return -1;
         }
+
+        // A child Velvet inserts itself rather than one the author wrote: the filter bounds-spacer or a ring
+        // overlay. Both are absolutely positioned, which off a panel only these markers can tell.
+        private static bool IsInserted(VisualElement child)
+            => SilhouetteBoundsSpacer.IsSpacer(child) || child.ClassListContains(RingOverlay.MarkerClass);
+
+        // Whether child is display:none — through the hidden utility or an inline display — and so has no box
+        // for CSS gap to space or to count as the first.
+        internal static bool HasNoBox(VisualElement child)
+            => child.ClassListContains("hidden") || child.style.display == DisplayStyle.None;
     }
 }

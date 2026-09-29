@@ -45,15 +45,17 @@ Two family-specific facts survive that:
 No USS rule realises `gap-*`: a per-container `StyleGapManipulator` writes the inter-child
 **leading** margin — `margin-left` for a row, `margin-top` for a column — on every child **except the
 first**. The result is spacing strictly **between** children, like CSS `gap`: no leading, trailing, or
-outer-edge margin. `gap-x-*` and `gap-y-*` are CSS's `column-gap` and `row-gap`. The `:first-child` /
-`:last-child` selectors are the `first:` / `last:` variants — see
-[styling-variants.md](styling-variants.md).
+outer-edge margin. `gap-x-*` is CSS's `column-gap` and `gap-y-*` its `row-gap`, and `gap-*` sets both. A
+single-line row is spaced by the column gap and a single-line column by the row gap; the other one only
+separates wrapped lines (see "`flex-wrap` and `grid`" below). A `display: none` child (`hidden`) has no box,
+so it takes no gap and does not count as the first. The `:first-child` / `:last-child` selectors are the
+`first:` / `last:` variants — see [styling-variants.md](styling-variants.md).
 
-| Utility | Axis | Effect |
+| Utility | CSS | Effect without wrap |
 |---|---|---|
-| `gap-*`   | follows `flex-direction` | row → horizontal, column → vertical; the leading edge of that axis (`margin-left` / `margin-top`) — or the trailing edge (`margin-right` / `margin-bottom`) on a reversed container, see "Reversed containers" below |
-| `gap-x-*` | always horizontal | `margin-left` between columns, or `margin-right` on a `flex-row-reverse` container |
-| `gap-y-*` | always vertical | `margin-top` between rows, or `margin-bottom` on a `flex-col-reverse` container |
+| `gap-*`   | `gap` | the leading edge of the main axis (`margin-left` in a row, `margin-top` in a column) — or the trailing edge (`margin-right` / `margin-bottom`) on a reversed container, see "Reversed containers" below |
+| `gap-x-*` | `column-gap` | `margin-left` between the items of a row, or `margin-right` on a `flex-row-reverse` container; nothing in a column |
+| `gap-y-*` | `row-gap` | `margin-top` between the items of a column, or `margin-bottom` on a `flex-col-reverse` container; nothing in a row |
 
 ```csharp
 // Horizontal spacing between columns, no trailing gap after the last item.
@@ -69,8 +71,9 @@ The numeric scale (`gap-0-5`, `gap-1`, `gap-1-5`, `gap-2`, … mapping to the `-
 
 Tailwind's `space-x-*` / `space-y-*` (and their negative forms, `-space-x-4`) take the same scale and the
 same manipulator, but they are Tailwind v4's margin rule rather than CSS `gap`: `margin-right`
-(`margin-inline-end`) / `margin-bottom` (`margin-block-end`) on every child **except the last**, whatever
-the container's direction, and on a wrapping container too rather than the wrap strategy below. A gap and
+(`margin-inline-end`) / `margin-bottom` (`margin-block-end`) on every child **except the last** — an
+absolutely positioned child counts as the last, as it does for `:last-child` — whatever the container's
+direction, and on a wrapping container too rather than the wrap strategy below. A gap and
 a space on one element both apply, as they do in Tailwind: on an edge both write, the two add up.
 
 Tailwind writes `space-*` and `divide-*` at zero specificity (`:where()`), so a class of the child's own
@@ -242,10 +245,10 @@ switches strategy when the container wraps (a `space-*` keeps its single margin,
 | Container | Strategy | Children | Container |
 |---|---|---|---|
 | non-wrap (common) | leading margin | `gap` on the leading edge of all-but-first child | none |
-| `flex-wrap` | half-margin | `gap/2` on **all four sides** of **every** child | `-gap/2` on all four sides |
+| `flex-wrap` | half-margin | half the column gap on the left and right of **every** child, half the row gap on its top and bottom | the same halves, negated |
 
-Under wrap, any two adjacent items (either axis, including across wrapped lines) are separated by
-`gap/2 + gap/2 == gap`, and the container's negative margin cancels the children's outer-edge
+Under wrap, any two adjacent items (either axis, including across wrapped lines) are separated by two
+halves of that axis's gap, and the container's negative margin cancels the children's outer-edge
 half-margins so content stays flush to the container edge. A reversed container (e.g.
 `flex-row-reverse flex-wrap`) still uses this same symmetric half-margin polyfill — direction never
 changes which edges wrap spaces, only non-wrap's single leading/trailing edge choice.
@@ -300,15 +303,15 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   tell base from gap. Only native UITK `gap` composes the two. Workaround: use padding, an inner
   wrapper, or a different axis when a child needs its own margin on the gap edge. Margins on a
   **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
-  is untouched. (Under the wrap half-margin path every side belongs to the gap, so any explicit child
-  margin is overwritten on all four sides.)
+  is untouched. (Under the wrap half-margin path every side a gap spaces belongs to it, so an explicit child
+  margin there is overwritten.)
 - **Wrap path overwrites the container's own margin.** The wrap half-margin path writes the
-  container's own four margins to `-gap/2`, so an explicit container margin (e.g. `m-4` on the same
+  container's own margins to the negated halves, so an explicit container margin (e.g. `m-4` on the same
   element that carries `flex-wrap gap-4`) is **overwritten** while a wrapping gap is active, and comes
   back when it stops. Non-wrap containers never touch the container's own margin. Workaround: put the
   margin on an **outer wrapper** around the wrapping gap container.
-- **Wrap outer bleed.** The wrap path's container negative margin (`-gap/2` on all four sides) bleeds
-  `gap/2` **outward**, overlapping the container's own siblings or its parent's padding by `gap/2`. The
+- **Wrap outer bleed.** The wrap path's container negative margin (half of each gap) bleeds that half
+  **outward**, overlapping the container's own siblings or its parent's padding by it. The
   half-margin trick has no way to cancel only the *inner* outer-edge halves; only native UITK `gap`
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.

@@ -19,26 +19,29 @@ namespace Velvet
         }
     }
 
-    // What StyleGapManipulator applies to one container: the gap (a gap-* token; HasGap false when there is
-    // none) and the space margins. The two are independent, as they are in Tailwind, where the gap is the
-    // container's own property and the space a margin on its children.
+    // What StyleGapManipulator applies to one container: CSS's column-gap and row-gap (gap-x-* / gap-y-*, both
+    // from gap-*; each Has flag false when no token sets it) and the space margins. The gaps and the space are
+    // independent, as they are in Tailwind, where the gap is the container's own property and the space a
+    // margin on its children.
     internal readonly struct GapSpec
     {
-        public readonly bool HasGap;
-        public readonly float Gap;
-        public readonly GapAxis Axis;
+        public readonly bool HasColumnGap;
+        public readonly float ColumnGap;
+        public readonly bool HasRowGap;
+        public readonly float RowGap;
         public readonly SpaceSpec Space;
 
-        public GapSpec(bool hasGap, float gap, GapAxis axis, SpaceSpec space)
+        public GapSpec(bool hasColumnGap, float columnGap, bool hasRowGap, float rowGap, SpaceSpec space)
         {
-            HasGap = hasGap;
-            Gap = gap;
-            Axis = axis;
+            HasColumnGap = hasColumnGap;
+            ColumnGap = columnGap;
+            HasRowGap = hasRowGap;
+            RowGap = rowGap;
             Space = space;
         }
 
         // Whether this spec writes anything: a space-x-0 / space-y-0 writes no margin.
-        public bool IsActive => HasGap || Space.X != 0f || Space.Y != 0f;
+        public bool IsActive => HasColumnGap || HasRowGap || Space.X != 0f || Space.Y != 0f;
     }
 
     // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
@@ -169,33 +172,26 @@ namespace Velvet
             }
         }
 
-        // Scans classNames for the last gap-* utility (later classes win, matching CSS
-        // cascade order) and returns it. Returns false when no gap utility is present; a space-* token is
-        // not a gap.
-        public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)
+        // Which of CSS's column-gap and row-gap the gap-* tokens in classNames set: gap-x-* the first, gap-y-*
+        // the second, a plain gap-* both. The values are StyleGridClass.ExtractGaps'; a space-* token is not a
+        // gap.
+        public static void ExtractGapAxes(string[] classNames, out bool hasColumnGap, out bool hasRowGap)
         {
-            gap = 0f;
-            axis = GapAxis.Auto;
-            if (classNames == null)
-            {
-                return false;
-            }
-
-            var found = false;
+            hasColumnGap = false;
+            hasRowGap = false;
             foreach (var cls in classNames)
             {
                 if (IsSpaceToken(cls))
                 {
                     continue;
                 }
-                if (TryParse(cls, out var g, out var a))
+                if (!TryParse(cls, out _, out var axis))
                 {
-                    gap = g;
-                    axis = a;
-                    found = true;
+                    continue;
                 }
+                hasColumnGap |= axis != GapAxis.Vertical;
+                hasRowGap |= axis != GapAxis.Horizontal;
             }
-            return found;
         }
 
         // The last space-x-* and the last space-y-* value in classNames, each 0 when absent.
@@ -235,8 +231,9 @@ namespace Velvet
         // The whole spec StyleGapManipulator runs on.
         public static GapSpec Extract(string[] classNames)
         {
-            var hasGap = TryExtract(classNames, out var gap, out var axis);
-            return new GapSpec(hasGap, gap, axis, ExtractSpaceSpec(classNames));
+            ExtractGapAxes(classNames, out var hasColumnGap, out var hasRowGap);
+            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
+            return new GapSpec(hasColumnGap, columnGap, hasRowGap, rowGap, ExtractSpaceSpec(classNames));
         }
     }
 }

@@ -321,7 +321,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADivideXRowWhoseChildCarriesARightBorderClass_When_Reconciled_Then_TheClassWidthWins()
         {
-            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-4
+            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-0
             // wins on its edge; the first child, which declares none, still takes the divider.
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
@@ -329,7 +329,7 @@ namespace Velvet.Tests
                 V.Div(className: "flex flex-row divide-x", children: new VNode[]
                 {
                     V.Div(className: "child"),
-                    V.Div(className: "child border-r-4"),
+                    V.Div(className: "child border-r-0"),
                     V.Div(className: "child"),
                 }),
             };
@@ -340,6 +340,28 @@ namespace Velvet.Tests
             // Assert
             Assert.That((scope.Root[0][0].style.borderRightWidth.value, scope.Root[0][1].style.borderRightWidth.keyword),
                 Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ADivideRowWhoseLastChildIsAbsolute_When_Reconciled_Then_TheChildBeforeItTakesTheDivider()
+        {
+            // Arrange — Tailwind's `:not(:last-child)` counts an absolutely positioned last child.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child"),
+                    V.Div(className: "absolute"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
         }
 
         [Test]

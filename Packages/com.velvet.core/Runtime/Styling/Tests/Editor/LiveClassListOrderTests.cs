@@ -333,9 +333,10 @@ namespace Velvet.Tests
                 "this reading resolves whichever clip token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list.
-        // What shows the case can fail is a `break` after the first match in StyleGapClass.TryExtract:
-        // measured, each arrangement then takes the gap it was handed first and the pair inverts.
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through
+        // the scan the gap manipulator now reads its gaps from too. What shows the case can fail is a `break`
+        // after the first match in StyleGridClass.ExtractGaps: each arrangement then takes the gap it was
+        // handed first and the pair inverts.
         [Test]
         [ReaderVerdict(LiveClassesReader)]
         public void Given_TwoGapTokensOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheGapTheReSyncResolvesIsTheOneAddedLast()
@@ -346,8 +347,8 @@ namespace Velvet.Tests
             var reversed = Carrying("gap-8", "gap-4");
 
             // Act
-            StyleGapClass.TryExtract(LiveClasses(added), out var fromAdded, out _);
-            StyleGapClass.TryExtract(LiveClasses(reversed), out var fromReversed, out _);
+            StyleGridClass.ExtractGaps(LiveClasses(added), out var fromAdded, out _);
+            StyleGridClass.ExtractGaps(LiveClasses(reversed), out var fromReversed, out _);
 
             // Assert — 16px and 32px are the shared spacing scale's own values for the two tokens.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((32f, 16f)),

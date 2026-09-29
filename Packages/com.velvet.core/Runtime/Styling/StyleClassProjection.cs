@@ -35,6 +35,12 @@ namespace Velvet
         // nothing.
         public static void Add(VisualElement element, string cls, int priority)
         {
+            AddToModel(element, cls, priority);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+        }
+
+        private static void AddToModel(VisualElement element, string cls, int priority)
+        {
             CornerRadiusFit.TrackClass(element, cls);
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model == null)
@@ -51,6 +57,12 @@ namespace Velvet
         }
 
         public static void Remove(VisualElement element, string cls, int priority)
+        {
+            RemoveFromModel(element, cls, priority);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+        }
+
+        private static void RemoveFromModel(VisualElement element, string cls, int priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model != null)

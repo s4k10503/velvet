@@ -52,26 +52,27 @@ namespace Velvet.Tests
         private T MountWidget<T>(string className) where T : VisualElement
             => MountAndResolve<T>(V.Custom<T>(className, ThreeLabels()));
 
+        // GREEN_ON_BASE(characterization): the base already reads the content container's direction rather
+        // than the widget's. What reddens it is the gap manipulator resolving its direction from the widget,
+        // which puts the row gap on margin-bottom.
         [Test]
-        public void Given_AReversedRowScrollView_When_AGapSpacesItsContent_Then_TheMarginSitsOnTheLeadingEdge()
+        public void Given_AReversedColumnScrollView_When_ARowGapSpacesItsContent_Then_TheMarginSitsOnTheLeadingEdge()
         {
-            // Arrange / Act
-            var scrollView = MountWidget<ScrollView>("flex flex-row-reverse gap-x-4");
+            // Arrange / Act — gap-y-4 is row-gap, which spaces the column the content container stacks in.
+            var scrollView = MountWidget<ScrollView>("flex flex-col-reverse gap-y-4");
             var content = scrollView.contentContainer;
-            Assume.That(scrollView.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
-                "Precondition: the panel resolved flex-row-reverse on the ScrollView's own box");
-            Assume.That(content.childCount, Is.EqualTo(3),
-                "Precondition: the spaced children reconcile into the content container");
 
-            // Assert — the content container is not reversed, so the boundary is a leading margin.
-            Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            // Assert — the content container is not reversed, so the boundary is a leading margin; the widget's
+            // own reversal rides along, since a panel that never resolved it would pass for either reason.
+            Assert.That((scrollView.resolvedStyle.flexDirection, content[1].style.marginTop.value.value),
+                Is.EqualTo((FlexDirection.ColumnReverse, Space4)));
         }
 
         [Test]
-        public void Given_AReversedRowScrollView_When_ADivideSeparatesItsContent_Then_TheBorderSitsOnTheEndEdge()
+        public void Given_AScrollView_When_ADivideSeparatesItsContent_Then_TheBorderLandsOnTheContentChildren()
         {
             // Arrange / Act
-            var scrollView = MountWidget<ScrollView>("flex flex-row-reverse divide-x divide-gray-200");
+            var scrollView = MountWidget<ScrollView>("flex divide-x divide-gray-200");
             var content = scrollView.contentContainer;
 
             // Assert — the divider lands on the content children, on the end edge its rule always uses; the
@@ -113,19 +114,19 @@ namespace Velvet.Tests
             Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
+        // GREEN_ON_BASE(characterization): the base already reads the Foldout's content container. What
+        // reddens it is the gap manipulator resolving its direction from the Foldout's own box.
         [Test]
-        public void Given_AReversedRowFoldout_When_AGapSpacesItsContent_Then_TheMarginSitsOnTheLeadingEdge()
+        public void Given_AReversedColumnFoldout_When_ARowGapSpacesItsContent_Then_TheMarginSitsOnTheLeadingEdge()
         {
             // Arrange / Act — the same mismatch on a widget that is not a ScrollView.
-            var foldout = MountWidget<Foldout>("flex flex-row-reverse gap-x-4");
+            var foldout = MountWidget<Foldout>("flex flex-col-reverse gap-y-4");
             var content = foldout.contentContainer;
-            Assume.That(foldout.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
-                "Precondition: the panel resolved flex-row-reverse on the Foldout's own box");
-            Assume.That(content.childCount, Is.EqualTo(3),
-                "Precondition: the spaced children reconcile into the Foldout's inner container");
 
             // Assert
-            Assert.That(content[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            Assert.That((foldout.resolvedStyle.flexDirection, content[1].style.marginTop.value.value),
+                Is.EqualTo((FlexDirection.ColumnReverse, Space4)));
         }
+
     }
 }

@@ -759,6 +759,10 @@ namespace Velvet
             // allocated: only an element one of them writes to gets one.
             public StyleHeldSlots? Holds;
 
+            // The containers that re-apply when a class of this element's own changes — see
+            // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
+            public List<IChildClassWatcher>? Watchers;
+
             public bool HasLayers => Count > 0;
 
             public void CollectLayers(List<StyleClassProjection.InlineLayer> into)
@@ -1201,6 +1205,37 @@ namespace Velvet
                 }
             }
             return false;
+        }
+
+        internal static void Watch(VisualElement element, IChildClassWatcher watcher)
+        {
+            var watchers = s_layers.GetValue(element, static _ => new LayerMap()).Watchers ??= new List<IChildClassWatcher>();
+            if (!watchers.Contains(watcher))
+            {
+                watchers.Add(watcher);
+            }
+        }
+
+        internal static void Unwatch(VisualElement element, IChildClassWatcher watcher)
+        {
+            s_layers.TryGetValue(element, out var map);
+            map?.Watchers?.Remove(watcher);
+        }
+
+        // Re-applies every container watching element after its class list changed. A copy is walked, because a
+        // re-apply can claim or release the element and so edit the list.
+        internal static void NotifyClassesChanged(VisualElement element)
+        {
+            s_layers.TryGetValue(element, out var map);
+            var watchers = map?.Watchers;
+            if (watchers == null)
+            {
+                return;
+            }
+            foreach (var watcher in watchers.ToArray())
+            {
+                watcher.Reapply();
+            }
         }
 
         // Hands back every slot held on element. For an element the reconciler removes: its claim is dropped

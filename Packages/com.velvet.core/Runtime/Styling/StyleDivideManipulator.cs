@@ -30,21 +30,20 @@ namespace Velvet
     // Child container. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer(target) — a
     // composite widget's inner box; else self.
     //
-    // Limitations: an explicit per-child border on the SAME edge the divider draws on (e.g. border-l on a
-    // child of a divide-x row) is OVERWRITTEN — this manipulator owns that edge, exactly as the gap
-    // manipulator owns its margin edge. A child whose border face is owned by a higher paint layer — a skew
+    // A child's own border width or color on an edge the divider writes (e.g. border-r-0 on a child of a
+    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild.
+    // Limitations: a child whose border face is owned by a higher paint layer — a skew
     // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
     // documented known limitation, mirroring the element-level border-dashed gate which defers to either).
     // An IMPLICIT (no divide-{color}) dashed divider takes its color from the divided child's would-be border
-    // color, captured and re-resolved on the CONTAINER's Apply (reconcile / GeometryChanged / attach) — the same
-    // container-Apply cadence the gap manipulator runs on. A child that re-renders on its own fiber alone, with
-    // no container Apply, keeps the last captured color until an unrelated container reconcile.
+    // color, captured and re-resolved on the CONTAINER's Apply (reconcile / GeometryChanged / attach, and a
+    // USS class of the child's own changing — see IChildClassWatcher) — the same cadence the gap manipulator runs on.
     //
     // Out-of-flow children (position: absolute) are excluded from the index walk — see
     // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
-    // PopLayout-pinned ghost, or an app-authored .absolute child) is not a layout sibling, so it neither
-    // draws a divider nor counts toward which of the remaining children is "last".
-    internal sealed class StyleDivideManipulator : Manipulator
+    // PopLayout-pinned ghost, or an app-authored .absolute child) draws no divider, but it counts toward which
+    // child is last, as `:last-child` counts it — see StyleOutOfFlowChild.LastSpacedIndex.
+    internal sealed class StyleDivideManipulator : Manipulator, IChildClassWatcher
     {
         private static readonly DivideEdge[] s_edges = (DivideEdge[])System.Enum.GetValues(typeof(DivideEdge));
 
@@ -83,6 +82,13 @@ namespace Velvet
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
+            _hasSignature = false;
+            Apply();
+        }
+
+        // A class of a child's own changed: its divider width or color may now give way to it.
+        public void Reapply()
+        {
             _hasSignature = false;
             Apply();
         }
@@ -163,22 +169,20 @@ namespace Velvet
             _bordered.Clear();
 
             var count = container.childCount;
-            var lastIndex = StyleOutOfFlowChild.LastInFlowIndex(container);
-            var logicalIndex = 0;
+            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
             for (var i = 0; i < count; i++)
             {
-                // An out-of-flow child is not a layout sibling, so it draws no divider and does not
-                // take the "last child" slot from the in-flow child before it.
+                // An out-of-flow child is not a layout sibling, so it draws no divider; it still takes the "last
+                // child" slot, as it does for Tailwind's `:not(:last-child)`.
                 if (StyleOutOfFlowChild.IsOutOfFlow(container[i]))
                 {
                     continue;
                 }
                 var child = ClipPathLayoutBox.InnerOf(container[i]);
-                var isDivider = logicalIndex != lastIndex;
+                var isDivider = i != lastIndex;
                 ApplyToChild(child, edge, isDivider);
                 StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);
-                logicalIndex++;
             }
 
             _lastSignature = signature;
