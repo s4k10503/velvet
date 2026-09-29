@@ -10,7 +10,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins which Motions a keyed AnimatePresence child's removal plays an exit on, and what its first mount
-    /// suppresses, for a keyed child that is the Motion itself or puts a Provider, a component, a memo, a
+    /// suppresses, for a keyed child that is the Motion itself or puts a Provider, a Fragment, a component, a memo, a
     /// Suspense, an element or another Motion around it: the Motions in the removed child's committed subtree
     /// exit and hold the child until they have, a coordinator's exit label and stagger reach the Motions that
     /// inherit its labels, an inner AnimatePresence's child is that presence's, and the presence's
@@ -175,6 +175,8 @@ namespace Velvet.Tests
                 animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f },
                 children: new[] { SlowMotion() }),
             "classic" => V.Component(ClassicRender, key: key),
+            "fragment" => V.Fragment(new[] { TimedMotion(null) }, key: key),
+            "fragment-pair" => V.Fragment(new[] { TimedMotion(null), V.Div(name: "sibling") }, key: key),
             "z-nested" => V.Div(key: key, children: new[]
             {
                 V.Div(className: "absolute z-10", children: new[] { TimedMotion(null) }),
@@ -406,6 +408,40 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((HasClass("child1", "opacity-0"), HasClass("child2", "opacity-0")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentAroundATimedMotion_When_TheKeyIsRemoved_Then_TheChildIsHeldForItsExit()
+        {
+            // Arrange — settled first, so the removal is from rest.
+            using var mounted = MountSettled("fragment", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert — the Fragment's element is held, and the Motion's own 300ms exit is what is playing on it.
+            Assert.That((HostChildCount, ItemDurationMs()), Is.EqualTo((1, 300f)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentOfTwoElementsExiting_When_ItsMotionsExitCompletes_Then_BothLeaveTogether()
+        {
+            // Arrange
+            using var mounted = MountSettled("fragment-pair", "a");
+            using var keys = s_keyStore;
+            keys.Set(string.Empty);
+            Drain(mounted);
+            var heldWhileExiting = HostChildCount;
+
+            // Act — well past the 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert — both of the Fragment's elements held while the exit played, then both gone, with
+            // onExitComplete fired once.
+            Assert.That((heldWhileExiting, HostChildCount, s_exitsCompleted), Is.EqualTo((2, 0, 1)));
         }
 
         // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.

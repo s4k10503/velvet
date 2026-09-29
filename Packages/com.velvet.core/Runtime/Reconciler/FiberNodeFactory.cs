@@ -742,19 +742,9 @@ namespace Velvet
                 var autoIndex = 0;
                 foreach (var child in children)
                 {
-                    switch (child)
+                    if (child == null)
                     {
-                        case null:
-                            continue;
-                        // By design: AnimatePresence's direct children must each be a
-                        // keyable element so enter/exit can be tracked per key. A FragmentNode has no key and
-                        // is intentionally NOT auto-expanded here — silently flattening it would let its items
-                        // share the Fragment's (absent) key and break exit tracking. Surface a clear LogError
-                        // pointing at the fix (use MotionNode directly) rather than guessing.
-                        case FragmentNode:
-                            FiberLogger.LogError("FiberNodeFactory",
-                                "FragmentNode is not supported as a direct child of AnimatePresence. Fragment children will not be expanded. Use MotionNode directly.");
-                            continue;
+                        continue;
                     }
 
                     if (child.Key != null && child.Key.StartsWith(AutoKeyPrefix))
