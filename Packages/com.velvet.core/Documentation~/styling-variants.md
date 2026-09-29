@@ -323,8 +323,7 @@ and so:
   fit, the fitted class radius replaces yours.
 - A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
   there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
-- A change of size refits at once rather than running a transition, and a change of class under
-  `transition-all` animates between the fitted radii rather than the declared ones.
+- A change of class under `transition-all` animates between the fitted radii rather than the declared ones.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
