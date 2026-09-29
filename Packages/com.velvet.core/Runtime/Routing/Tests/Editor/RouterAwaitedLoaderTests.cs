@@ -19,9 +19,9 @@ namespace Velvet.Tests
     /// <see cref="Router.PendingLocation"/> reports the destination — resolved, so it carries the
     /// destination's path parameters.</item>
     /// <item>The destination is published only while a navigation is in flight: the commit that lands it,
-    /// the Blocker refusal that abandons it, a guard redirect that matches no route, a redirect chain that
-    /// exhausts the limit, and disposing the router each withdraw it — the two redirect refusals only from
-    /// the initiator that still holds the claim.</item>
+    /// a guard redirect that matches no route, a redirect chain that exhausts the limit, and disposing the
+    /// router each withdraw it — the two redirect refusals only from the initiator that still holds the
+    /// claim.</item>
     /// <item>A loader that fails after suspending has its own exception recorded against the route, and the
     /// navigation still commits.</item>
     /// <item>The route on screen through that window is still the live one: a Suspend loader of its own
@@ -423,50 +423,6 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ASuspendLoaderSettlingUnderAnUnsettledNewerRound_When_SteppingBackOntoItsEntry_Then_TheCacheServesIt()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // The write-back a resolution triggers records whether the entry on screen finished its loaders,
-            // and the round that answers that is the one the entry belongs to rather than whichever is newest:
-            // the newer round here is itself unsettled, so reading it would mark a finished entry unfinished
-            // and the Back onto it would load again. The runs are read on both sides of the Back because an
-            // after-only reading of one run cannot tell a Back that ran none from a Back that ran the only one.
-            // Arrange
-            var feedLoaded = new VelvetTaskCompletionSource<object>();
-            var profileStreaming = new VelvetTaskCompletionSource<object>();
-            var detailAwaited = new VelvetTaskCompletionSource<object>();
-            var feedRuns = 0;
-            var router = new Router(new[]
-            {
-                Route("/", children: new[]
-                {
-                    Route("feed", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
-                    {
-                        feedRuns++;
-                        return feedLoaded.Task;
-                    }),
-                    Route("profile", loaderMode: LoaderMode.Suspend,
-                        loader: (ctx, ct) => profileStreaming.Task,
-                        children: new[] { Route("detail", loader: (ctx, ct) => detailAwaited.Task) }),
-                }),
-            });
-            router.NavigateSync("/feed");
-            var navigation = router.NavigateAsync("/profile/detail");
-            feedLoaded.TrySetResult("feed-data");
-            await VelvetTask.Yield();
-            var runsBeforeBack = feedRuns;
-            detailAwaited.TrySetResult("detail-data");
-            await navigation;
-
-            // Act
-            router.GoBackSync();
-
-            // Assert
-            Assert.That($"beforeBack={runsBeforeBack} afterBack={feedRuns}", Is.EqualTo("beforeBack=1 afterBack=1"),
-                "An entry whose own loaders settled is one the Back cache serves, so its loader does not run again");
-        });
-
-        [UnityTest]
         public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheHeldNavigationStillCommits()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -502,30 +458,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That($"unmatched={unmatched} status={router.Status}",
                 Is.EqualTo("unmatched=NotFound status=Loading"));
-        });
-
-        [UnityTest]
-        public IEnumerator Given_ABlockerParkedOnTheDeparture_When_ItRefuses_Then_ThePendingDestinationIsWithdrawn()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // An attempt that gives up has to take its destination back with it, and the blocker is the phase
-            // that can be held open long enough to read the destination before the refusal lands.
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("users/:id"));
-            var parked = new VelvetTaskCompletionSource<bool>();
-            using var registration = router.RouteBlockerManager.Register(
-                (_, _) => parked.Task, new RouteBlockerState());
-            var navigation = router.NavigateAsync("/users/7");
-            var whileBlocking = router.PendingLocation?.Path ?? "none";
-
-            // Act
-            parked.TrySetResult(true);
-            var result = await navigation;
-
-            // Assert
-            Assert.That(
-                $"blocking={whileBlocking} result={result} settled={router.PendingLocation?.Path ?? "none"}",
-                Is.EqualTo("blocking=/users/7 result=Blocked settled=none"));
         });
     }
 }

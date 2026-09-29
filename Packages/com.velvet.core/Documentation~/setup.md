@@ -39,12 +39,14 @@ So a screen built from a mixture renders with the right sizes, the right gaps, a
 working filters while every palette, layout and scale class does nothing. If `flex-row` leaves a
 container in a column while `gap-4` still spaces its children, the sheet is missing — not the class.
 
-`V.Mount` says so. When its target is on a panel, or once it is added to one, it looks for the sheet on
-the target and every ancestor, following `@import`s, so a theme or project stylesheet that imports
-`StyleUtilities.uss` counts, and so does a copy of the sheet an asset bundle carries. If none carries it,
-the mount logs a warning naming the target and pointing here. It warns once per run, however many mounts
-share the problem. It looks when the mount is made and when the target reaches a panel, and nowhere below
-the target, so attach the sheet before `V.Mount`, to the target or an ancestor of it.
+`V.Mount` says so. It looks for the sheet on the target and every ancestor, following `@import`s, so a
+theme or project stylesheet that imports `StyleUtilities.uss` counts, and so does a copy of the sheet an
+asset bundle carries. It looks when the target's panel next updates rather than at the call, and again
+after each time the target is added to a panel, so a sheet attached after `V.Mount` but before that update
+is found. If none carries it, the mount logs a warning naming the target and pointing here. It warns once
+per run, however many mounts share the problem. It looks nowhere below the target, so attach the sheet to
+the target or an ancestor of it. A `V.Portal` into an element you pass or register is looked at the same
+way, since that element can sit on a panel of its own.
 
 A project that leaves the sheet's holder out of its builds ([player-builds.md](player-builds.md)) gets no
 warning, in the editor or in a player: leaving the holder out says the sheet reaches the panels some other
@@ -52,7 +54,7 @@ way, or is not used.
 
 ## The supported path
 
-Attach the sheet to the element you mount onto, before mounting:
+Attach the sheet to the element you mount onto:
 
 ```csharp
 using Velvet;
@@ -104,6 +106,10 @@ scene route does not bring with it is the theme binding `AttachTo` performs — 
 
 Editor-time preview stories get the utilities from the preview window, so a story needs no call of its
 own — see [preview-tooling.md](preview-tooling.md).
+
+The panel Velvet creates for a `V.Portal(layer:)` or a `V.WorldSpace` gets the sheet when the portal's
+position on its declaring panel reaches it, from the portal's mount or its next render after that — see
+[portals.md](portals.md#screen-space-layers-vportallayer).
 
 ## Starter App document lifetime
 

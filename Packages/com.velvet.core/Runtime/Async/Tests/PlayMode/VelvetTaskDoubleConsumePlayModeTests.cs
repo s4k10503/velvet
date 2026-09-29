@@ -9,6 +9,8 @@ namespace Velvet.Tests
 {
     internal sealed class VelvetTaskDoubleConsumePlayModeTests
     {
+        static async VelvetTask<int> Relay(VelvetTaskCompletionSource<int> source) => await source.Task;
+
         [UnityTest]
         public IEnumerator Given_StoredPendingVelvetTask_When_CompletedAndAwaitedOnce_Then_ReturnsResult()
             => VelvetTask.ToCoroutine(async () =>
@@ -26,14 +28,16 @@ namespace Velvet.Tests
                 Assert.That(result, Is.EqualTo(7));
             });
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [UnityTest]
         public IEnumerator Given_RunnerBackedCompletedVelvetTask_When_SecondAwaitAttempted_Then_ThrowsInvalidOperationException()
             => VelvetTask.ToCoroutine(async () =>
             {
                 // Arrange
                 var source = new VelvetTaskCompletionSource<int>();
+                var task = Relay(source);
                 source.SetResult(99);
-                var task = source.Task;
                 await task;
 
                 // Act

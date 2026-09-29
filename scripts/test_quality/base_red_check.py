@@ -549,8 +549,12 @@ def csharp_cases(text, path="?"):
 
         if CSHARP_ATTRIBUTE.match(line):
             block = index
-            while index < len(lines) and (CSHARP_ATTRIBUTE.match(code[index])
+            # A line inside an open bracket is attribute, whatever it opens with, so an argument list
+            # wrapped onto the next line neither ends the block nor stands in for the signature.
+            depth = 0
+            while index < len(lines) and (depth > 0 or CSHARP_ATTRIBUTE.match(code[index])
                                           or not code[index].strip()):
+                depth += code[index].count("[") - code[index].count("]")
                 index += 1
             attributes = "\n".join(code[block:index])
             signature = code[index] if index < len(lines) else ""
@@ -1125,7 +1129,8 @@ def scaffolded(case):
     if match is None:
         return False
     trace = case.find("./failure/stack-trace")
-    name = (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1]
+    name = (case.get("methodname")
+            or (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1])
     body = re.search(r"(?:\.|<){}(?:\s*\(|>)".format(re.escape(name)),
                      (trace.text or "") if trace is not None else "")
     return body is None
@@ -1157,10 +1162,23 @@ def reading_of(case):
     return label
 
 
-def as_read(name):
-    """A reported case name with the `+` the runner writes before a nested class taken as the dot
-    `csharp_cases` writes there, as `assert_results_from_this_tree.py` reads one in a classname."""
-    head, opened, arguments = name.partition("(")
+def as_read(case):
+    """A reported case's name, spelled the way `csharp_cases` names the method that wrote it.
+
+    A row whose name is its method's, or opens with it and an argument list -- `Method`, `Method(1)`
+    -- keeps the runner's name. Any other row, as a `TestName` or a `SetName` can give, is spelled as
+    its `methodname` with its own name where the argument list goes, so that `outcome_for` takes it
+    with the method's other rows. The fixture is the full name less the row's own name rather than
+    the `classname`; `TestNamedRowTests` fails when it is read from `classname`.
+
+    The `+` the runner writes before a nested class is taken as the dot `csharp_cases` writes there,
+    as `assert_results_from_this_tree.py` reads one in a classname.
+    """
+    full = case.get("fullname") or case.get("name")
+    name, method = case.get("name"), case.get("methodname")
+    if name and method and name != method and not name.startswith(method + "("):
+        full = "{}.{}({})".format(full[:-len(name) - 1], method, name)
+    head, opened, arguments = full.partition("(")
     return head.replace("+", ".") + opened + arguments
 
 
@@ -1173,8 +1191,7 @@ def unity_results(results):
         root = ET.parse(str(results)).getroot()
     except ET.ParseError:
         return {}
-    return {as_read(case.get("fullname") or case.get("name")): reading_of(case)
-            for case in root.iter("test-case")}
+    return {as_read(case): reading_of(case) for case in root.iter("test-case")}
 
 
 def python_outcome(output):
@@ -1805,9 +1822,26 @@ def python_canaries(base_tree, carry, wanted=3):
     return found
 
 
+ARGUMENT_GROUP = re.compile(r"\([^()]*\)|<[^<>]*>")
+
+
+def fixture_of(name):
+    """The fixture a reported case name belongs to, spelled as `Case.fixture` spells it.
+
+    Argument lists and type-argument lists come out, the fixture's as well as the method's. A
+    fixture the runner names `Foo(1)` or `Foo<Int32>` is one `csharp_cases` names `Foo`, and reading
+    it as some other fixture leaves its cases in one the base built none of -- which fails nothing,
+    where a case of a fixture that ran and answered to no name of it does.
+    """
+    previous = None
+    while previous != name:
+        previous, name = name, ARGUMENT_GROUP.sub("", name)
+    return name.split("(")[0].rsplit(".", 1)[0]
+
+
 def fixtures_that_ran(reported):
     """The fixtures the base run named at least one case of."""
-    return {name.split("(")[0].rsplit(".", 1)[0] for name in reported}
+    return {fixture_of(name) for name in reported}
 
 
 def unsound_platforms(canaries, reported):
@@ -1822,8 +1856,7 @@ def unsound_platforms(canaries, reported):
         if not fixtures:
             broken[platform] = "no base-tree canary was available there"
             continue
-        ran = [result for name, result in reported.items()
-               if name.split("(")[0].rsplit(".", 1)[0] in fixtures]
+        ran = [result for name, result in reported.items() if fixture_of(name) in fixtures]
         if not any(result == "Passed" for result in ran):
             broken[platform] = "none of {} passed there".format(
                 ", ".join(re.split(r"[.:]", fixture)[-1] for fixture in fixtures))

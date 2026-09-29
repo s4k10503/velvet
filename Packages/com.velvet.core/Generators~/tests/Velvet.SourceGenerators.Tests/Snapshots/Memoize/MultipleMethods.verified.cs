@@ -6,9 +6,9 @@ namespace MyApp.Pages
     partial class HomePage
     {
         private partial global::Velvet.VNode BuildHeader(string title)
-            => global::Velvet.V.Memoized(() => BuildHeader_Impl(title), title);
+            => global::Velvet.V.Memoized(() => BuildHeader_Impl(title), new object?[] { title });
 
         private partial global::Velvet.VNode BuildFooter(int count)
-            => global::Velvet.V.Memoized(() => BuildFooter_Impl(count), count);
+            => global::Velvet.V.Memoized(() => BuildFooter_Impl(count), new object?[] { count });
     }
 }

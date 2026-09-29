@@ -9,8 +9,9 @@ namespace Velvet
     /// </summary>
     public sealed class SearchParamsSetter
     {
-        internal static readonly SearchParamsSetter Shared = new();
-        private SearchParamsSetter() { }
+        private readonly Router _router;
+
+        internal SearchParamsSetter(Router router) => _router = router;
 
         /// <summary>Replaces the complete query parameter set before navigating.</summary>
         public void Invoke(ISearchParams next, NavigationMode mode = NavigationMode.Push)
@@ -28,14 +29,12 @@ namespace Velvet
             Apply(updater, mode);
         }
 
-        private static void Apply(Func<ISearchParams, ISearchParams> updater, NavigationMode mode)
+        private void Apply(Func<ISearchParams, ISearchParams> updater, NavigationMode mode)
         {
-            var router = Router.Current;
-            if (router == null) return;
-            var currentPath = router.CurrentLocation?.Path ?? string.Empty;
+            var currentPath = _router.CurrentLocation?.Path ?? string.Empty;
             var next = updater(RouteQuery.ParseQuery(currentPath));
             var basePath = RouteQuery.StripQuery(currentPath);
-            router.NavigateAsync(basePath + RouteQuery.BuildQuery(next), mode).Forget();
+            _router.NavigateAsync(basePath + RouteQuery.BuildQuery(next), mode).Forget();
         }
     }
 

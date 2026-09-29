@@ -130,7 +130,7 @@ namespace Velvet
             return _result;
         }
 
-        public void OnCompleted(Action<object?> continuation, object? state, short token)
+        public void OnCompleted(Action<object?> continuation, object? state, short token, bool resumeOnMainThread)
         {
             if (continuation == null)
             {
@@ -143,7 +143,7 @@ namespace Velvet
             if (previous == null)
             {
                 _continuationState = state;
-                _resumeOnMainThread = VelvetMainThread.IsCurrent;
+                _resumeOnMainThread = resumeOnMainThread;
                 previous = Interlocked.CompareExchange(ref _continuation, continuation, null);
             }
 

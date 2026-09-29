@@ -261,6 +261,8 @@ namespace Velvet.Tests
             nameof(IStyle.transitionTimingFunction),
         };
 
+        // GREEN_ON_BASE(refactor): the reset drops an in-place list clear this editor's setter makes dead.
+        // Should a Null assignment ever leave the inline filter list readable again, filter reddens here.
         [Test]
         public void Given_EveryInlineStylePropertyWritten_When_ResetForReuse_Then_ScrubbedPropertiesMatchTheContractList()
         {
@@ -297,13 +299,8 @@ namespace Velvet.Tests
 
             // Assert — the set of properties that read back indistinguishable from a fresh element equals the
             // pinned contract list, in both directions.
-            // filter cannot read back equal to fresh on this editor: its setter clears the wrong internal
-            // has-inline flag on a Null assignment, so the reset instead empties the surviving list in
-            // place. An empty inline filter list computes to "no filter", so it counts as scrubbed.
             var observedScrubbed = properties
-                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style))
-                    || (p.Name == nameof(IStyle.filter)
-                        && element.style.filter.value is { Count: 0 }))
+                .Where(p => Equals(p.GetValue(element.style), p.GetValue(fresh.style)))
                 .Select(p => p.Name)
                 .ToArray();
             var mismatches = ScrubbedInlineStyleProperties.Except(observedScrubbed)
