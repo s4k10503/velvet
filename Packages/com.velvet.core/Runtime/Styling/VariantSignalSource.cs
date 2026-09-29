@@ -499,6 +499,9 @@ namespace Velvet
 
         private void OnAttach(AttachToPanelEvent evt)
         {
+            // MUTANT_SURVIVES(equivalent, line removed): every attach but the first follows a detach, which has
+            // already emptied the chain; at the first, re-registering a callback an element already holds is a
+            // no-op, and Unhook unregistering it twice is one too.
             UnhookChain();
             HookChain();
             Evaluate();
@@ -522,6 +525,8 @@ namespace Velvet
             {
                 EnabledSelfWrites.Unregister(element, _onWrite);
             }
+            // MUTANT_SURVIVES(equivalent): an entry left behind is only ever unregistered again, which is a
+            // no-op for a callback the element no longer holds.
             _chain.Clear();
         }
 

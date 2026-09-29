@@ -33,6 +33,8 @@ namespace Velvet.Tests
         private void ResolveAt(float width, VisualElement leaf)
         {
             _window.position = new Rect(0, 0, width, 600);
+            // Pinned as well as requested: the host window does not always get the width it asks for.
+            leaf.panel.visualTree.style.width = width;
             ForcePanelUpdate(leaf.panel);
             using var evt = EventBase<GeometryChangedEvent>.GetPooled();
             leaf.panel.visualTree.SimulateEvent(evt);
@@ -50,6 +52,20 @@ namespace Velvet.Tests
             // host narrower than requested fails here rather than passing on a breakpoint it never crossed.
             Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.ClassListContains("bg-wide")),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_HoverAndMdWidths_When_TheRootIsWiderThanMdAndTheLeafIsHovered_Then_TheMdWidthWins()
+        {
+            // Arrange
+            var leaf = MountAndResolveAt(1000f, "hover:w-[20px] md:w-[10px]");
+
+            // Act — hovered after the md width landed, so a shared layer would leave the hover width in place.
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 10f)));
         }
 
         [Test]
@@ -115,6 +131,8 @@ namespace Velvet.Tests
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "leaf", className: "md:bg-wide", text: "x"));
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
+            // Pinned as well as requested: the host window does not always get the width it asks for.
+            leaf.panel.visualTree.style.width = PanelWidth;
 
             // Act
             Resolve(leaf, leaf.panel.visualTree);
