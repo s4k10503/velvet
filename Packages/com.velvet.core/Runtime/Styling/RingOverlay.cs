@@ -15,6 +15,7 @@ namespace Velvet
         public RingSpec Spec;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
+        public IVisualElementScheduledItem? TransformTick;
 
         public RingBinding(VisualElement overlay) => Overlay = overlay;
     }
@@ -49,11 +50,9 @@ namespace Velvet
     /// Toolkit paints an absolutely-positioned sibling in child order against an in-flow one rather than
     /// lifting positioned elements above the in-flow ones as CSS does; that engine fact is measured by
     /// pixel readback in <c>RingSiblingPaintOrderPlaybackTests</c>, and the whole placement rests on it.
-    /// The two deviations it does carry: <c>ring-inset</c> paints over an opaque full-bleed child rather than
-    /// under it, and a transform on the ringed element moves the element out from under the band, since the
-    /// placement below is built from the laid-out box and a transform composites over the transformed
-    /// element's own subtree only. That second one is why a <c>ring-*</c> on a <c>V.Motion</c> is refused
-    /// outright (<see cref="FiberNodeFactory"/>).
+    /// The deviation it carries: <c>ring-inset</c> paints over an opaque full-bleed child rather than under
+    /// it. A transform on the ringed element composites over that element's own subtree only, which the band
+    /// is not in, so the band is given the element's transform itself (<c>SyncTransform</c>).
     /// </para>
     /// </remarks>
     internal static class RingOverlay
@@ -95,6 +94,12 @@ namespace Velvet
             // time, so both callbacks are the same idempotent call.
             binding.OnAttach = _ => Place(element, binding);
             element.RegisterCallback(binding.OnAttach);
+
+            // The band samples its element's resolved transform once per frame, which carries an animated
+            // transform onto it as well as the one the geometry sync copies at layout. Scheduled on the
+            // element, so it pauses while the element is off a panel.
+            binding.TransformTick = element.schedule.Execute(() => SyncTransform(element, binding))
+                .Every(StyleAnimateDriver.TickMs);
 
             s_byElement.AddOrUpdate(element, binding);
             Place(element, binding);
@@ -151,6 +156,7 @@ namespace Velvet
             {
                 element.UnregisterCallback(binding.OnAttach);
             }
+            binding.TransformTick?.Pause();
             // The overlay lives in the element's PARENT, so it does not leave with the element's own subtree
             // the way the old wrapper-hosted one did — a detach that skipped this would strand a live band.
             binding.Overlay.RemoveFromHierarchy();
@@ -251,6 +257,29 @@ namespace Velvet
             overlay.style.borderTopRightRadius = tr + outerGrow;
             overlay.style.borderBottomRightRadius = br + outerGrow;
             overlay.style.borderBottomLeftRadius = bl + outerGrow;
+
+            SyncTransform(element, binding);
+        }
+
+        // Gives the band its element's transform, pivoting where the element pivots. The overlay's box starts
+        // (Offset + Width) up and left of the element's for an outset band, so the element's pivot sits that
+        // much further into the overlay. The resolved values are pixels, so a percentage translate stays a
+        // fraction of the element's box rather than becoming one of the larger overlay's.
+        private static void SyncTransform(VisualElement element, RingBinding binding)
+        {
+            var rs = element.resolvedStyle;
+            if (float.IsNaN(rs.width))
+            {
+                return; // pre-layout: a percentage pivot has no box to resolve against yet
+            }
+            var style = binding.Overlay.style;
+            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
+            var origin = rs.transformOrigin;
+            var translate = rs.translate;
+            style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);
+            style.translate = new Translate(translate.x, translate.y, translate.z);
+            style.scale = rs.scale;
+            style.rotate = rs.rotate;
         }
 
         // The four corner radii the band rounds to. Laid out, the resolved values are authoritative per

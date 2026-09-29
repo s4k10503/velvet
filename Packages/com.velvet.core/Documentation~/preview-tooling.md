@@ -182,11 +182,9 @@ than the panel root. See [styling-variants.md](styling-variants.md) for containe
 
 Two behaviors are worth knowing:
 
-- **Re-mount on change.** A responsive manipulator binds its width source **at attach**, so
-  changing the viewport re-applies the canvas size (toggling the `@container` marker) **and
-  re-mounts the story** so its descendants re-attach and resolve their width source against the
-  new scope. This is the supported way to drive container-query breakpoints from a runtime
-  switch.
+- **Re-mount on change.** Changing the viewport re-applies the canvas size (toggling the
+  `@container` marker) **and re-mounts the story**, so its descendants attach afresh and resolve
+  their width source against the new scope.
 - **A story's explicit size wins.** A story with an explicit `Width`/`Height` is always shown
   at its real footprint and is **not** treated as a responsive container — the viewport
   simulation applies only to fill-canvas stories (no explicit size).
