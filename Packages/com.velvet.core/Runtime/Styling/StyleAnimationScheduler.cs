@@ -1286,7 +1286,7 @@ namespace Velvet
             VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
         {
-            // Per-property overrides replace the "all" catch-all with an explicit property list — reachable only
+            // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
             // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
@@ -1330,9 +1330,10 @@ namespace Velvet
         // single enter/exit that reuses the same config.
         private static readonly ConditionalWeakTable<IReadOnlyList<StylePropertyTransition>, List<StylePropertyName>> s_propertyNameListCache = new();
 
-        // Per-property override path: transition-property becomes EXACTLY the overridden properties (in
-        // declaration order) instead of "all" — matching CSS semantics where an explicit transition-property list
-        // transitions only what it names. Duration / delay are positionally-matched n-entry lists, rented EMPTY
+        // Per-property override path: transition-property becomes "all" on the top-level timing followed by the
+        // overridden properties (in declaration order), as Framer's per-value transition leaves every value it does
+        // not name on the default one. The "all" entry has to come first: UI Toolkit takes the LAST entry naming a
+        // property (MotionPerPropertyTransitionTests pins both halves). Duration / delay are positionally-matched lists, rented EMPTY
         // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
         // the SAME pools the single-entry path above uses, so they are returned through the existing
         // PendingAnimation.DurationList / DelayList bookkeeping unchanged. A null override field falls back to
@@ -1348,10 +1349,10 @@ namespace Velvet
             VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
             IReadOnlyList<StylePropertyTransition> overrides)
         {
-            var count = overrides.Count;
+            var count = overrides.Count + 1;
             var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
             {
-                var names = new List<StylePropertyName>(ov.Count);
+                var names = new List<StylePropertyName>(ov.Count + 1) { s_allTransitionProperties[0] };
                 for (var i = 0; i < ov.Count; i++)
                 {
                     names.Add(new StylePropertyName(ov[i].Property));
@@ -1361,8 +1362,11 @@ namespace Velvet
             var easingList = new List<EasingFunction>(count);
             var durationList = _listPool.RentEmptyDurationList(count);
             var delayList = _listPool.RentEmptyDelayList(count);
-            var hasDelay = false;
-            for (var i = 0; i < count; i++)
+            easingList.Add(GetOrCreateEasingList(defaultEasing)[0]);
+            durationList.Add(new TimeValue((int)(defaultDurationSec * 1000), TimeUnit.Millisecond));
+            delayList.Add(new TimeValue((int)(defaultDelaySec * 1000), TimeUnit.Millisecond));
+            var hasDelay = defaultDelaySec > 0f;
+            for (var i = 0; i < overrides.Count; i++)
             {
                 var o = overrides[i];
                 easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);

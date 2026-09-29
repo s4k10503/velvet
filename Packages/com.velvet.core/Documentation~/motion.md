@@ -179,8 +179,10 @@ new StyleTransitionConfig
 ```
 
 Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"translate"`,
-`"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config.
-Completion is sized off the **slowest** overridden property, so a long override finishes instead
+`"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config, and a
+property no override names animates on the enclosing config's timing, as a value missing from Framer's
+per-value map takes the default transition.
+Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween` reads them on every variant swap:
 mount enters, label changes and exits.
 
