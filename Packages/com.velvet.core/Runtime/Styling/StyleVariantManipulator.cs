@@ -187,6 +187,16 @@ namespace Velvet
             }
         }
 
+        // Whether the element-local state a stacked inner of this kind reacts to is held right now. A stacked
+        // manipulator is created only when its outer gate first opens, and hover, focus and active arrive only
+        // as edges, so one opened while the pointer already rests on the element would otherwise wait for the
+        // next edge.
+        internal bool Holds(StyleVariantKind kind) =>
+            kind == StyleVariantKind.Hover ? _isHovered
+            : kind == StyleVariantKind.Focus ? _isFocused
+            : kind == StyleVariantKind.FocusVisible ? _isFocusVisible
+            : kind == StyleVariantKind.Active && _isActive;
+
         private void OnDisabled(bool on)
         {
             if (on != _isDisabled) { _isDisabled = on; ApplyPayloads(_disabled, on); }

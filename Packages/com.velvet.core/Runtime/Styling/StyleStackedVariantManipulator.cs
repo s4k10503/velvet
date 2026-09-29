@@ -60,6 +60,11 @@ namespace Velvet
             _priority = priority;
         }
 
+        // Starts an element-local inner at a state held before this manipulator existed (see
+        // StyleVariantManipulator.Holds). Called before it is added, since adding hooks the signals that
+        // take it from there.
+        public void SeedInner(bool on) => _innerOn = on;
+
         // Called by the owning manipulator each time its own gate flips.
         public void SetOuterGate(bool on)
         {

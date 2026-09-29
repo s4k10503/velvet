@@ -551,9 +551,9 @@ namespace Velvet
         }
     }
 
-    // UI Toolkit announces an enabledSelf write only through PropertyChangedEvent, an internal event sent to the
-    // written element alone, and announces no change of enabledInHierarchy at all. The type is reached by name;
-    // DisabledVariantTests' Given_AnAncestorWrittenOutsideADispatch case fails where the engine stops sending it.
+    // UI Toolkit announces an enabledSelf write through PropertyChangedEvent, an internal event. The type is reached
+    // by name; DisabledVariantTests' Given_AnAncestorWrittenOutsideADispatch case fails where the engine stops
+    // sending it.
     internal static class EnabledSelfWrites
     {
         private interface IRegistrar
@@ -567,11 +567,13 @@ namespace Velvet
         {
             public object Create(Action onWrite) => new EventCallback<TEvent>(_ => onWrite());
 
+            // IncludeDisabled keeps delivery from depending on whether the engine skips a disabled target for
+            // this event: the element it announces is often the one just disabled.
             public void Register(VisualElement element, object callback)
-                => element.RegisterCallback((EventCallback<TEvent>)callback);
+                => element.RegisterCallback((EventCallback<TEvent>)callback, CallbackOptions.IncludeDisabled);
 
             public void Unregister(VisualElement element, object callback)
-                => element.UnregisterCallback((EventCallback<TEvent>)callback);
+                => element.UnregisterCallback((EventCallback<TEvent>)callback, CallbackOptions.IncludeDisabled);
         }
 
         private static readonly IRegistrar? s_registrar = CreateRegistrar();

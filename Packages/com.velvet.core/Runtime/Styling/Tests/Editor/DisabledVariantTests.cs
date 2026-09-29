@@ -10,7 +10,7 @@ namespace Velvet.Tests
     /// Specifies the <c>disabled:</c> variant — its payload holds while the element or an ancestor has
     /// <c>enabledSelf</c> off, the condition UI Toolkit's <c>:disabled</c> pseudo-class matches — and its
     /// <c>group-disabled:</c> / <c>peer-disabled:</c> forms, which read the marked source the same way. Mounted in a
-    /// real panel, since UI Toolkit announces an <c>enabledSelf</c> write only on an element that has one.
+    /// real panel.
     /// </summary>
     [TestFixture]
     internal sealed class DisabledVariantTests : PanelTestBase
@@ -53,6 +53,21 @@ namespace Velvet.Tests
             return V.Div(name: "leaf", className: className);
         }
 
+        private static int BubbleCallbackCount(VisualElement element)
+        {
+            var registry = typeof(CallbackEventHandler)
+                .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(element);
+            if (registry == null)
+            {
+                return 0;
+            }
+            var list = registry.GetType()
+                .GetField("m_BubbleUpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+                .GetValue(registry);
+            return (int)list!.GetType().GetProperty("Count")!.GetValue(list)!;
+        }
+
         private static void RegisterProbe<TEvent>(VisualElement element, Action onEvent)
             where TEvent : EventBase<TEvent>, new()
             => element.RegisterCallback<TEvent>(_ => onEvent());
@@ -67,8 +82,9 @@ namespace Velvet.Tests
             // has reached the leaf.
             outer.SetEnabled(false);
 
-            // Assert
-            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+            // Assert — the leaf's own :disabled pseudo-state rides along: that is the condition the variant
+            // mirrors, so the two are read together.
+            Assert.That((leaf.hasDisabledPseudoState, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -137,17 +153,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ActiveAndDisabledWidths_When_BothHold_Then_TheDisabledWidthWins()
+        public void Given_ActiveAndDisabledWidths_When_TheDisabledOneIsReleasedWhileStillPressed_Then_TheActiveWidthReturns()
         {
             // Arrange — pressed first, so the active width is the one in place when disabled: arrives.
             var (outer, leaf) = Mount("active:w-[10px] disabled:w-[20px]");
             using (var evt = PointerDownEvent.GetPooled()) leaf.SimulateEvent(evt);
+            outer.SetEnabled(false);
+            var widthWhileBothHold = leaf.style.width.value.value;
 
             // Act
-            outer.SetEnabled(false);
+            outer.SetEnabled(true);
 
-            // Assert
-            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+            // Assert — two layers of their own: the disabled width wins while both hold, and releasing it hands
+            // the property back to the active one rather than to the base.
+            Assert.That((widthWhileBothHold, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
         [Test]
@@ -156,12 +175,13 @@ namespace Velvet.Tests
             // Arrange — dark: holds the outer gate open; disabled: is the inner.
             var (outer, leaf) = Mount("dark:disabled:bg-hot");
             VelvetTheme.IsDark = true;
+            var appliedBeforeDisable = leaf.ClassListContains("bg-hot");
 
             // Act
             outer.SetEnabled(false);
 
-            // Assert
-            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+            // Assert — off while only dark holds, so an inner reading anything but the disabled state fails.
+            Assert.That((appliedBeforeDisable, leaf.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
         }
 
         private (VisualElement Group, VisualElement Leaf) MountInGroup(string leafClassName)
@@ -229,17 +249,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_GroupActiveAndGroupDisabledWidths_When_BothHold_Then_TheGroupDisabledWidthWins()
+        public void Given_GroupActiveAndGroupDisabledWidths_When_TheDisabledOneIsReleasedWhileStillPressed_Then_TheActiveWidthReturns()
         {
             // Arrange — the group is pressed first, so its active width is in place when the disabled one arrives.
             var (group, leaf) = MountInGroup("group-active:w-[10px] group-disabled:w-[20px]");
             using (var evt = PointerDownEvent.GetPooled()) group.SimulateEvent(evt);
+            group.SetEnabled(false);
+            var widthWhileBothHold = leaf.style.width.value.value;
 
             // Act
-            group.SetEnabled(false);
+            group.SetEnabled(true);
 
             // Assert
-            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+            Assert.That((widthWhileBothHold, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
         [Test]
@@ -248,12 +270,75 @@ namespace Velvet.Tests
             // Arrange — dark: holds the outer gate open; peer-disabled: is the inner.
             var (peer, leaf) = MountAfterPeer("dark:peer-disabled:bg-hot");
             VelvetTheme.IsDark = true;
+            var appliedBeforeDisable = leaf.ClassListContains("bg-hot");
 
             // Act
             peer.SetEnabled(false);
 
             // Assert
+            Assert.That((appliedBeforeDisable, leaf.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ADisabledHoverPayloadUnderThePointer_When_AClickHandlerDisablesTheElement_Then_TheLeafIsApplied()
+        {
+            // Arrange — the pointer already rests on the element; nothing re-sends PointerOver when it is
+            // disabled, since the element under the pointer does not change.
+            var (_, leaf) = Mount("disabled:hover:bg-hot");
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            leaf.RegisterCallback<ClickEvent>(_ => leaf.SetEnabled(false));
+
+            // Act — dispatched through the panel, so the write lands inside a real event dispatch.
+            using (var click = ClickEvent.GetPooled())
+            {
+                click.target = leaf;
+                leaf.SendEvent(click);
+            }
+
+            // Assert
             Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_ADisabledPayload_When_AClickHandlerDisablesTheAncestor_Then_ThePayloadIsApplied()
+        {
+            // Arrange
+            var (outer, leaf) = Mount("disabled:bg-hot");
+            leaf.RegisterCallback<ClickEvent>(_ => outer.SetEnabled(false));
+
+            // Act — inside the dispatch the announcement is queued behind it, so it arrives with the ancestor
+            // already disabled.
+            using (var click = ClickEvent.GetPooled())
+            {
+                click.target = leaf;
+                leaf.SendEvent(click);
+            }
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_ADisabledPayloadUnderAHost_When_ARenderDropsIt_Then_TheHostKeepsNoRegistrationOfIt()
+        {
+            // Arrange — counted after the mount, so whatever the mount itself registers on the host is in both
+            // readings.
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            s_initialClass = "bg-cold";
+            _mounted = V.Mount(host, V.Component(RenderSwitchable));
+            var before = BubbleCallbackCount(host);
+            s_setClass.Invoke("disabled:bg-hot");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            var whileWatched = BubbleCallbackCount(host);
+
+            // Act
+            s_setClass.Invoke("bg-cold");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — the count while watched rides along, so a host that was never registered on cannot read
+            // as released.
+            Assert.That((whileWatched > before, BubbleCallbackCount(host) == before), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the engine announcement DisabledVariantSignal reads, which the

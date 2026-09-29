@@ -544,6 +544,10 @@ namespace Velvet
                     var priority = outerPriority > innerPriority ? outerPriority : innerPriority;
                     m = new StyleStackedVariantManipulator(this, innerKind, innerName,
                         new string?[] { leafPayload }, priority, declaration);
+                    if (VariantManipulators.TryGetValue(target, out var local))
+                    {
+                        m.SeedInner(local.Holds(innerKind));
+                    }
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
