@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print the commit a workflow job reads its change against, as the `sha=` line $GITHUB_OUTPUT takes.
 
-Every step in test.yml that hands a script `--base` takes it from here.
+Every workflow step that hands a script `--base` takes it from here.
 
 - pull_request: the first parent of the checkout, which is GitHub's test merge of the head into the
   base branch. Not the event's `pull_request.base.sha`: measured on this repository's CI, it named the
@@ -9,7 +9,9 @@ Every step in test.yml that hands a script `--base` takes it from here.
   made since, and the mutation plan and the base-red lane both counted that pull request's lines as
   this one's.
 - merge_group: the event's `merge_group.base_sha`.
-- anything else: nothing. What a push or a dispatch reads against is each caller's own answer.
+- workflow_dispatch with a `base` input: the merge base of the checkout with origin's copy of that
+  branch, which is what mutation.yml is dispatched with, onto a checkout of the head itself.
+- anything else: nothing. What a push or another dispatch reads against is each caller's own answer.
 
 The first parent is named only once the second is the event's head. Over a checkout of the head
 itself, the first parent is the head's previous commit, and every job would read the head's last
@@ -41,6 +43,14 @@ def resolve(event_name, payload):
         return rev_parse("HEAD^1")
     if event_name == "merge_group":
         return payload["merge_group"]["base_sha"]
+    branch = (payload.get("inputs") or {}).get("base") if event_name == "workflow_dispatch" else None
+    if branch:
+        done = subprocess.run(["git", "merge-base", "origin/" + branch, "HEAD"],
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            raise SystemExit("no merge base of HEAD with origin/{}: {}".format(
+                branch, done.stderr.strip() or "git answered nothing"))
+        return done.stdout.strip()
     return ""
 
 
