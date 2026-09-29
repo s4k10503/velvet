@@ -262,13 +262,13 @@ placed directly after it inside the same parent. The ringed element's own layout
 band takes that element's own paint position, so overlapping `-space-x-*` avatars each carrying
 `ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
-two `focus:ring-2` siblings render the same whichever was focused first. The hosting stays visible in
-one place: `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches
-the order CSS gives an inset box-shadow, not an inset outline.
+two `focus:ring-2` siblings render the same whichever was focused first. `ring-inset` paints **over**
+an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
 
-The band moves with its element. A transform on the ringed element itself — `translate-*`, `scale-*`,
-`rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those, a `layoutId` play — is
-copied onto the band once per frame, and a transform on an ancestor carries both. A ring on a
+What the ringed element's own subtree would carry reaches the band as well. Its transform —
+`translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,
+a `layoutId` play — its opacity, its `invisible` / `visible` and its `hidden` are copied onto the band
+at layout and once per frame, and an ancestor's carry element and band together. A ring on a
 `V.Motion` renders like one on a `Div`.
 
 A ring inside a `V.AnimatePresence` fades with its element's enter and exit: the band is the one paint

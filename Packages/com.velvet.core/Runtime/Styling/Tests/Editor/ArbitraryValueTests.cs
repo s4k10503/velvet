@@ -1709,6 +1709,17 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
         [Test]
+        public void Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
         public void Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines()
         {
             // Act

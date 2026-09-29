@@ -599,6 +599,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMountedRingedElement_When_TheReconcilerIsDisposed_Then_TheBandLeaves()
+        {
+            // The element stays where it is at root disposal; the band beside it, and the per-frame tick it
+            // owns, go with the binding.
+            var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
+            var hosted = RingOverlayIn(scope.Root) != null;
+
+            scope.Reconciler.Dispose();
+
+            Assert.That((hosted, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, false)));
+        }
+
+        [Test]
         public void Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted()
         {
             using var scope = new ReconcilerScope();

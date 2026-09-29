@@ -155,7 +155,7 @@ namespace Velvet.Tests
         }
 
         // Which transforms the band follows. The band is a sibling, so the element's own transform reaches
-        // it only through RingOverlay.SyncTransform: at layout, and on the per-frame tick for a transform that
+        // it only through RingOverlay.SyncElementState: at layout, and on the per-frame tick for a transform that
         // changes without moving the layout box.
 
         // Two ringed cards stacked in one column, identical but for what the test does to the second.
@@ -226,6 +226,61 @@ namespace Velvet.Tests
                 Is.EqualTo((150f, -6f, -6f)));
         }
 
+        // What the element's own subtree would carry besides a transform, which the band as a sibling gets
+        // only from RingOverlay.SyncElementState.
+
+        [Test]
+        public void Given_ARingedElementAtHalfOpacity_When_LaidOut_Then_TheBandIsAtHalfOpacity()
+        {
+            // Arrange
+            var (still, moved) = MountCardPair("opacity-50");
+
+            // Act
+            ForcePanelUpdate(still.panel);
+            ForcePanelUpdate(still.panel);
+
+            // Assert — the card's own 0.5 is the class taking effect.
+            Assert.That((moved.resolvedStyle.opacity, BandFor(moved).resolvedStyle.opacity), Is.EqualTo((0.5f, 0.5f)));
+        }
+
+        [Test]
+        public void Given_AnInvisibleRingedElement_When_LaidOut_Then_TheBandIsHidden()
+        {
+            // Arrange
+            var (still, moved) = MountCardPair("invisible");
+
+            // Act
+            ForcePanelUpdate(still.panel);
+            ForcePanelUpdate(still.panel);
+
+            // Assert
+            Assert.That((moved.resolvedStyle.visibility, BandFor(moved).resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Hidden, Visibility.Hidden)));
+        }
+
+        [Test]
+        public void Given_ARingedElementShown_When_ItTurnsHidden_Then_TheBandIsNotDisplayed()
+        {
+            // Arrange
+            var (still, moved) = MountCardPair(string.Empty);
+            ForcePanelUpdate(still.panel);
+            var shownBefore = BandFor(moved).resolvedStyle.display;
+
+            // Act — a layout pass and a per-frame tick both run, so the case holds whichever of the two
+            // carries the change. The clock is installed first and advanced afterwards.
+            moved.AddToClassList("hidden");
+            ForcePanelUpdate(still.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(still.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(still.panel);
+            ForcePanelUpdate(still.panel);
+
+            // Assert
+            Assert.That((shownBefore, moved.resolvedStyle.display, BandFor(moved).resolvedStyle.display),
+                Is.EqualTo((DisplayStyle.Flex, DisplayStyle.None, DisplayStyle.None)));
+        }
+
         [Test]
         public void Given_ARingedElement_When_AnAncestorCarriesTheTransform_Then_TheBandMovesWithIt()
         {
@@ -255,7 +310,7 @@ namespace Velvet.Tests
             // resolving and moving the subtree, so a state in which the translate never took effect reports
             // 0 here and fails rather than reading as evidence. The band shifts by the same 32px, which is
             // the claim — it sits inside the host, so the engine carries it, where the element's own
-            // transform in the cases above reaches it only through SyncTransform.
+            // transform in the cases above reaches it only through SyncElementState.
             var cardShift = Mathf.Round(movedCard.worldBound.x - stillCard.worldBound.x);
             var bandShift = Mathf.Round(BandFor(movedCard).worldBound.x - BandFor(stillCard).worldBound.x);
             Assert.That((cardShift, bandShift), Is.EqualTo((32f, 32f)));

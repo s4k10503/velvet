@@ -563,8 +563,12 @@ namespace Velvet
                 binding.DisposeImage();
             }
             _ctx.ClipPathBindings.Clear();
-            // Ring overlays are plain native-border elements (no GPU resource), so just drop the entries; the
-            // wrappers leave with their subtrees at disposal.
+            // A ring binding owns a band in its element's parent and a per-frame tick on the element: detach so
+            // a still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var (element, binding) in _ctx.RingBindings)
+            {
+                RingOverlay.Detach(element, binding);
+            }
             _ctx.RingBindings.Clear();
             // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
             // a still-mounted element released at root disposal carries no Velvet residue.
