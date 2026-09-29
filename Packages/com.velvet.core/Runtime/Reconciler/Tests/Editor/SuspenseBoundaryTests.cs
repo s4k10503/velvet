@@ -128,6 +128,27 @@ namespace Velvet.Tests
                 "Once the resource resolves the fallback is swapped for the resolved children");
         }
 
+        // GREEN_ON_BASE(characterization): a second reader of a resolved completion source sees its result on the base.
+        // The base builds a new task on every read of the source, which is how it gets there.
+        [Test]
+        public void Given_ACachedPromiseOneBoundaryHasRead_When_ASecondBoundaryReadsItAfterItResolved_Then_BothRenderTheResult()
+        {
+            // Arrange
+            var cache = new VelvetTaskCompletionSource<string>();
+            s_asyncChildFactory = _ => cache.Task;
+            s_suspenseHostFallbackText = "loading...";
+            using var first = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
+            cache.TrySetResult("ready");
+            first.FlushStateForTest();
+            var secondRoot = new VisualElement();
+
+            // Act
+            using var second = V.Mount(secondRoot, V.Component(SuspenseHostRender, key: "host"));
+
+            // Assert
+            Assert.That((_root.FindFirstLabel()?.text, secondRoot.FindFirstLabel()?.text), Is.EqualTo(("ready", "ready")));
+        }
+
         [Test]
         public void Given_StatefulFallback_When_FallbackStateUpdatesWhileSuspended_Then_FallbackRerenders()
         {

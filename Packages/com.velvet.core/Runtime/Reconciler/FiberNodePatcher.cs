@@ -527,7 +527,7 @@ namespace Velvet
             // does not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
             // claims from that same origin, not from render-commit time as if this node's swap were immediate.
             var extraDelaySec = 0f;
-            if (newNode.Animate == null && variantApplied && ambientOrchestration != null)
+            if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
             {
                 extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
             }
@@ -559,27 +559,16 @@ namespace Velvet
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
                     ambientOrchestration, extraDelaySec);
-                // Skip the Orchestration round-trip when this node passes the ambient frame through UNCHANGED
-                // (including the common "no orchestration anywhere in this subtree" case, both null): a
-                // descendant's Get already sees exactly ambientOrchestration without anything new pushed, so
-                // pushing then popping the identical reference back off is pure overhead.
-                var pushOrchestration = !ReferenceEquals(childOrchestration, ambientOrchestration);
-                _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
-                if (pushOrchestration)
-                {
-                    _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
-                }
+                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    childOrchestration);
                 try
                 {
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
                 {
-                    if (pushOrchestration)
-                    {
-                        _ctx.ComponentContextStack.Pop(MotionContext.Orchestration);
-                    }
-                    _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
+                    MotionContext.PopForChildren(_ctx.ComponentContextStack);
                 }
             }
             else
@@ -910,7 +899,8 @@ namespace Velvet
             return composed.ToArray();
         }
 
-        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children.
+        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children, the way Framer
+        // Motion orchestrates each variant node's own variant children rather than every descendant.
         // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotion),
         // so a pose that carries its own transition orchestrates from the span it actually takes:
         // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
@@ -918,18 +908,17 @@ namespace Velvet
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
         //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
-        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay THIS
-        //   node itself claimed a moment ago in PatchMotion when it is, itself, an inheriting descendant of a
-        //   FURTHER-OUT orchestration. Folding extraDelaySec in regardless of When matters because this node's
+        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
+        //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
+        //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
         //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
         //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
         //   letting a grandchild start animating before its own parent does.
-        // - null when this node drives its children via its OWN explicit Animate: an ambient orchestration
-        //   meant for a sibling branch must not leak through a node that is no longer inheriting (it computes
-        //   its own child label independently of the ambient one, so it is a natural cut point).
-        // - Otherwise (a pure pass-through inheritor with no orchestration of its own) the ambient frame is
-        //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
-        //   ancestor's stagger sequence reaching its own grandchildren.
+        // - The ambient frame, UNCHANGED, through a Motion with neither variants nor a label of its own:
+        //   Framer registers the variant children under it with the variant node above it, which numbers them.
+        // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
+        //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
+        //   of its own.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
@@ -951,7 +940,13 @@ namespace Velvet
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
             }
-            return newNode.Animate != null ? null : ambientOrchestration;
+            if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
+            {
+                return ambientOrchestration;
+            }
+            // A frame with no stagger over a zero base hands each claim the zero no frame hands it, so the
+            // allocation is spared.
+            return extraDelaySec == 0f ? null : new MotionOrchestrationFrame(0f, 0f, extraDelaySec);
         }
 
         // Applies the diff for a PortalNode. Reconciles only this Portal's own slot range
@@ -1062,6 +1057,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
+                VelvetStyleUtilities.SyncHost(placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1121,13 +1117,8 @@ namespace Velvet
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
-            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
-            // another Portal already bridged is not double-attached.
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
-            {
-                _ctx.SamePanelPortalBridges[resolvedTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(resolvedTarget, _ctx);
-            }
+            // synthetic-bubbling bridge gets attached.
+            _ctx.BindPortalTarget(resolvedTarget);
             return (resolvedTarget, true);
         }
 
@@ -1196,6 +1187,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
+            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {

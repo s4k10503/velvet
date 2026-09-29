@@ -401,7 +401,7 @@ namespace Velvet
         private static bool PushMotionSubtree(MotionNode motion, in SpineWalk walk)
         {
             var stack = walk.Stack;
-            var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
+            var motionLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
             var motionProvider = new ContextProviderNode<string>
             {
                 Context = MotionContext.ActiveLabel,
@@ -410,6 +410,14 @@ namespace Velvet
             };
             motionProvider.PushContext(stack);
             walk.Pushed.Add(motionProvider);
+            var initialProvider = new ContextProviderNode<string>
+            {
+                Context = MotionContext.InitialLabel,
+                Value = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel)),
+                Children = System.Array.Empty<VNode>(),
+            };
+            initialProvider.PushContext(stack);
+            walk.Pushed.Add(initialProvider);
             if (motion.Children is { Length: > 0 })
             {
                 if (PushEnclosingProviders(
@@ -418,8 +426,9 @@ namespace Velvet
                     return true;
                 }
             }
+            initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            walk.Pushed.RemoveAt(walk.Pushed.Count - 1);
+            walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
             return false;
         }
 
