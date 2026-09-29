@@ -177,18 +177,21 @@ namespace Velvet
             {
                 // A world-space panel has no screen to project into: the element goes where the camera's ray
                 // to the target crosses the panel's plane.
+                // How far along toTarget, from the camera, the ray meets the plane: at or behind the camera, or
+                // never where the ray runs along the plane, there is no crossing to show.
                 var document = DocumentHolding(box, binding);
-                var ray = new Ray(camera.transform.position, toTarget);
-                var enter = 0f;
-                if (document == null
-                    || !new Plane(document.transform.forward, document.transform.position).Raycast(ray, out enter))
+                var along = document != null ? Vector3.Dot(document.transform.forward, toTarget) : 0f;
+                var enter = along != 0f
+                    ? Vector3.Dot(document!.transform.forward, document.transform.position - camera.transform.position) / along
+                    : -1f;
+                if (enter <= 0f)
                 {
                     HideAndClearScale(element, binding);
                     return;
                 }
                 // The panel's own space is its root document's local space, so the parent's inverse world
                 // transform takes the crossing point into the space left/top resolve against.
-                var crossing = document.transform.InverseTransformPoint(ray.GetPoint(enter));
+                var crossing = document!.transform.InverseTransformPoint(camera.transform.position + toTarget * enter);
                 localPoint = box.parent.WorldToLocal(new Vector2(crossing.x, crossing.y));
             }
             else

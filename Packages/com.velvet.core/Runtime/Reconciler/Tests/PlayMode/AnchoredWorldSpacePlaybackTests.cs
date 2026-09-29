@@ -107,6 +107,21 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AWorldSpacePanelThroughTheCamera_When_ItsAnchoredTracksATargetInFront_Then_ItIsHidden()
+        {
+            // Arrange — the panel's plane holds the camera, so the ray meets it only where it starts.
+            var doc = Arrange(new Vector3(0f, 0f, 0f), PanelRenderMode.ScreenSpaceOverlay);
+            yield return null;
+
+            // Act
+            _mounted = V.Mount(doc.rootVisualElement, WorldSpaceWithAnchored(new Vector3(0f, 0f, -10f)));
+            yield return Frames();
+
+            // Assert
+            Assert.That(FindElement("anchored").style.display.value, Is.EqualTo(DisplayStyle.None));
+        }
+
+        [UnityTest]
         public IEnumerator Given_AnAnchoredUnderNoDocumentOfAWorldSpacePanel_When_Ticked_Then_ItIsHidden()
         {
             // Arrange — an element added straight to the panel's visual tree, so no document places it.
