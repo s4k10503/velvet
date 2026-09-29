@@ -29,6 +29,12 @@ namespace Velvet
 
     internal static class VelvetTaskOutcome
     {
+        // The split the completion-source core makes: an OperationCanceledException is kept as the cancellation.
+        internal static VelvetTaskOutcome<T> FromException<T>(Exception exception) =>
+            exception is OperationCanceledException canceled
+                ? new VelvetTaskOutcome<T>(default!, null, canceled)
+                : new VelvetTaskOutcome<T>(default!, new[] { ExceptionDispatchInfo.Capture(exception) }, null);
+
         // A settle runs on the thread that completes the task, as ValueTask.AsTask() and Preserve() do:
         // handed to the main thread instead, a caller blocking there on what it settles would never see it.
         internal static void OnSettled(VelvetTask task, Action<VelvetTaskOutcome<AsyncUnit>> settle) =>
@@ -52,7 +58,7 @@ namespace Velvet
         }
 
         // The faults are read ahead of GetResult, which retires the version they are read under.
-        static VelvetTaskOutcome<AsyncUnit> Consume(VelvetTask task)
+        internal static VelvetTaskOutcome<AsyncUnit> Consume(VelvetTask task)
         {
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try
@@ -74,7 +80,7 @@ namespace Velvet
             }
         }
 
-        static VelvetTaskOutcome<T> Consume<T>(VelvetTask<T> task)
+        internal static VelvetTaskOutcome<T> Consume<T>(VelvetTask<T> task)
         {
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try

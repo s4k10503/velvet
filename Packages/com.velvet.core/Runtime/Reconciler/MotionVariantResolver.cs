@@ -4,14 +4,14 @@ namespace Velvet
 {
     // Resolves the class array actually applied to a MotionNode's element. Both the SELF case
     // (the node's own MotionNode.Animate) and the INHERITED case (a node with
-    // MotionNode.Variants but no explicit Animate, taking the nearest ancestor Motion's
-    // label) resolve through one path — the variant-inheritance model: effectiveLabel = Animate ?? inherited, looked
+    // MotionNode.Variants and no label of its own, taking the nearest ancestor Motion's
+    // label) resolve through one path — the variant-inheritance model: the effective label, looked
     // up in this node's own variants. Resolution happens at reconcile time (not at construction) so the
     // inherited label is in scope, the same way context values are read during render.
     internal static class MotionVariantResolver
     {
         // Returns base ClassNames augmented with the variant classes for the effective label
-        // (Animate ?? ambientLabel) when this node has variants and the label is one
+        // (LabelForChildren, else the node's own Initial) when this node has variants and the label is one
         // of its keys. Otherwise returns the base ClassNames unchanged. variantClasses is the variant-only
         // tail that was concatenated on — Array.Empty when nothing merged. Callers use its Length both to
         // skip the per-element applied-class bookkeeping for the variant-less majority AND, as an explicit
@@ -30,7 +30,9 @@ namespace Velvet
             var baseClasses = node.ClassNames ?? Array.Empty<string>();
             poseTransition = node.Transition;
 
-            var label = node.Animate ?? ambientLabel;
+            // A Motion controlling an initial label and no animate one rests at that initial pose, as Framer
+            // leaves it at the values its initial names.
+            var label = LabelForChildren(node, ambientLabel) ?? node.Initial;
             if (label == null || node.Variants == null)
             {
                 variantClasses = Array.Empty<string>();
@@ -77,9 +79,21 @@ namespace Velvet
             return merged;
         }
 
-        // The label a Motion exposes to its descendants: its own Animate when set, else the
-        // inherited ambientLabel (so the nearest-ancestor label keeps flowing down).
-        public static string LabelForChildren(MotionNode node, string ambientLabel) => node.Animate ?? ambientLabel;
+        // Framer Motion's isControllingVariants over the labels a MotionNode can name: naming any of them, the
+        // Motion takes none from its ancestors. Velvet's gesture channels carry classes rather than labels.
+        public static bool IsControlling(MotionNode node) => node.Animate != null || node.Initial != null || node.Exit != null;
+
+        // Framer Motion's variant child, which its nearest variant ancestor orchestrates.
+        public static bool IsVariantChild(MotionNode node) => node.Variants != null && !IsControlling(node);
+
+        // The animate label a Motion enters to and hands its descendants, as Framer's getCurrentTreeVariants
+        // does: its own when it controls its labels, else the inherited one.
+        public static string? LabelForChildren(MotionNode node, string? ambientLabel)
+            => IsControlling(node) ? node.Animate : ambientLabel;
+
+        // LabelForChildren's counterpart for the initial label.
+        public static string? InitialLabel(MotionNode node, string? ambientInitial)
+            => IsControlling(node) ? node.Initial : ambientInitial;
     }
 
     // Per-Motion-element applied-class bookkeeping pair: the full merged array (base + variant classes, used
