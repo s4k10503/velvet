@@ -273,7 +273,7 @@ namespace Velvet
 
         // Copied before the suspending write, which reuses the slot's list: CornerRadiusFitPanelTests'
         // inline transition-property case reddens when the restore is read straight from the slot.
-        private static StyleList<StylePropertyName> DetachedCopy(StyleList<StylePropertyName> slot)
+        internal static StyleList<StylePropertyName> DetachedCopy(StyleList<StylePropertyName> slot)
             => slot.value != null ? new StyleList<StylePropertyName>(new List<StylePropertyName>(slot.value)) : slot;
 
         private static Length? TargetFor(State state, int corner, float factor)
