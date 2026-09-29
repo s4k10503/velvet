@@ -26,7 +26,9 @@ namespace Velvet
     //   visually adjacent pair there. Under flex-wrap it switches to the half-margin strategy below.
     //   space-x-* / space-y-*: Tailwind v4's `:where(& > :not(:last-child))` rule — margin-inline-end
     //   (margin-right) / margin-block-end (margin-bottom) on every child EXCEPT the last, or the start edge
-    //   under space-x-reverse / space-y-reverse. flex-direction and flex-wrap are never read for it.
+    //   under space-x-reverse / space-y-reverse. flex-direction and flex-wrap are never read for it, and a
+    //   margin the child's own classes set on that edge wins over it, as a class wins over Tailwind's
+    //   zero-specificity `:where()` there.
     // A margin slot this pass does not ask for but still holds is handed back to the child's own layers.
     // Lifecycle mirrors the other style manipulators (StyleVariantManipulator): the
     // reconciler attaches one per gap container, keeps it in ReconcilerContext.GapManipulators,
@@ -70,8 +72,8 @@ namespace Velvet
     // path writes layout-independent margins, so it is fully resolved (and assertable) without a layout
     // tick. Direction never changes which edges wrap spaces (always symmetric).
     // Residual gaps versus native CSS gap (documented, not solved):
-    // An explicit per-child margin on an edge this manipulator writes (e.g. ml-2 on a child under a
-    // gap-x-4 row) is OVERWRITTEN — the manipulator owns the margin slots it writes each pass. A
+    // An explicit per-child margin on an edge a gap writes (e.g. ml-2 on a child under a gap-x-4 row) is
+    // OVERWRITTEN — the manipulator owns the margin slots it writes each pass, where CSS adds the two. A
     // margin-based polyfill cannot both BE the gap and preserve an explicit margin on the same edge without
     // per-child base-margin tracking, which would be fragile against re-apply. Use padding, an inner
     // wrapper, or a different axis when a child needs its own margin on the gap edge. Margins on an edge
@@ -112,6 +114,9 @@ namespace Velvet
         // One child's summed margins and which slots anything asked for, indexed by HeldSlot; reused per child.
         private readonly float[] _margins = new float[s_marginSlots.Length];
         private readonly bool[] _wanted = new bool[s_marginSlots.Length];
+
+        // Which slots a gap writes; a slot only a space margin writes yields to the child's own layers.
+        private readonly bool[] _gapWanted = new bool[s_marginSlots.Length];
 
         // Signature of the last successful Apply. Apply() early-returns when this is unchanged, so the
         // GeometryChanged churn the margin writes themselves provoke (and repeated reconcile passes that do
@@ -235,7 +240,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                SumMargins(logicalIndex, lastIndex, wrap, gapSlot);
+                SumMargins(child, logicalIndex, lastIndex, wrap, gapSlot);
                 WriteMargins(child);
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
@@ -257,30 +262,38 @@ namespace Velvet
         }
 
         // Fills _margins / _wanted with what the gap and the two space axes ask of the in-flow child at
-        // logicalIndex.
-        private void SumMargins(int logicalIndex, int lastIndex, bool wrap, HeldSlot gapSlot)
+        // logicalIndex. A space margin gives way to one the child's own classes set on that edge: a USS utility
+        // here, an arbitrary value through a yielding hold.
+        private void SumMargins(VisualElement child, int logicalIndex, int lastIndex, bool wrap, HeldSlot gapSlot)
         {
             System.Array.Clear(_margins, 0, _margins.Length);
             System.Array.Clear(_wanted, 0, _wanted.Length);
+            System.Array.Clear(_gapWanted, 0, _gapWanted.Length);
             if (wrap)
             {
                 foreach (var slot in s_marginSlots)
                 {
-                    Add(slot, _spec.Gap / 2f);
+                    AddGap(slot, _spec.Gap / 2f);
                 }
             }
             else if (_spec.HasGap && logicalIndex != 0)
             {
-                Add(gapSlot, _spec.Gap);
+                AddGap(gapSlot, _spec.Gap);
+            }
+            if (logicalIndex == lastIndex)
+            {
+                return;
             }
             var space = _spec.Space;
-            if (space.X != 0f && logicalIndex != lastIndex)
+            AddSpace(child, space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight, space.X);
+            AddSpace(child, space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom, space.Y);
+        }
+
+        private void AddSpace(VisualElement child, HeldSlot slot, float value)
+        {
+            if (value != 0f && !StyleArbitraryValueResolver.DeclaresOwn(child, slot))
             {
-                Add(space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight, space.X);
-            }
-            if (space.Y != 0f && logicalIndex != lastIndex)
-            {
-                Add(space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom, space.Y);
+                Add(slot, value);
             }
         }
 
@@ -290,18 +303,26 @@ namespace Velvet
             _wanted[(int)slot] = true;
         }
 
+        private void AddGap(HeldSlot slot, float value)
+        {
+            Add(slot, value);
+            _gapWanted[(int)slot] = true;
+        }
+
         // Holds every slot SumMargins asked for and hands back the others this child still has held.
         private void WriteMargins(VisualElement child)
         {
             foreach (var slot in s_marginSlots)
             {
-                if (_wanted[(int)slot])
+                if (!_wanted[(int)slot])
                 {
-                    StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]));
+                    StyleArbitraryValueResolver.HandBackIfHeld(child, slot);
+                    continue;
                 }
-                else if (StyleArbitraryValueResolver.IsHeld(child, slot))
+                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]));
+                if (!_gapWanted[(int)slot])
                 {
-                    StyleArbitraryValueResolver.HandBack(child, slot);
+                    StyleArbitraryValueResolver.Yield(child, slot);
                 }
             }
         }

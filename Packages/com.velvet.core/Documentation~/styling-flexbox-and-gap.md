@@ -73,6 +73,11 @@ same manipulator, but they are Tailwind v4's margin rule rather than CSS `gap`: 
 the container's direction, and on a wrapping container too rather than the wrap strategy below. A gap and
 a space on one element both apply, as they do in Tailwind: on an edge both write, the two add up.
 
+Tailwind writes `space-*` and `divide-*` at zero specificity (`:where()`), so a class of the child's own
+that sets the same edge wins there: `mr-2` or `mr-[5px]` on a child of a `space-x-4` row keeps its own
+right margin, and `border-r-4` or a `border-red-500` on a divided child keeps its own width or color. A
+gap is not a margin in CSS and adds to one instead; see the residual edge cases below.
+
 ### Reversed containers (`flex-row-reverse` / `flex-col-reverse`) and `space-*-reverse`
 
 A `flex-row-reverse` / `flex-col-reverse` container moves a gap's margin to the axis's **trailing**
@@ -101,10 +106,10 @@ is horizontal, `divide-y` is vertical).
 | `divide-y-*` | always vertical | `border-bottom`, or `border-top` with `divide-y-reverse` |
 
 A lone `divide-x-reverse` does nothing on its own — like `divide-{color}`, it needs a `divide-x` /
-`divide-y` to give it a width to move. Because a divider is a real border, the edge it lands on also
-carries its **color** and its share of the box model: the manipulator owns the width *and* color
-channel of that one edge and releases both when the edge changes. The other three edges are left
-alone, so a child's own `border-b` under a `divide-x` row is preserved. Unlike gap, divide has no
+`divide-y` to give it a width to move. Because a divider is a real border, the edge it lands on carries
+its share of the box model, and a `divide-{color}` colors all four edges of a divided child, as
+Tailwind's `border-color` does. Widths on the other three edges are left alone, so a child's own `border-b`
+under a `divide-x` row is preserved and takes the divide color. Unlike gap, divide has no
 wrap-specific strategy: a wrapping container still gets a single per-child divider edge, not a
 symmetric one, so dividers between wrapped *lines* are not drawn.
 
@@ -147,8 +152,9 @@ element your own code kept a reference to carries none of them when it is re-par
 
 **What a container stops spacing goes back to the child's own layers, not to nothing.** Gap, grid and
 divide write their value straight onto the child, while an arbitrary value — the child's own `ml-[2px]`
-or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a container spaces a
-child its value holds, even when such a layer changes afterwards; where it stops — the gap is dropped,
+or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a gap or grid spaces a
+child its value holds, even when such a layer changes afterwards, whereas a space margin or a divider gives
+way to such a layer for as long as one is there; where a container stops — the gap is dropped,
 the child leaves, an edge is abandoned, or the child is the first of a gap row or the last of a space or
 divide row and takes nothing there — the slot is given back and the child shows what its layers say there. A grid holds its
 first column's and first row's zero margins rather than giving them back. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its

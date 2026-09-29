@@ -10,7 +10,12 @@
 - `divide-x-*` / `divide-y-*` follow Tailwind v4's divider rule: `border-right` / `border-bottom` on every
   in-flow child except the last, moved to `border-left` / `border-top` by `divide-x-reverse` /
   `divide-y-reverse`. They used to rule the left / top edge of every child except the first and move to
-  the trailing edge on their own in a reversed container.
+  the trailing edge on their own in a reversed container. A `divide-{color}` colors all four edges of a
+  divided child, as Tailwind's `border-color` does, where it colored only the divider's edge.
+
+- A `space-*` margin and a divider give way to a class of the child's own that sets the same edge — `mr-2`,
+  `mr-[5px]`, `border-r-4`, `border-red-500` — as Tailwind's zero-specificity rules do. They used to
+  overwrite it.
 
 - A `gap-*`, `gap-x-*` or `gap-y-*` no longer reads a `space-x-reverse` / `space-y-reverse` marker, since
   CSS `gap` has none. `flex flex-col gap-4 space-y-reverse` spaced its children on `margin-bottom`; it

@@ -46,6 +46,8 @@ namespace Velvet
     // draws a divider nor counts toward which of the remaining children is "last".
     internal sealed class StyleDivideManipulator : Manipulator
     {
+        private static readonly DivideEdge[] s_edges = (DivideEdge[])System.Enum.GetValues(typeof(DivideEdge));
+
         private DivideSpec _spec;
         private readonly ReconcilerContext _ctx;
 
@@ -185,9 +187,12 @@ namespace Velvet
 
         // Writes one child's divider on the given edge. Solid keeps the plain inline-border path verbatim; a
         // dashed / dotted divider reserves the same gutter width, masks the native color with the sentinel, and
-        // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding).
+        // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding). A divide-{color}
+        // colors all four edges of a divided child, as Tailwind's `border-color` does. Tailwind writes all of it
+        // at zero specificity, so a width or color the child's own classes set on an edge wins there.
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
+            var divides = isDivider && !StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge));
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
             // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
@@ -195,31 +200,22 @@ namespace Velvet
                 && !_ctx.SkewBindings.ContainsKey(child)
                 && !_ctx.ShadowBindings.ContainsKey(child);
 
-            if (!dashed || !isDivider)
+            if (!dashed || !divides)
             {
                 // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the last slot).
                 DetachDash(child);
-                if (isDivider)
+                if (divides)
                 {
                     StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+                    StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
                 }
                 else
                 {
                     StyleArbitraryValueResolver.HandBack(child, WidthSlot(edge));
                 }
-                // Decide the edge's color channel on EVERY pass (like the gap manipulator its margin): hold
-                // the divider color only on a colored divider, else hand it back so a dropped divide-{color}
-                // class (or a colored child reordered to the last slot) leaves no stale inline color.
-                if (isDivider && _spec.HasColor)
-                {
-                    StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(_spec.Color));
-                }
-                else
-                {
-                    StyleArbitraryValueResolver.HandBack(child, ColorSlot(edge));
-                }
+                WriteColors(child, null, isDivider);
                 return;
             }
 
@@ -234,7 +230,9 @@ namespace Velvet
             // Reserve the same gutter as a solid divider (real width) but mask the native border color so only
             // the dashed / dotted paint shows.
             StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
             StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
+            WriteColors(child, edge, isDivider);
 
             if (hasBinding)
             {
@@ -243,6 +241,29 @@ namespace Velvet
             else
             {
                 _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, edge, _spec.Width, paintColor, _spec.Style);
+            }
+        }
+
+        // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
+        // no color of their own, and hands back the edges this manipulator holds and no longer colors.
+        private void WriteColors(VisualElement child, DivideEdge? skip, bool isDivider)
+        {
+            foreach (var edge in s_edges)
+            {
+                if (edge == skip)
+                {
+                    continue;
+                }
+                var slot = ColorSlot(edge);
+                if (isDivider && _spec.HasColor && !StyleArbitraryValueResolver.DeclaresOwn(child, slot))
+                {
+                    StyleArbitraryValueResolver.Hold(child, slot, new StyleColor(_spec.Color));
+                    StyleArbitraryValueResolver.Yield(child, slot);
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBackIfHeld(child, slot);
+                }
             }
         }
 
@@ -403,13 +424,15 @@ namespace Velvet
             {
                 DetachDash(child);
                 ResetOwnedEdges(child);
+                WriteColors(child, null, false);
             }
         }
 
         // Resets every edge this manipulator has ever written, not just the currently applied one: an element
         // reaching here has left the container (or the manipulator is being torn down), so it may still carry
-        // a border from an edge an earlier flip abandoned while it was still a member. It is deliberately not
-        // all four edges — this manipulator only claims the divider's own edge.
+        // a border from an edge an earlier flip abandoned while it was still a member. Its width is reset only on
+        // the edges a divider has used, so a child's own width on another edge survives; the colors on the other
+        // edges are WriteColors' to hand back.
         private void ResetOwnedEdges(VisualElement child)
         {
             for (var edge = DivideEdge.Left; edge <= DivideEdge.Bottom; edge++)

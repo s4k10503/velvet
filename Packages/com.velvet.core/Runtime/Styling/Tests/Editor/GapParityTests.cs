@@ -1293,6 +1293,104 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpaceXRowWhoseChildrenCarryARightMarginClass_When_Reconciled_Then_TheClassWins()
+        {
+            // Arrange — Tailwind writes space at zero specificity, so the child's own mr-2 wins on the edge both set,
+            // and nothing is left inline for the class to lose to. The second child's left edge rides along:
+            // Tailwind's space never writes it.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row space-x-4", children: new VNode[]
+                {
+                    V.Div(className: "mr-2"),
+                    V.Div(className: "mr-2"),
+                    V.Div(className: "mr-2"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That((container[0].style.marginRight.keyword, container[1].style.marginLeft.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ASpaceXRowWhoseChildrenCarryAnArbitraryRightMargin_When_Reconciled_Then_TheirOwnValueWins()
+        {
+            // Arrange — the arbitrary-value twin of the case above, with the same second term.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row space-x-4", children: new VNode[]
+                {
+                    V.Div(className: "mr-[5px]"),
+                    V.Div(className: "mr-[5px]"),
+                    V.Div(className: "mr-[5px]"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That((container[0].style.marginRight.value.value, container[1].style.marginLeft.keyword),
+                Is.EqualTo((5f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ASpaceXRowWhoseChildrenCarryAnUnrelatedClass_When_Reconciled_Then_TheSpaceStillApplies()
+        {
+            // Arrange — a utility that sets no margin-right leaves the space margin in place.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row space-x-4", children: new VNode[]
+                {
+                    V.Div(className: "p-2"),
+                    V.Div(className: "p-2"),
+                    V.Div(className: "p-2"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ASpaceMarginYieldingToAChildsOwnValue_When_AGapJoinsItOnThatEdge_Then_TheSumIsHeld()
+        {
+            // Arrange — a reversed row puts a gap-x on margin-right too, where CSS adds it to the margin; a gap
+            // does not give way to the child's own value the way a space margin does.
+            using var scope = new ReconcilerScope();
+            VNode RowOf(string className) => V.Div(className: className, children: new VNode[]
+            {
+                V.Div(className: "mr-[5px]"),
+                V.Div(className: "mr-[5px]"),
+                V.Div(className: "mr-[5px]"),
+            });
+            var tree1 = new VNode[] { RowOf("flex flex-row-reverse space-x-2") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            var yielded = container[1].style.marginRight.value.value;
+
+            // Act
+            var tree2 = new VNode[] { RowOf("flex flex-row-reverse gap-x-4 space-x-2") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the yielded value before the gap joined rides along.
+            Assert.That((yielded, container[1].style.marginRight.value.value), Is.EqualTo((5f, Space4 + Space2)));
+        }
+
+        [Test]
         public void Given_AGridWithASpaceX_When_Reconciled_Then_TheSpaceIsAMarginRatherThanAColumnGap()
         {
             // Arrange — Tailwind's space-x on a grid is still its margin rule; the grid's column gap is gap-x's.

@@ -1082,7 +1082,7 @@ namespace Velvet
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
-        // off — cannot take the slot from it.
+        // off — cannot take the slot from it. Yield makes the exception.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
         {
             var holds = HoldsOf(element);
@@ -1102,6 +1102,43 @@ namespace Velvet
             var holds = HoldsOf(element);
             holds.Set(slot, value);
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
+        // that layer's value stands, and the held one returns once the last such layer goes. That is how a
+        // zero-specificity Tailwind write (space, divide) gives way to the element's own arbitrary value for as
+        // long as it has one. The next Hold on the slot takes the yield back.
+        internal static void Yield(VisualElement element, HeldSlot slot)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            map.Holds?.SetYield(slot);
+            ReassertHolds(element, map, StyleHeldSlots.Bit(slot));
+        }
+
+        // Writes every held slot among slots back onto the element, except a yielding one a layer of the
+        // element's own writes, which takes that layer's value instead.
+        private static void ReassertHolds(VisualElement element, LayerMap map, int slots)
+        {
+            var holds = map.Holds;
+            if (holds == null)
+            {
+                return;
+            }
+            var yielded = 0;
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                if (!holds.Yields(slot))
+                {
+                    continue;
+                }
+                if (!TryLayeredWinner(map, slot, out var winner))
+                {
+                    continue;
+                }
+                StyleHeldSlots.WriteLayered(element.style, slot, winner);
+                yielded |= StyleHeldSlots.Bit(slot);
+            }
+            holds.Reassert(element.style, slots & ~yielded);
         }
 
         private static StyleHeldSlots HoldsOf(VisualElement element)
@@ -1134,12 +1171,36 @@ namespace Velvet
             }
         }
 
-        // Whether a gap, grid or divide manipulator holds slot on element.
-        internal static bool IsHeld(VisualElement element, HeldSlot slot)
+        // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
+        // otherwise: an inline value nothing here wrote is not this layer's to clear.
+        internal static void HandBackIfHeld(VisualElement element, HeldSlot slot)
         {
             s_layers.TryGetValue(element, out var map);
             var holds = map?.Holds;
-            return holds != null && holds.IsHeld(slot);
+            if (holds != null && holds.IsHeld(slot))
+            {
+                HandBack(element, slot);
+            }
+        }
+
+        // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
+        // writes space and divide at zero specificity, so such a class of the element's own wins over them
+        // there; an arbitrary value's layer does the same through a yielding Hold.
+        internal static bool DeclaresOwn(VisualElement element, HeldSlot slot)
+        {
+            var longhand = HeldSlotGroups.LonghandOf(slot);
+            foreach (var cls in element.GetClasses())
+            {
+                if (!StyleUtilityProperties.TryGet(cls, out var rule))
+                {
+                    continue;
+                }
+                if (rule.Gate == StyleUtilityGate.None && rule.Properties.Contains(longhand))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Hands back every slot held on element. For an element the reconciler removes: its claim is dropped
@@ -1360,7 +1421,7 @@ namespace Velvet
             {
                 ClearInline(element, property);
             }
-            map.Holds?.Reassert(element.style, HeldSlotGroups.SlotsOf(property));
+            ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property));
         }
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)

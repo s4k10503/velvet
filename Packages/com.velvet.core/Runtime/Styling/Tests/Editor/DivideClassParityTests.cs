@@ -304,6 +304,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_DivideXNamedColorRow_When_Reconciled_Then_TheDividedChildsOtherEdgesTakeTheColorToo()
+        {
+            // Arrange — Tailwind's divide-{color} is `border-color` on every child but the last: all four edges.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][0].style.borderTopColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_ADivideXRowWhoseChildCarriesARightBorderClass_When_Reconciled_Then_TheClassWidthWins()
+        {
+            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-4
+            // wins on its edge; the first child, which declares none, still takes the divider.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child border-r-4"),
+                    V.Div(className: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That((scope.Root[0][0].style.borderRightWidth.value, scope.Root[0][1].style.borderRightWidth.keyword),
+                Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_DivideYRow_When_Reconciled_Then_SecondChildHasBottomBorderWidth()
         {
             // Arrange

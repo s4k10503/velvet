@@ -28,6 +28,9 @@ namespace Velvet
     internal sealed class StyleHeldSlots
     {
         private int _mask;
+
+        // The held slots that give way to a layer of the element's own — see StyleArbitraryValueResolver.Yield.
+        private int _yieldMask;
         private StyleLength[]? _lengths;
         private StyleFloat[]? _floats;
         private StyleColor[]? _colors;
@@ -38,21 +41,28 @@ namespace Velvet
         {
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
+            _yieldMask &= ~Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
         {
             (_floats ??= new StyleFloat[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
+            _yieldMask &= ~Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleColor value)
         {
             (_colors ??= new StyleColor[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
+            _yieldMask &= ~Bit(slot);
         }
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);
+
+        public void SetYield(HeldSlot slot) => _yieldMask |= Bit(slot);
+
+        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & Bit(slot)) != 0;
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
@@ -146,6 +156,8 @@ namespace Velvet
 
         private static readonly ArbitraryProperty[] s_properties =
             (ArbitraryProperty[])Enum.GetValues(typeof(ArbitraryProperty));
+
+        public static StyleLonghand LonghandOf(HeldSlot slot) => s_longhands[(int)slot];
 
         private static readonly int[] s_slotsOf = BuildSlotsOf();
         private static readonly ArbitraryProperty[][] s_writersOf = BuildWritersOf();
