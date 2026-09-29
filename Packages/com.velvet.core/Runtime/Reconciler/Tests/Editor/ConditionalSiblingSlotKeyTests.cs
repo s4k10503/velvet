@@ -14,8 +14,9 @@ namespace Velvet.Tests
     /// the slot by how many components of that identity the walk had passed shifted the ones after it onto
     /// their predecessors' keys instead, so the second instance re-bound onto the first's fiber and rendered
     /// the first one's state under the second one's props — with nothing remounting, and the unmount landing
-    /// on the instance that should have survived. Wrapping each of the two in an element of its own is a
-    /// different diff and still re-binds, unless the wrappers carry a <c>key:</c>; both readings are here.
+    /// on the instance that should have survived. Wrapping each of the two in an element of its own keeps the
+    /// same pairing whether or not the wrappers carry a <c>key:</c>, since the null holds its slot among
+    /// elements too; both readings are here.
     /// </summary>
     [TestFixture]
     internal sealed class ConditionalSiblingSlotKeyTests
@@ -148,10 +149,8 @@ namespace Velvet.Tests
             _root.Q<VisualElement>("host").Children()
                 .Select(wrapper => wrapper.name + "(" + ((Button)wrapper[0]).text + ")"));
 
-        // GREEN_ON_BASE(characterization): the element diff matches unkeyed siblings by position once the
-        // null has been dropped from the child list, which the component slot key does not reach.
         [Test]
-        public void Given_AConditionalSiblingWrappedInAnUnkeyedElement_When_ItStopsRendering_Then_TheSurvivorReBindsWithThatElement()
+        public void Given_AConditionalSiblingWrappedInAnUnkeyedElement_When_ItStopsRendering_Then_TheSurvivorKeepsItsOwnInstance()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(WrappedHost, key: "host"));
@@ -163,16 +162,15 @@ namespace Velvet.Tests
             _root.Q<Button>("drop").SimulateClick();
             mounted.FlushEffectsForTest();
 
-            // Assert — the surviving wrapper took the departing one's element, and the component under it
-            // came along: the second wrapper's props over the first wrapper's instance. The arranged
-            // reading is folded in for the reason the case above states.
+            // Assert — the surviving wrapper kept its own element, and the instance under it its own state.
+            // The arranged reading is folded in for the reason the case above states.
             Assert.That(
                 (beforeDrop, WrappedHostText()),
-                Is.EqualTo(("w1(first)|w2(second-renamed)", "w2(first)")));
+                Is.EqualTo(("w1(first)|w2(second-renamed)", "w2(second-renamed)")));
         }
 
-        // GREEN_ON_BASE(characterization): keyed element siblings already matched by key on the base; this
-        // is the remedy the migration guide offers for the case above.
+        // GREEN_ON_BASE(characterization): keyed element siblings already matched by key on the base, and
+        // this is the case above with a key on each wrapper, which changes nothing about the answer.
         [Test]
         public void Given_AConditionalSiblingWrappedInAKeyedElement_When_ItStopsRendering_Then_TheSurvivorKeepsItsOwnInstance()
         {

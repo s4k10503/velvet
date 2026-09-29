@@ -38,9 +38,11 @@ namespace Velvet
         private bool _isDisposed;
 
         // The prior pass's rows, split by what the next pass may find them under: a keyed row by its key,
-        // an unkeyed one by the item index it was rendered for. What a pass leaves in them, whether it
+        // with the item index it was rendered for; a further row under a key an earlier row already holds by
+        // that key and that index; an unkeyed one by its item index. What a pass leaves in them, whether it
         // finishes or throws, is what DisposeUntakenRows releases.
-        private readonly Dictionary<string, (VNode node, VisualElement element)> _oldNodesByKey = new();
+        private readonly Dictionary<string, (VNode node, VisualElement element, int itemIndex)> _oldNodesByKey = new();
+        private readonly Dictionary<(string key, int itemIndex), (VNode node, VisualElement element)> _oldRepeatedKeyRows = new();
         private readonly Dictionary<int, (VNode node, VisualElement element)> _oldNodesByItemIndex = new();
         private readonly HashSet<string> _reusedKeys = new();
 
@@ -58,7 +60,7 @@ namespace Velvet
             _contextStack = contextStack;
             // Capture the enclosing context now (the cursor is correct mid-reconcile, where CreateElement
             // constructs this controller). The list's items render later, when the cursor is empty.
-            _enclosingContext = contextStack?.SnapshotTops();
+            _enclosingContext = MotionContext.OutlivingPass(contextStack?.SnapshotTops());
 
             if (node.Name != null)
             {
@@ -112,7 +114,7 @@ namespace Velvet
             _totalHeightSpacer.style.height = newNode.ItemHeight * newNode.Items.Count;
             // Update runs during the host's reconcile (PatchNode), so the cursor is correct here: refresh the
             // snapshot in case the enclosing Provider / MotionContext value changed since the last render.
-            _enclosingContext = _contextStack?.SnapshotTops();
+            _enclosingContext = MotionContext.OutlivingPass(_contextStack?.SnapshotTops());
             ForceRefresh();
         }
 
@@ -238,21 +240,21 @@ namespace Velvet
             // disposes scrolled-out items. Skipping it (the aliased-and-cleared path) silently leaked every item's
             // fiber (effects, store subscriptions, nested inline children) on uniform same-size scrolling.
             _oldNodesByKey.Clear();
+            _oldRepeatedKeyRows.Clear();
             _oldNodesByItemIndex.Clear();
             for (var i = 0; i < _renderedNodes.Length; i++)
             {
                 if (_renderedNodes[i] != null)
                 {
                     var key = _renderedKeys[i];
-                    if (key != null)
+                    var itemIndex = _bufferFirstItemIndex + i;
+                    if (key == null)
                     {
-                        // No key reaches this twice: the pass that filled these slots claimed each key in
-                        // _reusedKeys before writing its slot.
-                        _oldNodesByKey.Add(key, (_renderedNodes[i], _renderedElements[i]));
+                        _oldNodesByItemIndex[itemIndex] = (_renderedNodes[i], _renderedElements[i]);
                     }
-                    else
+                    else if (!_oldNodesByKey.TryAdd(key, (_renderedNodes[i], _renderedElements[i], itemIndex)))
                     {
-                        _oldNodesByItemIndex[_bufferFirstItemIndex + i] = (_renderedNodes[i], _renderedElements[i]);
+                        _oldRepeatedKeyRows[(key, itemIndex)] = (_renderedNodes[i], _renderedElements[i]);
                     }
                 }
             }
@@ -297,32 +299,27 @@ namespace Velvet
 
                     var itemIndex = newFirst + i;
                     var item = _node.Items[itemIndex];
+                    // The selector's key is compared as a whole string and never becomes a VNode.Key or a
+                    // scope segment, so it is not held to the delimiter rule VNode.Key enforces.
                     var key = _node.KeySelector(item);
 
-                    // Taken out of the range here rather than left to VNode.Key's refusal below, which
-                    // would end the pass and blank the list over one item's key.
-                    if (VNode.KeyHoldsDelimiter(key))
-                    {
-                        FiberLogger.LogWarning("FiberVirtualListController", $"Key holding a NUL (U+0000) detected: \"{key}\". Skipping the item; NUL is reserved as the internal scope delimiter.");
-                        continue;
-                    }
-
                     // A null key is no key, the answer V.List gives the same selector: the row renders and
-                    // reconciles by position, which here is its item index, and never through the two
+                    // reconciles by position, which here is its item index, and never through the
                     // string-keyed collections below. VirtualListKeyCollectionContractTests holds those
-                    // two to what each does with one.
-                    if (key != null && !_reusedKeys.Add(key))
+                    // collections to what each does with one. A key an earlier rendered item of this pass
+                    // already claimed is reported, and the item still renders.
+                    var claimed = key != null && _reusedKeys.Add(key);
+                    if (key != null && !claimed)
                     {
-                        FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected: \"{key}\". Skipping duplicate item to prevent tracking inconsistency.");
-                        continue;
+                        FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected: \"{key}\". Items sharing a key are told apart by their item index; give each item a unique key.");
                     }
 
                     var vnode = _node.Renderer(item);
                     if (vnode == null)
                     {
-                        if (key != null)
+                        if (claimed)
                         {
-                            _reusedKeys.Remove(key);
+                            _reusedKeys.Remove(key!);
                         }
                         continue;
                     }
@@ -337,9 +334,17 @@ namespace Velvet
                     // element AFTER creating the replacement (create-before-dispose, see below) rather
                     // than before, so it could not reuse that helper's eager remove-then-create order
                     // even if the class boundary were bridged.
-                    var hasExisting = key != null
-                        ? _oldNodesByKey.TryGetValue(key, out var existing)
-                        : _oldNodesByItemIndex.TryGetValue(itemIndex, out existing);
+                    (VNode node, VisualElement element, OldRowTable table) found = default;
+                    if (key != null)
+                    {
+                        found = FindKeyedRow(key, itemIndex);
+                    }
+                    else if (_oldNodesByItemIndex.TryGetValue(itemIndex, out var unkeyedRow))
+                    {
+                        found = (unkeyedRow.node, unkeyedRow.element, OldRowTable.ByItemIndex);
+                    }
+                    var hasExisting = found.table != OldRowTable.None;
+                    var existing = (node: found.node, element: found.element);
                     if (hasExisting && ReconcileKeying.CanPatch(existing.node, vnode))
                     {
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
@@ -362,13 +367,17 @@ namespace Velvet
                     // The prior row leaves its table only once the slot holds an element, the order
                     // GeneralPathReconciler.CommitLeaf keeps for a key it marks used: a throw from the create
                     // or the patch above leaves it there for DiscardFailedPass to release.
-                    if (key != null)
+                    switch (found.table)
                     {
-                        _oldNodesByKey.Remove(key);
-                    }
-                    else
-                    {
-                        _oldNodesByItemIndex.Remove(itemIndex);
+                        case OldRowTable.ByKey:
+                            _oldNodesByKey.Remove(key!);
+                            break;
+                        case OldRowTable.RepeatedKey:
+                            _oldRepeatedKeyRows.Remove((key!, itemIndex));
+                            break;
+                        case OldRowTable.ByItemIndex:
+                            _oldNodesByItemIndex.Remove(itemIndex);
+                            break;
                     }
 
                     // Stamp this item's newly created fibers with its own vnode so an isolated re-render can
@@ -382,9 +391,48 @@ namespace Velvet
             }
         }
 
+        private enum OldRowTable : byte
+        {
+            None,
+            ByKey,
+            RepeatedKey,
+            ByItemIndex,
+        }
+
+        // The row this key was rendered under for this item index first. Failing that, the row it was
+        // rendered under for another index, so a moved item keeps its row — but only where the item at that
+        // index no longer returns the key, whether or not it is still in the range: while it does, the row
+        // is that item's, and two items sharing a key are told apart by their indices.
+        private (VNode node, VisualElement element, OldRowTable table) FindKeyedRow(string key, int itemIndex)
+        {
+            var hasFirst = _oldNodesByKey.TryGetValue(key, out var first);
+            if (hasFirst && first.itemIndex == itemIndex)
+            {
+                return (first.node, first.element, OldRowTable.ByKey);
+            }
+            if (_oldRepeatedKeyRows.TryGetValue((key, itemIndex), out var repeated))
+            {
+                return (repeated.node, repeated.element, OldRowTable.RepeatedKey);
+            }
+            if (hasFirst && !StillReturnsKey(first.itemIndex, key))
+            {
+                return (first.node, first.element, OldRowTable.ByKey);
+            }
+            return default;
+        }
+
+        private bool StillReturnsKey(int itemIndex, string key)
+            => itemIndex < _node.Items.Count
+               && string.Equals(_node.KeySelector(_node.Items[itemIndex]), key, StringComparison.Ordinal);
+
         private void DisposeUntakenRows()
         {
             foreach (var kvp in _oldNodesByKey)
+            {
+                _reconciler.CleanupElementForController(kvp.Value.element);
+            }
+
+            foreach (var kvp in _oldRepeatedKeyRows)
             {
                 _reconciler.CleanupElementForController(kvp.Value.element);
             }

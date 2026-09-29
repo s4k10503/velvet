@@ -23,6 +23,7 @@ import tempfile
 import threading
 import traceback
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
@@ -311,6 +312,55 @@ class CSharpReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(names, ["N.Outer.Inner.Given_X_When_Y_Then_Z"])
+
+    @staticmethod
+    def attributed(*attributes):
+        """`N.C` holding one method under `attributes`, each written as the lines given."""
+        return ("namespace N\n{\n    class C\n    {\n" +
+                "".join("        {}\n".format(line) for attribute in attributes for line in attribute) +
+                "        public void Given_A_When_B_Then_C(int a, int b) => Assert.Pass();\n    }\n}\n")
+
+    def test_Given_AMethodWhoseOnlyAttributeWraps_When_ItIsRead_Then_ItIsACase(self):
+        # Arrange
+        text = self.attributed(["[TestCase(1,", "    2)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_ARowAboveAWrappedOne_When_ItChanges_Then_TheMethodIsTouched(self):
+        # Arrange -- the row on line 5 sits above a row wrapped over lines 6 and 7.
+        text = self.attributed(["[TestCase(1, 2)]"], ["[TestCase(3,", "    4)]"], ["[TestCase(5, 6)]"])
+        cases = base_red_check.csharp_cases(text)
+
+        # Act
+        touched = base_red_check.touched(cases, {5})
+
+        # Assert
+        self.assertEqual([case.name for case in touched], ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_AttributesListedInOneBracketAcrossLines_When_Read_Then_TheMethodIsTheCase(self):
+        # Arrange -- the second line opens with an attribute's own name rather than a bracket, and
+        # the parentheses on each line close there.
+        text = self.attributed(["[TestCase(1, 2),", "    TestCase(3, 4)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_AWrappedAttributeWithABracketInAString_When_Read_Then_TheMethodIsTheCase(self):
+        # Arrange -- the string's bracket closes nothing, so the attribute is still open after it.
+        text = self.attributed(['[TestCase("w-120px]",', "    2)]"])
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
 
     def test_Given_AStringLiteralHoldingTheWordClass_When_ItIsRead_Then_ItOwnsNoCaseBelowIt(self):
         # Arrange -- this repository writes "the enter-from class is applied" into assertion messages,
@@ -1202,6 +1252,55 @@ class FixtureRollupTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(base_red_check.fixtures_that_ran(reported), {"N.C"})
+
+    @staticmethod
+    def verdict(name):
+        """`N.Foo.Given_A_When_B_Then_C`'s verdict over a run that reported `name` alone, failed."""
+        case = base_red_check.Case("N.Foo.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/Foo.cs", 1, 2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report([case], [], {name: "Failed"}, {}, True)
+        return case.verdict
+
+    def test_Given_AFixtureTheRunnerNamesWithItsArguments_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- read as a fixture the base built none of, the case would fail nothing.
+        name = "N.Foo(1).Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_AFixtureTheRunnerNamesWithTypeArguments_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange
+        name = "N.Foo<Int32>.Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_AFixtureWhoseTypeArgumentsNest_When_ItsCaseIsDecided_Then_ItFailsTheRun(self):
+        # Arrange
+        name = "N.Foo<List<Int32>>.Given_A_When_B_Then_C"
+
+        # Act
+        verdict = self.verdict(name)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_ACanaryTheRunnerNamesWithItsArguments_When_ItPassed_Then_ThePlatformIsVouchedFor(self):
+        # Arrange
+        reported = {"N.CanaryTests(1).Given_A_When_B_Then_C": "Passed"}
+
+        # Act
+        broken = base_red_check.unsound_platforms({"EditMode": ["N.CanaryTests"]}, reported)
+
+        # Assert
+        self.assertEqual(broken, {})
 
 
 class CanaryTests(unittest.TestCase):
@@ -2763,6 +2862,174 @@ class NestedFixtureNameTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(rounds, [["N.CanaryTests", "N.Outer.Inner"]])
+
+
+class TestNamedRowTests(unittest.TestCase):
+    """A row the runner named by a `TestName` or a `SetName` rather than after its method.
+
+    Its full name is the fixture's joined to its own name, which need not hold the method it came
+    from; `methodname` does. The rows are written by hand in that shape, read off this repository's own EditMode
+    results, for the reason `NestedFixtureNameTests` gives; a pattern's expansion is written as the
+    name generator in the runner's bundled NUnit builds it.
+    """
+
+    PATH = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    METHOD = "Given_A_When_B_Then_C"
+
+    @classmethod
+    def fixture(cls, *attributes, extra=""):
+        """`N.ProbeTests` holding `METHOD` under `attributes`, and `extra` above it."""
+        return ("namespace N\n{\n    internal sealed class ProbeTests\n    {\n" + extra +
+                "".join("        {}\n".format(attribute) for attribute in attributes) +
+                "        public void {}(int value) => Assert.That(value, Is.EqualTo(1));\n"
+                "    }}\n}}\n".format(cls.METHOD))
+
+    @classmethod
+    def row(cls, name, result, method=None, fixture="N.ProbeTests", classname=None, inner=""):
+        return ('<test-case name="{0}" fullname="{1}.{0}" methodname="{2}" classname="{3}" '
+                'result="{4}">{5}</test-case>'.format(name, fixture, method or cls.METHOD,
+                                                       classname or fixture, result, inner))
+
+    def read(self, *rows):
+        holder = tempfile.mkdtemp(prefix="base-red-named-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        Path(holder, "r.xml").write_text(
+            '<test-run><test-suite type="ParameterizedMethod">{}</test-suite></test-run>'.format(
+                "".join(rows)))
+        return base_red_check.results_from(holder)
+
+    def verdicts(self, cases, *rows):
+        """Each case's verdict, in the order given, over a results file holding `rows` alone."""
+        reported, wrote = self.read(*rows)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report(cases, [], reported, {}, wrote)
+        return tuple(case.verdict for case in cases)
+
+    def verdict(self, source, *rows):
+        return self.verdicts(base_red_check.csharp_cases(source, self.PATH), *rows)[0]
+
+    def test_Given_ANamedRowBesideADefaultOne_When_Read_Then_EachIsReadAsTheMethods(self):
+        # Arrange -- read by the default row alone, the method passed while its named row failed.
+        key = "N.ProbeTests." + self.METHOD
+        reported, _ = self.read(self.row("Given_Two_When_B_Then_C", "Failed"),
+                                self.row(self.METHOD + "(1)", "Passed"))
+
+        # Act
+        readings = [base_red_check.outcome_for(key, {name: result})
+                    for name, result in reported.items()]
+
+        # Assert
+        self.assertEqual(readings, ["Failed", "Passed"])
+
+    def test_Given_ANameWhosePatternOpensWithTheMethod_When_ItDisagreed_Then_TheCaseIsRed(self):
+        # Arrange -- `{m}` expands to the method's name, and nothing after it opens an argument list.
+        source = self.fixture('[TestCase(2, TestName = "{m}_Twice")]')
+
+        # Act
+        verdict = self.verdict(source, self.row(self.METHOD + "_Twice", "Failed"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ANameWhosePatternAppendsTheArguments_When_ItDisagreed_Then_TheCaseIsRed(self):
+        # Arrange -- `{a}` expands to the argument list, parenthesised, after a name of the author's.
+        source = self.fixture('[TestCase(2, TestName = "Given_Two_When_B_Then_C{a}")]')
+
+        # Act
+        verdict = self.verdict(source, self.row("Given_Two_When_B_Then_C(2)", "Failed"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ANameWhosePatternHoldsDots_When_ItDisagreed_Then_TheCaseIsRed(self):
+        # Arrange -- `{M}` expands to the declaring class's full name and the method's.
+        source = self.fixture('[TestCase(2, TestName = "{M}")]')
+
+        # Act
+        verdict = self.verdict(source, self.row("N.ProbeTests." + self.METHOD, "Failed"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ASourceRowNamedBySetName_When_ItDisagreed_Then_TheCaseIsRed(self):
+        # Arrange
+        source = self.fixture(
+            "[TestCaseSource(nameof(Rows))]",
+            extra=("        private static IEnumerable<TestCaseData> Rows()\n        {\n"
+                   '            yield return new TestCaseData(2).SetName("Given_Two_When_B_Then_C");\n'
+                   "        }\n\n"))
+
+        # Act
+        verdict = self.verdict(source, self.row("Given_Two_When_B_Then_C", "Failed"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ANamedRowOfAnInheritedCase_When_ItDisagreed_Then_TheHeirsCaseIsRed(self):
+        # Arrange -- `classname` names the abstract class declaring the method rather than the heir.
+        corpus = {
+            "a/Tests/Editor/BaseTests.cs":
+                "namespace N\n{\n    public abstract class BaseTests<T>\n    {\n"
+                '        [TestCase(2, TestName = "Given_Two_When_B_Then_C")]\n'
+                "        public void Given_A_When_B_Then_C(int value) => Assert.Pass();\n    }\n}\n",
+            "a/Tests/Editor/ButtonTests.cs":
+                "namespace N\n{\n    internal sealed class ButtonTests : BaseTests<Button> { }\n}\n",
+        }
+        path = "a/Tests/Editor/BaseTests.cs"
+        cases = base_red_check.as_the_runner_names_them(
+            base_red_check.cases_in(path, corpus[path]), base_red_check.concrete_heirs(corpus))
+
+        # Act
+        verdicts = self.verdicts(cases, self.row("Given_Two_When_B_Then_C", "Failed",
+                                                 fixture="N.ButtonTests", classname="N.BaseTests`1"))
+
+        # Assert
+        self.assertEqual(verdicts, (base_red_check.RED_ON_BASE,))
+
+    def test_Given_ARowNamedForAnotherMethod_When_BothAreRead_Then_EachIsReadAsItsOwnRowSays(self):
+        # Arrange -- the two rows share a full name, which the method they came from tells apart.
+        other = "Given_D_When_E_Then_F"
+        source = self.fixture('[TestCase(2, TestName = "{}")]'.format(other),
+                              extra="        [Test]\n        public void {}() => Assert.Pass();\n\n"
+                                    .format(other))
+        cases = base_red_check.csharp_cases(source, self.PATH)
+
+        # Act
+        verdicts = self.verdicts(cases, self.row(other, "Passed", method=other),
+                                 self.row(other, "Failed"))
+
+        # Assert
+        self.assertEqual(verdicts, (base_red_check.PASSED_ON_BASE, base_red_check.RED_ON_BASE))
+
+    def test_Given_ANamedRowWhoseBodyMessageOpensWithASection_When_Read_Then_ItIsTheBodysFailure(self):
+        # Arrange -- the trace leads back to the method, which the row's own name does not spell.
+        case = ET.fromstring(self.row(
+            "Given_Two_When_B_Then_C", "Failed",
+            inner="<failure><message>TearDown : the body expected this text</message><stack-trace>"
+                  "  at N.ProbeTests.Given_A_When_B_Then_C (System.Int32 value) [0x00011] in "
+                  "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 </stack-trace></failure>"))
+
+        # Act
+        reading = base_red_check.reading_of(case)
+
+        # Assert
+        self.assertEqual(reading, "Failed")
+
+    # GREEN_ON_BASE(characterization): a row named after its method keeps the runner's name.
+    def test_Given_ARowNamedAfterItsMethod_When_Read_Then_ItKeepsTheRunnersName(self):
+        # Act
+        reported, _ = self.read(self.row(self.METHOD, "Passed"))
+
+        # Assert
+        self.assertEqual(list(reported), ["N.ProbeTests." + self.METHOD])
+
+    # GREEN_ON_BASE(characterization): a row named for its argument list keeps the runner's name.
+    def test_Given_ARowNamedForItsArguments_When_Read_Then_ItKeepsTheRunnersName(self):
+        # Act
+        reported, _ = self.read(self.row(self.METHOD + "(1)", "Passed"))
+
+        # Assert
+        self.assertEqual(list(reported), ["N.ProbeTests.{}(1)".format(self.METHOD)])
 
 
 class ResultLabelTests(unittest.TestCase):

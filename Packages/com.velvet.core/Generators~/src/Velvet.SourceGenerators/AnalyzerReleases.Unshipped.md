@@ -19,15 +19,14 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-VEL001 | Velvet.Memoize | Warning | [MemoizeMethod] arity 0 cannot prove the _Impl method is pure
-VEL002 | Velvet.Memoize | Warning | [MemoizeMethod] supports only 1-8 parameters
-VEL003 | Velvet.Memoize | Warning | [MemoizeMethod] does not support generic methods
 VEL004 | Velvet.Memoize | Warning | [MemoizeMethod] does not support async methods
-VEL005 | Velvet.Memoize | Warning | [MemoizeMethod] does not support ref/out/in parameters
+VEL005 | Velvet.Memoize | Warning | [MemoizeMethod] does not support ref/out parameters
 VEL006 | Velvet.Memoize | Warning | [MemoizeMethod] partial method declaration requires an accessibility modifier
 VEL007 | Velvet.Memoize | Warning | [MemoizeMethod] containing type must be declared partial
-VEL008 | Velvet.Memoize | Warning | [MemoizeMethod] method must return Velvet.VNode or a derived type
+VEL008 | Velvet.Memoize | Warning | [MemoizeMethod] method must return Velvet.VNode
 VEL009 | Velvet.Memoize | Warning | [MemoizeMethod] partial method declaration must not have a body
+VEL010 | Velvet.Memoize | Warning | [MemoizeMethod] does not support ref struct or pointer parameters
+VEL011 | Velvet.Memoize | Warning | [MemoizeMethod] instance member of a struct must be readonly and not of a ref struct
 VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in the deps array (exhaustive-deps)
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep

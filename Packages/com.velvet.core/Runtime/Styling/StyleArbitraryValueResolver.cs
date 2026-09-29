@@ -25,13 +25,14 @@ namespace Velvet
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
         // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*, z-*)
         // do NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn,
-        // resolved to inline that already wins, or (z-*) a physical relocation — so the bang never has a
-        // cascade effect anywhere in this family; use the plain form (adding it would be a no-op elevation
-        // by definition). font-*, leading-*, and z-* still route their own classification gate through this
+        // resolved to inline that already wins, or (z-*) a physical relocation — so outside z-* the bang never
+        // has a cascade effect in this family; use the plain form (adding it would be a no-op elevation by
+        // definition). font-*, leading-*, and z-* still route their own classification gate through this
         // method (StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass.IsArbitraryLeadingClass /
         // StyleZIndexClass.TryParse), so a bang'd token still classifies as the family instead of silently
-        // falling through; gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not recognize the
-        // bang at all.
+        // falling through, and z-*'s bang then arbitrates among the element's own z-* tokens
+        // (StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not
+        // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
             important = false;
@@ -936,6 +937,25 @@ namespace Velvet
             }
         }
 
+        // The form of ReapplyLayeredValues above for the properties writing one of longhands, for a driver that
+        // hands back some of its slots and keeps writing the rest, which a whole-map pass would take back for a
+        // frame.
+        internal static void ReapplyLayeredValues(VisualElement element, StyleLonghandSet longhands)
+        {
+            if (element == null || !s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            foreach (var property in map.Keys)
+            {
+                if (property != ArbitraryProperty.FilterCustom && !IsFilter(property)
+                    && StyleArbitraryLonghands.Of(property).Overlaps(longhands))
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+        }
+
         // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
         // form of ReapplyLayeredValues above.
         //
@@ -1345,19 +1365,11 @@ namespace Velvet
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
             // from-side, so it must run BEFORE the instant write below (never observing its own write). It
             // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // zero duration, a resolved transition-property that does not name filter (the engine's own
-            // animation runs the change, or there is no transition), or a non-interpolable change.
-            if (functions == null)
-            {
-                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
-                {
-                    element.style.filter = StyleKeyword.Null;
-                }
-                return;
-            }
+            // resolved transition lists the tween does not run under (the engine's own animation runs the change,
+            // or no transition does), or a non-interpolable change.
             if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
             {
-                element.style.filter = functions;
+                StyleFilterEngineWrite.Write(element, functions);
             }
         }
 

@@ -486,7 +486,9 @@ namespace Velvet
             => _cleaner.ReleasePortalRangeForRetarget(placeholder);
 
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
-            => _childReconciler.Reconcile(parent, oldChildren, newChildren, slotStart: slotStart);
+            => _childReconciler.Reconcile(
+                parent, FiberKeying.UnwrapLoneFragment(oldChildren), FiberKeying.UnwrapLoneFragment(newChildren),
+                slotStart: slotStart);
 
         void IReconcilerHost.NotifyContextValueChange(ContextProviderNode newProvider)
             => _childReconciler.NotifyContextValueChange(newProvider);

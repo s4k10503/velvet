@@ -1224,8 +1224,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AParentLabelFlipWithStaggerChildren_When_TheChildrenInheritTheNewLabel_Then_EachSwapsOnItsOwnIncreasingSlot()
         {
-            // Arrange — mount with the parent hidden (orchestration only ever starts from a PATCH-time label
-            // change, never on mount — see FiberNodePatcher.PatchMotion), so nothing has swapped yet.
+            // Arrange — mount with the parent hidden and no initial, so nothing enters and nothing has swapped
+            // yet.
             var transition = new StyleTransitionConfig { DurationSec = 0.2f, DelayChildrenSec = 0.2f, StaggerChildrenSec = 0.1f };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden", transition));
             Assume.That(Root.Q<VisualElement>("c1").ClassListContains("opacity-100"), Is.False,
@@ -1359,39 +1359,127 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInheritingLayerWithNoOrchestrationOfItsOwn_When_TheAncestorLabelFlips_Then_TheGrandchildKeepsTheAncestorsSequence()
+        public void Given_InheritingChildrenWithNoOrchestrationOfTheirOwn_When_TheAncestorLabelFlips_Then_EachGrandchildSwapsWithItsOwnParent()
         {
-            // Arrange — the case above gives "mid" its own DelayChildrenSec, so mid establishes a frame
-            // whatever the gate decides. Here mid declares no orchestration knob at all: it has to pass gp's
-            // frame through, leaving mid and gc as slots 0 and 1 of ONE sequence rather than restarting it.
+            // Arrange — Framer numbers each variant parent's own children: mid0 and mid1 take gp's slots 0 and 1,
+            // and each gc starts with its own mid rather than taking a later slot of gp's sequence.
+            VNode Mid(int i) => V.Motion(key: "mid" + i, name: "mid" + i, variants: s_fade,
+                transition: new StyleTransitionConfig { DurationSec = 0.05f },
+                children: new VNode[]
+                {
+                    V.Motion(key: "gc" + i, name: "gc" + i, variants: s_fade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                });
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
+                    children: new[] { Mid(0), Mid(1) }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+
+            // Act — flip the ancestor, then sample past slot 0 and inside slot 1's 0.4s.
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — gc0 swapped with mid0, and mid1 and gc1 are both still parked on slot 1.
+            Assert.That(
+                (Root.Q<VisualElement>("mid0").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("gc0").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("mid1").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("gc1").ClassListContains("opacity-100")),
+                Is.EqualTo((true, true, false, false)));
+        }
+
+        [Test]
+        public void Given_AChildNamingItsOwnExitUnderAnOrchestrator_When_TheLabelFlips_Then_ItTakesNoSlotFromItsSibling()
+        {
+            // Arrange — Framer's isControllingVariants counts an own exit label, so own-exit is no variant child
+            // and c1 is gp's first.
             VNode[] NestedTree(string label) => new VNode[]
             {
                 V.Motion(key: "gp", name: "gp", animate: label,
                     transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
                     children: new VNode[]
                     {
-                        V.Motion(key: "mid", name: "mid", variants: s_fade,
-                            transition: new StyleTransitionConfig { DurationSec = 0.05f },
-                            children: new VNode[]
-                            {
-                                V.Motion(key: "gc", name: "gc", variants: s_fade,
-                                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                            }),
+                        V.Motion(key: "own-exit", name: "own-exit", variants: s_fade, exit: "hidden",
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                        V.Motion(key: "c1", name: "c1", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                     }),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
-            // Act — flip the ancestor, then sample past mid's slot 0 and inside gc's 0.4s slot.
+            // Act
             _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
             for (var i = 0; i < 12; i++) Tick();
 
-            // Assert — mid took slot 0 and gc is still parked on slot 1. A layer that established a frame of
-            // its own would hand gc index 0 of an empty sequence and both would swap at once; the mid term is
-            // what separates that from nothing having been orchestrated at all.
+            // Assert
+            Assert.That(Root.Q<VisualElement>("c1").ClassListContains("opacity-100"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion with neither variants nor an animate already passed the
+        // orchestration through to the children below it.
+        [Test]
+        public void Given_AMotionWithNoVariantsBetweenTheOrchestratorAndItsChildren_When_TheLabelFlips_Then_TheChildrenKeepTheOrchestratorsSequence()
+        {
+            // Arrange — Framer registers a variant child with the nearest variant node above it, so c0 and c1
+            // are gp's first and second children however many plain Motions sit between.
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "plain", name: "plain", children: new VNode[]
+                        {
+                            V.Motion(key: "c0", name: "c0", variants: s_fade,
+                                transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                            V.Motion(key: "c1", name: "c1", variants: s_fade,
+                                transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                        }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+
+            // Act
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert
             Assert.That(
-                (Root.Q<VisualElement>("mid").ClassListContains("opacity-100"),
-                 Root.Q<VisualElement>("gc").ClassListContains("opacity-100")),
+                (Root.Q<VisualElement>("c0").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("c1").ClassListContains("opacity-100")),
                 Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion with its own animate already kept an outer orchestration
+        // from the children it drives.
+        [Test]
+        public void Given_AMotionWithItsOwnAnimateAndNoVariantsUnderAnOrchestrator_When_BothLabelsFlip_Then_ItsChildSwapsWithoutTheOuterDelay()
+        {
+            // Arrange — coord drives gc with its own label, so gc is coord's child and not gp's.
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, DelayChildrenSec = 0.5f },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "coord", name: "coord", animate: label, children: new VNode[]
+                        {
+                            V.Motion(key: "gc", name: "gc", variants: s_fade,
+                                transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                        }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+
+            // Act — well short of gp's 500ms.
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("gc").ClassListContains("opacity-100"), Is.True);
         }
 
         [Test]

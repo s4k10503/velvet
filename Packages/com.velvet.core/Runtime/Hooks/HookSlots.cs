@@ -13,11 +13,18 @@ namespace Velvet
         public RouteBlockerState State { get; init; } = null!;
         public object?[]? LastDeps { get; set; }
         public object?[]? NextDeps { get; set; }
-        public Func<IDisposable>? NextRegister { get; set; }
-        public bool NextNeedsReregister { get; set; }
+        // The router the registration is held against: a render under a different router registers anew
+        // whatever the deps say.
+        public Router? LastRouter { get; set; }
+        public Router? NextRouter { get; set; }
+        // The predicate the settle hands the registration; null when the committed one stands.
+        public Func<BlockerFunctionArgs, bool>? NextPredicate { get; set; }
 
         public void Dispose()
         {
+            // Detached first: the disposal returns the state to Idle, and a fiber being torn down has no render
+            // left to run for it.
+            State.StateChanged = null;
             Registration?.Dispose();
             Registration = null;
         }

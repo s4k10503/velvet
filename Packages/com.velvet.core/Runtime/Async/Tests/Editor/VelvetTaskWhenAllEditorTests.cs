@@ -8,6 +8,10 @@ namespace Velvet.Tests
 {
     internal sealed class VelvetTaskWhenAllEditorTests
     {
+        static async VelvetTask Relay(VelvetTaskCompletionSource source) => await source.Task;
+
+        static async VelvetTask<int> Relay(VelvetTaskCompletionSource<int> source) => await source.Task;
+
         static readonly FieldInfo ResultTaskSourceField =
             typeof(VelvetTask<int[]>).GetField("_source", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -351,32 +355,36 @@ namespace Velvet.Tests
                 Is.EqualTo("The VelvetTask has already been consumed."));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_OnePendingTaskPassedTwice_When_WhenAllCalled_Then_ThrowsAlreadyAwaited()
         {
             // Arrange
-            var shared = new VelvetTaskCompletionSource();
+            var shared = Relay(new VelvetTaskCompletionSource());
 
             // Act
-            void PassTwice() => VelvetTask.WhenAll(shared.Task, shared.Task);
+            void PassTwice() => VelvetTask.WhenAll(shared, shared);
 
             // Assert
             Assert.That(Assert.Throws<InvalidOperationException>(PassTwice)!.Message,
                 Is.EqualTo("The VelvetTask has already been awaited."));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_ACompletedTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
         {
             // Arrange
-            var ahead = new VelvetTaskCompletionSource();
+            var ahead = Relay(new VelvetTaskCompletionSource());
             var duplicated = VelvetTask.FromException(new InvalidOperationException("boom"));
 
             // Act
             var fromCall = Assert.Throws<InvalidOperationException>(
-                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+                () => VelvetTask.WhenAll(ahead, duplicated, duplicated))!.Message;
             var fromAhead = Assert.Throws<InvalidOperationException>(
-                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+                () => ahead.GetAwaiter().OnCompleted(() => { }))!.Message;
 
             // Assert
             Assert.That((fromCall, fromAhead), Is.EqualTo((
@@ -384,18 +392,20 @@ namespace Velvet.Tests
                 "The VelvetTask has already been awaited.")));
         }
 
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
         [Test]
         public void Given_ACompletedResultTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
         {
             // Arrange
-            var ahead = new VelvetTaskCompletionSource<int>();
+            var ahead = Relay(new VelvetTaskCompletionSource<int>());
             var duplicated = VelvetTask.FromException<int>(new InvalidOperationException("boom"));
 
             // Act
             var fromCall = Assert.Throws<InvalidOperationException>(
-                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+                () => VelvetTask.WhenAll(ahead, duplicated, duplicated))!.Message;
             var fromAhead = Assert.Throws<InvalidOperationException>(
-                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+                () => ahead.GetAwaiter().OnCompleted(() => { }))!.Message;
 
             // Assert
             Assert.That((fromCall, fromAhead), Is.EqualTo((
@@ -457,6 +467,129 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Call, Throws.InstanceOf<ArgumentNullException>());
+        }
+
+        [Test]
+        public void Given_TwoPreservedTasksOfDifferentResultTypes_When_BothComplete_Then_EachIsReadAfterTheCombination()
+        {
+            // Arrange
+            var user = new VelvetTaskCompletionSource<string>();
+            var count = new VelvetTaskCompletionSource<int>();
+            var preservedUser = user.Task.Preserve();
+            var preservedCount = count.Task.Preserve();
+            var all = VelvetTask.WhenAll(preservedUser, preservedCount);
+            var statusBeforeCompletion = all.Status;
+
+            // Act
+            count.SetResult(3);
+            user.SetResult("ada");
+            all.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(
+                (statusBeforeCompletion, preservedUser.GetAwaiter().GetResult(), preservedCount.GetAwaiter().GetResult()),
+                Is.EqualTo((VelvetTaskStatus.Pending, "ada", 3)));
+        }
+
+        [Test]
+        public void Given_OnePreservedPendingTaskPassedTwice_When_ItCompletes_Then_TheCombinationCarriesItAtBothPositions()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var preserved = source.Task.Preserve();
+            var all = VelvetTask.WhenAll(preserved, preserved);
+
+            // Act
+            source.SetResult(7);
+
+            // Assert
+            Assert.That(all.GetAwaiter().GetResult(), Is.EqualTo(new[] { 7, 7 }));
+        }
+
+        // GREEN_ON_BASE(characterization): the single-consume rule this pins holds on the base.
+        // Its task comes from an async method, since a completion source's task is not single-consume.
+        [Test]
+        public void Given_AConsumedResultTask_When_ViewedAsATaskCarryingNothing_Then_TheViewIsConsumedToo()
+        {
+            // Arrange
+            var source = new VelvetTaskCompletionSource<int>();
+            var task = Relay(source);
+            source.SetResult(1);
+            task.GetAwaiter().GetResult();
+
+            // Act
+            VelvetTask view = task;
+            void ReadStatus() => _ = view.Status;
+
+            // Assert
+            Assert.That(Assert.Throws<InvalidOperationException>(ReadStatus)!.Message,
+                Is.EqualTo("The VelvetTask has already been consumed."));
+        }
+
+        [Test]
+        public void Given_TwoMembersFaultingOutOfOrder_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsBothInArgumentOrder()
+        {
+            // Arrange
+            var first = new VelvetTaskCompletionSource();
+            var second = new VelvetTaskCompletionSource();
+            var fromFirstArgument = new InvalidOperationException("first argument");
+            var fromSecondArgument = new ArgumentException("second argument");
+            var all = VelvetTask.WhenAll(first.Task, second.Task).AsTask();
+
+            // Act
+            second.SetException(fromSecondArgument);
+            first.SetException(fromFirstArgument);
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { fromFirstArgument, fromSecondArgument }));
+        }
+
+        [Test]
+        public void Given_TwoFaultingResultMembersBesideASucceedingOne_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsBothFaults()
+        {
+            // Arrange
+            var first = new InvalidOperationException("first");
+            var second = new ArgumentException("second");
+
+            // Act
+            var all = VelvetTask.WhenAll(
+                VelvetTask.FromException<int>(first),
+                VelvetTask.FromResult(3),
+                VelvetTask.FromException<int>(second)).AsTask();
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { first, second }));
+        }
+
+        [Test]
+        public void Given_AFaultingCombinationInsideAnother_When_TheOuterIsTakenAsATask_Then_ItsExceptionHoldsEveryFault()
+        {
+            // Arrange
+            var first = new InvalidOperationException("first");
+            var second = new ArgumentException("second");
+            var third = new FormatException("third");
+            var inner = VelvetTask.WhenAll(VelvetTask.FromException(first), VelvetTask.FromException(second));
+
+            // Act
+            var outer = VelvetTask.WhenAll(inner, VelvetTask.FromException(third)).AsTask();
+
+            // Assert
+            Assert.That(outer.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { first, second, third }));
+        }
+
+        [Test]
+        public void Given_AFaultedMemberBesideACanceledOne_When_TheCombinationIsTakenAsATask_Then_ItsExceptionHoldsTheFaultAlone()
+        {
+            // Arrange
+            var canceled = new VelvetTaskCompletionSource();
+            canceled.SetCanceled();
+            var fault = new InvalidOperationException("fault");
+
+            // Act
+            var all = VelvetTask.WhenAll(canceled.Task, VelvetTask.FromException(fault)).AsTask();
+
+            // Assert
+            Assert.That(all.Exception!.InnerExceptions, Is.EqualTo(new Exception[] { fault }));
         }
     }
 }
