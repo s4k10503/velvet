@@ -13,8 +13,9 @@ namespace Velvet
     /// Resolves and attaches Velvet's bundled utility stylesheet from runtime code, in the editor and in a
     /// player alike. Every utility the sheet declares resolves to nothing on a panel that does not carry
     /// it, while arbitrary values and the many families Velvet resolves itself rather than declaring are
-    /// unaffected — so <see cref="V.Mount(VisualElement, VNode)"/> warns, once per run, when its target
-    /// reaches the panel without the sheet.
+    /// unaffected — so <see cref="V.Mount(VisualElement, VNode)"/> and a portal into an element the app owns
+    /// warn, once per run, when the sheet is missing at their target panel's next update, or at the next
+    /// update after the target is added to a panel.
     /// <para>
     /// <c>Documentation~/setup.md</c> owns when to call this, which utilities sit on which side of that
     /// split (with the command that answers it for any one class), and the alternative of referencing the
@@ -41,8 +42,6 @@ namespace Velvet
         public const string DarkThemeClass = "dark";
 
         private static StyleSheet? _sheet;
-
-        private static readonly ConditionalWeakTable<VisualElement, ThemeBinding> _themeBindings = new();
 
         /// <summary>
         /// The bundled utility stylesheet. Loads on first access and is held for the lifetime of the domain.
@@ -101,8 +100,8 @@ namespace Velvet
 
         /// <summary>
         /// Adds <see cref="Sheet"/> to <paramref name="root"/>'s <see cref="VisualElement.styleSheets"/>.
-        /// Attach before mounting a tree, and to the element whose subtree needs the utilities — a panel
-        /// root covers everything under it. Attaching twice is harmless.
+        /// Attach to the element whose subtree needs the utilities — a panel root covers everything under
+        /// it. Attaching twice is harmless.
         /// </summary>
         public static void AttachTo(VisualElement root)
         {
@@ -125,9 +124,33 @@ namespace Velvet
         {
             if (root == null) throw new ArgumentNullException(nameof(root));
 
-            if (_themeBindings.TryGetValue(root, out _)) return;
-            _themeBindings.Add(root, new ThemeBinding(root));
+            s_themeRoots.RemoveAll(bound => IsCollectedOr(bound, root));
+            s_themeRoots.Add(new WeakReference<VisualElement>(root));
+            ApplyTheme(root);
         }
+
+        // Held weakly because the theme event is static, so a root it reached strongly would live as long as the
+        // domain. Unsubscribing on detach from a panel instead left the root of a disposed panel held, which is
+        // the case ThemeBindingTests arranges.
+        private static readonly List<WeakReference<VisualElement>> s_themeRoots = new();
+
+        static VelvetStyleUtilities() => VelvetTheme.DarkModeChanged += ApplyThemeToBoundRoots;
+
+        private static void ApplyThemeToBoundRoots()
+        {
+            foreach (var bound in s_themeRoots)
+            {
+                if (bound.TryGetTarget(out var root)) ApplyTheme(root);
+            }
+        }
+
+        private static bool IsCollectedOr(WeakReference<VisualElement> bound, VisualElement root)
+        {
+            bound.TryGetTarget(out var live);
+            return live == null || live == root;
+        }
+
+        private static void ApplyTheme(VisualElement root) => root.EnableInClassList(DarkThemeClass, VelvetTheme.IsDark);
 
         private static bool s_missingReported;
 
@@ -138,52 +161,131 @@ namespace Velvet
         private static FieldInfo? s_importedSheetField;
         private static string? s_sheetSignature;
 
-        // Styles resolve on a panel, so that is where the search runs: at once for a target already on one, and
-        // on each later arrival, since the panel a target moves to need not carry the sheet.
-        internal static void ReportIfMissing(VisualElement target)
+        // Styles resolve on a panel, so that is where the search runs: at the panel's next scheduler tick rather
+        // than at the call, so a sheet attached after the call is seen, and again after each arrival, since the
+        // panel a target moves to need not carry the sheet. Each caller gets its own watch, so ending one leaves
+        // any other on the same target running.
+        internal static IDisposable WatchForMissingSheet(VisualElement target) => new MissingSheetWatch(target);
+
+        /// <summary>Brings a panel host Velvet creates for a portal in line with the position the portal was
+        /// declared at: the host root gets the sheet where <paramref name="declaredAt"/> reaches it, and the
+        /// <see cref="DarkThemeClass"/> class <paramref name="declaredAt"/> resolves.</summary>
+        internal static void CarryToHost(VisualElement declaredAt, VisualElement hostRoot)
         {
-            target.RegisterCallback<AttachToPanelEvent>(OnMountTargetAttached);
-            if (target.panel != null)
-            {
-                ReportIfMissingAbove(target);
-            }
+            s_hostDeclarations.Remove(hostRoot);
+            s_hostDeclarations.Add(hostRoot, declaredAt);
+            SyncHost(declaredAt, hostRoot);
+            // Asked again at the declaring panel's next tick, for the reason WatchForMissingSheet waits for one.
+            declaredAt.schedule.Execute(() => SyncHost(declaredAt, hostRoot));
         }
 
-        internal static void StopReporting(VisualElement target)
-            => target.UnregisterCallback<AttachToPanelEvent>(OnMountTargetAttached);
+        // The position each host was last carried from, so a check on a target inside a host can bring the host
+        // up to date first rather than depend on which of the two panels ticks first.
+        private static readonly ConditionalWeakTable<VisualElement, VisualElement> s_hostDeclarations = new();
 
-        private static void OnMountTargetAttached(AttachToPanelEvent attached)
-            => ReportIfMissingAbove((VisualElement)attached.currentTarget);
-
-        private static void ReportIfMissingAbove(VisualElement target)
+        internal static void SyncHost(VisualElement declaredAt, VisualElement hostRoot)
         {
-            if (s_missingReported) return;
+            if (IsBoundAtOrAbove(declaredAt)) BindThemeTo(hostRoot);
+            else hostRoot.EnableInClassList(DarkThemeClass, IsDarkAtOrAbove(declaredAt));
 
             var sheet = TryResolve();
-            // A player that cannot resolve the sheet through its holder has nothing to compare against, and a
-            // project that excluded the holder may still reach the sheet from a scene reference.
             if (sheet == null)
             {
                 return;
             }
 
+            // Left on a host that reaches the utilities some other way, such as a copied theme importing them, the
+            // sheet would outrank that theme's own overrides of them.
+            if (ReachesSheetBesides(hostRoot, sheet)) hostRoot.styleSheets.Remove(sheet);
+            else if (ReachesSheet(declaredAt, sheet)) hostRoot.styleSheets.Add(sheet);
+        }
+
+        private static void SyncHostAbove(VisualElement target)
+        {
             for (var element = target; element != null; element = element.hierarchy.parent)
             {
-                for (var i = 0; i < element.styleSheets.count; i++)
+                if (s_hostDeclarations.TryGetValue(element, out var declaredAt))
                 {
-                    if (Reaches(element.styleSheets[i], sheet)) return;
+                    SyncHost(declaredAt, element);
+                    return;
                 }
             }
+        }
+
+        private static bool IsBound(VisualElement element)
+        {
+            foreach (var bound in s_themeRoots)
+            {
+                bound.TryGetTarget(out var root);
+                if (root == element) return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsBoundAtOrAbove(VisualElement from)
+        {
+            for (var element = from; element != null; element = element.hierarchy.parent)
+            {
+                if (IsBound(element)) return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsDarkAtOrAbove(VisualElement from)
+        {
+            for (var element = from; element != null; element = element.hierarchy.parent)
+            {
+                if (element.ClassListContains(DarkThemeClass)) return true;
+            }
+
+            return false;
+        }
+
+        private static void ReportIfMissingAbove(VisualElement target)
+        {
+            if (s_missingReported) return;
+
+            SyncHostAbove(target);
+            var sheet = TryResolve();
+            // A player that cannot resolve the sheet through its holder has nothing to compare against, and a
+            // project that excluded the holder may still reach the sheet from a scene reference.
+            if (sheet == null || ReachesSheet(target, sheet)) return;
 
             if (MissingReportSilenced?.Invoke() == true) return;
 
             s_missingReported = true;
             FiberLogger.LogWarning("VelvetStyleUtilities",
-                $"V.Mount's target '{target.name}' is on a panel that does not carry Velvet's utility "
-                + "stylesheet, so every utility class the sheet declares resolves to nothing there while "
+                $"The V.Mount or V.Portal target '{target.name}' is on a panel that does not carry Velvet's "
+                + "utility stylesheet, so every utility class the sheet declares resolves to nothing there while "
                 + "arbitrary values and the families Velvet realises in C# keep working. Call "
-                + "VelvetStyleUtilities.AttachTo on the panel root before V.Mount — Documentation~/setup.md. "
+                + "VelvetStyleUtilities.AttachTo on the panel root — Documentation~/setup.md. "
                 + "Reported once per run.");
+        }
+
+        private static bool ReachesSheetBesides(VisualElement hostRoot, StyleSheet sheet)
+        {
+            for (var i = 0; i < hostRoot.styleSheets.count; i++)
+            {
+                var own = hostRoot.styleSheets[i];
+                if (own != sheet && Reaches(own, sheet)) return true;
+            }
+
+            return ReachesSheet(hostRoot.hierarchy.parent, sheet);
+        }
+
+        private static bool ReachesSheet(VisualElement? from, StyleSheet sheet)
+        {
+            for (var element = from; element != null; element = element.hierarchy.parent)
+            {
+                for (var i = 0; i < element.styleSheets.count; i++)
+                {
+                    if (Reaches(element.styleSheets[i], sheet)) return true;
+                }
+            }
+
+            return false;
         }
 
         // A theme or project sheet that @imports the utilities carries them too.
@@ -202,7 +304,12 @@ namespace Velvet
 
         // The name and the imports' names rather than the reference, because an asset bundle carries its own copy
         // of the sheet, and of each partial, beside the ones the holder resolves.
-        private static string Signature(StyleSheet sheet)
+        private static string Signature(StyleSheet sheet) => s_signatures.GetValue(sheet, ComputeSignature);
+
+        // Cached because a portal patch asks again, and every ask walks the same sheets.
+        private static readonly ConditionalWeakTable<StyleSheet, string> s_signatures = new();
+
+        private static string ComputeSignature(StyleSheet sheet)
             => sheet.name + ":" + string.Join(",", Imports(sheet).Select(imported => imported.name));
 
         private static IEnumerable<StyleSheet> Imports(StyleSheet sheet)
@@ -222,41 +329,25 @@ namespace Velvet
         private static void RearmMissingReport() => s_missingReported = false;
 #endif
 
-        private sealed class ThemeBinding
+        private sealed class MissingSheetWatch : IDisposable
         {
-            private readonly VisualElement _root;
-            private bool _subscribed;
+            private readonly VisualElement _target;
+            private readonly IVisualElementScheduledItem _check;
 
-            internal ThemeBinding(VisualElement root)
+            internal MissingSheetWatch(VisualElement target)
             {
-                _root = root;
-                root.RegisterCallback<AttachToPanelEvent>(_ => Subscribe());
-                root.RegisterCallback<DetachFromPanelEvent>(_ => Unsubscribe());
-                if (root.panel != null)
-                {
-                    Subscribe();
-                }
+                _target = target;
+                _check = target.schedule.Execute(() => ReportIfMissingAbove(_target));
+                target.RegisterCallback<AttachToPanelEvent>(Rearm);
             }
 
-            // The theme event is static, so the subscription is held only while the element is on a panel: a
-            // permanent one would keep every root a closed window or a finished test ever attached the sheet
-            // to alive for the lifetime of the domain.
-            private void Subscribe()
-            {
-                if (_subscribed) return;
-                VelvetTheme.DarkModeChanged += Apply;
-                _subscribed = true;
-                Apply();
-            }
+            private void Rearm(AttachToPanelEvent attached) => _check.ExecuteLater(0);
 
-            private void Unsubscribe()
+            public void Dispose()
             {
-                if (!_subscribed) return;
-                VelvetTheme.DarkModeChanged -= Apply;
-                _subscribed = false;
+                _target.UnregisterCallback<AttachToPanelEvent>(Rearm);
+                _check.Pause();
             }
-
-            private void Apply() => _root.EnableInClassList(DarkThemeClass, VelvetTheme.IsDark);
         }
     }
 }

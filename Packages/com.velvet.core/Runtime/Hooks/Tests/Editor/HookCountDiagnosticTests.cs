@@ -39,7 +39,7 @@ namespace Velvet.Tests
         {
             ["UseCallback"] = () => Hooks.UseCallback((Action)(() => { })),
             ["UseCallback with deps"] = () => Hooks.UseCallback((Action)(() => { }), 1),
-            ["UseBlocker"] = () => Hooks.UseBlocker(_ => false),
+            ["UseBlocker beneath a router"] = () => Hooks.UseBlocker(_ => false),
             ["UseLayoutEffect"] = () => Hooks.UseLayoutEffect((Func<Action>)(() => null)),
             ["UseInsertionEffect"] = () => Hooks.UseInsertionEffect((Func<Action>)(() => null)),
             ["UseEffect"] = () => Hooks.UseEffect((Func<Action>)(() => null)),
@@ -91,12 +91,15 @@ namespace Velvet.Tests
             s_slotStarts = 0;
         }
 
+        // Beneath a router, which UseBlocker refuses to run without; it never navigates.
+        private static readonly Router s_router = new(Array.Empty<RouteDefinition>());
+
         private static VNode InBoundary(VNode child)
             => V.ErrorBoundary(exception =>
             {
                 s_caught = exception;
                 return V.Label(text: "caught");
-            }, new VNode[] { child });
+            }, new VNode[] { V.Provider(RouterContext.Router, s_router, new[] { child }) });
 
         #region The reported shape: a plain helper calling UseState, reached only once a button opens it
 
@@ -213,7 +216,7 @@ namespace Velvet.Tests
 
         [TestCase("UseCallback", "UseCallback", 0, 1)]
         [TestCase("UseCallback with deps", "UseCallback", 0, 1)]
-        [TestCase("UseBlocker", "UseBlocker", 0, 1)]
+        [TestCase("UseBlocker beneath a router", "UseBlocker", 0, 1)]
         [TestCase("UseLayoutEffect", "UseLayoutEffect", 0, 1)]
         [TestCase("UseInsertionEffect", "UseInsertionEffect", 0, 1)]
         [TestCase("UseEffect", "UseEffect", 0, 1)]
@@ -251,7 +254,7 @@ namespace Velvet.Tests
         }
 
         [TestCase("UseCallback", "UseCallback", 1, 0)]
-        [TestCase("UseBlocker", "UseBlocker", 1, 0)]
+        [TestCase("UseBlocker beneath a router", "UseBlocker", 1, 0)]
         [TestCase("UseLayoutEffect", "UseLayoutEffect", 1, 0)]
         [TestCase("UseInsertionEffect", "UseInsertionEffect", 1, 0)]
         [TestCase("UseEffect", "UseEffect", 1, 0)]

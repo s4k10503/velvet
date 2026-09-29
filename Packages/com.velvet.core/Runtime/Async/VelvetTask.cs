@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace Velvet
@@ -22,6 +25,19 @@ namespace Velvet
 
             Debug.LogException(exception);
         }
+
+        internal static void PublishUnobservedFaults(IReadOnlyList<ExceptionDispatchInfo>? faults)
+        {
+            if (faults == null)
+            {
+                return;
+            }
+
+            foreach (var fault in faults)
+            {
+                PublishUnobservedException(fault.SourceException);
+            }
+        }
     }
 
     [AsyncMethodBuilder(typeof(VelvetTaskMethodBuilder))]
@@ -36,10 +52,34 @@ namespace Velvet
             _version = source.Version;
         }
 
+        internal VelvetTask(IVelvetTaskSource? source, short version)
+        {
+            _source = source;
+            _version = version;
+        }
+
         public VelvetTaskStatus Status =>
             _source == null ? VelvetTaskStatus.Succeeded : _source.GetStatus(_version);
 
+        internal IReadOnlyList<ExceptionDispatchInfo>? Faults => (_source as IVelvetTaskFaults)?.GetFaults(_version);
+
         public Awaiter GetAwaiter() => new(this);
+
+        public VelvetTask Preserve()
+        {
+            if (_source == null)
+            {
+                return this;
+            }
+
+            var preserved = new MultiAwaitVelvetTaskSource<AsyncUnit>();
+            VelvetTaskOutcome.OnSettled(this, outcome => preserved.TrySettle(outcome));
+            return new VelvetTask(preserved);
+        }
+
+        public Task AsTask() => VelvetTaskOutcome.AsTask(this);
+
+        public SuppressThrowingAwaitable SuppressThrowing() => new(this);
 
         public static VelvetTask FromResult() => CompletedTask;
 
@@ -87,16 +127,10 @@ namespace Velvet
             return new VelvetTask<T>(source);
         }
 
-        public static VelvetTask Yield()
-        {
-            if (!VelvetMainThread.IsCurrent)
-            {
-                throw new InvalidOperationException(
-                    "VelvetTask.Yield() was called off the main thread. Await VelvetTask.SwitchToMainThread() before it.");
-            }
-
-            return new(YieldVelvetTaskSourcePool.Rent());
-        }
+        public static VelvetTask Yield() =>
+            VelvetMainThread.IsCurrent
+                ? new(YieldVelvetTaskSourcePool.Rent())
+                : new(new OffMainThreadYieldVelvetTaskSource());
 
         public static SwitchToMainThreadAwaitable SwitchToMainThread() => default;
 
@@ -179,6 +213,43 @@ namespace Velvet
             }
         }
 
+        public readonly struct SuppressThrowingAwaitable
+        {
+            readonly VelvetTask _task;
+
+            internal SuppressThrowingAwaitable(VelvetTask task) => _task = task;
+
+            public Awaiter GetAwaiter() => new(_task);
+
+            public readonly struct Awaiter : INotifyCompletion
+            {
+                readonly VelvetTask _task;
+
+                internal Awaiter(VelvetTask task) => _task = task;
+
+                public bool IsCompleted => _task.GetAwaiter().IsCompleted;
+
+                // Only the task's own fault or cancellation is swallowed. A task consumed elsewhere throws from
+                // the status read, which precedes the consume, and a read before completion from GetResult,
+                // which the filter lets through.
+                public VelvetTaskStatus GetResult()
+                {
+                    var status = _task.Status;
+                    try
+                    {
+                        _task.GetAwaiter().GetResult();
+                    }
+                    catch (Exception) when (status is VelvetTaskStatus.Faulted or VelvetTaskStatus.Canceled)
+                    {
+                    }
+
+                    return status;
+                }
+
+                public void OnCompleted(Action continuation) => _task.GetAwaiter().OnCompleted(continuation);
+            }
+        }
+
         public readonly struct Awaiter : INotifyCompletion
         {
             readonly VelvetTask _task;
@@ -196,7 +267,9 @@ namespace Velvet
                 }
             }
 
-            public void OnCompleted(Action continuation)
+            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+
+            internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {
                 if (_task._source == null)
                 {
@@ -207,7 +280,8 @@ namespace Velvet
                     _task._source.OnCompleted(
                         VelvetTaskAwaiterActions.InvokeContinuation,
                         continuation,
-                        _task._version);
+                        _task._version,
+                        resumeOnMainThread);
                 }
             }
         }
@@ -237,7 +311,29 @@ namespace Velvet
         public VelvetTaskStatus Status =>
             _source == null ? VelvetTaskStatus.Succeeded : _source.GetStatus(_version);
 
+        internal IReadOnlyList<ExceptionDispatchInfo>? Faults => (_source as IVelvetTaskFaults)?.GetFaults(_version);
+
         public Awaiter GetAwaiter() => new(this);
+
+        public VelvetTask<T> Preserve()
+        {
+            if (_source == null)
+            {
+                return this;
+            }
+
+            var preserved = new MultiAwaitVelvetTaskSource<T>();
+            VelvetTaskOutcome.OnSettled(this, outcome => preserved.TrySettle(outcome));
+            return new VelvetTask<T>(preserved);
+        }
+
+        public Task<T> AsTask() => VelvetTaskOutcome.AsTask(this);
+
+        public VelvetTask.SuppressThrowingAwaitable SuppressThrowing() => ((VelvetTask)this).SuppressThrowing();
+
+        // The view carries this task's version rather than the source's current one, so a task already
+        // consumed converts to a view that is consumed too.
+        public static implicit operator VelvetTask(VelvetTask<T> task) => new(task._source, task._version);
 
         public static VelvetTask<T> FromResult(T result) => new(result);
 
@@ -253,7 +349,9 @@ namespace Velvet
             public T GetResult() =>
                 _task._source == null ? _task._result : _task._source.GetResult(_task._version);
 
-            public void OnCompleted(Action continuation)
+            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+
+            internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {
                 if (_task._source == null)
                 {
@@ -264,7 +362,8 @@ namespace Velvet
                     _task._source.OnCompleted(
                         VelvetTaskAwaiterActions.InvokeContinuation,
                         continuation,
-                        _task._version);
+                        _task._version,
+                        resumeOnMainThread);
                 }
             }
         }

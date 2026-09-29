@@ -340,28 +340,6 @@ namespace Velvet.Tests
                 Is.EqualTo("/target,/target idx=1"));
         }
 
-        [Test]
-        public void Given_APushedGuardRedirect_When_TheBlockerIsAsked_Then_ItIsToldTheStepIsAPush()
-        {
-            // Arrange
-            var router = BuildRouter("/home",
-                Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
-            var seen = (NavigationMode?)null;
-            using var registration = router.RouteBlockerManager.Register(
-                attempt =>
-                {
-                    seen ??= attempt.NavigationMode;
-                    return false;
-                },
-                new RouteBlockerState());
-
-            // Act
-            router.NavigateSync("/guarded");
-
-            // Assert
-            Assert.That($"{seen} to {router.CurrentLocation.Path}", Is.EqualTo("Push to /target"));
-        }
-
         #endregion
 
         #region Forward with redirect

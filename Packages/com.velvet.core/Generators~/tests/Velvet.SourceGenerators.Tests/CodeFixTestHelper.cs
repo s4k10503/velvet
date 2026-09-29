@@ -26,6 +26,49 @@ namespace Velvet.SourceGenerators.Tests
             DiagnosticAnalyzer analyzer,
             CodeFixProvider codeFixProvider,
             string codeActionTitle,
+            string expectedDiagnosticId,
+            bool formatDocument = true)
+        {
+            var (workspace, userDocId, actions) = await RegisterAsync(
+                userSource, analyzer, codeFixProvider, expectedDiagnosticId).ConfigureAwait(false);
+
+            var selectedAction = actions.FirstOrDefault(a => a.Title == codeActionTitle)
+                ?? throw new InvalidOperationException(
+                    $"CodeAction '{codeActionTitle}' not found. Available: {string.Join(", ", actions.Select(a => a.Title))}");
+
+            var operations = await selectedAction.GetOperationsAsync(CancellationToken.None).ConfigureAwait(false);
+            foreach (var op in operations)
+            {
+                op.Apply(workspace, CancellationToken.None);
+            }
+
+            var updatedDoc = workspace.CurrentSolution.GetDocument(userDocId)!;
+            var formatted = formatDocument
+                ? await Formatter.FormatAsync(updatedDoc, cancellationToken: CancellationToken.None).ConfigureAwait(false)
+                : updatedDoc;
+            var text = await formatted.GetTextAsync(CancellationToken.None).ConfigureAwait(false);
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// The titles the provider registers against the first <paramref name="expectedDiagnosticId"/> the
+        /// analyzer reports, which is how a case asserts that a diagnostic is left without a fix.
+        /// </summary>
+        public static async Task<IReadOnlyList<string>> RegisteredTitlesAsync(
+            string userSource,
+            DiagnosticAnalyzer analyzer,
+            CodeFixProvider codeFixProvider,
+            string expectedDiagnosticId)
+        {
+            var (_, _, actions) = await RegisterAsync(
+                userSource, analyzer, codeFixProvider, expectedDiagnosticId).ConfigureAwait(false);
+            return actions.Select(a => a.Title).ToList();
+        }
+
+        private static async Task<(AdhocWorkspace Workspace, DocumentId UserDocId, List<CodeAction> Actions)> RegisterAsync(
+            string userSource,
+            DiagnosticAnalyzer analyzer,
+            CodeFixProvider codeFixProvider,
             string expectedDiagnosticId)
         {
             var workspace = new AdhocWorkspace(MefHostServices.Create(MefHostServices.DefaultAssemblies));
@@ -64,21 +107,7 @@ namespace Velvet.SourceGenerators.Tests
                 (action, _) => actions.Add(action),
                 CancellationToken.None);
             await codeFixProvider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
-
-            var selectedAction = actions.FirstOrDefault(a => a.Title == codeActionTitle)
-                ?? throw new InvalidOperationException(
-                    $"CodeAction '{codeActionTitle}' not found. Available: {string.Join(", ", actions.Select(a => a.Title))}");
-
-            var operations = await selectedAction.GetOperationsAsync(CancellationToken.None).ConfigureAwait(false);
-            foreach (var op in operations)
-            {
-                op.Apply(workspace, CancellationToken.None);
-            }
-
-            var updatedDoc = workspace.CurrentSolution.GetDocument(userDocId)!;
-            var formatted = await Formatter.FormatAsync(updatedDoc, cancellationToken: CancellationToken.None).ConfigureAwait(false);
-            var text = await formatted.GetTextAsync(CancellationToken.None).ConfigureAwait(false);
-            return text.ToString();
+            return (workspace, userDocId, actions);
         }
 
         private static IEnumerable<MetadataReference> GetReferences() =>

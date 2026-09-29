@@ -466,91 +466,59 @@ namespace Velvet
         #region UseBlocker
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate on
-        /// every render so it answers with the state the latest render captured.
-        /// Must be used inside Render() only.
+        /// Blocks navigation departures while <paramref name="shouldBlock"/> is true, as React Router's
+        /// <c>useBlocker(boolean)</c> does. The component re-renders whenever the returned Blocker's state
+        /// changes. Must be used inside Render() only.
+        /// </summary>
+        /// <param name="shouldBlock">Whether a departure is blocked.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(bool shouldBlock)
+            => UseBlockerCore(shouldBlock ? s_alwaysBlock : s_neverBlock, new object?[] { shouldBlock });
+
+        private static readonly Func<BlockerFunctionArgs, bool> s_alwaysBlock = _ => true;
+        private static readonly Func<BlockerFunctionArgs, bool> s_neverBlock = _ => false;
+
+        /// <summary>
+        /// Conditionally blocks navigation departures, handing the Blocker the predicate of every render so it
+        /// answers with the state the latest render captured. The component re-renders whenever the returned
+        /// Blocker's state changes. Must be used inside Render() only.
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous — see
         /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
         /// </remarks>
-        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock)
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                null);
+            return UseBlockerCore(shouldBlock, null);
         }
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate
-        /// only when a dependency changes.
+        /// Conditionally blocks navigation departures, handing the Blocker a render's predicate only when a
+        /// dependency changes. The component re-renders whenever the returned Blocker's state changes.
         /// Must be used inside Render() only.
         /// </summary>
-        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
-        /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[]? deps)
+        /// <param name="shouldBlock">Predicate; returning true blocks the departure.</param>
+        /// <param name="deps">Dependency array. When null, every render's predicate is handed over.</param>
+        /// <returns>The <see cref="RouteBlockerState"/> to render a confirmation from.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static RouteBlockerState UseBlocker(Func<BlockerFunctionArgs, bool> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                deps);
+            return UseBlockerCore(shouldBlock, deps);
         }
 
-        /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate on
-        /// every render so it answers with the state the latest render captured. Use when integrating with
-        /// asynchronous UI such as confirmation dialogs.
-        /// </summary>
-        /// <remarks>
-        /// The single-argument overload exists so that omitting deps is unambiguous — see
-        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
-        /// </remarks>
-        /// <param name="shouldBlock">
-        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel.
-        /// </param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock)
-        {
-            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                null);
-        }
-
-        /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate
-        /// only when a dependency changes. Use when integrating with asynchronous UI such as confirmation
-        /// dialogs.
-        /// </summary>
-        /// <param name="shouldBlock">
-        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel.
-        /// </param>
-        /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
-        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[]? deps)
-        {
-            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
-            return UseBlockerCore(
-                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
-                deps);
-        }
-
-        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[]? deps)
+        private static RouteBlockerState UseBlockerCore(Func<BlockerFunctionArgs, bool> shouldBlock, object?[]? deps)
         {
             var fiber = Resolve("UseBlocker");
-
-            var router = Router.Current;
-            if (router == null)
-            {
-                FiberLogger.LogWarning("Hooks",
-                    $"{ComponentName(fiber)}: UseBlocker - Router.Current is null. Blocker is not registered.");
-            }
+            var router = UseRouterOrThrow("UseBlocker");
 
             fiber.BlockerSlots ??= new List<HookBlockerSlot>();
             var index = fiber.Indices.BlockerHookIndex++;
@@ -560,29 +528,35 @@ namespace Velvet
             {
                 var existing = fiber.BlockerSlots[index];
 
-                // Compare against the committed deps. The (Dispose -> re-register) side effect is staged and run
-                // at the render-phase settle, so a discarded attempt cannot register a throwaway predicate closure
-                // against Router.RouteBlockerManager (or leave the committed blocker pointing at it).
-                var unchanged = deps != null && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
+                // Compare against the committed deps. The registration change is staged and made at the
+                // render-phase settle, so a discarded attempt cannot leave its throwaway predicate closure
+                // answering for the committed Blocker.
+                var unchanged = deps != null
+                    && ReferenceEquals(existing.LastRouter, router)
+                    && ObjectIs.AreEqualDeps(existing.LastDeps, deps);
                 existing.NextDeps = deps;
-                existing.NextNeedsReregister = !unchanged;
-                existing.NextRegister = (!unchanged && router != null)
-                    ? () => registerFn(router, existing.State)
-                    : null;
+                existing.NextRouter = router;
+                existing.NextPredicate = unchanged ? null : shouldBlock;
                 return existing.State;
             }
 
-            // New (mounting) slot: the public State is created now (so it can be returned), but the registration
-            // is staged and performed at settle with the settled attempt's predicate closure.
+            // New (mounting) slot: the public State is created now so it can be returned, and registered at the
+            // settle with the settled attempt's predicate closure.
             var state = new RouteBlockerState();
-            var slot = new HookBlockerSlot
+            state.StateChanged = () =>
+            {
+                if (!fiber.IsDisposed)
+                {
+                    RequestRender(fiber);
+                }
+            };
+            fiber.BlockerSlots.Add(new HookBlockerSlot
             {
                 State = state,
                 NextDeps = deps,
-                NextNeedsReregister = true,
-                NextRegister = router != null ? () => registerFn(router, state) : null,
-            };
-            fiber.BlockerSlots.Add(slot);
+                NextRouter = router,
+                NextPredicate = shouldBlock,
+            });
             return state;
         }
 
@@ -592,12 +566,15 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current router location.
-        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted, and until a
-        /// mounted router publishes its first location.
+        /// Reads <see cref="RouterContext.Location"/>; returns null until the router publishes its first
+        /// location.
         /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
         public static RouterLocation? UseLocation()
         {
             _ = Resolve("UseLocation");
+            _ = UseRouterOrThrow("UseLocation");
             return UseContext(RouterContext.Location);
         }
 
@@ -619,26 +596,29 @@ namespace Velvet
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. Navigation is driven by <see cref="Router.Current"/>.
+        /// root before the first location. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// publishes above the caller.
         /// </summary>
         /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
         public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
         {
             _ = Resolve("UseNavigate");
+            var router = UseRouterOrThrow("UseNavigate");
             var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
             var baseRouteIndex = UseBaseRouteIndex();
             return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
-                to =>
-                {
-                    var router = Router.Current;
-                    if (router == null)
-                    {
-                        return VelvetTask.FromResult(NavigationResult.Cancelled);
-                    }
-                    return router.NavigateAsync(to, mode, baseRouteIndex);
-                },
-                mode, baseRouteIndex);
+                to => router.NavigateAsync(to, mode, baseRouteIndex),
+                router, mode, baseRouteIndex);
         }
+
+        // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,
+        // UseOutletContext and V.Outlet answer there instead, as theirs do, so they do not call it.
+        private static Router UseRouterOrThrow(string hookName)
+            => UseContext(RouterContext.Router)
+               ?? throw new InvalidOperationException(
+                   $"{hookName} may be used only beneath a V.RouterProvider.");
 
         /// <summary>
         /// The matched-route level a relative target resolves against for the calling component: a component
@@ -648,9 +628,9 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
-        /// the active <see cref="Router"/> is matching or loading the next location, and
-        /// <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the router's status
-        /// transitions.
+        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller is matching or loading
+        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as
+        /// the router's status transitions.
         /// </summary>
         /// <remarks>
         /// A <c>submitting</c> state is intentionally not modelled because Velvet has no route action /
@@ -659,16 +639,14 @@ namespace Velvet
         public static NavigationState UseNavigation()
         {
             _ = Resolve("UseNavigation");
-            var (state, setState) = UseState(ReadNavigationState(Router.Current));
+            var router = UseRouterOrThrow("UseNavigation");
+            // The state only schedules the re-render: what is returned is read from the router at render, so the
+            // render in which the provider's router changes reads the new router rather than the old one's
+            // last state.
+            var (_, setState) = UseState(ReadNavigationState(router));
 
             UseEffect(() =>
             {
-                var router = Router.Current;
-                if (router == null)
-                {
-                    return (Action)(() => { });
-                }
-
                 void Sync() => setState.Invoke(ReadNavigationState(router));
                 void OnStatus(RouterStatus _) => Sync();
                 void OnLocation(RouterLocation _) => Sync();
@@ -682,25 +660,18 @@ namespace Velvet
                     router.OnStatusChanged -= OnStatus;
                     router.OnLocationChanged -= OnLocation;
                 };
-            }, Array.Empty<object>());
+            }, new object[] { router });
 
-            return state;
+            return ReadNavigationState(router);
         }
 
-        private static NavigationState ReadNavigationState(Router? router)
+        private static NavigationState ReadNavigationState(Router router)
         {
-            if (router == null)
-            {
-                return new NavigationState { State = NavigationLifecycle.Idle, Location = null };
-            }
-
             var lifecycle = router.Status is RouterStatus.Matching or RouterStatus.Loading
                 ? NavigationLifecycle.Loading
                 : NavigationLifecycle.Idle;
 
-            var location = lifecycle == NavigationLifecycle.Loading
-                ? router.PendingLocation
-                : router.CurrentLocation;
+            var location = lifecycle == NavigationLifecycle.Loading ? router.PendingLocation : null;
 
             return new NavigationState { State = lifecycle, Location = location };
         }
@@ -716,13 +687,11 @@ namespace Velvet
         public static (ISearchParams searchParams, SearchParamsSetter setSearchParams) UseSearchParams()
         {
             _ = Resolve("UseSearchParams");
+            var router = UseRouterOrThrow("UseSearchParams");
             var location = UseContext(RouterContext.Location);
             var path = location?.Path ?? string.Empty;
             var parsed = RouteQuery.ParseQuery(path);
-
-            // The setter is stateless (it reads Router.Current live), so one shared instance serves every
-            // component and every render rather than a per-render allocation.
-            return (parsed, SearchParamsSetter.Shared);
+            return (parsed, router.SearchParamsSetter);
         }
 
         // Cache pattern -> single-route matcher so UseMatch does not allocate a RouteTree on every render.
@@ -742,6 +711,7 @@ namespace Velvet
         {
             if (pattern == null) throw new ArgumentNullException(nameof(pattern));
             _ = Resolve("UseMatch");
+            _ = UseRouterOrThrow("UseMatch");
             var location = UseContext(RouterContext.Location);
             var path = RouteQuery.StripQuery(location?.Path);
             if (path == null)
@@ -774,6 +744,29 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Returns the value the nearest <c>V.Await</c> above the caller resolved, cast to
+        /// <typeparamref name="T"/>: React Router's <c>useAsyncValue</c>. Returns <c>default</c> outside one,
+        /// and beneath one that is rendering its <c>errorElement</c>.
+        /// </summary>
+        /// <typeparam name="T">Expected value type.</typeparam>
+        public static T? UseAsyncValue<T>()
+        {
+            _ = Resolve("UseAsyncValue");
+            var outcome = UseContext(RouteAwait.Outcome);
+            return outcome?.Value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// Returns the exception the nearest <c>V.Await</c> above the caller is rendering its
+        /// <c>errorElement</c> for: React Router's <c>useAsyncError</c>. Returns null elsewhere.
+        /// </summary>
+        public static Exception? UseAsyncError()
+        {
+            _ = Resolve("UseAsyncError");
+            return UseContext(RouteAwait.Outcome)?.Error;
+        }
+
+        /// <summary>
         /// Returns the loader data for the route at the current Outlet depth, cast to <typeparamref name="T"/>.
         /// Returns <c>default</c> when there is no data.
         /// </summary>
@@ -781,6 +774,7 @@ namespace Velvet
         public static T? UseLoaderData<T>()
         {
             _ = Resolve("UseLoaderData");
+            _ = UseRouterOrThrow("UseLoaderData");
             var routeId = CurrentRouteId();
             if (routeId == null)
             {
@@ -797,6 +791,7 @@ namespace Velvet
         public static Exception? UseRouteError()
         {
             _ = Resolve("UseRouteError");
+            _ = UseRouterOrThrow("UseRouteError");
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
             var errors = UseContext(RouterContext.Errors);
@@ -1085,7 +1080,7 @@ namespace Velvet
         /// Velvet's timeline primitive: the hook owns the clock (via <see cref="UseFrame"/>) and the step
         /// walk, so a caller never hand-rolls
         /// <see cref="UseEffect(Func{Action},object[])"/> plus a timer plus <see cref="UseState{T}(T)"/> to
-        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes with no own <c>animate</c>
+        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes naming no label of their own
         /// inherit the coordinator's label exactly as they already do for any hand-toggled label change; "one
         /// at a time" fan-out across a list of such descendants is <c>StaggerChildrenSec</c> on a step's own
         /// <see cref="AnimationSequenceStep.Transition"/> — there is no separate multi-target API.

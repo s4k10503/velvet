@@ -1036,17 +1036,24 @@ directory.
    read from the change rather than the file, by `published_check.py` on the pull request that
    closes the version: a major has to close with the section empty and every entry of it word for
    word in the version being closed, and a minor or a patch may neither take anything out of it nor
-   leave anything in. So a wording change belongs in a change that closes no version, and leaves a
-   breaking entry's first line as it was: `breaking_in_flight_check.py` reads an entry by its first
-   line, so a first line reworded reads as one lost, whatever the change closes, and a continuation
-   line is not read at all. A change closing no version may also move an entry out of the section,
-   and is asked nothing about it then; what the move decided is asked of the next change closing a
-   version, which `breaking_in_flight_check.py` reads against every commit of `main` from the
-   newest `vX.Y.Z-main` tag the result descends from to the change's base: an entry the section
-   held at any of them, that the result carries neither there nor in a major closed since the tag,
-   is refused. So an entry that has sat in the section on `main` since the last release leaves it
-   only into a major — moved out by one change and closed into a minor by the next, it is refused
-   at the second — and deciding it was never breaking is open to a change that also closes a major
+   leave anything in. So a wording change belongs in a change that closes no version.
+   `breaking_in_flight_check.py` reads an entry by its whole first line, and a continuation line is
+   not read at all, so a first line reworded — kept as the start of a longer one included — reads as
+   one lost, whatever the change closes, unless a fragment under
+   `Packages/com.velvet.core/Changelog~/breaking/` records the correction: the line
+   `<!-- corrects: - <the old first line, as written> -->` under the entry that rewrites that line.
+   That change and the next one closing a version then read the old line as carried by the new one,
+   and `release_notes.compose` drops the correction line from the composed CHANGELOG, which is what
+   `scripts/release/compile_changelog.py` writes and the note is built from. An entry written in the
+   file's own section is corrected by moving it into such a fragment in the same change. A change
+   closing no version may also move an entry out of the section, and is asked nothing about it then;
+   what the move decided is asked of the next change closing a version, which
+   `breaking_in_flight_check.py` reads against every commit of `main` from the newest `vX.Y.Z-main`
+   tag the result descends from to the change's base: an entry the section held at any of them, that
+   the result carries neither there nor in a major closed since the tag, is refused. So an entry
+   that has sat in the section on `main` since the last release leaves it only into a major — moved
+   out by one change and closed into a minor by the next, it is refused at the second — and deciding
+   it was never breaking is open to a change that also closes a major
    carrying it, or to one made before the entry reaches `main`, since the reading cannot tell that
    decision from a break slipping into a minor. The pull request's own commits are not read, so a
    line written and corrected on the branch costs nothing. Every dated section whose version the

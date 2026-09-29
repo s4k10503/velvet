@@ -41,6 +41,11 @@ FRAGMENT_KINDS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Securit
 # A tree carrying this reads fragments. A maintenance line cut before fragments existed does not, and
 # takes its entries inline; CONTRIBUTING.md's maintenance-line section owns that rule.
 FRAGMENT_COMPILER = "scripts/release/compile_changelog.py"
+# A line under a breaking entry naming the first line it rewrites, which breaking_in_flight_check.py
+# reads as that entry carried. It stays in the fragment for that reading, and compose drops it, so
+# compile_changelog.py never writes it into the file a note is built from.
+CORRECTS_FORM = "<!-- corrects: - <the old first line, as written> -->"
+CORRECTS = re.compile(r"^<!-- corrects: (?P<entry>- .*\S) -->$")
 
 
 class ReleaseNotesError(Exception):
@@ -236,6 +241,16 @@ def parse_fragment(path, text):
     where = f"{FRAGMENT_PATH}/{Path(path).as_posix()}"
     blocks = []
     for number, line in enumerate(text.splitlines(), start=1):
+        if line.lstrip().startswith("<!-- corrects:"):
+            if not CORRECTS.match(line.rstrip()):
+                raise ReleaseNotesError(
+                    f"{where}:{number}: a correction is written '{CORRECTS_FORM}', the first line "
+                    "opening with its '- '.")
+            if not blocks or not any(one.startswith("- ") for one in blocks[-1][1]):
+                raise ReleaseNotesError(
+                    f"{where}:{number}: a correction sits under the entry that rewrites the one it "
+                    "names, and no entry is above this one.")
+            continue
         heading = SUBSECTION_HEADING.match(line)
         if heading:
             if heading.group("title") not in FRAGMENT_KINDS:

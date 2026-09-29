@@ -48,8 +48,7 @@ namespace Velvet.SourceGenerators.AutoDeps
         /// Largest lambda arity the widest deps-taking overload of this hook's factory accepts, or
         /// <see cref="UnboundedFactoryParameterCount"/> when the factory is a type parameter constrained to
         /// <c>Delegate</c> and therefore admits any arity. Effect factories are parameterless (0);
-        /// <c>UseBlocker</c> passes the navigation attempt (and, on the async overload, a cancellation token)
-        /// into the predicate; <c>UseCallback</c> memoizes the user's own delegate, whose shape it does not
+        /// <c>UseBlocker</c> passes the blocker function's argument into the predicate; <c>UseCallback</c> memoizes the user's own delegate, whose shape it does not
         /// constrain at all. A lambda with more parameters than this is not the hook's factory shape —
         /// notably <c>V.Memo&lt;TProps&gt;(Func&lt;TProps,VNode&gt;, props, …)</c>, whose props lambda must
         /// stay out of the deps-comparison pipeline.
@@ -107,14 +106,14 @@ namespace Velvet.SourceGenerators.AutoDeps
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 1, depsArgIndex: 2, depsAreParams: true);
                     return true;
                 case VelvetWellKnownNames.UseBlockerMethodName:
-                    // The blocker predicate receives the navigation attempt (plus a cancellation token on the
-                    // async overload), so unlike every other entry its factory lambda is not parameterless.
+                    // The blocker predicate receives the blocker function's argument, so its factory lambda
+                    // takes one parameter.
                     descriptor = new DepsHookDescriptor(
                         VelvetWellKnownNames.HooksTypeFullName,
                         factoryArgIndex: 0,
                         depsArgIndex: 1,
                         depsAreParams: true,
-                        maxFactoryParameterCount: 2);
+                        maxFactoryParameterCount: 1);
                     return true;
                 case VelvetWellKnownNames.VMemoizedMethodName:
                     // V.Memoized(Func<VNode> factory, params object[] deps) — the DSL's memoized-subtree-node
