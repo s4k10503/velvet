@@ -434,6 +434,201 @@ namespace Velvet.Tests
                 Is.EqualTo(((Focusable)a1, (Focusable)a1, (Focusable)a1, 1)));
         }
 
+        private static void SendMove(VisualElement target, NavigationMoveEvent.Direction direction)
+        {
+            using var move = NavigationMoveEvent.GetPooled(direction);
+            move.target = target;
+            target.SendEvent(move);
+        }
+
+        private static VisualElement FindInAnyDocument(string name)
+        {
+            foreach (var doc in Resources.FindObjectsOfTypeAll<UIDocument>())
+            {
+                if (doc.rootVisualElement?.Q<VisualElement>(name) is { } found)
+                {
+                    return found;
+                }
+            }
+            return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_TabLandsOnAnotherPortalInTheSameHost_Then_FocusReturnsToTheScope()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalBesideAPortalSharingItsLayer, key: "root"));
+            var m1 = Main("m1");
+            var inner = HostElement("inner");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.Blur();
+            inner.Focus();
+            var innerHeld = inner.panel.focusController.focusedElement == inner;
+            var outer = HostElement("outer");
+            var landingsOutside = CountLandings(outer);
+
+            // Act — the host holds only these two, so a move either way lands on the portal declared outside.
+            SendMove(inner, NavigationMoveEvent.Direction.Next);
+            yield return ReadTwoSettledFrames(m1, readings);
+
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (innerHeld, readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo((true, (Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
+        }
+
+        // The two portals share the Overlay host, the modal's first, so a Tab from "inner" lands in the group.
+        [Component]
+        private static VNode ModalBesideALayerGroup() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
+                {
+                    V.Button(name: "inner"),
+                }),
+            }),
+            V.Portal(UILayer.Overlay, key: "outer", children: new VNode[]
+            {
+                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "o1"),
+                    V.Button(name: "o2"),
+                }),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_TabLandsInAGroupOutsideIt_Then_TheGroupDoesNotRecordTheRevertedLanding()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalBesideALayerGroup, key: "root"));
+            var m1 = Main("m1");
+            var inner = HostElement("inner");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.Blur();
+            inner.Focus();
+            var group = _mounted.Root.Reconciler.Context.FocusScopeBindings[HostElement("group")];
+
+            // Act
+            SendMove(inner, NavigationMoveEvent.Direction.Next);
+            yield return ReadTwoSettledFrames(m1, readings);
+
+            // Assert
+            Assert.That(
+                (readings[0], readings[1], readings[2], group.LastFocusedMember),
+                Is.EqualTo(((Focusable)m1, (Focusable)m1, (Focusable)m1, (VisualElement)null)));
+        }
+
+        [Component]
+        private static VNode ModalDeclaringALayerPortalBesideAMainButton() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.Portal(UILayer.Overlay, key: "inner", children: new VNode[]
+                {
+                    V.Button(name: "inner"),
+                }),
+            }),
+            V.Button(name: "outside"),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FocusInALayerPortalDeclaredInsideAContainedScope_When_FocusMovesToTheMainPanelOutsideIt_Then_FocusReturnsToTheScope()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalDeclaringALayerPortalBesideAMainButton, key: "root"));
+            var m1 = Main("m1");
+            var inner = HostElement("inner");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.Blur();
+            inner.Focus();
+            var innerHeld = inner.panel.focusController.focusedElement == inner;
+            var outside = Main("outside");
+            var landingsOutside = CountLandings(outside);
+
+            // Act
+            outside.Focus();
+            yield return ReadTwoSettledFrames(m1, readings);
+
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (innerHeld, readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo((true, (Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_FocusInAnElementPortalDeclaredInsideAContainedScope_When_TabLandsOnAnotherElementOfThatPanel_Then_FocusReturnsToTheScope()
+        {
+            // Arrange — the portal renders into a panel no tree mounts, beside an element of that panel's own.
+            yield return CreateOtherPanel();
+            var plain = new Button { name = "plain" };
+            OtherRoot.Add(plain);
+            s_portalTarget = OtherRoot;
+            yield return MountOnMain(V.Component(ModalDeclaringAnElementPortal, key: "root"));
+            var m1 = Main("m1");
+            var p1 = OtherRoot.Q<VisualElement>("p1");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.Blur();
+            p1.Focus();
+            var p1Held = p1.panel.focusController.focusedElement == p1;
+            var landingsOutside = CountLandings(plain);
+
+            // Act — the other panel holds only these two, so a move either way lands on its own element.
+            SendMove(p1, NavigationMoveEvent.Direction.Next);
+            yield return ReadTwoSettledFrames(m1, readings);
+
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (p1Held, readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo((true, (Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
+        }
+
+        [Component]
+        private static VNode ModalDeclaringAWorldSpacePanelBesideAMainButton() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.WorldSpace(Vector3.zero, panelSize: new Vector2(400f, 400f), key: "world", children: new VNode[]
+                {
+                    V.Button(name: "w1"),
+                }),
+            }),
+            V.Button(name: "outside"),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FocusInAWorldSpacePanelDeclaredInsideAContainedScope_When_FocusMovesToTheMainPanelOutsideIt_Then_FocusReturnsToTheScope()
+        {
+            // Arrange
+            yield return MountOnMain(V.Component(ModalDeclaringAWorldSpacePanelBesideAMainButton, key: "root"));
+            var m1 = Main("m1");
+            var w1 = FindInAnyDocument("w1");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(m1);
+            m1.Blur();
+            w1.Focus();
+            var w1Held = w1.panel.focusController.focusedElement == w1;
+            var outside = Main("outside");
+            var landingsOutside = CountLandings(outside);
+
+            // Act
+            outside.Focus();
+            yield return ReadTwoSettledFrames(m1, readings);
+
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (w1Held, readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo((true, (Focusable)m1, (Focusable)m1, (Focusable)m1, 1)));
+        }
+
         [Component]
         private static VNode NewerTreeModal() => V.FocusScope(name: "newerModal", contain: true, children: new VNode[]
         {

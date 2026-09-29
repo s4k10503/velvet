@@ -48,7 +48,7 @@ worth knowing, both when several variants name one such utility:
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; `focus-visible:` also reads its panel's last input, see [focus.md](focus.md#focus-visible-styling-and-state)) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; `focus-visible:` also reads the last input to any panel, see [focus.md](focus.md#focus-visible-styling-and-state)) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |

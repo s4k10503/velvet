@@ -1,11 +1,12 @@
 #nullable enable
 using System;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // The element-local interaction signals a variant manipulator reacts to. FocusVisible is the CSS
-    // :focus-visible distinction (PanelInputModality); Checked is the element's own toggle state.
+    // :focus-visible distinction (InputModality); Checked is the element's own toggle state.
     internal enum VariantSignal
     {
         Hover,
@@ -115,6 +116,9 @@ namespace Velvet
         // it suppresses.
         private bool _pointerFocus;
 
+        // Whether this element's ring follows InputModality.Changed, which it does while it holds focus.
+        private bool _following;
+
         public ElementLocalVariantSignals(Action<VariantSignal, bool> emit) => _emit = emit;
 
         // Registers the detection callbacks on target. When registerChecked is false the ChangeEvent path is
@@ -137,8 +141,6 @@ namespace Velvet
             target.RegisterCallback<PointerCancelEvent>(OnPointerCancel);
             target.RegisterCallback<FocusEvent>(OnFocus);
             target.RegisterCallback<BlurEvent>(OnBlur);
-            target.RegisterCallback<AttachToPanelEvent>(OnAttachToPanel);
-            PanelInputModality.Track(target.panel);
 
             if (registerChecked)
             {
@@ -164,14 +166,12 @@ namespace Velvet
             _target.UnregisterCallback<PointerCancelEvent>(OnPointerCancel);
             _target.UnregisterCallback<FocusEvent>(OnFocus);
             _target.UnregisterCallback<BlurEvent>(OnBlur);
-            // MUTANT_SURVIVES(equivalent, line removed): a stale attach callback only starts tracking a panel,
-            // and only a consumer hooked in that panel reads the tracking, and it starts the tracking itself.
-            _target.UnregisterCallback<AttachToPanelEvent>(OnAttachToPanel);
             if (_registerChecked)
             {
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
             }
 
+            Unfollow();
             _target = null;
             _pointerFocus = false;
         }
@@ -238,25 +238,62 @@ namespace Velvet
         // per-state dedup makes a redundant call a no-op.
         public void SettleFocusLoss()
         {
+            Unfollow();
             _pointerFocus = false;
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
         }
 
-        private void OnAttachToPanel(AttachToPanelEvent evt) => PanelInputModality.Track(evt.destinationPanel);
-
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);
-            if (!_pointerFocus && !PanelInputModality.LastInputWasPointer(_target?.panel))
+            if (!_pointerFocus && !InputModality.LastInputWasPointer(_target?.panel))
             {
                 _emit(VariantSignal.FocusVisible, true);
             }
             _pointerFocus = false;
+            if (!_following)
+            {
+                _following = true;
+                InputModality.Changed += OnModalityChanged;
+            }
+        }
+
+        // React Aria's isKeyboardFocusEvent: a key typed into a text input leaves the ring as it was, except
+        // Tab and Escape.
+        private void OnModalityChanged(bool pointer, EventBase cause)
+        {
+            if (!IsTypedIntoATextInput(cause))
+            {
+                _emit(VariantSignal.FocusVisible, !pointer);
+            }
+        }
+
+        private static bool IsTypedIntoATextInput(EventBase cause)
+        {
+            if (cause is not IKeyboardEvent key)
+            {
+                return false;
+            }
+            if (key.keyCode is KeyCode.Tab or KeyCode.Escape)
+            {
+                return false;
+            }
+            return cause.target is ITextEdition { isReadOnly: false };
+        }
+
+        private void Unfollow()
+        {
+            if (_following)
+            {
+                _following = false;
+                InputModality.Changed -= OnModalityChanged;
+            }
         }
 
         private void OnBlur(BlurEvent evt)
         {
+            Unfollow();
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
         }

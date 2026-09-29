@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -49,6 +50,15 @@ namespace Velvet.Tests
             return _host.Root.Q<VisualElement>("target");
         }
 
+        // The input modality is process-wide, so a case another fixture ended on a pointer press would leave
+        // every focus dark; a key press is what a keyboard user's focus follows.
+        private void PressAKey()
+        {
+            using var key = KeyDownEvent.GetPooled('\0', KeyCode.None, EventModifiers.None);
+            key.target = _host.Root;
+            _host.Root.SendEvent(key);
+        }
+
         private static StateUpdater<int> s_bumpComposed;
 
         // The ring's ref is COMPOSED with other per-element work, wrapped in UseCallback — the
@@ -89,11 +99,13 @@ namespace Velvet.Tests
                 "A stable composed ref must survive unrelated patches without darkening the ring");
         }
 
+        // GREEN_ON_BASE(characterization): the base lights the ring whatever the panel's last input was.
         [Test]
         public void Given_AComponentUsingUseFocusRing_When_ItsElementGainsFocusWithoutAPointerPress_Then_IsFocusVisibleBecomesTrue()
         {
             // Arrange
             var target = Mount();
+            PressAKey();
             Assume.That(s_ring.IsFocusVisible, Is.False, "Precondition: the ring starts dark");
 
             // Act — focus arrives with no preceding pointer-down (Tab navigation / programmatic Focus).
@@ -194,11 +206,13 @@ namespace Velvet.Tests
             Assert.That(s_ring.IsFocused, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base lights the ring whatever the panel's last input was.
         [Test]
         public void Given_AFocusVisibleRing_When_TheElementBlurs_Then_IsFocusVisibleReturnsToFalse()
         {
             // Arrange
             var target = Mount();
+            PressAKey();
             using (var evt = FocusEvent.GetPooled()) target.SimulateEvent(evt);
             _mounted.FlushStateForTest();
             Assume.That(s_ring.IsFocusVisible, Is.True, "Precondition: the ring lit for keyboard focus");

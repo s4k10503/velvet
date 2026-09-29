@@ -225,8 +225,8 @@ namespace Velvet
     /// focus to nothing first — that path re-focuses the scope on the panel's next scheduler tick, as does
     /// focus that moves to another panel unless it lands in a portal declared inside the scope or in a
     /// contained scope created after this one.</param>
-    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
-    /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
+    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element that held focus when the
+    /// scope mounted (skipped if that element is gone, detached, or cannot grab focus).</param>
     /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
     /// keyed reorder's), focus the scope's first focusable descendant (skipped when focus is already
     /// inside the scope).</param>

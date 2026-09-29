@@ -32,8 +32,11 @@ namespace Velvet
         private static readonly FieldInfo? s_pendingFocusedElement =
             ReferenceField(s_controllerType, "m_LastPendingFocusedElement", Instance);
 
-        private static readonly FieldInfo? s_selectedTextElement =
-            ReferenceField(s_controllerType, "m_SelectedTextElement", Instance);
+        // Written through the property, as the engine's own writers are.
+        private static readonly PropertyInfo? s_selectedTextElement =
+            s_controllerType.GetProperty("selectedTextElement", Instance) is { CanWrite: true } selected
+                ? selected
+                : null;
 
         private static readonly FieldInfo? s_focusedElements =
             s_controllerType.GetField("m_FocusedElements", Instance) is { FieldType: { IsGenericType: true } } list

@@ -6,8 +6,8 @@
 
 ### Fixed
 
-- A `contain` scope pulling focus back from a panel no mounted tree manages now blurs the landing first, as it
-  already did for a panel a tree manages, so that panel does not take the landing back for a frame.
+- A `contain` scope pulling focus back from a `UIDocument` panel no mounted tree manages now blurs the landing
+  first, as it already did for a panel a tree manages, so that panel does not take the landing back for a frame.
 
 - A tree disposed after the element it was mounted on left its panel leaves no focus behind in that panel: a
   pooled `Button` from it no longer takes focus back when focus returns to the panel it left.

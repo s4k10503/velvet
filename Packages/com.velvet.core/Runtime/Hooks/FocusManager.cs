@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -9,10 +10,10 @@ namespace Velvet
     /// Options for a <see cref="FocusManager"/> move, React Aria's <c>FocusManagerOptions</c>.
     /// </summary>
     /// <param name="From">
-    /// The element to move from, instead of the focused one. Its descendants are skipped. Read by
-    /// <see cref="FocusManager.FocusNext"/> and <see cref="FocusManager.FocusPrevious"/> only.
+    /// The element to move from, instead of the focused one. Read by <see cref="FocusManager.FocusNext"/> and
+    /// <see cref="FocusManager.FocusPrevious"/> only.
     /// </param>
-    /// <param name="Tabbable">Only elements the Tab ring reaches (a non-negative <c>tabIndex</c>), rather than every focusable one.</param>
+    /// <param name="Tabbable">Only elements with a non-negative <c>tabIndex</c>, rather than every focusable one.</param>
     /// <param name="Wrap">
     /// Past the scope's last element, continue from its first (and the reverse). Read by
     /// <see cref="FocusManager.FocusNext"/> and <see cref="FocusManager.FocusPrevious"/> only.
@@ -26,7 +27,8 @@ namespace Velvet
 
     /// <summary>
     /// Moves focus among the focusable descendants of the focus scope around the component that called
-    /// <c>Hooks.UseFocusManager</c>, in hierarchy order — React Aria's <c>FocusManager</c>. The scope is the
+    /// <c>Hooks.UseFocusManager</c>, in hierarchy order — React Aria's <c>FocusManager</c>. A field such as a
+    /// <c>TextField</c> or a <c>Toggle</c> is one element. The scope is the
     /// nearest <c>V.FocusScope</c> or <c>FocusScope</c> element prop above the component, a portal's content
     /// reaching the scope its portal is declared in. Each method focuses the element it finds and returns it;
     /// it returns null, leaving focus where it is, when it finds none or the component is in no scope.
@@ -56,6 +58,7 @@ namespace Velvet
             {
                 return null;
             }
+            // The panel reports a focused field as the field, the unit Collect keeps.
             var from = options?.From ?? root.panel?.focusController?.focusedElement as VisualElement;
             var order = new List<VisualElement>();
             Collect(root, order);
@@ -94,7 +97,7 @@ namespace Velvet
             var order = new List<VisualElement>();
             Collect(root, order);
             // React Aria's focusFirst and focusLast read neither From nor Wrap.
-            var found = FindEdge(order, options is null ? null : options with { From = null }, first);
+            var found = FindEdge(order, options, first);
             found?.Focus();
             return found;
         }
@@ -113,7 +116,8 @@ namespace Velvet
 
         private static VisualElement? Candidate(VisualElement element, FocusManagerOptions? options)
         {
-            if (!element.canGrabFocus || element.delegatesFocus)
+            // A field delegates its focus to its input, and is still the unit to land on.
+            if (!element.canGrabFocus || (element.delegatesFocus && !IsCompositeRoot(element)))
             {
                 return null;
             }
@@ -125,23 +129,37 @@ namespace Velvet
             {
                 return null;
             }
-            if (options.From != null && options.From.Contains(element))
-            {
-                return null;
-            }
             return options.Accept == null || options.Accept(element) ? element : null;
         }
 
+        // A subtree under an element that is not displayed is skipped whole, as the engine's ring and React
+        // Aria's isElementVisible skip it; canGrabFocus reads only the element's own display. A field's parts are
+        // skipped too, so the field is one element.
         private static void Collect(VisualElement parent, List<VisualElement> order)
         {
             var count = parent.hierarchy.childCount;
             for (var i = 0; i < count; i++)
             {
                 var child = parent.hierarchy[i];
+                if (child.resolvedStyle.display == DisplayStyle.None)
+                {
+                    continue;
+                }
                 order.Add(child);
-                Collect(child, order);
+                if (!IsCompositeRoot(child))
+                {
+                    Collect(child, order);
+                }
             }
         }
+
+        // isCompositeRoot is internal. A later engine that drops it leaves every field's parts reachable
+        // rather than throwing.
+        private static readonly PropertyInfo? s_isCompositeRoot =
+            typeof(VisualElement).GetProperty("isCompositeRoot", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static bool IsCompositeRoot(VisualElement element)
+            => s_isCompositeRoot?.GetValue(element) is true;
 
         private VisualElement? FindScopeRoot()
         {

@@ -15,9 +15,8 @@ namespace Velvet
         public bool IsFocused { get; }
 
         /// <summary>
-        /// True while the element holds focus that did not follow a pointer press in its panel — keyboard,
-        /// gamepad (navigation-event-driven), or a programmatic focus after a key press or navigation move
-        /// or before any input.
+        /// True while the <c>focus-visible:</c> variant would be lit on the element; the focus guide's
+        /// focus-visible section gives when that is.
         /// </summary>
         public bool IsFocusVisible { get; }
 

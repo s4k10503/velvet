@@ -33,6 +33,7 @@ namespace Velvet.Tests
             s_setRotated = default;
             s_setShowOpener = default;
             s_setAutoFocusOn = default;
+            s_portalTarget = null;
         }
 
         [TearDown]
@@ -51,6 +52,14 @@ namespace Velvet.Tests
         private void Mount(System.Func<VNode> body)
         {
             _mounted = V.Mount(_host.Root, V.Component(body, key: "root"));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+        }
+
+        // Mounts the scope a host hides at first, as a dialog mounts when it opens.
+        private void Show(StateUpdater<bool> setShown)
+        {
+            setShown.Invoke(true);
+            _mounted.FlushStateForTest();
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
@@ -92,7 +101,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RestoreScopeHost()
         {
-            var (showScope, setShowScope) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
             s_setShowScope = setShowScope;
             return V.Div(children: new VNode[]
             {
@@ -106,14 +115,15 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AFocusScopeWithRestoreFocus_When_TheScopeUnmountsWhileHoldingFocus_Then_TheElementFocusCameFromRegainsFocus()
         {
-            // Arrange — focus enters the scope FROM the opener (the navigator's FocusIn bookkeeping
-            // captures the opener as the restore target on that first entry).
+            // Arrange — the opener holds focus when the scope mounts.
             Mount(RestoreScopeHost);
             var opener = Q("opener");
             opener.Focus();
+            Show(s_setShowScope);
             Q("inner").Focus();
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("inner")),
                 "Precondition: focus sits inside the scope");
@@ -129,7 +139,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RestoreScopeWithNestedScopeHost()
         {
-            var (showScope, setShowScope) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
             s_setShowScope = setShowScope;
             return V.Div(children: new VNode[]
             {
@@ -152,8 +162,9 @@ namespace Velvet.Tests
             // Arrange
             Mount(RestoreScopeWithNestedScopeHost);
             var opener = Q("opener");
-            var inner = Q("inner");
             opener.Focus();
+            Show(s_setShowScope);
+            var inner = Q("inner");
             inner.Focus();
             var heldInside = _host.Panel.focusController.focusedElement == inner;
 
@@ -168,7 +179,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ReenteredRestoreScopeHost()
         {
-            var (showScope, setShowScope) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
             s_setShowScope = setShowScope;
             return V.Div(children: new VNode[]
             {
@@ -183,18 +194,16 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base already keeps the first entry's origin.
         [Test]
-        public void Given_ARestoringScopeReenteredFromAnotherElement_When_ItUnmountsWhileHoldingFocus_Then_TheFirstEntrysOriginRegainsFocus()
+        public void Given_ARestoringScopeFirstEnteredFromAnElementFocusedAfterItMounted_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusedAtMountRegainsFocus()
         {
-            // Arrange
+            // Arrange — React Aria's nodeToRestore is the element focused when the scope mounts.
             Mount(ReenteredRestoreScopeHost);
             var opener = Q("opener");
-            var inner = Q("inner");
             opener.Focus();
-            inner.Focus();
+            Show(s_setShowScope);
             Q("other").Focus();
-            inner.Focus();
+            Q("inner").Focus();
 
             // Act
             s_setShowScope.Invoke(false);
@@ -207,7 +216,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RestoreScopeRootFocusableHost()
         {
-            var (showScope, setShowScope) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
             s_setShowScope = setShowScope;
             return V.Div(children: new VNode[]
             {
@@ -223,15 +232,16 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AFocusScopeWithRestoreFocus_When_TheScopeRootItselfHoldsFocusAndUnmounts_Then_TheElementFocusCameFromRegainsFocus()
         {
-            // Arrange — focus enters the scope root element ITSELF (not a descendant) FROM the opener: the
-            // root is made focusable directly, exercising the restore guard's own-root case rather than a
-            // contained child's.
+            // Arrange — the scope root element ITSELF (not a descendant) takes focus: the root is made
+            // focusable directly, exercising the restore guard's own-root case rather than a contained child's.
             Mount(RestoreScopeRootFocusableHost);
             var opener = Q("opener");
             opener.Focus();
+            Show(s_setShowScope);
             Q("scope").Focus();
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("scope")),
                 "Precondition: the scope root itself holds focus");
@@ -378,12 +388,19 @@ namespace Velvet.Tests
             V.Button(name: "outside", className: "focus-visible:bg-blue-400"),
         });
 
+        // GREEN_ON_BASE(characterization): the base lights the ring whatever the panel's last input was.
         [Test]
         public void Given_ALandingSnappedBackIntoAContainedScope_When_TheRevertedElementKeepsAFocusVisibleResidue_Then_TheNextTickSettlesIt()
         {
             // Arrange — a real escape that the containment reverts: the snap-back schedules a next-tick
-            // settle for the reverted element.
+            // settle for the reverted element. The key press makes the process-wide input modality keyboard,
+            // whatever case ran before.
             Mount(StuckRingHost);
+            using (var key = KeyDownEvent.GetPooled('\0', KeyCode.None, EventModifiers.None))
+            {
+                key.target = _host.Root;
+                _host.Root.SendEvent(key);
+            }
             var m1 = Q("m1");
             m1.Focus();
             var outside = Q("outside");
@@ -541,6 +558,70 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("n1")));
         }
 
+        // In ring order: before, x, y1, y2, z, after.
+        [Component]
+        private static VNode NestedGroupsHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "before"),
+            V.FocusScope(name: "g1", singleTabStop: true, children: new VNode[]
+            {
+                V.Button(name: "x"),
+                V.FocusScope(name: "g2", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "y1"),
+                    V.Button(name: "y2"),
+                }),
+                V.Button(name: "z"),
+            }),
+            V.Button(name: "after"),
+        });
+
+        [Test]
+        public void Given_FocusInAGroupNestedInAnother_When_TabDispatches_Then_FocusLeavesBothGroups()
+        {
+            // Arrange
+            Mount(NestedGroupsHost);
+            var y1 = Q("y1");
+            y1.Focus();
+
+            // Act
+            SendMove(y1, NavigationMoveEvent.Direction.Next);
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("after")));
+        }
+
+        [Test]
+        public void Given_FocusInAGroupNestedInAnother_When_ShiftTabDispatches_Then_FocusLeavesBothGroups()
+        {
+            // Arrange
+            Mount(NestedGroupsHost);
+            var y1 = Q("y1");
+            y1.Focus();
+
+            // Act
+            SendMove(y1, NavigationMoveEvent.Direction.Previous);
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("before")));
+        }
+
+        [Test]
+        public void Given_AGroupLastLeftFromAMemberOfAGroupNestedInIt_When_TabEntersFromBefore_Then_ThatMemberRegainsFocus()
+        {
+            // Arrange
+            Mount(NestedGroupsHost);
+            Q("y2").Focus();
+            var before = Q("before");
+            before.Focus();
+
+            // Act
+            SendMove(before, NavigationMoveEvent.Direction.Next);
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("y2")));
+        }
+
         [Component]
         private static VNode GroupInModalHost() => V.Div(children: new VNode[]
         {
@@ -605,26 +686,125 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode DepartingRestoreTargetHost()
+        private static VNode ModalWithANestedScopeHost() => V.Div(children: new VNode[]
         {
-            var (showOpener, setShowOpener) = Hooks.UseState(true);
-            s_setShowOpener = setShowOpener;
-            return V.Div(children: new VNode[]
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
             {
-                showOpener ? V.Button(name: "opener", key: "opener") : null,
-                V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                V.FocusScope(name: "nested", children: new VNode[]
                 {
-                    V.Button(name: "inner"),
+                    V.Button(name: "m1"),
+                    V.Button(name: "m2"),
                 }),
-            });
+            }),
+            V.Button(name: "outside"),
+        });
+
+        [Test]
+        public void Given_AContainedScopeLastHeldInsideAScopeNestedInIt_When_FocusEscapes_Then_TheMemberLastHeldRegainsFocus()
+        {
+            // Arrange
+            Mount(ModalWithANestedScopeHost);
+            Q("m1").Focus();
+            Q("m2").Focus();
+
+            // Act
+            Q("outside").Focus();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("m2")));
+        }
+
+        private static VisualElement s_portalTarget;
+
+        // The portal renders into an element after the tree, so Shift-Tab from its content lands on "outside".
+        [Component]
+        private static VNode ModalDeclaringASamePanelPortal() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+                V.Portal(s_portalTarget, key: "portal", children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                }),
+            }),
+            V.Button(name: "outside"),
+        });
+
+        private void MountBeforeAPortalTarget(System.Func<VNode> body)
+        {
+            var mountRoot = new VisualElement();
+            _host.Root.Add(mountRoot);
+            s_portalTarget = new VisualElement { name = "target" };
+            _host.Root.Add(s_portalTarget);
+            _mounted = V.Mount(mountRoot, V.Component(body, key: "root"));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
         [Test]
+        public void Given_FocusInASamePanelPortalDeclaredInsideAContainedScope_When_ShiftTabLandsOutsideTheScope_Then_FocusReturnsToTheScope()
+        {
+            // Arrange
+            MountBeforeAPortalTarget(ModalDeclaringASamePanelPortal);
+            var p1 = Q("p1");
+            Q("m1").Focus();
+            p1.Focus();
+            var p1Held = _host.Panel.focusController.focusedElement == p1;
+
+            // Act
+            SendMove(p1, NavigationMoveEvent.Direction.Previous);
+
+            // Assert
+            Assert.That((p1Held, _host.Panel.focusController.focusedElement), Is.EqualTo((true, (Focusable)Q("m1"))));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pulls nothing back from portal content. This case pins that
+        // a blur to nothing from it stays, as React Aria listens for a blur only on the scope's own elements.
+        [Test]
+        public void Given_FocusInASamePanelPortalDeclaredInsideAContainedScope_When_FocusIsClearedToNothing_Then_NothingRegainsFocus()
+        {
+            // Arrange
+            MountBeforeAPortalTarget(ModalDeclaringASamePanelPortal);
+            var p1 = Q("p1");
+            Q("m1").Focus();
+            p1.Focus();
+            var p1Held = _host.Panel.focusController.focusedElement == p1;
+
+            // Act
+            p1.Blur();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((p1Held, _host.Panel.focusController.focusedElement), Is.EqualTo((true, (Focusable)null)));
+        }
+
+        [Component]
+        private static VNode DepartingRestoreTargetHost()
+        {
+            var (showOpener, setShowOpener) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
+            s_setShowOpener = setShowOpener;
+            s_setShowScope = setShowScope;
+            return V.Div(children: new VNode[]
+            {
+                showOpener ? V.Button(name: "opener", key: "opener") : null,
+                showScope
+                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    {
+                        V.Button(name: "inner"),
+                    })
+                    : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
+        [Test]
         public void Given_AScopeWhoseRestoreTargetUnmounts_When_TheTargetsElementIsReleased_Then_TheScopeDropsItsRestoreReference()
         {
-            // Arrange — focus enters the scope FROM the opener, capturing it as the restore target.
+            // Arrange — the opener holds focus when the scope mounts, which captures it as the restore target.
             Mount(DepartingRestoreTargetHost);
             Q("opener").Focus();
+            Show(s_setShowScope);
             Q("inner").Focus();
             var binding = _mounted.Root.Reconciler.Context.FocusScopeBindings[Q("scope")];
             Assume.That(binding.RestoreTarget, Is.Not.Null,
@@ -744,7 +924,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode RestoringModalHost()
         {
-            var (showScope, setShowScope) = Hooks.UseState(true);
+            var (showScope, setShowScope) = Hooks.UseState(false);
             s_setShowOpener = setShowScope;
             return V.Div(children: new VNode[]
             {
@@ -758,12 +938,14 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): on the base the opener is also where focus first entered from.
         [Test]
         public void Given_AContainedRestoringScope_When_ItUnmountsWhileHoldingFocus_Then_FocusReturnsToTheOpener()
         {
             // Arrange — the standard modal combo: contain + restoreFocus together.
             Mount(RestoringModalHost);
             Q("opener").Focus();
+            Show(s_setShowOpener);
             Q("inner").Focus();
             Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("inner")),
                 "Precondition: focus sits inside the modal");

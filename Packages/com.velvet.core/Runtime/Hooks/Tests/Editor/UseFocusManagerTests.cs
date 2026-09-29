@@ -6,9 +6,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// <c>Hooks.UseFocusManager</c> moves focus among the focusable descendants of the scope around the calling
-    /// component in hierarchy order, as React Aria's scope focus manager does: a disabled element and an element
-    /// delegating its focus are never landed on, a negative <c>TabIndex</c> only when the move is not
-    /// <c>Tabbable</c>.
+    /// component in hierarchy order, as React Aria's scope focus manager does: a disabled element, an element
+    /// delegating its focus and anything under an element that is not displayed are never landed on, a negative
+    /// <c>TabIndex</c> only when the move is not <c>Tabbable</c>, and a field is one element.
     /// </summary>
     internal sealed class UseFocusManagerTests
     {
@@ -226,7 +226,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AContainerAsFrom_When_FocusNextIsCalled_Then_TheContainersDescendantsAreSkipped()
+        public void Given_AContainerAsFrom_When_FocusNextIsCalled_Then_TheContainersFirstFocusableDescendantTakesFocus()
         {
             // Arrange
             Mount(ScopeHost);
@@ -235,8 +235,8 @@ namespace Velvet.Tests
             // Act
             var moved = s_manager.FocusNext(new FocusManagerOptions(From: Q("group")));
 
-            // Assert
-            Assert.That((moved, Focused), Is.EqualTo((Q("skip"), (Focusable)Q("skip"))));
+            // Assert — React Aria's scope walker starts at From and goes into it.
+            Assert.That((moved, Focused), Is.EqualTo((Q("m2"), (Focusable)Q("m2"))));
         }
 
         [Test]
@@ -295,18 +295,65 @@ namespace Velvet.Tests
             Assert.That((moved, Focused), Is.EqualTo((Q("d1"), (Focusable)Q("d1"))));
         }
 
+        [Component]
+        private static VNode FieldsHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "scope", children: new VNode[]
+            {
+                V.Component(Probe, key: "probe"),
+                V.TextField(name: "text", label: "Name"),
+                V.Toggle(name: "toggle"),
+                V.Custom<Foldout>(name: "fold", children: new VNode[] { V.Button(name: "folded") }),
+                V.Button(name: "last"),
+            }),
+        });
+
         [Test]
-        public void Given_TheScopeAsFrom_When_FocusFirstIsCalled_Then_FromIsIgnored()
+        public void Given_AFocusedTextField_When_FocusNextIsCalled_Then_TheElementAfterTheFieldTakesFocus()
         {
             // Arrange
-            Mount(ScopeHost);
-            Q("after").Focus();
+            Mount(FieldsHost);
+            Q("text").Focus();
+            var heldByTheField = Focused == Q("text");
 
             // Act
-            var moved = s_manager.FocusFirst(new FocusManagerOptions(From: Q("scope")));
+            var moved = s_manager.FocusNext();
 
             // Assert
-            Assert.That(moved, Is.EqualTo(Q("m1")));
+            Assert.That((heldByTheField, moved), Is.EqualTo((true, Q("toggle"))));
+        }
+
+        [Test]
+        public void Given_AFocusedToggle_When_FocusPreviousIsCalled_Then_TheTextFieldTakesFocus()
+        {
+            // Arrange
+            Mount(FieldsHost);
+            Q("toggle").Focus();
+            var heldByTheToggle = Focused == Q("toggle");
+
+            // Act
+            var moved = s_manager.FocusPrevious();
+
+            // Assert
+            Assert.That((heldByTheToggle, moved), Is.EqualTo((true, Q("text"))));
+        }
+
+        [Test]
+        public void Given_ACollapsedFoldoutBeforeTheFocusedElement_When_FocusPreviousIsCalled_Then_ItsHiddenContentIsSkipped()
+        {
+            // Arrange
+            Mount(FieldsHost);
+            var fold = _host.Root.Q<Foldout>("fold");
+            fold.value = false;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Q("last").Focus();
+
+            // Act
+            var moved = s_manager.FocusPrevious();
+
+            // Assert — the Foldout's own toggle, not the Button its collapsed content holds.
+            Assert.That((fold.contentContainer.resolvedStyle.display, moved),
+                Is.EqualTo((DisplayStyle.None, fold.Q<Toggle>())));
         }
 
         [Component]
