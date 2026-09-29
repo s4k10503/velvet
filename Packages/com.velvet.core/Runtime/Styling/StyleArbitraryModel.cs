@@ -47,20 +47,6 @@ namespace Velvet
         public const int Dark = 20;
         #endregion
 
-        #region Has and Attribute
-        // has-[...] (the element styled by a DESCENDANT condition — a descendant is checked / focused or
-        // carries a class). A semantic condition on the element's own subtree, treated as a stronger intent
-        // than the ambient context, so it wins over the base utility, the positional structural layer, and
-        // the responsive / supports / theme context gates. It yields to the relational group-/peer- layers
-        // (styled by ANOTHER element's interaction) and to the element's own interaction state below.
-        public const int Has = 25;
-        // data-[...] / aria-[...] (the element styled by its OWN carried attribute). The most direct element
-        // condition — its own declared state — so it sits just above the has- (descendant) layer and
-        // likewise wins over the context gates, while still yielding to the relational group-/peer- and the
-        // element's interaction state layers below.
-        public const int Attribute = 26;
-        #endregion
-
         #region Relational
         // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
         // group-active) occupy separate layers — clearing one must not remove the other.
@@ -92,10 +78,18 @@ namespace Velvet
         public const int Disabled = 65;
         #endregion
 
+        #region Has and Attribute
+        // has-[...] (a DESCENDANT condition) and data-[...] / aria-[...] (the element's OWN carried attribute)
+        // rank above every element state on a same-property tie: Tailwind registers has, aria and data after
+        // disabled, and their selectors carry the same specificity as a pseudo-class, so the later one wins.
+        public const int Has = 70;
+        public const int Attribute = 71;
+        #endregion
+
         #region Important
         // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (Disabled, the highest,
-        // is 65) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
+        // its own variant priority, so the whole band sits above every ordinary layer (Attribute, the highest,
+        // is 71) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
         // !w-[20px], the same way dark:w-[10px] beats w-[20px].
         public const int Important = 100;
 

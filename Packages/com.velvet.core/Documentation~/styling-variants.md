@@ -153,10 +153,10 @@ the brackets.
 
 ### Precedence order
 
-Lowest first. Families are ordered by how strong and how deliberate the condition that activates them
-is: a position among siblings is the weakest signal, the element's own interaction state the
-strongest. Where members of one row also rank against each other, `<` shows that order; where they do
-not, each still occupies a layer of its own, so turning one off never disturbs another.
+Lowest first. Where members of one row also rank against each other, `<` shows that order; where they
+do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 7 and 8
+keep the order Tailwind emits them in, so `disabled:opacity-50 aria-[busy=true]:opacity-75` on a
+disabled, busy element resolves to 0.75 as it does there.
 
 | | Layer |
 |---|---|
@@ -165,12 +165,12 @@ not, each still occupies a layer of its own, so turning one off never disturbs a
 | 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
 | 4 | Responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < `supports-[…]:` |
 | 5 | Theme — `dark:` |
-| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
-| 7 | Relational — the `group-*` and `peer-*` states |
-| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 6 | Relational — the `group-*` and `peer-*` states |
+| 7 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 8 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
 | 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
+A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 7's `hover:`
 layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
 with the stronger one; *Same family, different values* above settles such a tie.
 
