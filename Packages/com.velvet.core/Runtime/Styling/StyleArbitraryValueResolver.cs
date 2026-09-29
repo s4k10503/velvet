@@ -328,7 +328,7 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return TryGetFlexFactorPreset(cls, out _, out _) || TryGetFlexPreset(cls, out _);
+            return TryGetFlexFactorPreset(cls, out _, out _);
         }
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
@@ -358,39 +358,6 @@ namespace Velvet
             }
             factor = whole;
             return whole != 0;
-        }
-
-        // flex-<N> / flex-<a>/<b>: Tailwind's `flex: <N>` (grow N, shrink 1, basis 0%) and
-        // `flex: calc(<a>/<b> * 100%)` (grow 1, shrink 1, that basis). flex-1 is a USS class, so it is left to
-        // the class list.
-        private static bool TryGetFlexPreset(string cls, out ArbitraryStyle result)
-        {
-            result = default;
-            if (!cls.StartsWith("flex-", StringComparison.Ordinal))
-            {
-                return false;
-            }
-            var body = cls.AsSpan("flex-".Length);
-            var slash = body.IndexOf('/');
-            if (slash == -1)
-            {
-                if (!TryParseWhole(body, out var grow))
-                {
-                    return false;
-                }
-                result = ArbitraryStyle.Flex(grow, 1f, 0f, LengthUnit.Percent);
-                return grow != 1;
-            }
-            if (!TryParseWhole(body.Slice(0, slash), out var numerator))
-            {
-                return false;
-            }
-            if (!TryParseWhole(body.Slice(slash + 1), out var denominator))
-            {
-                return false;
-            }
-            result = ArbitraryStyle.Flex(1f, 1f, 100f * numerator / denominator, LengthUnit.Percent);
-            return denominator != 0;
         }
 
         // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
@@ -438,10 +405,6 @@ namespace Velvet
             if (TryGetFlexFactorPreset(className, out var factorProperty, out var factor))
             {
                 result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
-                return true;
-            }
-            if (TryGetFlexPreset(className, out result))
-            {
                 return true;
             }
             var negate = className[0] == '-';
@@ -1676,16 +1639,6 @@ namespace Velvet
                     element.style.transformOrigin = new TransformOrigin(
                         new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2));
                     return;
-                case ArbitraryProperty.Flex:
-                {
-                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
-                    flex.flexGrow = style.Value;
-                    flex.flexShrink = style.Value3;
-                    flex.flexBasis = float.IsNaN(style.Value2)
-                        ? new StyleLength(StyleKeyword.Auto)
-                        : new StyleLength(new Length(style.Value2, style.Unit2));
-                    return;
-                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -1801,14 +1754,6 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
-                case ArbitraryProperty.Flex:
-                {
-                    var flex = ClipPathLayoutBox.StyleFor(element, property);
-                    flex.flexGrow = StyleKeyword.Null;
-                    flex.flexShrink = StyleKeyword.Null;
-                    flex.flexBasis = StyleKeyword.Null;
-                    return true;
-                }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
                 // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a

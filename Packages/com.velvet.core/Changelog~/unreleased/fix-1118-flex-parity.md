@@ -3,10 +3,6 @@
 - `grow-<N>` / `shrink-<N>` take a whole-number factor, as Tailwind's bare values do: `grow-3` sets
   `flex-grow: 3`. A fraction still takes the bracket form, `grow-[2.5]`.
 
-- Tailwind v4's `flex` shorthand utilities: `flex-<N>` (`flex: <N>`), `flex-<a>/<b>`
-  (`flex: calc(<a>/<b> * 100%)`) and `flex-[…]`, which takes the CSS shorthand with `_` for each space,
-  such as `flex-[2_1_120px]` or `flex-[none]`.
-
 - Negative space utilities, `-space-x-*` / `-space-y-*`.
 
 ### Fixed

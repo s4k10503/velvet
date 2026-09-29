@@ -38,11 +38,6 @@ namespace Velvet
                 return TryParseOpacity(valueSpan, negate, out result);
             }
 
-            if (prefix == "flex-")
-            {
-                return TryParseFlexShorthand(valueSpan, negate, out result);
-            }
-
             if (prefix == "grow-" || prefix == "shrink-")
             {
                 return TryParseFlexFactor(
@@ -129,100 +124,6 @@ namespace Velvet
             }
             result = new ArbitraryStyle(property, factor, LengthUnit.Pixel);
             return true;
-        }
-
-        // flex-[..] is Tailwind's `flex: <value>`, so it takes the CSS flex shorthand, `_` spelling the spaces:
-        // none / auto / initial, or `<grow> <shrink>? || <basis>`. A grow given without a basis takes 0%, a
-        // basis given alone takes a grow and shrink of 1, and a missing shrink is 1.
-        private static bool TryParseFlexShorthand(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
-        {
-            result = default;
-            if (negate)
-            {
-                return false;
-            }
-            var keyword = FlexKeyword(valueSpan);
-            if (keyword != null)
-            {
-                result = keyword.Value;
-                return true;
-            }
-            var parts = new FlexParts { Grow = float.NaN, Shrink = float.NaN, Unit = LengthUnit.Percent };
-            foreach (var part in valueSpan.ToString().Split('_'))
-            {
-                if (!TakeFlexPart(part.AsSpan(), ref parts))
-                {
-                    return false;
-                }
-            }
-            result = ArbitraryStyle.Flex(float.IsNaN(parts.Grow) ? 1f : parts.Grow,
-                float.IsNaN(parts.Shrink) ? 1f : parts.Shrink, parts.Basis, parts.Unit);
-            return true;
-        }
-
-        private static ArbitraryStyle? FlexKeyword(ReadOnlySpan<char> value)
-        {
-            if (value.SequenceEqual("none".AsSpan()))
-            {
-                return ArbitraryStyle.Flex(0f, 0f, float.NaN, LengthUnit.Pixel);
-            }
-            if (value.SequenceEqual("auto".AsSpan()))
-            {
-                return ArbitraryStyle.Flex(1f, 1f, float.NaN, LengthUnit.Pixel);
-            }
-            if (value.SequenceEqual("initial".AsSpan()))
-            {
-                return ArbitraryStyle.Flex(0f, 1f, float.NaN, LengthUnit.Pixel);
-            }
-            return null;
-        }
-
-        // The components read so far. Grow and Shrink are NaN until given; PairClosed is set by a basis that
-        // follows the grow, after which no shrink may come.
-        private struct FlexParts
-        {
-            public float Grow;
-            public float Shrink;
-            public float Basis;
-            public LengthUnit Unit;
-            public bool HasBasis;
-            public bool PairClosed;
-        }
-
-        // One space-separated component: a number is the grow, or the shrink straight after it; anything else is
-        // the basis.
-        private static bool TakeFlexPart(ReadOnlySpan<char> part, ref FlexParts parts)
-        {
-            if (StyleArbitraryValueResolver.TryParseFloat(part, out var number))
-            {
-                if (number < 0f)
-                {
-                    return false;
-                }
-                if (float.IsNaN(parts.Grow))
-                {
-                    parts.Grow = number;
-                    return true;
-                }
-                if (!float.IsNaN(parts.Shrink) || parts.PairClosed)
-                {
-                    return false;
-                }
-                parts.Shrink = number;
-                return true;
-            }
-            if (parts.HasBasis)
-            {
-                return false;
-            }
-            parts.HasBasis = true;
-            parts.PairClosed = !float.IsNaN(parts.Grow);
-            if (part.SequenceEqual("auto".AsSpan()))
-            {
-                parts.Basis = float.NaN;
-                return true;
-            }
-            return StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit);
         }
 
         private static bool TryParseTranslate(ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate,
