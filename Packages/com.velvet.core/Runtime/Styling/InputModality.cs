@@ -61,10 +61,11 @@ namespace Velvet
 
         // React Aria's isValidKey: a Shift, Ctrl or Command key pressed alone, a Ctrl or Command chord, or an
         // Alt chord off a Mac is not keyboard use.
-        // MUTANT_SURVIVES(unreachable, clause removed): dropping `&& !s_isMac` differs only where s_isMac is true,
-        // on a Mac, and the suites run on Linux.
         private static bool IsModalityKey(IKeyboardEvent evt)
-            => !evt.ctrlKey && !evt.commandKey && !(evt.altKey && !s_isMac)
+            => !evt.ctrlKey && !evt.commandKey
+                // MUTANT_SURVIVES(unreachable, clause removed): dropping `&& !s_isMac` differs only where
+                // s_isMac is true, on a Mac, and the suites run on Linux.
+                && !(evt.altKey && !s_isMac)
                 && evt.keyCode is not (KeyCode.LeftShift or KeyCode.RightShift or KeyCode.LeftControl
                     or KeyCode.RightControl or KeyCode.LeftCommand or KeyCode.RightCommand);
     }
