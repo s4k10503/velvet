@@ -578,19 +578,37 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInitialTheEnterCannotResolve_When_Mounted_Then_ItWarnsInsteadOfStayingSilentlyInert()
+        public void Given_AnInitialWithNoAnimateUnderALabelledParent_When_Mounted_Then_ItRestsAtTheInitialPoseWithoutAWarning()
         {
-            // Arrange — initial with NO own animate (inherited-label configurations are not yet
-            // driven by the standalone enter): the warning fires because a standalone mount enter needs
-            // its own animate + variants to resolve initial against.
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("initial"));
+            // Arrange — Framer leaves a Motion naming only an initial at the values that initial names, taking
+            // no label from its parent, and nothing is wrong with it.
+            var warned = 0;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains("initial is set but has no resolvable enter"))
+                {
+                    warned++;
+                }
+            }
+            Application.logMessageReceived += OnLog;
 
             // Act
-            using var mounted = V.Mount(_root,
-                V.Motion(name: "m", variants: s_fade, initial: "hidden"));
+            MountedTree mounted;
+            try
+            {
+                mounted = V.Mount(_root, V.Motion(name: "p", animate: "visible", children: new VNode[]
+                {
+                    V.Motion(name: "m", variants: s_fade, initial: "hidden"),
+                }));
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+            using var _ = mounted;
 
-            // Assert — the element mounted; the warning expectation is enforced at test end.
-            Assert.That(_root.Q<VisualElement>("m"), Is.Not.Null);
+            // Assert
+            Assert.That((_root.Q<VisualElement>("m").ClassListContains("opacity-0"), warned), Is.EqualTo((true, 0)));
         }
 
         [Test]
