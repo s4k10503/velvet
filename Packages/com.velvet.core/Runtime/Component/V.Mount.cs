@@ -34,7 +34,8 @@ namespace Velvet
             if (target == null) throw new ArgumentNullException(nameof(target));
             if (tree == null) throw new ArgumentNullException(nameof(tree));
             if (options == null) throw new ArgumentNullException(nameof(options));
-            var rootFiber = FiberRenderer.CreateRoot(() => tree);
+            var root = new RootTree(tree);
+            var rootFiber = FiberRenderer.CreateRoot(root.Render);
             FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError);
             var ctx = rootFiber.Reconciler!.Context;
             ctx.MainPanelRoot = target;
@@ -51,7 +52,16 @@ namespace Velvet
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif
-            return new MountedTree(rootFiber, sheetWatch);
+            return new MountedTree(rootFiber, root, sheetWatch);
+        }
+
+        internal sealed class RootTree
+        {
+            internal VNode Tree;
+
+            internal RootTree(VNode tree) => Tree = tree;
+
+            internal VNode Render() => Tree;
         }
 
 #if UNITY_EDITOR
@@ -86,13 +96,25 @@ namespace Velvet
     public sealed class MountedTree : IDisposable
     {
         internal readonly ComponentFiber Root;
+        private readonly V.RootTree _tree;
         private readonly IDisposable _sheetWatch;
         private bool _disposed;
 
-        internal MountedTree(ComponentFiber root, IDisposable sheetWatch)
+        internal MountedTree(ComponentFiber root, V.RootTree tree, IDisposable sheetWatch)
         {
             Root = root ?? throw new ArgumentNullException(nameof(root));
+            _tree = tree;
             _sheetWatch = sheetWatch;
+        }
+
+        // React's root.render(element): the new tree is reconciled against the committed one, so a component
+        // keeping its type and position keeps its state.
+        internal void Render(VNode tree)
+        {
+            if (_disposed) throw new InvalidOperationException("Cannot update an unmounted root.");
+            _tree.Tree = tree ?? throw new ArgumentNullException(nameof(tree));
+            FiberWorkLoop.ScheduleRerender(Root, FiberUpdatePriority.Urgent);
+            Root.Reconciler!.Context.BatchScheduler.FlushImmediate();
         }
 
         /// <summary>
@@ -103,9 +125,6 @@ namespace Velvet
         {
             if (_disposed) return;
             _disposed = true;
-#if UNITY_EDITOR
-            DevTools.VelvetDevToolsRegistry.Unregister(Root);
-#endif
             _sheetWatch.Dispose();
             // Unmounting a root is terminal — subsequent hook setters / async
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
