@@ -128,6 +128,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoSetupsEachPublishingASheet_When_RunSetupForIsCalledDirectly_Then_ItsEnvironmentCarriesBothInSetupOrder()
+        {
+            // Act
+            var environment = VelvetPreviewRegistry.RunSetupFor(ThisAssembly);
+            environment?.Dispose();
+
+            // Assert
+            Assert.That(
+                environment?.StyleSheets,
+                Is.EqualTo(new[] { s_firstSheet, s_secondSheet }));
+        }
+
+        [Test]
         public void Given_TwoSetupsEachPublishingASheet_When_AStoryMounts_Then_BothSheetsAreOnTheTarget()
         {
             // Arrange
