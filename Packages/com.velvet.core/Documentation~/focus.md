@@ -82,6 +82,22 @@ component state plus a `Ref` to pass as the element's `refCallback:`. Reach for 
 component must render differently (say, a "press A to select" hint), not just restyle; it rides
 the same heuristic as the `focus-visible:` variant.
 
+## Moving focus from code (`UseFocusManager`)
+
+`Hooks.UseFocusManager` is React Aria's `useFocusManager`: it returns a `FocusManager` for the focus
+scope around the calling component — the nearest `V.FocusScope` or `FocusScope` element prop above it,
+where a component inside a portal reaches the scope the portal is declared in. `FocusNext`,
+`FocusPrevious`, `FocusFirst` and `FocusLast` focus an element of that scope and return it, or return
+null and leave focus alone when there is none to move to or the component is in no scope.
+
+The elements are the scope's descendants in hierarchy order, skipping disabled or hidden ones and one
+that delegates its focus. `FocusManagerOptions` carries React Aria's four options: `Tabbable` skips a
+negative `TabIndex`, `Accept` filters, and — for `FocusNext` and `FocusPrevious` — `Wrap` continues
+past the scope's end from its other end and `From` moves from that element instead of the focused one,
+skipping its descendants. When focus is outside the scope, `FocusNext` lands on the first element and
+`FocusPrevious` on the last. A portal's content is not among the elements of the scope it is declared
+in, as React Aria's scope walker reaches only the scope's own DOM.
+
 ## Cross-panel Tab order (`PanelFocusOrder`)
 
 A `V.Portal(layer:)` / `V.WorldSpace` host panel owns its own focus ring, and by default that
@@ -102,7 +118,6 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 
 ## Scope cuts
 
-- No imperative focus-manager handle.
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
 - No orientation/wrap options on `singleTabStop`; spatial navigation handles in-group movement.

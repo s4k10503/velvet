@@ -261,8 +261,7 @@ namespace Velvet
                 return;
             }
 
-            // A group applies only inside the nearest contain scope: a group around that scope, or a scope
-            // that is both, behaves as contain.
+            // A group around the nearest contain scope, or a scope that is both, yields to the containment.
             var containRoot = FindEnclosingContainScopeRoot(focused, ctx, out _);
             var groupRoot = FindEnclosingSingleTabStopRoot(focused, ctx, out _);
             var singleTabStop = groupRoot != null && (containRoot == null || containRoot.Contains(groupRoot));
@@ -593,7 +592,7 @@ namespace Velvet
 
         // Walks UP from `element` (inclusive) for the nearest ancestor currently registered as a z-managed
         // real element (ReconcilerContext.ZLayerMembers), returning it, its placeholder, and the layer
-        // container it currently lives in. Physical containment, mirroring FindEnclosingScopeRoot's own walk
+        // container it currently lives in. Physical containment, mirroring FindNearestScopeRootWhere's own walk
         // — robust across pool reuse and independent of any logical-tree bookkeeping.
         private static VisualElement? FindEnclosingZLayerReal(
             VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder, out VisualElement? container)
@@ -870,7 +869,7 @@ namespace Velvet
                 {
                     return;
                 }
-                var elsewhere = FocusedElementInAnyTree();
+                var elsewhere = FocusedElementInAnyTree() ?? FocusedElementInAnyDocument();
                 if (elsewhere != null && (IsLogicallyWithin(elsewhere, containRoot)
                     || LandsInANewerContainScope(elsewhere, binding)))
                 {
@@ -928,7 +927,7 @@ namespace Velvet
         // The physical parent, except that content an element was relocated out of its declared slot stands
         // at that slot: a z-managed element at its placeholder, and a portal target's child at the placeholder
         // whose slot range holds it.
-        private static VisualElement? LogicalParentOf(VisualElement current)
+        internal static VisualElement? LogicalParentOf(VisualElement current)
         {
             foreach (var ctx in s_attachedContexts)
             {
@@ -985,6 +984,19 @@ namespace Velvet
             foreach (var ctx in s_attachedContexts)
             {
                 if (FocusedElementInManagedPanels(ctx) is { } held)
+                {
+                    return held;
+                }
+            }
+            return null;
+        }
+
+        // A panel no mounted tree manages, which only the blur before a pull-back needs.
+        private static VisualElement? FocusedElementInAnyDocument()
+        {
+            foreach (var document in UnityEngine.Object.FindObjectsByType<UIDocument>(UnityEngine.FindObjectsSortMode.None))
+            {
+                if (document.rootVisualElement?.panel?.focusController?.focusedElement is VisualElement held)
                 {
                     return held;
                 }

@@ -80,7 +80,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(characterization): the base lights the ring on every programmatic focus.
+        // GREEN_ON_BASE(characterization): the base lights the ring for a programmatic focus whatever was
+        // pressed elsewhere.
         [Test]
         public void Given_APointerPressThenAKeyPress_When_TheTargetIsFocusedProgrammatically_Then_TheFocusVisiblePayloadIsApplied()
         {
@@ -96,7 +97,8 @@ namespace Velvet.Tests
             Assert.That(target.ClassListContains("ring-kbd"), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base lights the ring on every programmatic focus.
+        // GREEN_ON_BASE(characterization): the base lights the ring for a programmatic focus whatever was
+        // pressed elsewhere.
         [Test]
         public void Given_APointerPressThenANavigationMove_When_TheTargetIsFocusedProgrammatically_Then_TheFocusVisiblePayloadIsApplied()
         {

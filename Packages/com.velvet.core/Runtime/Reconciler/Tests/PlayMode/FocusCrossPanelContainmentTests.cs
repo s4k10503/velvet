@@ -410,6 +410,30 @@ namespace Velvet.Tests
             V.Button(name: "a1"),
         });
 
+        [UnityTest]
+        public IEnumerator Given_AContainedScope_When_FocusMovesToAPanelNoTreeManages_Then_FocusReturnsWithoutTheLandingRepeating()
+        {
+            // Arrange
+            yield return CreateOtherPanel();
+            var plain = new Button { name = "plain" };
+            OtherRoot.Add(plain);
+            yield return MountOnMain(V.Component(OlderTreeModal, key: "root"));
+            var a1 = Main("a1");
+            var readings = new Focusable[3];
+            readings[0] = FocusAndRead(a1);
+            var landingsOutside = CountLandings(plain);
+
+            // Act
+            a1.Blur();
+            plain.Focus();
+            yield return ReadTwoSettledFrames(a1, readings);
+
+            // Assert — the one landing outside is the move itself.
+            Assert.That(
+                (readings[0], readings[1], readings[2], landingsOutside[0]),
+                Is.EqualTo(((Focusable)a1, (Focusable)a1, (Focusable)a1, 1)));
+        }
+
         [Component]
         private static VNode NewerTreeModal() => V.FocusScope(name: "newerModal", contain: true, children: new VNode[]
         {
