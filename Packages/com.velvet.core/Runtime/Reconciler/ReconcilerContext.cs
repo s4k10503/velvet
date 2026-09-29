@@ -701,6 +701,13 @@ namespace Velvet
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
         public HashSet<string> LayoutIdSnapshots { get; } = new();
 
+        // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
+        // them. Each member's layout transition, for a lead it takes without a patch of its own, and the inline
+        // visibility each member another leads over held before it was hidden.
+        public Dictionary<string, List<VisualElement>> LayoutIdMembers { get; } = new();
+        public Dictionary<VisualElement, LayoutIdTiming> LayoutIdTimings { get; } = new();
+        public Dictionary<VisualElement, StyleEnum<Visibility>> LayoutIdHidden { get; } = new();
+
         // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
         // tweens from. A registered callback, so it is removed explicitly at teardown like
         // LayoutIdProjections below rather than through _pureElementSideTables.
@@ -1912,6 +1919,8 @@ namespace Velvet
                 MotionNodes,
                 PresenceChildRoots,
                 ElementToLayoutId,
+                LayoutIdTimings,
+                LayoutIdHidden,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,

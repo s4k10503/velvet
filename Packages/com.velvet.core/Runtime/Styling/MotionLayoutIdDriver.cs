@@ -50,27 +50,53 @@ namespace Velvet
         // is captured on this element's own first post-patch GeometryChangedEvent instead.
         internal static void OnPatched(VisualElement element, string layoutId, LayoutIdTiming timing, ReconcilerContext ctx)
         {
-            // The old box is read off whichever element the id is registered to — this one, or the one it
-            // replaces, which teardown has not reached yet — rather than stored at registration: a freshly
-            // created element registers before its first layout, with no box to store, and a stored zero
-            // rect reads as a real box at the parent's origin. The box an entry carries is the fallback for
-            // an element not laid out yet, and the whole entry once teardown has taken its element.
-            LayoutIdBox? oldBox = null;
-            if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous))
-            {
-                oldBox = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out var live)
-                    ? live
-                    : previous.Box;
-            }
+            ctx.LayoutIdTimings[element] = timing;
+            ctx.ElementToLayoutId.TryGetValue(element, out var heldId);
+            var joins = heldId != layoutId;
+            var previous = ctx.LayoutIdRegistry.GetValueOrDefault(layoutId);
+            // The lead is the member that joined last, as Framer's NodeStack promotes the node mounted last, so a
+            // patch of any other member leaves it hidden wherever that patch moved it.
+            if (!joins && !ReferenceEquals(previous.Element, element)) return;
 
+            // The old box is read off whichever element the id is registered to — this one, or the lead it
+            // takes over from, which may be live — rather than stored at registration: a freshly created
+            // element registers before its first layout, with no box to store, and a stored zero rect reads as
+            // a real box at the parent's origin. The box an entry carries is the fallback for an element not
+            // laid out yet, and the whole entry once teardown has taken its element.
+            var oldBox = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out var live)
+                ? live
+                : previous.Box;
+
+            if (joins)
+            {
+                if (heldId != null) RemoveMember(element, heldId, ctx);
+                Show(element, ctx);
+                if (previous.Element != null) Hide(previous.Element, ctx);
+                if (!ctx.LayoutIdMembers.TryGetValue(layoutId, out var members))
+                {
+                    ctx.LayoutIdMembers[layoutId] = members = new List<VisualElement>();
+                }
+                members.Add(element);
+            }
             ctx.ElementToLayoutId[element] = layoutId;
             ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
 
             // A second patch before a layout settles the first replaces its wait rather than adding one.
             CancelPendingSettle(element, ctx);
-            if (oldBox is not { } fromBox) return;
+            // One with no box to start from and not laid out yet waits for its first layout all the same, so that
+            // a scaling Motion it mounted inside corrects it before that frame draws it.
+            if (oldBox is { } fromBox)
+            {
+                Wait(element, new LayoutIdPendingSettle(fromBox, element.layout, timing) { ReadOffItself = ReferenceEquals(previous.Element, element) }, ctx);
+            }
+            else if (!IsFiniteRect(element.layout))
+            {
+                Wait(element, new LayoutIdPendingSettle(null, element.layout, timing), ctx);
+            }
+        }
 
-            var pending = new LayoutIdPendingSettle(fromBox, element.layout, timing, ReferenceEquals(previous.Element, element));
+        private static void Wait(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
+        {
             pending.Callback = _ => Settle(element, ctx);
             element.RegisterCallback(pending.Callback);
             ctx.LayoutIdPendingSettles[element] = pending;
@@ -85,7 +111,11 @@ namespace Velvet
             SettleMovedAncestors(element, ctx);
             CancelPendingSettle(element, ctx);
             ForgetFallbackParent(element, ctx);
-            Start(element, pending, ctx);
+            var host = element.panel?.visualTree;
+            if (pending.From != null) Start(element, pending, ctx);
+            // MUTANT_SURVIVES(equivalent): a panel with no frame holds no projection, so no pass there creates one.
+            // A wait for a first layout settles from that layout, on an element in a panel.
+            else if (host != null && ctx.LayoutIdFrames.ContainsKey(host)) Project(host, ctx);
         }
 
         private static void SettleMovedAncestors(VisualElement element, ReconcilerContext ctx)
@@ -124,6 +154,7 @@ namespace Velvet
             var host = element.panel?.visualTree;
             var parent = element.hierarchy.parent;
             var layout = element.layout;
+            // Promote starts only a member laid out in a panel.
             // MUTANT_SURVIVES(unreachable): a settling element is in a panel, under a parent, and laid out.
             // A settle runs from the element's own GeometryChangedEvent or from a descendant's, which settles
             // only an ancestor laid out.
@@ -133,7 +164,7 @@ namespace Velvet
             // own is still drawing it: a patch that moved nothing leaves a wait that a later layout change can
             // fire after the move that drew the box has ended
             // (Given_ALayoutIdMotionPatchedMidTweenWithoutMoving_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereTheTweenDrewItThen).
-            var fromBox = pending.From;
+            var fromBox = pending.From!.Value;
             if (pending.ReadOffItself && !IsMoving(element, ctx) && TryReadBox(element, pending.PatchedLayout, ctx, out var redrawn))
             {
                 fromBox = redrawn;
@@ -184,13 +215,17 @@ namespace Velvet
         }
 
         // Computes and writes every projection on the panel, first giving one to each registered layoutId
-        // Motion under a scaling projection that has none, whether or not anything moved it.
+        // Motion laid out under a scaling projection that has none, whether or not anything moved it. One not laid
+        // out yet is given one when its first layout settles its wait (OnPatched).
         private static void Project(VisualElement host, ReconcilerContext ctx)
         {
             var pass = ++s_pass;
             foreach (var element in ctx.ElementToLayoutId.Keys)
             {
                 if (!ctx.LayoutIdProjections.ContainsKey(element) && element.panel?.visualTree == host
+                    // MUTANT_SURVIVES(equivalent): one not laid out computes nothing and writes nothing, and its frame
+                    // ends it having handed back no slot.
+                    && IsFiniteRect(element.layout)
                     && element.hierarchy.parent is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
                 {
                     CreateProjection(element, host, ctx);
@@ -382,27 +417,72 @@ namespace Velvet
 
         // Called from FiberElementCleaner before an element is pooled or disposed. The pending settle goes
         // too: a pooled element keeps its callbacks, so whatever the pool hands it to next would otherwise
-        // play this element's tween. Torn down inside a pass, the element leaves its box for a replacement
-        // later in that render — a same-key type flip creates it after this teardown — and ExpireSnapshots
-        // drops what nobody claimed where the render ends.
+        // play this element's tween.
         internal static void CancelForTeardown(VisualElement element, ReconcilerContext ctx)
         {
-            if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
-                && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)
-                && ReferenceEquals(current.Element, element))
-            {
-                if (ctx.CurrentPass != null)
-                {
-                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, element.layout, ctx, out var live) ? live : current.Box);
-                    ctx.LayoutIdSnapshots.Add(layoutId);
-                }
-                else
-                {
-                    ctx.LayoutIdRegistry.Remove(layoutId);
-                }
-            }
+            if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)) RemoveMember(element, layoutId, ctx);
             ctx.LayoutIdProjections.Remove(element);
             CancelPendingSettle(element, ctx);
+        }
+
+        // Takes an element out of an id's members, at its teardown or as it joins another id. A lead that leaves
+        // hands the lead to the member that joined last, as Framer's NodeStack.remove promotes the last remaining
+        // member. With none left, a lead that leaves inside a pass leaves its box for a replacement later in
+        // that render — a same-key type flip creates it after this teardown — and ExpireSnapshots drops what nobody
+        // claimed where the render ends.
+        private static void RemoveMember(VisualElement element, string layoutId, ReconcilerContext ctx)
+        {
+            var members = ctx.LayoutIdMembers[layoutId];
+            members.Remove(element);
+            if (members.Count == 0) ctx.LayoutIdMembers.Remove(layoutId);
+            var current = ctx.LayoutIdRegistry[layoutId];
+            if (!ReferenceEquals(current.Element, element)) return;
+
+            var box = TryReadBox(element, element.layout, ctx, out var live) ? live : current.Box;
+            if (members.Count > 0)
+            {
+                Promote(members[members.Count - 1], layoutId, box, ctx);
+            }
+            else if (ctx.CurrentPass != null)
+            {
+                ctx.LayoutIdRegistry[layoutId] = (null, box);
+                ctx.LayoutIdSnapshots.Add(layoutId);
+            }
+            else
+            {
+                ctx.LayoutIdRegistry.Remove(layoutId);
+            }
+        }
+
+        // The promoted member tweens from where the lead that left was drawn, starting at once rather than
+        // waiting for a layout, since its own need not change. One not laid out yet has not been drawn anywhere,
+        // and appears where it is first laid out.
+        private static void Promote(VisualElement element, string layoutId, LayoutIdBox? from, ReconcilerContext ctx)
+        {
+            Show(element, ctx);
+            ctx.LayoutIdRegistry[layoutId] = (element, null);
+            if (from is not { } box) return;
+            // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
+            if (element.panel != null && IsFiniteRect(element.layout))
+            {
+                Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]), ctx);
+            }
+        }
+
+        // A member another has taken the lead from is not drawn until it leads again, as Framer's NodeStack.promote
+        // hides the previous lead where it does not crossfade: its tween and its wait end, and its transform slots
+        // are handed back.
+        private static void Hide(VisualElement element, ReconcilerContext ctx)
+        {
+            CancelPendingSettle(element, ctx);
+            End(element, ctx);
+            ctx.LayoutIdHidden[element] = element.style.visibility;
+            element.style.visibility = Visibility.Hidden;
+        }
+
+        private static void Show(VisualElement element, ReconcilerContext ctx)
+        {
+            if (ctx.LayoutIdHidden.Remove(element, out var visibility)) element.style.visibility = visibility;
         }
 
         // Called from FiberElementCleaner as it returns an element to the pool.
@@ -519,17 +599,17 @@ namespace Velvet
 
     internal sealed class LayoutIdPendingSettle
     {
-        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, LayoutIdTiming timing, bool readOffItself)
+        public LayoutIdPendingSettle(LayoutIdBox? from, Rect patchedLayout, LayoutIdTiming timing)
         {
             From = from;
             PatchedLayout = patchedLayout;
             Timing = timing;
-            ReadOffItself = readOffItself;
         }
 
-        public LayoutIdBox From { get; }
+        // Null for a wait that only projects the element once it is first laid out.
+        public LayoutIdBox? From { get; }
         // From was read off this same element rather than off another holder of the id.
-        public bool ReadOffItself { get; }
+        public bool ReadOffItself { get; init; }
         public Rect PatchedLayout { get; }
         public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;

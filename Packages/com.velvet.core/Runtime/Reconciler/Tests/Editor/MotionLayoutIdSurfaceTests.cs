@@ -56,6 +56,36 @@ namespace Velvet.Tests
             return Root.Q<VisualElement>("shared");
         }
 
+        private static bool s_boxMounted;
+
+        // The box stands under "shared-box" while s_boxMounted.
+        [Component]
+        private static VNode RemovableBoxRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: s_boxMounted
+                ? new VNode[] { V.Motion(name: "shared", layoutId: "shared-box", className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]") }
+                : Array.Empty<VNode>());
+        }
+
+        [Test]
+        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItLeaves_Then_TheIdKeepsNoMembers()
+        {
+            // Arrange
+            s_boxMounted = true;
+            _mounted = V.Mount(Root, V.Component(RemovableBoxRender, key: "root"));
+            Tick();
+
+            // Act
+            s_boxMounted = false;
+            s_setStep.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.LayoutIdMembers.ContainsKey("shared-box"), Is.False);
+        }
+
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
 

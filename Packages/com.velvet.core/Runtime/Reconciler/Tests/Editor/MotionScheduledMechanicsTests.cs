@@ -2365,6 +2365,208 @@ namespace Velvet.Tests
             Assert.That(new[] { here, there }, Is.All.LessThan(-140f));
         }
 
+        // Set before each render of SharedLiveIdRender: "a" stands at s_aLeft under s_aId while s_aMounted, and
+        // "b" stands 300px right under "card", after it, while s_bMounted.
+        private static string s_aId;
+        private static int s_aLeft;
+        private static bool s_aMounted;
+        private static bool s_bMounted;
+        private static int s_sharedRenders;
+
+        [Component]
+        private static VNode SharedLiveIdRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var children = new List<VNode>();
+            if (s_aMounted)
+            {
+                children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_slowTween,
+                    className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px]"));
+            }
+            if (s_bMounted)
+            {
+                children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_slowTween,
+                    className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"));
+            }
+            return V.Div(children: children.ToArray());
+        }
+
+        // Mounts "a" alone under "card", then "b" under the same id, and plays the frame after.
+        private MountedTree MountBOverA()
+        {
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
+            Tick();
+            s_bMounted = true;
+            RenderShared(mounted);
+            return mounted;
+        }
+
+        // Renders SharedLiveIdRender from the statics as they stand and plays the frame after.
+        private void RenderShared(MountedTree mounted)
+        {
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+            Tick();
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderIt_Then_TheFirstIsHidden()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverA();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMidTween_When_AnotherMountsUnderItsId_Then_ItsTweenStopsWritingToIt()
+        {
+            // Arrange — "a" one frame into a move 100px right.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            using var mounted = V.Mount(Root, V.Component(SharedLiveIdRender, key: "root"));
+            Tick();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            var a = Root.Q<VisualElement>("a");
+            var midTween = a.style.translate.keyword != StyleKeyword.Null;
+
+            // Act
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That((midTween, a.style.translate.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneMountedFirstMoves_Then_ItDoesNotTakeTheLead()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            s_aLeft = 100;
+            RenderShared(mounted);
+
+            // Assert — taking the lead, it would tween from where "b" is drawn.
+            Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadLeaves_Then_TheOtherTweensFromWhereTheLeadStood()
+        {
+            // Arrange — "b" at rest 300px right of "a".
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert — one frame into a one-second tween back from 300px right.
+            Assert.That(TranslateX(Root.Q<VisualElement>("a")), Is.GreaterThan(250f));
+        }
+
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadLeaves_Then_TheOtherIsShownAgain()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            var whileBLeads = Root.Q<VisualElement>("a").resolvedStyle.visibility;
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That((whileBLeads, Root.Q<VisualElement>("a").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Hidden, Visibility.Visible)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a tween running when another Motion under its id leaves.
+        // A member that leaves must not be taken for the lead and restart the lead's tween.
+        [Test]
+        public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheHiddenOneLeaves_Then_TheLeadsTweenCarriesOn()
+        {
+            // Arrange — "b" part way into its one-second tween from "a".
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+            var before = TranslateX(Root.Q<VisualElement>("b"));
+
+            // Act
+            s_aMounted = false;
+            RenderShared(mounted);
+
+            // Assert — nearer its box than before, not back over "a" 300px left.
+            Assert.That(TranslateX(Root.Q<VisualElement>("b")), Is.GreaterThan(before));
+        }
+
+        [Test]
+        public void Given_AHiddenLayoutIdMotion_When_ItTakesAnotherId_Then_ItIsShownAgain()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            var whileBLeads = Root.Q<VisualElement>("a").resolvedStyle.visibility;
+
+            // Act
+            s_aId = "other";
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That((whileBLeads, Root.Q<VisualElement>("a").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Hidden, Visibility.Visible)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts no tween on a Motion when the holder of an id it left leaves.
+        // A Motion that took another id must not stay behind as a member of the one it left.
+        [Test]
+        public void Given_AHiddenLayoutIdMotionThatTookAnotherId_When_TheLeadOfItsOldIdLeaves_Then_ItDoesNotTween()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            s_aId = "other";
+            RenderShared(mounted);
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionMountedInsideOneStillGrowing_When_ItIsFirstLaidOut_Then_ThatFrameDrawsItAtItsOwnSize()
+        {
+            // Arrange
+            using var mounted = GrowOuterPartWay(flipInnerLate: false, lateClasses: "");
+
+            // Act — the frame it is first laid out on.
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — its own 50px, though the outer one is still drawn short of its layout.
+            var outerWidth = DrawnBox(Root.Q<VisualElement>("outer")).width;
+            var lateWidth = DrawnBox(Root.Q<VisualElement>("late")).width;
+            Assert.That((outerWidth < 550f, Mathf.Abs(lateWidth - 50f) < 1f), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's layout transition lands a move at once on a spring the scheduler rejects.
+        // A spring with no stiffness must land the move rather than hold it at the old box.
+        [Test]
+        public void Given_ALayoutIdMotionOnASpringTheValidatorRejects_When_ItMoves_Then_ItLandsAtOnce()
+        {
+            // Arrange / Act — a spring with no stiffness.
+            var element = MoveOn(new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 0f, Damping = 10f, Mass = 1f });
+
+            // Assert
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +
         // `transition` — the orchestration must key off the label it PROPAGATES, not off its own resolved
         // class, since a coordinator like this never gets a MotionAppliedClasses entry) with two inheriting
