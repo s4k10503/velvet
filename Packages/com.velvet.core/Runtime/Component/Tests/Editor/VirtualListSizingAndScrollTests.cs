@@ -15,7 +15,7 @@ namespace Velvet.Tests
     /// <c>listRef</c>, against react-window's <c>List</c>.
     /// <list type="bullet">
     /// <item>The spacer is as tall as the items' heights added up, and follows them when the list renders
-    /// again.</item>
+    /// again, whether its heights or its number of items changed.</item>
     /// <item>The rendered range runs from the item at the scroll offset through the item at the viewport's
     /// bottom edge — an item ending exactly at an edge being outside it — and is the last item alone past the
     /// list's end, for a list of one height as well; its container sits where its first item starts, and
@@ -24,8 +24,8 @@ namespace Velvet.Tests
     /// alignment, within the list's ends. Auto leaves an item already in view where it is, one whose start or
     /// end meets the viewport's included, and an item taller than the viewport counts as in view while the
     /// viewport lies within it. Smart is Auto for an item in view and Center otherwise. A target past the
-    /// scroller's range is reached at the content's next layout, and only then. An index outside the items
-    /// throws.</item>
+    /// scroller's range is reached at the content's next layout, and only then, unless the list has unmounted
+    /// by that layout. An index outside the items throws.</item>
     /// <item>The ref holds the handle while the list is mounted, lets go of it when the list unmounts or
     /// names another ref, holds the new list's when the list remounts under a new key, and the handle's
     /// element is the list's ScrollView.</item>
@@ -103,6 +103,21 @@ namespace Velvet.Tests
             // Assert
             var spacer = ((ScrollView)Root.ElementAt(0)).contentContainer.ElementAt(0);
             Assert.That(spacer.style.height.value.value, Is.EqualTo(200f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_HeightsByIndex_When_TheListGrowsByTwoItems_Then_TheSpacerCoversThem()
+        {
+            // Arrange
+            var first = new VNode[] { VariableList(new[] { 10f, 20f, 30f, 40f }) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+
+            // Act
+            Reconciler.Reconcile(Root, first, new VNode[] { VariableList(new[] { 10f, 20f, 30f, 40f, 50f, 60f }) });
+
+            // Assert
+            var spacer = ((ScrollView)Root.ElementAt(0)).contentContainer.ElementAt(0);
+            Assert.That(spacer.style.height.value.value, Is.EqualTo(210f).Within(0.01f));
         }
 
         [Test]
@@ -510,6 +525,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scrollView.verticalScroller.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ATargetPastTheScrollersRange_When_TheListUnmountsBeforeTheContentIsLaidOut_Then_ItIsNotApplied()
+        {
+            // Arrange
+            var (scrollView, handle) = MountScrollable();
+            scrollView.verticalScroller.highValue = 100f;
+            handle.ScrollToItem(10, VirtualListAlign.Start);
+            Reconciler.Reconcile(Root, _tree, Array.Empty<VNode>());
+
+            // Act
+            LayOutContent(scrollView, 4800f);
+
+            // Assert
+            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(100f));
         }
 
         [Test]
