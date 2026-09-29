@@ -2162,6 +2162,39 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterHueRotate, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): a negative percentage is rejected, as CSS rejects a negative contrast().
+        [Test]
+        public void Given_ANegativeContrastPercentBracket_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[-50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a bracket holding no number is rejected, as it was on the base.
+        [Test]
+        public void Given_AGrayscaleBracketHoldingNoNumber_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[half]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a zero amount is kept, as CSS takes invert(0).
+        [Test]
+        public void Given_AZeroInvertBracket_When_Parsed_Then_ItIsKept()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("invert-[0]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterInvert, 0f)));
+        }
+
         // GREEN_ON_BASE(characterization): contrast is not clamped, as CSS leaves contrast() unbounded above 1.
         [Test]
         public void Given_AContrastBracketAboveOne_When_Parsed_Then_ItIsKept()
