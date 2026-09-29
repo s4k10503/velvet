@@ -70,7 +70,7 @@
       },
       {
         "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_unproven_head.py",
-        "timeout": 25.0,
+        "timeout": 45.0,
         "matcher": "Shell",
         "failClosed": true
       },
