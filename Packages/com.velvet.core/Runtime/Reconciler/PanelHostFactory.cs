@@ -167,6 +167,7 @@ namespace Velvet
         // depth-sort in the scene, not by sorting order).
         public static void SyncDeclaring(PanelHostRecord record, UILayer? layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
+            RecordDeclaringRoot(record, declaringPanel);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var settings = record.Settings;
             if (declaring == null || settings == null)

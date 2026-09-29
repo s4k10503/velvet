@@ -38,6 +38,7 @@ namespace Velvet.Tests
             s_setPortalChild = null;
             s_changePortalComponent = null;
             s_setRows = null;
+            s_portalLast = false;
             RuntimeStateProbe.ClearPortalRegistry();
             _root = new VisualElement();
         }
@@ -124,14 +125,19 @@ namespace Velvet.Tests
             return () => FiberPortalRegistry.Unregister(id);
         }
 
+        // Whether the portal is the container's last own child rather than its first.
+        private static bool s_portalLast;
+
         [Component]
         private static VNode SelfTargetRender()
         {
             var (rows, setRows) = Hooks.UseState((Own: new[] { "a" }, Portal: new[] { "p1" }));
             s_setRows = setRows;
-            // The portal is the container's first own child and targets the container itself.
+            // The portal is one of the container's own children and targets the container itself; its key keeps
+            // it the same portal where rows ahead of it are added.
+            var portal = new VNode?[] { V.Portal("self", key: "portal", children: Rows(rows.Portal)) };
             return V.Div(name: "container", refCallback: element => Register("self", element),
-                children: new VNode?[] { V.Portal("self", children: Rows(rows.Portal)) }.Concat(Rows(rows.Own)).ToArray());
+                children: s_portalLast ? Rows(rows.Own).Concat(portal).ToArray() : portal.Concat(Rows(rows.Own)).ToArray());
         }
 
         [Test]
@@ -144,6 +150,63 @@ namespace Velvet.Tests
             var container = _root.Q<VisualElement>("container");
             s_setRows!.Invoke((new[] { "a", "b" }, new[] { "p1", "p2" }));
             Flush();
+
+            // Act
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1", "q2" }));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("a|b|q1|q2"));
+        }
+
+        [Test]
+        public void Given_APortalInsideTheContainerItTargets_When_TheTargetRegistersInTheRenderTheContainerGrows_Then_ItsNextPatchLandsOnItsChildren()
+        {
+            // Arrange — the registration heals the portal from inside the container's reconcile, before the
+            // container's own row behind the portal is added in that same render.
+            _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "p1" }));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+
+            // Act
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1" }));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("a|b|q1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base opens no own-rows frame to leave behind.
+        // This pins that every frame a render opens around a container's own children closes with that render.
+        [Test]
+        public void Given_APortalIntoARenderedContainer_When_ARenderPatchesTheContainer_Then_NoOwnRowsFrameStaysOpen()
+        {
+            // Arrange
+            s_initialOwn = new[] { "a" };
+            MountContainer();
+
+            // Act
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Assert — read by reflection, since the base has no such list and the case must still build there.
+            var context = _mounted!.Root.Reconciler!.Context;
+            var frames = typeof(ReconcilerContext).GetProperty("OwnRowFrames",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(context)
+                as System.Collections.ICollection;
+            Assert.That(frames?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsAndItGrowInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
+        {
+            // Arrange — the container's own rows ahead of the portal grow before the portal patches, in the
+            // same reconcile, so the portal's range has to catch up with them before it patches.
+            s_portalLast = true;
+            _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
 
             // Act
             s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1", "q2" }));
@@ -179,6 +242,8 @@ namespace Velvet.Tests
             Flush();
             var first = _root.Q<VisualElement>("first");
             var second = _root.Q<VisualElement>("second");
+            // Behind the first container's portal, so the two containers stand differently behind their ranges.
+            first.Add(new VisualElement { name = "m" });
             s_setRows!.Invoke((new[] { "b1", "b2" }, new[] { "a1", "a2", "a3", "a4", "a5", "a6" }));
             Flush();
 
@@ -190,7 +255,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 NamedChildren(first) + " / " + NamedChildren(second),
-                Is.EqualTo("c1|c2|c3|c4|c5|c6 / b1|b2|q"));
+                Is.EqualTo("c1|c2|c3|c4|c5|c6|m / b1|b2|q"));
         }
 
         [Component]

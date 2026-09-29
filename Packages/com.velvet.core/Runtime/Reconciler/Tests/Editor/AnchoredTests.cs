@@ -94,18 +94,27 @@ namespace Velvet.Tests
         [Test]
         public void Given_NoCameraIsSuppliedAndNoMainCameraExists_When_Ticked_Then_TheElementIsHidden()
         {
-            // Arrange — Camera.main resolves to null: no camera param, and _camera (the only Camera in this
-            // test's scene) is never tagged MainCamera.
-            _targetGo.transform.position = new Vector3(0f, 0f, 0f);
-            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
-                new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            // Arrange — no camera param, and every camera the open scene tags MainCamera untagged for the
+            // case, so Camera.main resolves to null; _camera is never tagged.
+            var mainCameras = GameObject.FindGameObjectsWithTag("MainCamera");
+            foreach (var mainCamera in mainCameras) mainCamera.tag = "Untagged";
+            try
+            {
+                _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+                _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                    new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
+                var element = Root.Q<VisualElement>("anchored");
 
-            // Act
-            Tick();
+                // Act
+                Tick();
 
-            // Assert
-            Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+                // Assert — Camera.main is folded in: with a camera left to project through, the hide is not this case's.
+                Assert.That((Camera.main == null, element.style.display.value), Is.EqualTo((true, DisplayStyle.None)));
+            }
+            finally
+            {
+                foreach (var mainCamera in mainCameras) mainCamera.tag = "MainCamera";
+            }
         }
 
         [Test]
@@ -168,12 +177,17 @@ namespace Velvet.Tests
             };
         }
 
-        // The camera's viewport stretched over the declared 800x600 panel, taken to the parent's origin.
+        // The target's perspective projection through _camera, worked from its field of view and aspect rather
+        // than read back from the camera, stretched over the declared 800x600 panel and taken to the parent's
+        // origin. Panel y runs down where the camera's runs up.
         private float[] ExpectedViewportPosition()
         {
-            var viewport = _camera.WorldToViewportPoint(_targetGo.transform.position);
+            var local = _camera.transform.InverseTransformPoint(_targetGo.transform.position);
+            var halfHeight = local.z * Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            var viewportX = 0.5f + 0.5f * local.x / (halfHeight * _camera.aspect);
+            var viewportY = 0.5f + 0.5f * local.y / halfHeight;
             var origin = Root.worldBound.position;
-            return new[] { viewport.x * 800f - origin.x, (1f - viewport.y) * 600f - origin.y };
+            return new[] { viewportX * 800f - origin.x, (1f - viewportY) * 600f - origin.y };
         }
 
         [Test]

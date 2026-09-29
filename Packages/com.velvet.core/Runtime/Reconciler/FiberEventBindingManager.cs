@@ -240,12 +240,13 @@ namespace Velvet
         }
 
         // ClickedBinding answers ClickEvent and ChangeEventBinding<T> answers ChangeEvent<T>, each only on the
-        // element kind RegisterFieldBinding binds it to.
+        // element kind RegisterFieldBinding binds it to, and a click only on an enabled Button, as Clickable
+        // and a disabled DOM button refuse one.
         private void InvokeSyntheticField(VisualElement element, FiberEventBinding binding, EventBase evt)
         {
             switch (binding)
             {
-                case ClickedBinding b when element is Button && evt is ClickEvent:
+                case ClickedBinding b when element is Button && evt is ClickEvent && element.enabledInHierarchy:
                     RunDiscrete(b.Handler);
                     break;
                 case ChangeEventBinding<float> b when element is INotifyValueChanged<float>:

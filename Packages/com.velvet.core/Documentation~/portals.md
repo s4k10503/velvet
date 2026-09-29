@@ -61,11 +61,9 @@ is; a portal's boundary is one, and it holds even where the two sides share a co
 portal's children follow the container's own, and when a render of the tree that declares the portal
 changes how many of those there are — the element's own children, or a component among them rendering
 again — the portal's range moves with them, so the next patch still lands on the portal's children. A
-child other code appends behind the portal's children stays behind them. A range is still moved out
-from under its portal by a change ahead of it that this tree's render does not make: a child other code
-or another mounted tree adds or removes there, or, for a portal declared among the container's own
-children, a change to the siblings ahead of it in the render that patches it. A portal nested inside
-another portal on the same target is supported: a portal's own patch shifts the ranges that follow it.
+child other code appends behind the portal's children stays behind them. A portal declared among the
+children of the container it targets is supported too. A portal nested inside another portal on the
+same target is supported: a portal's own patch shifts the ranges that follow it.
 
 ## The shared boundary semantics
 
@@ -82,7 +80,9 @@ The boundary behaves the same in all four forms:
   way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
   physical ancestors already receive the event through ordinary native bubbling and the bridge adds
   the LOGICAL chain on top; an element that is both — a physical ancestor of the target AND a
-  logical ancestor of the call site — still fires exactly once. `FocusEvent`/`BlurEvent` do not
+  logical ancestor of the call site — still fires exactly once, and so does a logical ancestor
+  reached through portals nested in each other's content. A portal's child need not be a component:
+  an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
   bubble, in a portal or out of one, as the DOM's `focus`/`blur` do not; React's bubbling
   `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"
   below for what this shared mechanism does not cover.
@@ -93,8 +93,11 @@ The boundary behaves the same in all four forms:
   synthetic cross-panel bridging above does not extend to them.
 - **Responsive breakpoints follow the declaring panel.** Unscoped `sm:`…`2xl:` in a
   `V.Portal(layer:)` or `V.WorldSpace` evaluate against the width of the panel the portal was
-  declared on, the way a page's portals answer its one viewport; an `@container` among the child's
-  own ancestors still takes precedence, as a container query does.
+  declared on, the way a page's portals answer its one viewport. A layer host serves every portal
+  on its layer in the tree and answers the panel of the last one to render into it; where that panel
+  is itself a layer or world-space host, the panel that host's portal was declared on answers in
+  turn. An `@container` among the child's own ancestors still takes precedence, as a container query
+  does, and a child's width source is bound when it attaches.
 - `dark:` is global and identical everywhere.
 
 ## Cross-panel input routing (`V.Portal(layer:)` / `V.WorldSpace`)

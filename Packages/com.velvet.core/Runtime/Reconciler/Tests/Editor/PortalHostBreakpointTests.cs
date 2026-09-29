@@ -16,11 +16,14 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
+        private HeadlessEditorPanelHost _secondPanel;
 
         [SetUp]
         public void SetUp()
         {
             _host = new HeadlessEditorPanelHost();
+            s_declareOnSecondPanel = default;
+            s_secondPanelTarget = null;
         }
 
         [TearDown]
@@ -30,6 +33,8 @@ namespace Velvet.Tests
             _mounted = null;
             _host?.Dispose();
             _host = null;
+            _secondPanel?.Dispose();
+            _secondPanel = null;
         }
 
         [Test]
@@ -84,6 +89,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(widthSource, Is.SameAs(_host.Root));
+        }
+
+        private static StateUpdater<bool> s_declareOnSecondPanel;
+        private static VisualElement s_secondPanelTarget;
+
+        // First an overlay portal declared on this tree's own panel, then — once switched — only one declared
+        // inside a registry portal whose target lives on a second panel.
+        [Component]
+        private static VNode SwitchingDeclarerRender()
+        {
+            var (onSecond, setOnSecond) = Hooks.UseState(false);
+            s_declareOnSecondPanel = setOnSecond;
+            return onSecond
+                ? V.Portal(s_secondPanelTarget, children: new VNode[]
+                {
+                    V.Portal(UILayer.Overlay, key: "from-second", children: new VNode[] { V.Div(name: "second-child") }),
+                })
+                : V.Portal(UILayer.Overlay, key: "from-first", children: new VNode[] { V.Div(name: "first-child") });
+        }
+
+        [Test]
+        public void Given_ALayerHostFirstUsedFromOnePanel_When_APortalDeclaredOnAnotherPanelMountsIntoIt_Then_ItsChildsBreakpointsAnswerThatPanel()
+        {
+            // Arrange
+            _secondPanel = new HeadlessEditorPanelHost();
+            s_secondPanelTarget = new VisualElement();
+            _secondPanel.Root.Add(s_secondPanelTarget);
+            _mounted = V.Mount(_host.Root, V.Component(SwitchingDeclarerRender, key: "host"));
+            s_declareOnSecondPanel.Invoke(true);
+            _mounted.FlushStateForTest();
+            var child = HostedElement("second-child");
+
+            // Act
+            var widthSource = StyleResponsiveScope.ResolveWidthSource(child, child.panel.visualTree);
+
+            // Assert
+            Assert.That(widthSource, Is.SameAs(_secondPanel.Root));
         }
 
         // GREEN_ON_BASE(characterization): the base mounts a layer portal declared on no panel as well.

@@ -887,6 +887,10 @@ namespace Velvet
         // SlotStart of Portals later in target.children is shifted by the delta.
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
 
+        // The reconciles of a Portal target's own children in progress, innermost last: FiberCommitWork.OpenOwnRows
+        // owns what each frame holds.
+        internal List<(VisualElement Target, int? RowsBehind)> OwnRowFrames { get; } = new();
+
         // The Portal placeholder whose children are being reconciled right now, or null outside any such
         // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
         // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal

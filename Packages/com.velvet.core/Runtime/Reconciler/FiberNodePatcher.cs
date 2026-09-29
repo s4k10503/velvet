@@ -451,10 +451,18 @@ namespace Velvet
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
             // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
             // would put an element between this container and each Component's output.
-            var rowsBehindRanges = PortalSlotTracker.RowsBehindRanges(_ctx.PortalState, childContainer);
-            _host.ReconcileChildren(childContainer,
-                oldNode.Children ?? Array.Empty<VNode>(),
-                newNode.Children ?? Array.Empty<VNode>());
+            var ownRows = FiberCommitWork.OpenOwnRows(_ctx, childContainer);
+            int? rowsBehindRanges;
+            try
+            {
+                _host.ReconcileChildren(childContainer,
+                    oldNode.Children ?? Array.Empty<VNode>(),
+                    newNode.Children ?? Array.Empty<VNode>());
+            }
+            finally
+            {
+                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, ownRows);
+            }
             if (rowsBehindRanges != null)
             {
                 FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
@@ -959,9 +967,9 @@ namespace Velvet
         // preserving children placed by other Portals sharing the same target. When the slot
         // range grows or shrinks, downstream Portals whose ranges sit after this one have their
         // slotStart shifted by the delta so subsequent patches stay correctly addressed.
-        // When the Portal target is the same element currently being reconciled, the
-        // "old.index == DOM index" invariant in ReconcileKeyed breaks down.
-        // This combination is forbidden by design (the target must not itself be a Reconcile subject).
+        // A Portal declared among its own target's children patches from inside the reconcile of those
+        // children. Its rows sit behind every one that reconcile addresses, and its range catches up with
+        // the rows that reconcile has already moved first (FiberCommitWork.OpenOwnRows).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
             var (target, isHeal) = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
@@ -1241,11 +1249,7 @@ namespace Velvet
             VisualElement placeholder, VisualElement target,
             VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw, string describe)
         {
-            UnityEngine.Debug.Assert(
-                target != placeholder.parent,
-                "[Portal] Portal target must not be the same element currently being reconciled. " +
-                "This would invalidate DOM index invariants in ReconcileKeyed.");
-
+            var ownRows = FiberCommitWork.CatchUpOwnRows(_ctx, target);
             if (!_ctx.PortalState.TryGetValue(placeholder, out var prevState))
             {
                 // PortalState missing means CreateElement never recorded this Portal's slot range
@@ -1300,6 +1304,7 @@ namespace Velvet
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
+            FiberCommitWork.RebaseOwnRows(_ctx, ownRows, target);
         }
 
         // Applies the diff for a ContextProviderNode.

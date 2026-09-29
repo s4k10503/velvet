@@ -283,6 +283,54 @@ namespace Velvet
             }
         }
 
+        // A reconcile of target's own children opens a frame holding PortalSlotTracker.RowsBehindRanges as it
+        // stood, and closing it follows the rows that reconcile placed (FollowOwnRows). A Portal on target
+        // patched from inside it — one declared among target's own children — catches up first, since the
+        // own rows ahead of its range may already have moved, and rebases the frame after. Returns -1 where
+        // no Portal is mounted in the tree, which nothing then reads.
+        internal static int OpenOwnRows(ReconcilerContext ctx, VisualElement target)
+        {
+            if (ctx.PortalState.Count == 0)
+            {
+                return -1;
+            }
+            ctx.OwnRowFrames.Add((target, PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target)));
+            return ctx.OwnRowFrames.Count - 1;
+        }
+
+        // Pops frame and every frame above it, and returns what it held.
+        internal static int? PopOwnRows(ReconcilerContext ctx, int frame)
+        {
+            if (frame < 0)
+            {
+                return null;
+            }
+            var rowsBehind = ctx.OwnRowFrames[frame].RowsBehind;
+            ctx.OwnRowFrames.RemoveRange(frame, ctx.OwnRowFrames.Count - frame);
+            return rowsBehind;
+        }
+
+        // The innermost open frame on target, caught up; -1 where none is open.
+        internal static int CatchUpOwnRows(ReconcilerContext ctx, VisualElement target)
+        {
+            for (var frame = ctx.OwnRowFrames.Count - 1; frame >= 0; frame--)
+            {
+                var (frameTarget, rowsBehind) = ctx.OwnRowFrames[frame];
+                if (!ReferenceEquals(frameTarget, target)) continue;
+                if (rowsBehind != null) FollowOwnRows(ctx, target, rowsBehind.Value);
+                return frame;
+            }
+            return -1;
+        }
+
+        internal static void RebaseOwnRows(ReconcilerContext ctx, int frame, VisualElement target)
+        {
+            if (frame >= 0)
+            {
+                ctx.OwnRowFrames[frame] = (target, PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target));
+            }
+        }
+
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining
         // commits the remaining child-count delta (e.g. the atomic keyed reorder inserting created
         // elements). For an inline-mount fiber that delta must propagate exactly as the scheduled resume

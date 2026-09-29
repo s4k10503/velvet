@@ -39,7 +39,6 @@ namespace Velvet.Tests
         {
             return V.Portal(UILayer.Overlay, children: new VNode[]
             {
-                // A component, so the drain stamps the fiber the bridge resolves the logical chain from.
                 V.Component(LayerPortalChildRender),
             });
         }
@@ -63,6 +62,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(clicks, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base bridges no click, so no Button's onClick fires there.
+        // This pins that a disabled Button refuses the bridged click, as Clickable and a disabled DOM button do.
+        [Test]
+        public void Given_ADisabledButtonAroundALayerPortal_When_AClickBubblesToTheHostRoot_Then_ItsOnClickDoesNotFire()
+        {
+            // Arrange
+            var clicks = 0;
+            _mounted = V.Mount(_host.Root, V.Button(
+                enabled: false,
+                onClick: () => clicks++,
+                children: new VNode[] { V.Component(LayerPortalRender) }));
+            var (hostRoot, child) = PortalChild();
+
+            // Act
+            using var evt = ClickEvent.GetPooled();
+            hostRoot.SimulateBubbledEvent(evt, child);
+
+            // Assert
+            Assert.That(clicks, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AButtonAroundALayerPortalOfABareElement_When_AClickBubblesToTheHostRoot_Then_ItsOnClickFires()
+        {
+            // Arrange — the portal's child is an element with no component around it.
+            var clicks = 0;
+            _mounted = V.Mount(_host.Root, V.Button(
+                onClick: () => clicks++,
+                children: new VNode[] { V.Portal(UILayer.Overlay, children: new VNode[] { V.Div(name: "bare-child") }) }));
+            var (hostRoot, child) = PortalChild("bare-child");
+
+            // Act
+            using var evt = ClickEvent.GetPooled();
+            hostRoot.SimulateBubbledEvent(evt, child);
+
+            // Assert
+            Assert.That(clicks, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APointerDownBindingAroundALayerPortalOfABareElement_When_APointerDownBubblesToTheHostRoot_Then_ItFires()
+        {
+            // Arrange
+            var presses = 0;
+            _mounted = V.Mount(_host.Root, V.Motion(
+                events: new FiberEventBinding[] { new PointerDownBinding { Handler = _ => presses++ } },
+                children: new VNode[] { V.Portal(UILayer.Overlay, children: new VNode[] { V.Div(name: "bare-child") }) }));
+            var (hostRoot, child) = PortalChild("bare-child");
+
+            // Act
+            using var evt = PointerDownEvent.GetPooled();
+            hostRoot.SimulateBubbledEvent(evt, child);
+
+            // Assert
+            Assert.That(presses, Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): a click binding on a non-Button binds nothing physically either.
@@ -257,11 +313,11 @@ namespace Velvet.Tests
                 children: new VNode[] { V.Component(LayerPortalRender) }));
         }
 
-        private static (VisualElement HostRoot, VisualElement Child) PortalChild()
+        private static (VisualElement HostRoot, VisualElement Child) PortalChild(string name = "portal-child")
         {
             foreach (var doc in UnityEngine.Resources.FindObjectsOfTypeAll<UIDocument>())
             {
-                var child = doc.rootVisualElement?.Q<VisualElement>("portal-child");
+                var child = doc.rootVisualElement?.Q<VisualElement>(name);
                 if (child != null)
                 {
                     return (doc.rootVisualElement, child);
