@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for ci_mutation_shard.py and for how test.yml launches the editor image.
+"""Unit tests for ci_mutation_shard.py and for how the workflows launch the editor image.
 
 The licence around the campaign is licensed_editor.py's, and scripts/ci/test_licensed_editor.py holds
 it. The editor is replaced by a recorder here, since what the case asks is which command the campaign
@@ -111,7 +111,7 @@ def minor(version):
 class EditorVersionTests(unittest.TestCase):
     """The editor a shard runs against the one the project and the unity-tests jobs name.
 
-    The shard's image is `docker run` in test.yml rather than game-ci's action, so nothing of the
+    The shard's image is `docker run` in mutation.yml rather than game-ci's action, so nothing of the
     action's own version reading reaches it.
     """
 
@@ -199,7 +199,7 @@ class ShardPlatformTests(unittest.TestCase):
 
     def test_Given_TheWorkflow_When_ItsShardLaunchesAreRead_Then_EachPlatformHasOne(self):
         # Arrange — a mutant only a PlayMode fixture kills survives wherever no shard runs that suite.
-        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         launches = [launch.partition("\n\n")[0]
                     for launch in workflow.split("ci_mutation_shard.py --")[1:]]
 
