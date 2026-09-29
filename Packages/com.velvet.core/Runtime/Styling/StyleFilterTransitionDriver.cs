@@ -33,34 +33,27 @@ namespace Velvet
     // uses for animate-hue, lerping the filter parameters itself and writing a fresh inline list per frame
     // (same repaint-dirtying reason as the Hue arm of StyleAnimateDriver).
     //
-    // Velvet takes over where the resolved transition lists run an entry for filter and none for background-size.
-    // The inline-filter setter runs a list write as its own native animation (which no public API can cancel)
-    // wherever an entry for background-size runs — `all`, `background-size` or `-unity-background-scale-mode`,
-    // each of which FilterTransitionPanelTests pins alone and beside filter — so the tween stands down there and
-    // one animator runs the property. TryFindTransition decides which entry runs. That decision is
-    // TryStartOrRedirect's resolvedStyle probe, not the class list, and the tick re-checks it every frame so a
-    // value that changes mid-tween hands over instead of fighting.
+    // Velvet runs a filter change wherever an entry runs for filter, except where the engine's own animation takes
+    // the write with that entry's timing (EngineTimesFilterWrites), which keeps the engine's shortening of a
+    // reversed transition there. The inline-filter setter animates a list write by the entry for background-size;
+    // where that entry runs on other timing than filter's, StyleFilterEngineWrite writes past it with transitions
+    // suspended. TryFindTransition decides which entry runs. That decision is TryStartOrRedirect's resolvedStyle
+    // probe, not the class list, and the tick re-checks it every frame so a value that changes mid-tween hands
+    // over instead of fighting.
     //
     // The write hook (TryStartOrRedirect) sits inside StyleArbitraryValueResolver.ApplyCombinedFilter — the sole
     // site that composes and writes style.filter — so it covers every filter path (base blur-md, arbitrary
     // blur-[6px], custom filter-[name:args], and the variant path hover:blur-md) with no per-manipulator wiring.
     //
-    // Two documented precedence notes:
-    // - animate-hue owns style.filter unconditionally while active; combining transition-filter + animate-hue on
-    //   one element is unsupported (Hue wins). Hue's own Detach re-asserts static filters through
-    //   ApplyCombinedFilter, so a benign one-shot tween may kick off right after a Hue Detach — harmless.
-    // - On the very reconcile patch that ADDS transition-filter, the class-driven filter write runs (through
-    //   SyncClassDrivenStyling) BEFORE the applier enables the binding, so a value that changes in that same
-    //   patch applies instantly, not tweened — matching CSS, which likewise does not retroactively animate a
-    //   value that changed in the same paint the transition-property first became active. Every later change
-    //   (the common case: a hover-driven variant swap, which runs through the manipulator's event callback)
-    //   transitions correctly.
+    // animate-hue owns style.filter unconditionally while active; combining a filter transition with animate-hue
+    // on one element is unsupported (Hue wins). Hue's own Detach re-asserts static filters through
+    // ApplyCombinedFilter, so a benign one-shot tween may kick off right after a Hue Detach — harmless.
     //
     // The phase math (ApplyFrame / channel alignment) is pure and unit-tested directly; the scheduler
     // wiring runs at runtime (the EditMode PlayerLoop does not tick, so tests drive ApplyFrame at explicit
     // phases). The resolver runs during event callbacks with no ReconcilerContext, so the element→binding
     // lookup lives in a ConditionalWeakTable (same reason the layer map does); ReconcilerContext mirrors the
-    // refs only so the dispose sweep can enumerate them.
+    // bindings the reconciler made so the dispose sweep can enumerate them.
     internal static class StyleFilterTransitionDriver
     {
         // One precomputed interpolation slot: a filter function whose parameters lerp From→To. Parameters are
@@ -87,48 +80,39 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, StyleFilterTransitionBinding> s_bindings = new();
 
-        // Enrolls a binding so the write hook can find it during a resolver callback. The reconciler owns the
-        // binding lifecycle (create on transition-filter present, Detach on absent / teardown).
-        public static void Register(VisualElement element, StyleFilterTransitionBinding binding)
-            => s_bindings.AddOrUpdate(element, binding);
+        // The binding the element's tweens run on, created on first use. The reconciler binds an element carrying
+        // transition-filter up front so it can pause the tick at teardown; the write hook binds any other element a
+        // tween starts on, since a hand-authored transition list names filter without that class.
+        public static StyleFilterTransitionBinding Bind(VisualElement element)
+            => s_bindings.GetValue(element, _ => new StyleFilterTransitionBinding());
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
 
         // The write hook, called from ApplyCombinedFilter with the freshly composed target list (null = clear).
         // Returns true iff it took ownership of the write (started or redirected a tween); false lets the
-        // resolver perform its instant write. An element with no binding pays only the first line's lookup.
+        // resolver perform its instant write.
         internal static bool TryStartOrRedirect(VisualElement element, List<FilterFunction>? to)
         {
-            // The binding is the driver's per-element state, not the decision: the reconciler creates one
-            // wherever a transition-filter class appears, and the resolvedStyle probe below rules on whether
-            // this particular change is the tween's to run.
-            if (!s_bindings.TryGetValue(element, out var b))
-            {
-                return false;
-            }
+            s_bindings.TryGetValue(element, out var bound);
             // Off-panel: there is no host to tick and no paint to animate, so apply instantly (CSS does not
-            // transition an off-render value either).
-            if (element.panel == null)
-            {
-                Cancel(b);
-                return false;
-            }
-            // The RESOLVED transition lists — not the class list — decide which animator owns the change (see the
-            // note on the class), and the entry that runs for filter gives the tween its timing.
-            if (EngineAnimatesFilterWrites(element)
-                || !TryFindTransition(element, FilterPropertyName, null, out var durationMs, out var delayMs, out var easing))
-            {
-                Cancel(b);
-                return false;
-            }
-
+            // transition an off-render value either). The RESOLVED transition lists — not the class list — decide
+            // which animator owns the change (see the note on the class), and the entry that runs for filter gives
+            // the tween its timing.
+            var durationMs = 0;
+            var delayMs = 0;
+            var easing = EasingMode.Ease;
+            var channels = Array.Empty<Channel>();
+            var runs = element.panel != null && !EngineTimesFilterWrites(element)
+                && TryFindTransition(element, FilterPropertyName, null, out durationMs, out delayMs, out easing);
             // Read the CURRENT applied list as the from-side. During an in-flight tween this is last frame's
             // interpolated list, so a redirect starts from where the eye is — not the tween's original start.
-            var from = element.style.filter.value;
-            if (!TryBuildChannels(from, to, out var channels))
+            if (!runs || !TryBuildChannels(element.style.filter.value, to, out channels))
             {
-                // Non-interpolable (an ambiguous add/remove, mismatched slots) → discrete instant write.
-                Cancel(b);
+                // Nothing runs for the tween, or the change does not interpolate: a discrete instant write.
+                if (bound != null)
+                {
+                    Cancel(bound);
+                }
                 return false;
             }
             if (ChannelsAreNoOp(channels))
@@ -137,6 +121,7 @@ namespace Velvet
                 return false;
             }
 
+            var b = bound ?? Bind(element);
             b.Channels = channels;
             b.Target = to;
             b.DurationSec = Mathf.Max(0, durationMs) / 1000f;
@@ -167,6 +152,19 @@ namespace Velvet
         // True where an entry runs for filter itself.
         internal static bool FilterTransitionRuns(VisualElement element)
             => TryFindTransition(element, FilterPropertyName, null, out _, out _, out _);
+
+        // True where the entry the setter animates a list write by runs with the duration, delay and curve of the
+        // one that runs for filter, so the engine's animation of the write takes filter's own timing. Anywhere else
+        // the tween runs a filter change, or nothing does (FilterTransitionPanelTests' background-size cases).
+        internal static bool EngineTimesFilterWrites(VisualElement element)
+        {
+            var filterRuns = TryFindTransition(element, FilterPropertyName, null,
+                out var filterDuration, out var filterDelay, out var filterEasing);
+            var setterRuns = TryFindTransition(element, BackgroundSizePropertyName, BackgroundScaleModePropertyName,
+                out var setterDuration, out var setterDelay, out var setterEasing);
+            return filterRuns && setterRuns
+                && (filterDuration, filterDelay, filterEasing) == (setterDuration, setterDelay, setterEasing);
+        }
 
         // The entry UI Toolkit runs a property's transition by, read off the resolved lists as
         // ComputedTransitionUtils reads them: each entry takes the duration, delay and curve at its own index with
@@ -251,7 +249,7 @@ namespace Velvet
                 }
                 list.Add(fn);
             }
-            element.style.filter = list;
+            StyleFilterEngineWrite.WriteFrame(element, list);
         }
 
         private static void StartTick(VisualElement element, StyleFilterTransitionBinding b)
@@ -259,12 +257,20 @@ namespace Velvet
             var host = element.panel.visualTree;
             b.Scheduled = host.schedule.Execute(() =>
             {
+                // A removed element may be pooled and handed to another consumer before the tween would end, so
+                // nothing is written to it. The reconciler pauses the ticks of the bindings it made at teardown;
+                // this is what stops one the write hook made.
+                if (element.panel == null)
+                {
+                    Cancel(b);
+                    return;
+                }
                 // The resolved transition lists can change WHILE the tween runs — a class swap the reconciler keeps
-                // bound, or an inline transition-property written by a Motion play. Where the setter animates from
-                // that moment, every frame write is taken over by its own animation and restarted from the painted
-                // value, so the paint would crawl behind a target that moves each tick. Hand over by settling once
-                // instead, as where nothing runs for filter any more.
-                if (EngineAnimatesFilterWrites(element) || !FilterTransitionRuns(element))
+                // bound, or an inline transition-property written by a Motion play. Where the engine's own animation
+                // takes a filter write from that moment, every frame write is taken over by it and restarted from the
+                // painted value, so the paint would crawl behind a target that moves each tick. Hand over by
+                // settling once instead, as where nothing runs for filter any more.
+                if (EngineTimesFilterWrites(element) || !FilterTransitionRuns(element))
                 {
                     Settle(element, b);
                     return;
@@ -315,12 +321,10 @@ namespace Velvet
 
         #region Channel alignment
 
-        // Builds the aligned interpolation slots for from→to (both always in canonical filter order). Returns
-        // false — meaning "not interpolable, write instantly" — for an ambiguous add/remove (a channel that
-        // appears more than once, which cannot be paired by identity alone), for an add/remove carrying two or
-        // more distinct user customs (they share one canonical rank, so the merge cannot order them), and for a
-        // slot pair whose parameters do not line up. A null from is treated as an empty list (a freshly-mounted
-        // element with no inline filter reads null, not []).
+        // Builds the interpolation slots for from→to by the Filter Effects rule: functions pair by position, the
+        // longer list's tail fades from or to its neutral, and the change does not interpolate (false: write
+        // instantly) where a paired position holds a different channel or parameters that do not line up. A null
+        // from is treated as an empty list (a freshly-mounted element with no inline filter reads null, not []).
         internal static bool TryBuildChannels(List<FilterFunction>? from, List<FilterFunction>? to,
             out Channel[] channels)
         {
@@ -331,85 +335,29 @@ namespace Velvet
             {
                 return false;
             }
-
-            // Fast path: identical channel sequence — the common case (a value change on the same filter set).
-            // A user filter-[name:args] custom rides this path too: SameChannel already pairs customs by
-            // reference-equal definition, so the slots that survive here are the same shader with the same
-            // declared parameters, and interpolating those arguments is what animating the filter means.
-            if (SameChannelSequence(from, to))
+            var aligned = new Channel[Math.Max(fromCount, toCount)];
+            for (var k = 0; k < aligned.Length; k++)
             {
-                var paired = new Channel[fromCount];
-                for (var k = 0; k < fromCount; k++)
+                if (k >= toCount)
                 {
-                    var f = from![k];
-                    var t = to![k];
-                    if (f.parameterCount != t.parameterCount || !ParameterTypesAlign(f, t))
-                    {
-                        return false;
-                    }
-                    paired[k] = new Channel(f.type, DefinitionOf(f), Snapshot(f), Snapshot(t));
+                    aligned[k] = FadeOut(from![k]);
                 }
-                channels = paired;
-                return true;
-            }
-
-            // Different sequences: a filter was added or removed. Pairing by channel is only unambiguous when
-            // each channel occurs at most once per list; otherwise (a repeat) fall back to an instant write.
-            if (HasRepeatedChannel(from) || HasRepeatedChannel(to))
-            {
-                return false;
-            }
-            // The merge below is a sorted merge over CanonicalRank, which gives EVERY user filter-[name:args]
-            // custom the same last rank. One distinct user custom is still the only channel at that rank, so
-            // both lists stay strictly ordered and the merge is well defined; two or more tie, and the merge
-            // would emit them in an order the resolver does not compose in. Snap only that case — an unpaired
-            // user custom fades from its own declared neutral like any other channel (see IdentityParams).
-            if (!AtMostOneUserCustomDefinition(from, to))
-            {
-                return false;
-            }
-
-            var merged = new List<Channel>(fromCount + toCount);
-            int i = 0, j = 0;
-            while (i < fromCount || j < toCount)
-            {
-                if (i < fromCount && j < toCount)
+                else if (k >= fromCount)
                 {
-                    var f = from![i];
-                    var t = to![j];
-                    if (SameChannel(f, t))
-                    {
-                        if (f.parameterCount != t.parameterCount || !ParameterTypesAlign(f, t))
-                        {
-                            return false;
-                        }
-                        merged.Add(new Channel(f.type, DefinitionOf(f), Snapshot(f), Snapshot(t)));
-                        i++;
-                        j++;
-                    }
-                    else if (CanonicalRank(f) < CanonicalRank(t))
-                    {
-                        merged.Add(FadeOut(f));
-                        i++;
-                    }
-                    else
-                    {
-                        merged.Add(FadeIn(t));
-                        j++;
-                    }
-                }
-                else if (i < fromCount)
-                {
-                    merged.Add(FadeOut(from![i]));
-                    i++;
+                    aligned[k] = FadeIn(to![k]);
                 }
                 else
                 {
-                    merged.Add(FadeIn(to![j]));
-                    j++;
+                    var f = from![k];
+                    var t = to![k];
+                    if (!SameChannel(f, t) || f.parameterCount != t.parameterCount || !ParameterTypesAlign(f, t))
+                    {
+                        return false;
+                    }
+                    aligned[k] = new Channel(f.type, DefinitionOf(f), Snapshot(f), Snapshot(t));
                 }
             }
-            channels = merged.ToArray();
+            channels = aligned;
             return true;
         }
 
@@ -437,44 +385,6 @@ namespace Velvet
             return true;
         }
 
-        // A USER custom (filter-[name:args]), as opposed to a first-party brightness/saturate custom. Only the
-        // add/remove merge distinguishes them: it has no per-name ordering for user customs.
-        private static bool IsUserCustom(FilterFunction f)
-            => f.type == FilterFunctionType.Custom && !BuiltInFilterDefinitions.IsBuiltIn(f.customDefinition);
-
-        // True when the two lists hold AT MOST ONE distinct user-custom definition between them; false once a
-        // second appears, which is the case that ties CanonicalRank. Definitions are compared by reference, the
-        // same identity SameChannel pairs on.
-        private static bool AtMostOneUserCustomDefinition(List<FilterFunction>? from, List<FilterFunction>? to)
-        {
-            FilterFunctionDefinition? definition = null;
-            return ScanUserCustoms(from, ref definition) && ScanUserCustoms(to, ref definition);
-        }
-
-        private static bool ScanUserCustoms(List<FilterFunction>? list, ref FilterFunctionDefinition? definition)
-        {
-            if (list == null)
-            {
-                return true;
-            }
-            foreach (var f in list)
-            {
-                if (!IsUserCustom(f))
-                {
-                    continue;
-                }
-                if (definition == null)
-                {
-                    definition = f.customDefinition;
-                }
-                else if (!ReferenceEquals(definition, f.customDefinition))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         // Two functions share a channel when they are the same native filter type, or both Custom bound to the
         // SAME definition — brightness, saturate and each user filter-[name:args] are distinct channels even
         // though all of them are FilterFunctionType.Custom.
@@ -486,68 +396,6 @@ namespace Velvet
             }
             return a.type != FilterFunctionType.Custom
                 || ReferenceEquals(a.customDefinition, b.customDefinition);
-        }
-
-        private static bool SameChannelSequence(List<FilterFunction>? a, List<FilterFunction>? b)
-        {
-            var ac = a?.Count ?? 0;
-            var bc = b?.Count ?? 0;
-            if (ac != bc)
-            {
-                return false;
-            }
-            for (var k = 0; k < ac; k++)
-            {
-                if (!SameChannel(a![k], b![k]))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static bool HasRepeatedChannel(List<FilterFunction>? list)
-        {
-            if (list == null || list.Count < 2)
-            {
-                return false;
-            }
-            for (var i = 0; i < list.Count; i++)
-            {
-                for (var k = i + 1; k < list.Count; k++)
-                {
-                    if (SameChannel(list[i], list[k]))
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        // Canonical composition order of the filter channels (mirrors s_filterOrder in the resolver): the two
-        // first-party customs slot by their definition — brightness right after blur, saturate right after
-        // invert — so an add/remove merge keeps the same order the resolver composes in. A user custom ranks
-        // last, matching the resolver composing every user custom after the built-ins; the caller admits at
-        // most one distinct user custom precisely because they all share that one rank.
-        private static int CanonicalRank(FilterFunction f)
-        {
-            if (f.type == FilterFunctionType.Custom)
-            {
-                return BuiltInFilterDefinitions.IsBrightness(f.customDefinition) ? 1
-                    : BuiltInFilterDefinitions.IsSaturate(f.customDefinition) ? 6
-                    : 8;
-            }
-            return f.type switch
-            {
-                FilterFunctionType.Blur => 0,
-                FilterFunctionType.Contrast => 2,
-                FilterFunctionType.Grayscale => 3,
-                FilterFunctionType.HueRotate => 4,
-                FilterFunctionType.Invert => 5,
-                FilterFunctionType.Sepia => 7,
-                _ => 8,
-            };
         }
 
         private static FilterParameter[] Snapshot(FilterFunction f)

@@ -336,9 +336,7 @@ namespace Velvet
 
         // Rewrites the held transition-property list without the driven longhands — an `all` entry
         // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
-        // since those pair with transition-property by position. The expansion never names `filter`: under the
-        // `all` it replaces StyleFilterTransitionDriver stands down, and a list naming filter hands a filter
-        // change to that driver instead.
+        // since those pair with transition-property by position.
         internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
             var held = element.style.transitionProperty.value;
@@ -359,7 +357,7 @@ namespace Velvet
                     changed = true;
                     for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
                     {
-                        if (!driven.Contains((StyleLonghand)longhand) && longhand != (int)StyleLonghand.Filter)
+                        if (!driven.Contains((StyleLonghand)longhand))
                         {
                             names.Add(s_longhandNames[longhand]);
                             sources.Add(i);

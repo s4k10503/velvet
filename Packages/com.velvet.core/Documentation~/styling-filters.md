@@ -19,10 +19,10 @@ Every filter utility on an element — built-in or custom — composes into the 
 |---|---|---|
 | `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px) or a bare number (px); no `%`, as CSS `blur()` takes none. Other CSS lengths (`em`, `vw`, `pt`, …) are not recognized |
 | `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0 | |
-| `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N in 0..1 |
-| `invert` / `invert-0` / `invert-[N]` | bare = 100% | N in 0..1 |
-| `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N in 0..1 |
-| `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | presets 0/15/30/60/90/180; the only filter with a negative form (`-hue-rotate-90`) | degrees |
+| `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
+| `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
+| `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N ≥ 0; above 1 is clamped to 1, as CSS clamps it |
+| `hue-rotate-<deg>` / `hue-rotate-[N<unit>]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`, or a bare number (degrees) |
 | `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
 | `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
 
@@ -94,31 +94,28 @@ unrecognized utility.
 
 ### Transitions
 
-A filter change animates under any transition utility whose resolved `transition-property` covers
-`filter` — `transition-all`, or a bare `duration-*` (whose `transition-property` stays at its
-initial whole-property value). No opt-in class is required for that, matching CSS. The
-`transition-filter` class exists because **which animator runs** is decided by that same resolved
-value, and the two animators do not have the same capabilities:
+A filter change transitions, by the interpolation rule below, wherever the resolved `transition-property` runs
+an entry for `filter` — `transition-filter`, `transition-all`, a bare `duration-*` (whose `transition-property`
+stays at its initial whole-property value), or a hand-authored list naming `filter`. No opt-in class is required, matching
+CSS. An entry counts only where a transition runs for it, as UI Toolkit reads the lists: its own duration
+(floored at `0`) plus its own delay, each list wrapping, has to be positive. The last such entry naming `filter`,
+or `all`, gives the change its duration, delay and curve, and the old value holds through the delay. Where no
+entry runs for `filter` (`duration-0` with no delay, `transition-colors`, say), and on an off-panel change, the
+target value is written instantly, matching CSS's zero-duration behavior.
 
-| Resolved `transition-property` | Set by | Who animates |
+Two animators run these changes:
+
+| The entry that runs for `filter` | Set by | Who animates |
 |---|---|---|
-| covers every property (`all`) | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
-| contains `filter`, and neither `all` nor anything the last row names | `transition-filter` | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
-| names neither | `transition-colors`, `transition-transform`, `transition-none` | nobody — the change is instant |
-| names `background-size` or `-unity-background-scale-mode`, with or without `filter` | hand-authored USS only | UI Toolkit's, even with no filter named — see the warning below |
+| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
+| any other | `transition-filter`, a hand-authored list | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
 
-The split is forced by the engine: writing an inline `filter` under a whole-property
-`transition-property` makes the setter run the write as its own animation, and there is no public API
-to cancel one, so a Velvet tween writing a frame per tick would only be fighting it. A value that names
-`filter` and neither `all` nor an entry in the last row leaves that setter on its plain direct-write path,
-which is what lets the tween paint its own frames. `transition-filter` sets exactly that, plus a
-default duration and curve; `duration-*` / `ease-*` still override those, and the tween eases by the
-same curve a USS transition takes for each `ease-*` value.
-
-An entry counts only where a transition runs for it, as UI Toolkit reads the lists: its own duration
-(floored at `0`) plus its own delay, each list wrapping, has to be positive. So `filter, background-size`
-with durations `0.3s, 0s` stays with the tween. The tween takes its duration, delay and curve from the last
-entry naming `filter` that runs, and holds the old value through that delay.
+UI Toolkit's inline-filter setter animates a filter write by the entry for `background-size`, whatever the list
+says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
+Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition.
+Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
+instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
+utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value.
 
 > **`transition-filter` does not combine with another `transition-*` utility.** They all set the
 > same `transition-property`, and at equal specificity the one declared later in the bundled sheet
@@ -126,57 +123,33 @@ entry naming `filter` that runs, and holds the old value through that delay.
 > list, which silently takes filter changes back to instant. Note also that pinning the property
 > means `transition-filter` transitions *only* `filter`: the element's colours, transforms and
 > geometry stop transitioning, which is what CSS does too. Put the other properties' transitions on a
-> different element.
->
-> Hand-authoring a `transition-property` that names `filter` alongside other properties does work —
-> the tween accepts a list containing `filter` and neither `all` nor anything the table's last row names —
-> but two things have to line up. The element must still carry `transition-filter`, because that class
-> is what registers the tween binding, and the stylesheet has to load after the bundled utilities to win
-> the cascade.
->
-> A list naming `all`, `background-size` or `-unity-background-scale-mode` makes UI Toolkit animate
-> an inline `filter` change itself. Where the list also names `filter`, Velvet's tween stands down, so
-> that animation is the only one. Where a list names `background-size` or `-unity-background-scale-mode`
-> without `filter`, your filters animate although nothing in the declaration mentions them, where CSS
-> would apply the change at once, and Velvet has no public way to cancel that animation. The rows of
-> `FilterTransitionPanelTests` that set these lists catch a future engine that stops doing this.
+> different element, or hand-author a `transition-property` naming `filter` alongside them, in a stylesheet
+> that loads after the bundled utilities so it wins the cascade.
 
-Under `transition-filter`, Velvet's tween interpolates every native filter type (`blur`, `contrast`,
-`grayscale`, `hue-rotate`, `invert`, `sepia`) and the two first-party built-in customs
-(`brightness`, `saturate`), so `transition-filter duration-300` tweens `blur-0` → `blur-md` (or
-`brightness-100` → `brightness-150`) smoothly. Under a whole-property value the engine interpolates
-the inline filter list itself instead, on its own terms — which are not always Velvet's. The engine
-pads a filter one side lacks from the value its declaration states, which for `contrast` is `0` where
-CSS's identity is `1`, so Velvet hands it a `contrast(1)` on the side lacking one: a `contrast-*` added
-or removed at the end of the list fades from or to `1` under `transition-all` as under
-`transition-filter` (Group E of `FilterTransitionPanelTests`). Reach for `transition-filter` when you
-need the behavior Velvet's tween defines:
+Both animators interpolate the filter list by the CSS rule: functions pair by position, and a filter added or
+removed at the **end** of the list fades in from, or out to, its neutral value — `contrast` from and to `1` under
+either animator (Group E of `FilterTransitionPanelTests`). Any other change is discrete and applies at once, as in
+CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`), or a position whose function
+changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
+`sepia`) and the two first-party built-in customs (`brightness`, `saturate`) interpolate, so
+`transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
+Under Velvet's tween:
 
-- **User custom filters interpolate** when both sides are the *same registered definition* with the
-  same number of arguments and matching argument types per slot — `filter-[glow:#f00:2]` →
-  `hover:filter-[glow:#00f:6]` cross-fades the color and lerps the amount. Another filter may be
-  added or removed alongside one that pairs: `filter-[glow:1]` → `hover:blur-4 filter-[glow:2]`
-  fades the blur in while the glow lerps.
-- **A filter on only one side** of the change fades in/out from its neutral value, wherever it sits
-  in the list. CSS pads only a list that extends the other at its end and applies any other change at
-  once, so a filter added *before* an existing one (`grayscale` → `blur grayscale`) fades here where
-  CSS would snap. For a user custom that neutral is the one *your definition declares* — each
-  `FilterParameterDeclaration.interpolationDefaultValue`, the same value the engine pads its own
-  filter-list transitions with — so `filter-[glow:2]` appearing on hover fades up from the glow's
-  declared default rather than from zero. Declare those defaults deliberately; a slot left at the
-  struct default fades from `0`.
-- A user custom **snaps** when it cannot be paired: a different definition on each side (different
-  shaders have no correspondence to interpolate along), a differing argument count, a slot that is a
-  color on one side and a float on the other, or two or more *distinct* user customs when a filter is
-  added or removed (every user custom composes last, so there is no order to place two of them in).
-- A repeat of the same channel within one list is an ambiguous pairing and falls back to an instant
-  write, like CSS.
+- **User custom filters interpolate** when both sides hold the *same registered definition* at a position with
+  the same number of arguments and matching argument types per slot — `filter-[glow:#f00:2]` →
+  `hover:filter-[glow:#00f:6]` cross-fades the color and lerps the amount. CSS applies a `url()` filter change at
+  once; this is a Velvet addition.
+- A user custom **added or removed at the end** fades from or to the neutral *your definition declares* — each
+  `FilterParameterDeclaration.interpolationDefaultValue`, the same value the engine pads its own filter-list
+  transitions with — so `filter-[glow:2]` appearing on hover fades up from the glow's declared default rather
+  than from zero. Declare those defaults deliberately; a slot left at the struct default fades from `0`.
+- A user custom **snaps** when its position cannot be paired: a different definition on each side, a differing
+  argument count, or a slot that is a color on one side and a float on the other. Every user custom composes
+  after the built-ins, so adding a built-in filter to an element carrying a custom one is a change before its end,
+  and snaps too.
 - A definition **destroyed mid-tween** drops out of the frames the tween paints instead of throwing;
   the remaining filters keep animating. The value the tween settles on is the one composed when it
   started, so a dead definition is cleared from the element by the next compose rather than at settle.
-
-Where no transition runs for `filter` (`duration-0` with no delay, say), and on an off-panel change, the
-target value is written instantly, matching CSS's zero-duration behavior.
 
 ### Contract
 

@@ -2092,6 +2092,58 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGrayscaleBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[2]", out var s);
+
+            // Assert — CSS clamps a grayscale() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterGrayscale, 1f)));
+        }
+
+        [Test]
+        public void Given_AnInvertBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("invert-[1.5]", out var s);
+
+            // Assert — CSS clamps an invert() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterInvert, 1f)));
+        }
+
+        [Test]
+        public void Given_ASepiaBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("sepia-[3]", out var s);
+
+            // Assert — CSS clamps a sepia() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterSepia, 1f)));
+        }
+
+        // GREEN_ON_BASE(characterization): contrast is not clamped, as CSS leaves contrast() unbounded above 1.
+        [Test]
+        public void Given_AContrastBracketAboveOne_When_Parsed_Then_ItIsKept()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[2.5]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterContrast, 2.5f)));
+        }
+
+        // GREEN_ON_BASE(characterization): pins the hue-rotate bracket's angle units styling-filters.md states.
+        [Test]
+        public void Given_AHueRotateBracketInTurns_When_Parsed_Then_ItResolvesToDegrees()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[0.5turn]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterHueRotate, 180f)));
+        }
+
+        [Test]
         public void Given_BlurArbitrary_When_Applied_Then_SetsAOneFunctionBlurFilter()
         {
             // Arrange

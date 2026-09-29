@@ -1606,7 +1606,7 @@ namespace Velvet
             // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
-                element.style.filter = StyleKeyword.Null;
+                StyleFilterEngineWrite.Write(element, null);
                 return true;
             }
             return false;
