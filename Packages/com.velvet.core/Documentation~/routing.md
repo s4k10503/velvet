@@ -38,21 +38,25 @@ public static class App
 ## The root
 
 `V.RouterProvider(router)` is `<RouterProvider router={router}/>`: it subscribes to the router and
-publishes it, with the location, the loader data and the loader errors that `Hooks.UseLocation`,
-`Hooks.UseParams`, `Hooks.UseSearchParams`, `Hooks.UseMatch`, `Hooks.UseLoaderData` and
-`Hooks.UseRouteError` read. It renders the matched route through a `V.Outlet` of its own, so it takes
+publishes it, with the location, the loader data, the loader errors and the action data that
+`Hooks.UseLocation`, `Hooks.UseParams`, `Hooks.UseSearchParams`, `Hooks.UseMatch`, `Hooks.UseLoaderData`,
+`Hooks.UseRouteError` and `Hooks.UseActionData` read. It renders the matched route through a `V.Outlet` of its own, so it takes
 no children — what appears beneath it is the route table's own elements.
 
-Those six hooks read what it publishes, and so does every `V.Outlet`: the location picks the route to
+Those seven hooks read what it publishes, and so does every `V.Outlet`: the location picks the route to
 render and the errors pick the boundary that replaces it. The hooks that **act** on a router rather
 than read from it — `Hooks.UseNavigate` (and so every `V.Link`, `V.NavLink` and `V.Navigate`),
-`Hooks.UseNavigation`, `Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — act on
+`Hooks.UseNavigation`, `Hooks.UseBlocker`, `Hooks.UseSubmit`, and the setter `Hooks.UseSearchParams`
+hands back — act on
 the router the nearest `V.RouterProvider` publishes, so two routers can each drive a tree of their own.
 
 Mount it above everything that navigates, and once: a `V.RouterProvider` beneath another throws an
 `InvalidOperationException`, as React Router refuses a `<Router>` inside another. Either order works against the first `NavigateAsync`: mounted
 first, the opening route arrives through the subscription that carries every later one; mounted after a
 navigation has already committed, it reads `Router.CurrentLocation` at its first render.
+
+It does not dispose the router it is handed, as React Router's `RouterProvider` never calls
+`router.dispose()`: the code that constructed the router disposes it, which cancels what it has in flight.
 
 Nothing else in the package publishes those contexts. Beneath no `V.RouterProvider`, `V.Outlet` renders
 nothing, `Hooks.UseParams` returns an empty dictionary and `Hooks.UseOutletContext` returns `default`, as
@@ -80,8 +84,10 @@ chain's loaders — a parent layout's and its child's — run concurrently rathe
 
 A navigation runs only the loaders React Router's default `shouldRevalidate` would. A route at the same
 place in the committed chain, over the same pathname — the layouts above a changed child — keeps its data
-and its loader's token. The loader runs again when the search changes, when the URL is the one already
-committed, after a route action returns, and where the route holds no settled data yet. Stepping `GoBack` /
+and its loader's token, the pathname compared as the URL spells it. The loader runs again when the search
+changes, when the URL is the one already committed, and where the route holds no settled data yet. Once a
+route action has started, the next navigation to commit — the submission's own, or one that took over from
+it — runs every loader, as React Router's `isRevalidationRequired` has it. Stepping `GoBack` /
 `GoForward` decides the same way as a push: React Router keeps no loader data per history entry either.
 
 A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
@@ -165,21 +171,26 @@ propagates to the nearest error boundary. Any number of `V.Await` may read one `
 A route's `action` is React Router's route `action`: it runs for a submission, and its result is what
 `Hooks.UseActionData` returns. `Hooks.UseSubmit()` is `useSubmit()`, handing back a `SubmitFunction` that
 takes the form data and a `SubmitOptions` (`Method`, `Action`, `Replace`); `Router.SubmitAsync` is the
-same submission for a host object with no component to hook from. With no `Action` named, a submission
-goes to the route the submitting component renders in, with the current query string — for an index
-route, with a bare `index` in front of it — as a `<Form>` with no `action` does.
+same submission for a host object with no component to hook from. With no `Action` named, or an empty
+one, a submission goes to the route the submitting component renders in, with the current query string;
+with none or with `.`, an index route — a route with an empty path and no children — puts a bare `index`
+in front of the query string, and any other route takes a bare one out, as React Router's `normalizeTo`
+does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
   data, an `ISearchParams`, as the query string.
-- Any other method — `post`, `put`, `patch`, `delete` — calls the action of the route the path matches:
-  the deepest route with a path, or the index route when the query string holds a bare `index`. The
-  action receives a `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the
-  `FormData` as it was handed to the submit function.
-- When the action returns, every matched loader runs, and the location commits with the action's result
-  keyed to its route. The next navigation that commits clears it.
+- `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
+  with a path, or the index route when the query string holds a bare `index`. The action receives a
+  `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it
+  was handed to the submit function.
+- When the action returns, its result is keyed to its route and published at once, so a route already on
+  screen reads it while every matched loader runs; the location then commits with it. The next navigation
+  that commits clears it.
 - An action that throws, and a route with no action, commit the exception as that route's error, rendered
-  by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, and
-  no action data commits.
+  by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, that
+  route keeps the data it held, and no action data commits.
+- Any other method runs no action: the navigation commits React Router's `Invalid request method` 405 as
+  the error of the leaf route, as a failed action's is.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.
 
@@ -194,8 +205,9 @@ route, with a bare `index` in front of it — as a `<Form>` with no `action` doe
 - `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.
-- `FormMethod`, `FormAction` and `FormData` describe the submission in flight, a `get` one included, and
-  are null while `State` is `Idle` or the navigation in flight is not a submission.
+- `FormMethod` (lower-case, as React Router 6.28 reports it), `FormAction` and `FormData` describe the
+  submission in flight, a `get` one included, and are null while `State` is `Idle` or the navigation in
+  flight is not a submission.
 
 `Router.PendingLocation` is the same destination read imperatively, for a host object that has no
 component to hook from.
@@ -206,8 +218,8 @@ component to hook from.
 Router counterpart, where the same job there is a `redirect` thrown from a loader or from middleware. A
 guard runs after the blocker and before an action, and its redirect is not put to the blocker, as React
 Router does not put a loader's redirect to its blocker; [routing-blockers.md](routing-blockers.md) owns
-where the blocker sits. A submission a guard redirects reaches the target as a plain navigation, running
-no action, as React Router's redirect out of an action does.
+where the blocker sits. A submission a guard redirects reaches the target running no action, and
+`Hooks.UseNavigation` goes on reporting the submission while the target loads.
 
 **No URL.** There is no browser to own the address bar, so `Router` is `createMemoryRouter`'s
 counterpart and holds its own history stack, which grows without a bound as a memory history's does.

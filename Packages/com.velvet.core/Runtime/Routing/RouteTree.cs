@@ -274,7 +274,7 @@ namespace Velvet
 
             /// <summary>Which path segment each pattern segment took, or -1 for one the match skipped.
             /// An absent optional literal is otherwise indistinguishable from one the URL held, and
-            /// <see cref="BuildMatches"/> reads the pattern rather than the path.</summary>
+            /// <see cref="BuildMatches"/> reads a literal's text from the segment it took.</summary>
             public readonly int[] Taken;
 
             public Dictionary<string, string>? Captured;
@@ -314,7 +314,7 @@ namespace Velvet
 
             // A paramless successful match still exposes a (shared, empty) dictionary at every level,
             // preserving the pre-lazy contract that RouteMatch.Params is never null.
-            matches = BuildMatches(branch, captured ?? new Dictionary<string, string>(), taken);
+            matches = BuildMatches(branch, segments, captured ?? new Dictionary<string, string>(), taken);
             return true;
         }
 
@@ -429,7 +429,7 @@ namespace Velvet
         }
 
         private static List<RouteMatch> BuildMatches(
-            RouteBranch branch, Dictionary<string, string> captured, int[] taken)
+            RouteBranch branch, string[] segments, Dictionary<string, string> captured, int[] taken)
         {
             var chain = branch.Chain;
             var matches = new List<RouteMatch>(chain.Length);
@@ -447,7 +447,7 @@ namespace Velvet
                 cumulativeId = AppendRouteId(cumulativeId, route);
 
                 var resolvedSegment = ResolveRouteSegments(
-                    branch.Pattern, branch.SegmentCounts[level], captured, taken, ref patternOffset);
+                    branch.Pattern, branch.SegmentCounts[level], segments, captured, taken, ref patternOffset);
                 if (resolvedSegment.Length > 0)
                 {
                     cumulativeResolved = cumulativeResolved.Length == 0
@@ -474,7 +474,7 @@ namespace Velvet
         // it -- and `taken` is indexed over the pattern, so the pattern is the reading that can be
         // indexed. Re-parsing here also allocated an enumerator per route on every match.
         private static string ResolveRouteSegments(
-            List<RouteSegment> pattern, int count, IReadOnlyDictionary<string, string> captured,
+            List<RouteSegment> pattern, int count, string[] segments, IReadOnlyDictionary<string, string> captured,
             int[] taken, ref int patternOffset)
         {
             var resolved = ScratchSegments;
@@ -518,7 +518,9 @@ namespace Velvet
                     continue;
                 }
 
-                resolved.Add(seg.Value);
+                // The URL's own text rather than the pattern's, which a case-insensitive literal can differ
+                // from, as React Router's pathname is the URL's.
+                resolved.Add(segments[taken[index]]);
             }
 
             return string.Join("/", resolved);

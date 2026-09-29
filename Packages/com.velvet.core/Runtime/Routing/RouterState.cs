@@ -61,7 +61,7 @@ namespace Velvet
     {
         Idle,
         Loading,
-        /// <summary>A submission's action is running.</summary>
+        /// <summary>A submission's guards or action are running.</summary>
         Submitting,
     }
 
@@ -77,7 +77,8 @@ namespace Velvet
         public RouterLocation? Location { get; init; }
 
         /// <summary>
-        /// The upper-case method of the submission in flight, while one is; null otherwise, as
+        /// The lower-case method of the submission in flight, while one is, as React Router 6.28 reports it
+        /// without <c>v7_normalizeFormMethod</c>; null otherwise, as
         /// <c>navigation.formMethod</c> is <c>undefined</c> then.
         /// </summary>
         public string? FormMethod { get; init; }

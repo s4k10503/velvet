@@ -680,7 +680,7 @@ namespace Velvet
             {
                 State = lifecycle,
                 Location = router.PendingLocation,
-                FormMethod = submission?.Method,
+                FormMethod = submission?.FormMethod,
                 FormAction = submission?.Action,
                 FormData = submission?.FormData,
             };

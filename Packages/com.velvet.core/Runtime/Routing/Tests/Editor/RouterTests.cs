@@ -976,6 +976,50 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(Router.Current, later), Is.True);
         }
 
+        [Test]
+        public void Given_ALiveRouter_When_TheSubsystemsAreRegisteredAgain_Then_CurrentNamesNone()
+        {
+            // Arrange — what Unity calls entering Play Mode without a domain reload.
+            using var router = new Router(new[] { Route("/") });
+            var reset = typeof(Router).GetMethod("ForgetEveryRouter",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            // Act
+            reset?.Invoke(null, null);
+
+            // Assert
+            Assert.That(Router.Current, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base references only the newest router, so an earlier one
+        // nothing else holds is collectable there too.
+        [Test]
+        public void Given_RoutersNobodyDisposedOrHolds_When_ALaterOneIsDisposed_Then_TheyCanBeCollected()
+        {
+            // Arrange
+            var earlier = ConstructUnheldRouters(32);
+            new Router(new[] { Route("/") }).Dispose();
+
+            // Act
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // Assert
+            Assert.That(earlier.FindAll(router => router.IsAlive).Count, Is.LessThan(earlier.Count / 2));
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static List<WeakReference> ConstructUnheldRouters(int count)
+        {
+            var routers = new List<WeakReference>();
+            for (var i = 0; i < count; i++)
+            {
+                routers.Add(new WeakReference(new Router(new[] { Route("/") })));
+            }
+            return routers;
+        }
+
         #endregion
 
         #region ScopeFactory

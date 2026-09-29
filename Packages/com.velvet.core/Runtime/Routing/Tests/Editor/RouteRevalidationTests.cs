@@ -100,6 +100,19 @@ namespace Velvet.Tests
             Assert.That(Calls, Is.EqualTo("2,2,2"));
         }
 
+        [Test]
+        public void Given_APathnameDifferingOnlyInCase_When_Navigating_Then_TheLayoutItSpellsDifferentlyRunsAgain()
+        {
+            // Arrange
+            var router = UsersRouter("/users/1");
+
+            // Act
+            router.NavigateSync("/Users/2");
+
+            // Assert
+            Assert.That(Calls, Is.EqualTo("1,2,2"));
+        }
+
         // GREEN_ON_BASE(characterization): the base runs every loader on every navigation.
         [Test]
         public void Given_ASearchChange_When_Navigating_Then_EveryLoaderRuns()
@@ -117,13 +130,17 @@ namespace Velvet.Tests
         [Test]
         public void Given_AKeptLayout_When_ASiblingChildCommits_Then_OnlyTheLeftChildsTokenIsCancelled()
         {
-            // Arrange
+            // Arrange — the root's first token is the one read, so a root loader run again cannot stand a live
+            // token of its own round in for it.
             CancellationToken rootToken = default;
             CancellationToken firstUserToken = default;
             var router = BuildRouter("/users/1",
                 Route("/", loader: (_, ct) =>
                 {
-                    rootToken = ct;
+                    if (++_root == 1)
+                    {
+                        rootToken = ct;
+                    }
                     return Loaded("root");
                 }, children: new[]
                 {
@@ -141,8 +158,8 @@ namespace Velvet.Tests
             router.NavigateSync("/users/2");
 
             // Assert
-            Assert.That((rootToken.IsCancellationRequested, firstUserToken.IsCancellationRequested),
-                Is.EqualTo((false, true)));
+            Assert.That((_root, rootToken.IsCancellationRequested, firstUserToken.IsCancellationRequested),
+                Is.EqualTo((1, false, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base runs every loader on every navigation.

@@ -29,13 +29,8 @@ namespace Velvet
             // takes its token along at the promotion and the retire of this round leaves it running.
             internal readonly Dictionary<string?, RouteCancellationSource> Loads = new();
 
-            // The routes this round took from the live one rather than running their loaders; null while none.
-            internal List<string?>? Kept;
-
             internal bool Retired;
         }
-
-        private static readonly List<string?> NoneKept = new();
 
         private LoaderRound _currentRound;
 
@@ -53,20 +48,19 @@ namespace Velvet
         // Every loader delegate is invoked before the first await below, so an Await-mode chain runs
         // concurrently and a delegate that navigates still supersedes this round from inside the launch
         // loop; awaiting inside that loop would change both.
-        // A match at or past launchLimit runs no loader, and one keeps answers true for takes the live round's
-        // result in place of running wherever the live round holds one.
+        // A match past launchLimit runs no loader, and neither does the one at it, which takes the live round's
+        // result where the live round holds one, as does a match at the place it held in keptFrom.
         public async VelvetTask<LoaderRound> RunLoadersAsync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken,
-            Predicate<int>? keeps = null,
+            IReadOnlyList<RouteMatch>? keptFrom = null,
             int launchLimit = int.MaxValue)
         {
             var round = BeginRound();
 
             var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
-            var count = Math.Min(matches.Count, launchLimit);
-            for (var index = 0; index < count; index++)
+            for (var index = 0; index < matches.Count; index++)
             {
                 var match = matches[index];
                 if (match.Route?.Loader == null)
@@ -76,7 +70,11 @@ namespace Velvet
 
                 var route = match.Route;
                 var key = match.RouteId;
-                if (keeps != null && keeps(index) && Keep(round, key))
+                if ((index == launchLimit || HeldTheSamePlace(keptFrom, matches, index)) && Keep(round, key))
+                {
+                    continue;
+                }
+                if (index >= launchLimit)
                 {
                     continue;
                 }
@@ -178,19 +176,34 @@ namespace Velvet
             _liveRound = round;
             if (departing != null && !ReferenceEquals(departing, round))
             {
-                foreach (var key in round.Kept ?? NoneKept)
+                // A result with no load of this round's beside it is one Keep took from the departing round,
+                // and the token it was produced under goes with it.
+                foreach (var result in round.Results)
                 {
-                    if (departing.Loads.Remove(key, out var load))
+                    if (round.Loads.ContainsKey(result.Key))
                     {
-                        round.Loads[key] = load;
+                        continue;
+                    }
+                    departing.Loads.Remove(result.Key, out var load);
+                    if (load != null)
+                    {
+                        round.Loads[result.Key] = load;
                     }
                 }
                 Retire(departing);
             }
         }
 
+        // React Router's default shouldRevalidate (getMatchesToLoad): the same route at the same place in the
+        // committed chain, over the same pathname.
+        private static bool HeldTheSamePlace(IReadOnlyList<RouteMatch>? previous, IReadOnlyList<RouteMatch> next, int index)
+            => previous != null
+               && index < previous.Count
+               && ReferenceEquals(previous[index].Route, next[index].Route)
+               && previous[index].PathnameBase == next[index].PathnameBase;
+
         // The live round's result for a route, taken into round in place of running its loader. An unsettled
-        // or failed load has none and runs again, as React Router reloads a route it holds no data for.
+        // or failed load has none, as React Router holds no data for a route whose load failed.
         private bool Keep(LoaderRound round, string? key)
         {
             object? result = null;
@@ -200,7 +213,6 @@ namespace Velvet
                 return false;
             }
             round.Results[key] = result!;
-            (round.Kept ??= new List<string?>()).Add(key);
             return true;
         }
 

@@ -207,6 +207,46 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", _log), Is.EqualTo("root"));
         }
 
+        [Test]
+        public void Given_AnActionThatThrowsAtARouteRenderingItsError_When_ItIsPosted_Then_ThatRouteKeepsItsLoaderData()
+        {
+            // Arrange
+            var router = BuildRouter("/items",
+                Route("/", loader: Loader("root"), children: new[]
+                {
+                    ActionRoute("items", Throws, Loader("items"), errorElement: V.Component(StubB)),
+                }));
+            _log.Clear();
+
+            // Act
+            Submit(router, "lamp", PostToItems);
+
+            // Assert
+            Assert.That((string.Join(",", _log), router.GetLoaderData("/items")), Is.EqualTo(("root", (object)"items")));
+        }
+
+        [Test]
+        public void Given_ASubmissionStillRunning_When_ANavigationTakesOver_Then_ItRunsEveryLoader()
+        {
+            // Arrange
+            var router = BuildRouter("/projects/1",
+                Route("/", loader: Loader("root"), children: new[]
+                {
+                    Route("projects", loader: Loader("projects"), children: new[]
+                    {
+                        ActionRoute(":id", (_, _) => new VelvetTaskCompletionSource<object>().Task, Loader("project")),
+                    }),
+                }));
+            router.SubmitAsync("rename", new SubmitOptions { Method = "post" }).Forget();
+            _log.Clear();
+
+            // Act
+            router.NavigateSync("/projects/2");
+
+            // Assert
+            Assert.That(string.Join(",", _log), Is.EqualTo("root,projects,project"));
+        }
+
         #endregion
 
         #region History
@@ -299,16 +339,32 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMethodNoFormTakes_When_Submitted_Then_ItThrows()
+        public void Given_AMethodNoFormTakes_When_Submitted_Then_ItCommitsTheRefusalAndRunsNoAction()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
 
             // Act
-            TestDelegate submit = () => router.SubmitAsync("lamp", new SubmitOptions { Method = "head" });
+            Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.Throws<ArgumentException>(submit);
+            Assert.That((router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+                Is.EqualTo(("Invalid request method \"HEAD\"", false)));
+        }
+
+        [Test]
+        public void Given_AnEmptyMethod_When_Submitted_Then_ItIsAGetSubmission()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var query = new SearchParams();
+            query.Append("q", "lamp");
+
+            // Act
+            Submit(router, query, new SubmitOptions { Method = "", Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
         }
 
         #endregion
@@ -366,7 +422,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASearchHoldingABareIndex_When_AnIndexRouteSubmitsWithoutNamingAnAction_Then_OnlyTheBareIndexIsReplaced()
+        public void Given_ASearchHoldingABareIndex_When_AnIndexRouteSubmitsWithoutNamingAnAction_Then_TheSearchIsKept()
         {
             // Arrange
             var router = IndexRouter("/?index&index=5&flag");
@@ -376,7 +432,54 @@ namespace Velvet.Tests
                 .GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/?index&index=5&flag="));
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/?index&index=5&flag"));
+        }
+
+        [Test]
+        public void Given_ASearchHoldingABareIndex_When_ALayoutSubmitsWithoutNamingAnAction_Then_OnlyTheBareIndexIsTakenOut()
+        {
+            // Arrange
+            var router = IndexRouter("/?index&index=5&flag");
+
+            // Act
+            router.SubmitAsync(null, new SubmitOptions { Method = "post" }, baseRouteIndex: 0, default)
+                .GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That((router.CurrentLocation!.Path, string.Join(",", _log)), Is.EqualTo(("/?index=5&flag=", "layout")));
+        }
+
+        [TestCase(".")]
+        [TestCase("")]
+        public void Given_AnIndexRouteWithAnAction_When_ItSubmitsToItself_Then_ItsOwnActionRuns(string action)
+        {
+            // Arrange
+            var router = IndexRouter("/");
+
+            // Act
+            router.SubmitAsync(null, new SubmitOptions { Method = "post", Action = action }, baseRouteIndex: 1, default)
+                .GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(string.Join(",", _log), Is.EqualTo("index"));
+        }
+
+        [Test]
+        public void Given_APathlessLayoutUnderARootAction_When_ItSubmitsWithoutNamingAnAction_Then_TheRootsActionRuns()
+        {
+            // Arrange
+            var router = BuildRouter("/settings",
+                ActionRoute("/", Logged("root"), children: new[]
+                {
+                    V.Route("", V.Component(StubA), children: new[] { V.Route("settings", V.Component(StubB)) }),
+                }));
+
+            // Act
+            router.SubmitAsync(null, new SubmitOptions { Method = "post" }, baseRouteIndex: 1, default)
+                .GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(string.Join(",", _log), Is.EqualTo("root"));
         }
 
         #endregion
@@ -446,7 +549,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That($"{s_navigation.State} {s_navigation.FormMethod} {s_navigation.FormAction} {s_navigation.FormData}",
-                Is.EqualTo("Submitting PUT /items lamp"));
+                Is.EqualTo("Submitting put /items lamp"));
+        }
+
+        [Test]
+        public void Given_AnActionStillRunning_When_ASecondSubmissionTakesOver_Then_UseNavigationReportsTheSecond()
+        {
+            // Arrange
+            using var mounted = MountItems((_, _) => new VelvetTaskCompletionSource<object>().Task);
+            s_submit!("first", new SubmitOptions { Method = "post" }).Forget();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_submit!("second", new SubmitOptions { Method = "post" }).Forget();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That($"{s_navigation.State} {s_navigation.FormData}", Is.EqualTo("Submitting second"));
+        }
+
+        [Test]
+        public void Given_AnActionThatReturned_When_TheLoadersAfterItStillRun_Then_UseActionDataRendersTheResult()
+        {
+            // Arrange — the route's loader answers at once the first time and holds the second.
+            var loads = 0;
+            var router = BuildRouter("/items", ActionRoute("items", Created,
+                (_, _) => ++loads == 1 ? VelvetTask.FromResult<object>("items") : new VelvetTaskCompletionSource<object>().Task,
+                element: V.Component(SubmittingItems)));
+            using var mounted = V.Mount(_root, V.RouterProvider(router));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_submit!("lamp", new SubmitOptions { Method = "post" }).Forget();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_navigation.State, _root.FindLabelByText("result-POST lamp") != null),
+                Is.EqualTo((NavigationLifecycle.Loading, true)));
         }
 
         #endregion
