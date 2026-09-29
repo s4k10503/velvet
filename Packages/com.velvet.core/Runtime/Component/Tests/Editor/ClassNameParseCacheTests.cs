@@ -196,54 +196,74 @@ namespace Velvet.Tests
         }
 
         // Only that the probe moves: the two zeros below would read the same from a probe stuck at zero.
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // This change reads it over three windows.
         [Test]
         public void Given_TheAllocationProbe_When_ADelegateSplitsAString_Then_ItCountsBlocks()
         {
             // Arrange
-            var cache = new ClassNameParseCache();
+            ClassNameParseCache cache = null;
 
-            // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(() => cache.Parse("never-parsed p-2"));
+            // Act — a string parsed once is held by the cache and not split again, so each window parses
+            // it on a fresh cache.
+            var blocks = GCAllocationProbe.MedianBlocksDuring(
+                () => cache = new ClassNameParseCache(),
+                () => cache.Parse("never-parsed p-2"));
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_AStringInTheOlderGeneration_When_ParsedAgain_Then_NothingIsAllocated()
         {
             // Arrange — the measured delegate runs once against a throwaway cache first, so work done on a
-            // delegate's first execution is not charged to the carry.
-            var cache = CacheHoldingInOlderGeneration("flex flex-row p-4");
+            // delegate's first execution is not charged to the carry. A carry adds the string to the current
+            // generation, where a second parse only looks it up, so each window carries it from a fresh cache.
+            ClassNameParseCache cache = null;
+            var inOlderOnly = true;
+            Action arrange = () =>
+            {
+                cache = CacheHoldingInOlderGeneration("flex flex-row p-4");
+                inOlderOnly &= Field<Dictionary<string, string[]>>(cache, "_previous").ContainsKey("flex flex-row p-4")
+                    && !Field<Dictionary<string, string[]>>(cache, "_current").ContainsKey("flex flex-row p-4");
+            };
             Action carry = () => cache.Parse("flex flex-row p-4");
+            arrange();
             carry();
-            cache = CacheHoldingInOlderGeneration("flex flex-row p-4");
-            var inOlderOnly = Field<Dictionary<string, string[]>>(cache, "_previous").ContainsKey("flex flex-row p-4")
-                && !Field<Dictionary<string, string[]>>(cache, "_current").ContainsKey("flex flex-row p-4");
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(carry);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(arrange, carry);
 
             // Assert
             Assert.That((inOlderOnly, blocks), Is.EqualTo((true, 0)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_AStringInProbation_When_ParsedAgain_Then_NothingIsAllocated()
         {
-            // Arrange — as above, the delegate's first execution is spent on a throwaway cache.
-            var cache = new ClassNameParseCache();
-            _ = cache.Parse("flex flex-row p-4");
+            // Arrange — as above, the delegate's first execution is spent on a throwaway cache, and each
+            // window promotes the string from a fresh one.
+            ClassNameParseCache cache = null;
+            var inProbationOnly = true;
+            Action arrange = () =>
+            {
+                cache = new ClassNameParseCache();
+                _ = cache.Parse("flex flex-row p-4");
+                inProbationOnly &= Field<Dictionary<string, string[]>>(cache, "_probationCurrent")
+                        .ContainsKey("flex flex-row p-4")
+                    && !Field<Dictionary<string, string[]>>(cache, "_current").ContainsKey("flex flex-row p-4");
+            };
             Action promote = () => cache.Parse("flex flex-row p-4");
+            arrange();
             promote();
-            cache = new ClassNameParseCache();
-            _ = cache.Parse("flex flex-row p-4");
-            var inProbationOnly = Field<Dictionary<string, string[]>>(cache, "_probationCurrent")
-                    .ContainsKey("flex flex-row p-4")
-                && !Field<Dictionary<string, string[]>>(cache, "_current").ContainsKey("flex flex-row p-4");
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(promote);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(arrange, promote);
 
             // Assert
             Assert.That((inProbationOnly, blocks), Is.EqualTo((true, 0)));
