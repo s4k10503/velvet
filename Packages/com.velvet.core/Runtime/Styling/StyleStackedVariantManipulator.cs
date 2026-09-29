@@ -30,10 +30,10 @@ namespace Velvet
         private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
         private readonly string[] _leaf;
-        private readonly int _priority;
+        private readonly long _priority;
         // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
         // peels to — one written token is one declaration site, and that is the position a reader would point
-        // at when this leaf ties with a plain hover: payload on the shared layer.
+        // at when this leaf ties with another rule of the same rank.
         private readonly int[] _declarations;
 
         private bool _outerOn;
@@ -45,7 +45,7 @@ namespace Velvet
         private DisabledVariantSignal _disabledSignal = null!;
 
         public StyleStackedVariantManipulator(
-            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority,
+            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, long priority,
             int declaration)
         {
             _declarations = new[] { declaration };

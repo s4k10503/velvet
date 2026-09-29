@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -43,6 +44,18 @@ namespace Velvet.Tests
             return (root.Q<VisualElement>("group"), root.Q<VisualElement>("leaf"));
         }
 
+        private (VisualElement First, VisualElement Second) MountRows(string rowClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(children: new VNode?[]
+                {
+                    V.Div(name: "first", className: rowClassName),
+                    V.Div(name: "second", className: rowClassName),
+                }));
+            var root = _window.rootVisualElement;
+            return (root.Q<VisualElement>("first"), root.Q<VisualElement>("second"));
+        }
+
         private (VisualElement Parent, VisualElement Leaf) MountUnderChildVariant(string parentClassName,
             string leafClassName)
         {
@@ -69,18 +82,41 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGroupHoverHoverStackBesidePlainHover_When_BothHold_Then_TheStackWins()
+        public void Given_AGroupHoverHoverStackBesidePlainHover_When_BothHold_Then_TheStacksClassAloneRemains()
         {
-            // Arrange — both carry hover's specificity; the stack sorts after hover alone, as Tailwind emits it,
-            // so it wins though the plain one is written later.
-            var (group, leaf) = MountFirstChild("group-hover:hover:w-[20px] hover:w-[10px]");
+            // Arrange — the stack is (0,3,0) against hover's (0,2,0), so it wins though the plain one is written
+            // later, and the projection takes the losing class off the element.
+            var (group, leaf) = MountFirstChild("group-hover:hover:opacity-75 hover:opacity-50");
 
             // Act
             using (var overGroup = PointerOverEvent.GetPooled()) group.SimulateEvent(overGroup);
             using (var overLeaf = PointerOverEvent.GetPooled()) leaf.SimulateEvent(overLeaf);
 
             // Assert
-            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+            Assert.That((leaf.ClassListContains("opacity-75"), leaf.ClassListContains("opacity-50")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_Nth1AndNth2Backgrounds_When_TwoRowsCarryBoth_Then_EachRowTakesItsOwn()
+        {
+            // Arrange / Act — on the first row nth-2: evaluates off after nth-1: turned on, on one rank.
+            var rows = MountRows("nth-1:bg-[#ff0000] nth-2:bg-[#00ff00]");
+
+            // Assert
+            Assert.That((rows.First.style.backgroundColor.value, rows.Second.style.backgroundColor.value),
+                Is.EqualTo((Color.red, Color.green)));
+        }
+
+        [Test]
+        public void Given_OddAndEvenBackgrounds_When_TwoRowsCarryBoth_Then_EachRowTakesItsOwn()
+        {
+            // Arrange / Act
+            var rows = MountRows("odd:bg-[#ff0000] even:bg-[#00ff00]");
+
+            // Assert
+            Assert.That((rows.First.style.backgroundColor.value, rows.Second.style.backgroundColor.value),
+                Is.EqualTo((Color.red, Color.green)));
         }
 
         [Test]

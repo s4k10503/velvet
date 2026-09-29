@@ -4,107 +4,108 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Priorities for arbitrary-value layers (see StyleArbitraryValueResolver). When several
-    // sources set the same property (e.g. w-[80px] hover:w-[200px] active:w-[100px]), the highest
-    // priority wins; when it is cleared (the state turns off) the next-highest is re-applied — mirroring the
-    // CSS cascade where a state rule layers over the base rather than replacing it.
+    // Priorities for arbitrary-value layers (see StyleArbitraryValueResolver) and for the class projection.
+    // When several sources set the same property (e.g. w-[80px] hover:w-[200px] active:w-[100px]), the
+    // highest priority wins; when it is cleared (the state turns off) the next-highest is re-applied —
+    // mirroring the CSS cascade where a state rule layers over the base rather than replacing it.
     //
-    // A priority is a specificity band and an order within it, as Tailwind's generated CSS resolves a tie:
-    // the selector with more classes wins, and between equal ones the rule emitted later does. The band is
-    // the number of class-level selectors the variant's rule carries on the element, and the order within it
-    // is ten times the variant's registration index in Tailwind's variants.ts, with every arbitrary variant
-    // after all the registered ones: a priority reads as band * 1_000_000 + order * 1000, the last three
-    // digits left for a stacked variant (Stack). Band 1 is (0,1,0), where a media or feature query adds
-    // nothing to the utility's class; band 2 is (0,2,0), one pseudo-class or attribute selector on top of it.
+    // A priority is the rank Tailwind's generated CSS gives the rule, packed so that comparing two longs
+    // compares the ranks: an important flag, then the rule's specificity, then the set of variants it carries
+    // compared highest bit first — compile.ts's sort. Each bit is a variant's place in Tailwind's variant
+    // order among the ones Velvet supports; only the relative order of the bits matters to that comparison.
+    // The lowest bits are left clear here for the rule's own position in the className
+    // (StyleArbitraryValueResolver keys an arbitrary layer by both). StyleLayerOrderTests pins the order.
     internal static class StyleLayerPriority
     {
-        private const int Band = 1_000_000;
-        private const int Order = 1000;
+        // The rule's position in the className, in an arbitrary layer's key (see WithRule).
+        private const int RuleBits = 12;
+        private const long RuleMask = (1L << RuleBits) - 1;
+        // The variant bit set: bit n is at 1L << (RuleBits + n).
+        private const long SetMask = ((1L << 44) - 1) << RuleBits;
+        // Pseudo-class and attribute selectors the rule adds beyond the utility's own class.
+        private const int ClassShift = 56;
+        private const long OneClass = 1L << ClassShift;
 
-        public const int Base = 0;
+        public const long Base = 0;
 
-        #region Band 1: (0,1,0)
+        #region One selector the utility carries alone: a media or feature query adds nothing
         // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
         // so this layer never toggles off at runtime; the priority only orders it against other layers.
-        public const int Supports = 1_580_000;
+        public const long Supports = 1L << 39;
         // Responsive breakpoints: a larger min-width wins while active.
-        public const int ResponsiveSm = 1_640_000;
-        public const int ResponsiveMd = 1_641_000;
-        public const int ResponsiveLg = 1_642_000;
-        public const int ResponsiveXl = 1_643_000;
-        public const int Responsive2xl = 1_644_000;
-        public const int Dark = 1_730_000;
-        // [&>*]: — `.x > *` on the child, one class, emitted after every named variant: it wins over the child's
-        // base utility and its md:/dark:, and loses to any pseudo-class variant the child declares. A distinct
-        // priority is also required for correctness — the arbitrary-value LayerMap is a per-property SortedList
-        // set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would let a child's own base
-        // arbitrary utility and this inherited one clobber the same slot.
-        public const int ChildVariant = 1_998_000;
+        public const long ResponsiveSm = 1L << 40;
+        public const long ResponsiveMd = 1L << 41;
+        public const long ResponsiveLg = 1L << 42;
+        public const long ResponsiveXl = 1L << 43;
+        public const long Responsive2xl = 1L << 44;
+        public const long Dark = 1L << 45;
+        // [&>*]: — `.x > *` on the child, one class, and an arbitrary variant, which Tailwind orders after every
+        // named one: it wins over the child's base utility and its md:/dark:, and loses to any pseudo-class
+        // variant the child declares. Its selector sorts after [&:…]:'s, ':' before '>'.
+        public const long ChildVariant = 1L << 47;
         #endregion
 
-        #region Band 2: (0,2,0)
-        // group-*/peer-* get DISTINCT priorities so two on the same property (e.g. group-hover + group-active)
-        // occupy separate layers — clearing one must not remove the other. Within each, the inner state's order.
-        public const int GroupFocusWithin = 2_040_000;
-        public const int GroupHover = 2_041_000;
-        public const int GroupFocus = 2_042_000;
-        public const int GroupActive = 2_043_000;
-        public const int GroupDisabled = 2_044_000;
-        public const int PeerChecked = 2_050_000;
-        public const int PeerFocusWithin = 2_051_000;
-        public const int PeerHover = 2_052_000;
-        public const int PeerFocus = 2_053_000;
-        public const int PeerActive = 2_054_000;
-        public const int PeerDisabled = 2_055_000;
-        // first:/last:/only:/odd:/even:. The nth-N: and arbitrary [&:…]: forms sit further up;
-        // StyleStructuralVariantClass.PriorityOf picks.
-        public const int Structural = 2_160_000;
-        public const int Checked = 2_280_000;
-        public const int Hover = 2_430_000;
-        public const int Focus = 2_440_000;
-        public const int FocusVisible = 2_450_000;
-        public const int Active = 2_460_000;
-        public const int Disabled = 2_480_000;
+        #region One pseudo-class or attribute selector on top of the utility's class
+        public const long GroupFocusWithin = OneClass | 1L << 12;
+        public const long GroupHover = OneClass | 1L << 13;
+        public const long GroupFocus = OneClass | 1L << 14;
+        public const long GroupActive = OneClass | 1L << 15;
+        public const long GroupDisabled = OneClass | 1L << 16;
+        public const long PeerChecked = OneClass | 1L << 17;
+        public const long PeerFocusWithin = OneClass | 1L << 18;
+        public const long PeerHover = OneClass | 1L << 19;
+        public const long PeerFocus = OneClass | 1L << 20;
+        public const long PeerActive = OneClass | 1L << 21;
+        public const long PeerDisabled = OneClass | 1L << 22;
+        public const long First = OneClass | 1L << 23;
+        public const long Last = OneClass | 1L << 24;
+        public const long Only = OneClass | 1L << 25;
+        public const long Odd = OneClass | 1L << 26;
+        public const long Even = OneClass | 1L << 27;
+        public const long Checked = OneClass | 1L << 28;
+        public const long Hover = OneClass | 1L << 29;
+        public const long Focus = OneClass | 1L << 30;
+        public const long FocusVisible = OneClass | 1L << 31;
+        public const long Active = OneClass | 1L << 32;
+        public const long Disabled = OneClass | 1L << 33;
         // has-[.class]: / has-[:checked]: — `:has()` takes its argument's specificity, one class here.
-        public const int Has = 2_510_000;
-        // aria-[…]: / data-[…]: — one attribute selector each.
-        public const int Aria = 2_520_000;
-        public const int Data = 2_530_000;
-        public const int Nth = 2_540_000;
-        // [&:nth-child(N)]: and the other [&:…]: structural forms.
-        public const int ArbitrarySelector = 2_998_000;
+        public const long Has = OneClass | 1L << 34;
+        public const long Aria = OneClass | 1L << 35;
+        public const long Data = OneClass | 1L << 36;
+        public const long Nth = OneClass | 1L << 37;
+        public const long NthLast = OneClass | 1L << 38;
+        // [&:nth-child(N)]: and the other [&:…]: structural forms: an arbitrary variant.
+        public const long ArbitrarySelector = OneClass | 1L << 46;
         #endregion
 
-        public static int AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
+        public static long AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
 
-        // A stacked variant (dark:hover:) carries the classes of its most specific part. Tailwind orders the
-        // variants of one candidate as a bit set, highest bit first: so a stack sorts by its latest-registered
-        // part, then by the next, which lands it after that part alone and orders dark:hover: before
-        // dark:focus:. The next part's order goes in the digits a plain variant leaves at zero.
-        public static int Stack(int outer, int inner)
-        {
-            var band = System.Math.Max(outer / Band, inner / Band);
-            var outerOrder = outer % Band / Order;
-            var innerOrder = inner % Band / Order;
-            var next = System.Math.Max(System.Math.Min(outerOrder, innerOrder),
-                System.Math.Max(outer % Order, inner % Order));
-            return band * Band + System.Math.Max(outerOrder, innerOrder) * Order + next;
-        }
+        // A stacked variant (dark:hover:, hover:focus:) is one rule carrying every part: the selectors its parts
+        // add sum, and its variant set is the union of theirs.
+        public static long Stack(long outer, long inner)
+            => ((outer >> ClassShift) + (inner >> ClassShift) << ClassShift) | ((outer | inner) & SetMask);
+
+        // The key of an arbitrary layer: the rank, then the rule's className position, so two rules at one rank
+        // hold separate slots and the one written later wins. A position past the field's range shares its top.
+        public static long WithRule(long priority, int declaration)
+            => priority | System.Math.Min(System.Math.Max(declaration + 1, 0), RuleMask);
+
+        // The rank an arbitrary layer's key carries, without its rule position.
+        public static long RankOf(long key) => key & ~RuleMask;
 
         #region Important
-        // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer while important-versus-
-        // important keeps the ordinary ladder: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
+        // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
+        // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
         // w-[20px].
-        public const int Important = 10 * Band;
+        public const long Important = 1L << 62;
 
         // The layer an important payload occupies given the priority it would otherwise have had.
-        public static int ImportantOf(int priority) => Important + priority;
+        public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
-        internal static int ForVariant(StyleVariantKind kind) => s_forVariant[kind];
+        internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
 
-        private static readonly VariantKindTable<int> s_forVariant = new(
+        private static readonly VariantKindTable<long> s_forVariant = new(
             (StyleVariantKind.Hover, Hover),
             (StyleVariantKind.Sm, ResponsiveSm),
             (StyleVariantKind.Md, ResponsiveMd),

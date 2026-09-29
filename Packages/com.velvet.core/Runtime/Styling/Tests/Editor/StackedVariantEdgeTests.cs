@@ -59,6 +59,24 @@ namespace Velvet.Tests
             }
 
             [Test]
+            public void Given_AHasCheckedHoverCardUnderThePointer_When_ItsToggleIsChecked_Then_TheCardIsApplied()
+            {
+                // Arrange — the pointer already rests on the card, and checking the toggle re-sends no PointerOver.
+                _mounted = V.Mount(_root, V.Div(name: "card", className: "has-[:checked]:hover:bg-hot",
+                    children: new VNode?[] { V.Toggle(name: "toggle", value: false) }));
+                var card = _root.Q<VisualElement>("card");
+                using (var over = PointerOverEvent.GetPooled()) card.SimulateEvent(over);
+                var appliedBeforeCheck = card.ClassListContains("bg-hot");
+
+                // Act
+                _root.Q<Toggle>("toggle").SetValueWithoutNotify(true);
+                using (var change = ChangeEvent<bool>.GetPooled()) card.SimulateEvent(change);
+
+                // Assert
+                Assert.That((appliedBeforeCheck, card.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+            }
+
+            [Test]
             public void Given_ADarkHoverLeafUnderThePointer_When_DarkTurnsOn_Then_TheLeafIsApplied()
             {
                 // Arrange — the pointer already rests on the leaf, and nothing re-sends PointerOver when dark

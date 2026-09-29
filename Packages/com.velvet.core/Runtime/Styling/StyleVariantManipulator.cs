@@ -93,8 +93,8 @@ namespace Velvet
         private string[] _checked;
         private string[] _disabled;
         // Each payload's position in the className, kept per state alongside the payloads themselves so a
-        // payload can be ranked against one a DIFFERENT owner applied at the same layer — a stacked
-        // dark:hover: shares this manipulator's hover layer. Identified by reference, like PriorityFor.
+        // payload can be ranked against one a DIFFERENT owner applied at the same rank. Identified by reference,
+        // like PriorityFor.
         private int[] _hoverDeclarations;
         private int[] _focusDeclarations;
         private int[] _focusVisibleDeclarations;
@@ -197,6 +197,13 @@ namespace Velvet
             : kind == StyleVariantKind.FocusVisible ? _isFocusVisible
             : kind == StyleVariantKind.Active && _isActive;
 
+        // The same question asked of an element with no manipulator tracking it, such as a child a [&>*]:hover:
+        // payload lands on, answered from UI Toolkit's own pseudo-states.
+        internal static bool LiveHolds(VisualElement element, StyleVariantKind kind) =>
+            kind == StyleVariantKind.Hover ? element.hasHoverPseudoState
+            : kind == StyleVariantKind.Focus ? element.hasFocusPseudoState
+            : kind == StyleVariantKind.Active && element.hasActivePseudoState;
+
         private void OnDisabled(bool on)
         {
             if (on != _isDisabled) { _isDisabled = on; ApplyPayloads(_disabled, on); }
@@ -277,7 +284,7 @@ namespace Velvet
 
         // Arbitrary-value layering priority for the state whose payload array this is (identified by reference),
         // so e.g. an active arbitrary value layers over a hover one, and clearing active falls back to hover.
-        private int PriorityFor(string[] payloads) =>
+        private long PriorityFor(string[] payloads) =>
             ReferenceEquals(payloads, _disabled) ? StyleLayerPriority.Disabled
             : ReferenceEquals(payloads, _checked) ? StyleLayerPriority.Checked
             : ReferenceEquals(payloads, _active) ? StyleLayerPriority.Active

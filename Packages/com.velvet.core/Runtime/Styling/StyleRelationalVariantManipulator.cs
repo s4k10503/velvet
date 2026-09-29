@@ -159,7 +159,7 @@ namespace Velvet
         // the owner, and the per-state priority is shared across names — so two named bindings of the same
         // state + same inner leaf must use DISTINCT owners or one's exit would tear down the gate the other
         // still needs. Per-binding owners keep their nested manipulators independent.
-        private void ApplyPayloads(object owner, string[] payloads, int[] declarations, bool on, int priority)
+        private void ApplyPayloads(object owner, string[] payloads, int[] declarations, bool on, long priority)
             => StyleVariantPayload.Apply(target, payloads, on, priority, _ctx, owner, declarations);
 
         internal static VisualElement? FindAncestorWithClass(VisualElement element, string cls)
@@ -356,7 +356,7 @@ namespace Velvet
             // plain USS class collide likewise (USS class toggling is not ref-counted) — the same pre-existing
             // behavior any two variants sharing a class already have (hover:bg-on focus:bg-on). Give distinct
             // names distinct payloads to avoid it. The stacked-inner case is kept independent via per-binding owners.
-            private int PriorityFor(StyleVariantClass.RelationalState state) => state switch
+            private long PriorityFor(StyleVariantClass.RelationalState state) => state switch
             {
                 StyleVariantClass.RelationalState.Hover
                     => _isPeer ? StyleLayerPriority.PeerHover : StyleLayerPriority.GroupHover,

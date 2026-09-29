@@ -189,15 +189,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AContainerBlanketHoverRule_When_TheChildDeclaresItsOwnHoverRule_Then_TheChildsRuleWins()
+        public void Given_AContainerBlanketHoverRule_When_TheChildDeclaresItsOwnHoverRule_Then_TheContainersRuleWins()
         {
-            // Arrange — a [&>*]: payload that is itself a state variant is promoted out of the child-variant
-            // layer onto the hover layer, where the child's OWN hover: payload also sits. The promoted one is
-            // positioned in the PARENT's className, which cannot be compared with the child's, so it has to
-            // lose the tie: the child-variant layer exists to rank a container's blanket rule BELOW a rule
-            // the child declares for itself.
+            // Arrange — [&>*]:hover: is `.p > *:hover` on the child: hover's specificity, and an arbitrary variant,
+            // which Tailwind emits after every named one, so it outranks the child's own hover:.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
             {

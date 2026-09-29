@@ -158,8 +158,9 @@ feature query adds no specificity, so `md:w-[10px] hover:w-[20px]` on a hovered 
 is 20 px wide; an attribute selector carries a pseudo-class's and is emitted after the states, so
 `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves to 0.75.
 
-Lowest first. Where members of one row also rank against each other, `<` shows that order; where they
-do not, each still occupies a layer of its own, so turning one off never disturbs another.
+Lowest first, each row in the order `<` shows. Two rules of one rank — `nth-1:` beside `nth-2:`, two
+`data-[…]:` rules — keep a value each, so turning one off never disturbs the other, and while both hold
+the one written later in the className wins.
 
 | | Specificity | Layer |
 |---|---|---|
@@ -167,17 +168,18 @@ do not, each still occupies a layer of its own, so turning one off never disturb
 | 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
 | 3 | (0,1,0) | Theme — `dark:` |
 | 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
-| 5 | (0,2,0) | Relational — the `group-*` and `peer-*` states |
-| 6 | (0,2,0) | Structural — `first:` · `last:` · `only:` · `odd:` · `even:` |
+| 5 | (0,2,0) | Relational — the `group-*` states < the `peer-*` states |
+| 6 | (0,2,0) | Structural — `first:` < `last:` < `only:` < `odd:` < `even:` |
 | 7 | (0,2,0) | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
-| 8 | (0,2,0) | `has-[…]:` < `aria-[…]:` < `data-[…]:` < `nth-N:` / `nth-last-N:` |
+| 8 | (0,2,0) | `has-[…]:` < `aria-[…]:` < `data-[…]:` < `nth-N:` < `nth-last-N:` |
 | 9 | (0,2,0) | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
 | 10 | | The important band — rows 1–9 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) takes the specificity of its most specific part and sorts
-by its latest-emitted part, then by the next: `dark:hover:` outranks plain `hover:` and row 8, because
-`dark` is emitted after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus` is
-emitted after `hover`.
+A **stacked** variant is one rule carrying every part: their specificities add, and it sorts by the
+latest-emitted part, then the next, and so on. So `hover:focus:` is (0,3,0) and outranks every row
+above; `dark:hover:` keeps hover's (0,2,0), outranks plain `hover:` and row 8 because `dark` is emitted
+after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus` is emitted after
+`hover`; and `[&>*]:hover:` outranks the child's own `hover:`, the arbitrary variant being emitted last.
 
 ### The important modifier
 

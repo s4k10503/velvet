@@ -42,14 +42,25 @@ namespace Velvet
         private const string NthLastPrefix = "nth-last-";
 
         /// <summary>
-        /// The layer a structural token occupies. Tailwind registers first/last/only/odd/even right after
-        /// group/peer, the nth-* functional variants after data, and orders every arbitrary variant after all
-        /// the registered ones.
+        /// The rank a structural token's rule takes: an arbitrary [&amp;:…]: selector is one arbitrary variant
+        /// whatever position it names, and a named one is the variant of its kind.
         /// </summary>
-        internal static int PriorityOf(string token) =>
+        internal static long PriorityOf(string token, StyleStructuralKind kind) =>
             token.StartsWith(ArbitraryPrefix, StringComparison.Ordinal) ? StyleLayerPriority.ArbitrarySelector
-            : token.StartsWith(NthPrefix, StringComparison.Ordinal) ? StyleLayerPriority.Nth
-            : StyleLayerPriority.Structural;
+            : NamedPriorityOf(kind);
+
+#pragma warning disable CS8524 // no discard arm: a new kind has to state its rank
+        private static long NamedPriorityOf(StyleStructuralKind kind) => kind switch
+        {
+            StyleStructuralKind.First => StyleLayerPriority.First,
+            StyleStructuralKind.Last => StyleLayerPriority.Last,
+            StyleStructuralKind.Only => StyleLayerPriority.Only,
+            StyleStructuralKind.Odd => StyleLayerPriority.Odd,
+            StyleStructuralKind.Even => StyleLayerPriority.Even,
+            StyleStructuralKind.NthChild => StyleLayerPriority.Nth,
+            StyleStructuralKind.NthLastChild => StyleLayerPriority.NthLast,
+        };
+#pragma warning restore CS8524
 
         /// <summary>True if <paramref name="token"/> is a recognized structural variant token.</summary>
         public static bool IsStructural(string? token) => TryParse(token, out _, out _, out _);
@@ -142,7 +153,8 @@ namespace Velvet
             return false;
         }
 
-        // nth-3 / nth-last-2: the functional forms, whose value is a positive integer.
+        // nth-3 / nth-last-2: the functional forms. Tailwind takes a value only in its canonical spelling, so
+        // nth-01 is refused and nth-0 is accepted and matches no child.
         private static bool TryParseNamedNth(string prefix, out StyleStructuralKind kind, out int n)
         {
             var last = prefix.StartsWith(NthLastPrefix, StringComparison.Ordinal);
@@ -154,7 +166,8 @@ namespace Velvet
             }
             var digits = prefix.Substring(last ? NthLastPrefix.Length : NthPrefix.Length);
             return int.TryParse(digits, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out n) && n >= 1;
+                    System.Globalization.CultureInfo.InvariantCulture, out n)
+                && digits == n.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // Parses the positive integer N out of "<fn>N)" (e.g. "nth-child(3)" → 3). Only a bare 1-based

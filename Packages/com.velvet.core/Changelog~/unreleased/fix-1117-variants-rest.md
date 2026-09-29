@@ -6,11 +6,17 @@
   above `active:`, where Tailwind emits it. `StyleVariantKind.Disabled` is the new member.
 
 - `group-disabled:` and `peer-disabled:`, as Tailwind's. They read the marked `group` ancestor or `peer` sibling
-  on the same terms `disabled:` reads the element, and rank above the other relational states on a tie.
-  `StyleVariantKind.GroupDisabled` and `StyleVariantKind.PeerDisabled` are the new members.
+  on the same terms `disabled:` reads the element, and rank above the other `group-*` and `peer-*` states
+  respectively on a tie. `StyleVariantKind.GroupDisabled` and `StyleVariantKind.PeerDisabled` are the new members.
 
-- `nth-N:` and `nth-last-N:`, Tailwind's functional forms of `[&:nth-child(N)]:` and `[&:nth-last-child(N)]:`,
-  for a positive integer `N`.
+- `nth-N:` and `nth-last-N:`, Tailwind's functional forms of `[&:nth-child(N)]:` and `[&:nth-last-child(N)]:`.
+  As in Tailwind, `N` is a whole number written without leading zeros, and `nth-0:` matches no child.
+
+### Fixed
+
+- Two variant rules of one rank that set the same inline-resolved property keep a value each, so one turning off
+  no longer removes the other's: `odd:bg-[#fff] even:bg-[#eee]` colours the odd rows, and
+  `data-[state=open]:w-[10px] data-[state=closed]:w-[20px]` keeps 10 px while the state is open.
 
 ### Changed
 

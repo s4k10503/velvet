@@ -79,6 +79,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHoverFocusStackAndActive_When_AllHold_Then_TheStackWins()
+        {
+            // Arrange — hover:focus: is (0,3,0) against active's (0,2,0).
+            var leaf = MountLeaf("hover:focus:w-[20px] active:w-[10px]");
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+
+            // Act
+            using (var down = PointerDownEvent.GetPooled()) leaf.SimulateEvent(down);
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_TwoDataWidths_When_OnlyTheFirstMatches_Then_ItsWidthHolds()
+        {
+            // Arrange / Act — the second rule evaluates off after the first turned on, on one rank.
+            var leaf = MountLeaf("data-[state=open]:w-[10px] data-[state=closed]:w-[20px]",
+                data: new Dictionary<string, string> { ["state"] = "open" });
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
         public void Given_ActiveAndDataOpacityClasses_When_TheElementIsPressed_Then_TheDataClassWins()
         {
             // Arrange

@@ -2167,9 +2167,10 @@ namespace Velvet
                         disabledDecl)));
         }
 
-        // A stacked element-local inner (dark:hover:) is created when its outer gate opens and seeds itself from
-        // the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element carrying one keeps
-        // that manipulator tracking its state even with no payload of its own.
+        // A stacked element-local inner (dark:hover:, has-[:checked]:hover:) is created when its outer gate opens
+        // and seeds itself from the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element
+        // carrying one keeps that manipulator tracking its state even with no payload of its own. A has- token's
+        // own payload is its first inner, so the chain is read from there.
         private static bool StacksElementLocalInner(string[] classNames)
         {
             if (classNames == null)
@@ -2178,7 +2179,9 @@ namespace Velvet
             }
             foreach (var className in classNames)
             {
-                if (!StyleVariantClass.TryParse(className, out _, out var rest))
+                string? rest = null;
+                if (!StyleVariantClass.TryParse(className, out _, out rest)
+                    && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
                 {
                     continue;
                 }
@@ -2810,7 +2813,7 @@ namespace Velvet
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, int Priority)>? rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)>? rules = null;
             if (classNames != null)
             {
                 for (var i = 0; i < classNames.Length; i++)
@@ -2828,9 +2831,9 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                                int[] Declarations, int Priority)>())
+                                int[] Declarations, long Priority)>())
                             .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i },
-                                StyleStructuralVariantClass.PriorityOf(cls)));
+                                StyleStructuralVariantClass.PriorityOf(cls, kind)));
                     }
                 }
             }
@@ -2864,7 +2867,7 @@ namespace Velvet
         // Applies / clears each structural rule's payload for an element at the given sibling position.
         private static void EvaluateStructural(
             ReconcilerContext ctx, VisualElement element, int index, int count,
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, int Priority)> rules)
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> rules)
         {
             foreach (var rule in rules)
             {

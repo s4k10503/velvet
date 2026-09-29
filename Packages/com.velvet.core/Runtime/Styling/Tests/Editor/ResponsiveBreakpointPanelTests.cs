@@ -71,6 +71,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_SmHoverAndMdHoverWidths_When_TheRootShrinksBelowMdWhileHovered_Then_TheSmWidthRemains()
+        {
+            // Arrange — above md both stacks hold and md's wins; they are two rules, so md's turning off must leave
+            // sm's value standing.
+            var leaf = MountAndResolveAt(1000f, "sm:hover:w-[10px] md:hover:w-[20px]");
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            var widthAboveMd = leaf.style.width.value.value;
+
+            // Act
+            ResolveAt(700f, leaf);
+
+            // Assert
+            Assert.That((widthAboveMd, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
+        }
+
+        [Test]
         public void Given_AChildMdWidthUnderAParentChildVariant_When_TheRootIsWiderThanMd_Then_TheParentWidthWins()
         {
             // Arrange
