@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -158,9 +157,9 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
             var element = new VisualElement();
             host.Root.Add(element);
-            element.style.transitionProperty = new List<StylePropertyName> { "all", "opacity" };
-            element.style.transitionDuration = new List<TimeValue> { new(1f), new(0.1f) };
-            element.style.transitionTimingFunction = new List<EasingFunction> { EasingMode.Linear };
+            element.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { "all", "opacity" };
+            element.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(1f), new(0.1f) };
+            element.style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { EasingMode.Linear };
             EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
 
             // Act
