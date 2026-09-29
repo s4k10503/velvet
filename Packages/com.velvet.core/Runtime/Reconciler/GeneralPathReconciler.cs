@@ -2244,9 +2244,9 @@ namespace Velvet
         internal static Action? ContainedEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
             => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion, boundaryFiber);
 
-        // A variant Motion (carrying variants + animate) manages its resting state through variant classes:
-        // variants[animate] is applied at mount and restored by CancelExit on an exit-cancel. So it only ever
-        // plays a VARIANT enter (when an `initial` label is declared) and must NOT fall through to the classic
+        // A variant Motion (carrying variants and an animate label, its own or inherited) manages its resting state
+        // through variant classes: variants[animate] is applied at mount and restored by CancelExit on an
+        // exit-cancel. So it only ever plays a VARIANT enter (when an initial label resolves) and must NOT fall through to the classic
         // preset enter — the default StyleTransition.Fade would replay a fade-in on top of the resting variant
         // on every add / interrupt. The variant swap targets the Motion's OWN element (where those resting
         // classes live), which for a wrapped Motion is not the anchor; without a resolved element the variant
@@ -2264,9 +2264,14 @@ namespace Velvet
             float staggerDelaySec,
             ComponentFiber? boundaryFiber)
         {
-            var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
+            // Resolved as FiberNodeFactory.ResolveMountEnter resolves them, so an anchor inheriting its labels from
+            // the Motion above the presence is a variant Motion here too.
+            var stack = _ctx.ComponentContextStack;
+            var animateLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
+            var initialLabel = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel));
+            var isVariantMotion = motionElement != null && motion.Variants != null && animateLabel != null;
             if (isVariantMotion && !wasExiting
-                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses,
+                && TryResolveVariantEnter(motion, initialLabel, animateLabel, out var fromClasses, out var toClasses,
                     out var enterTransition)
                 && enterTransition != null)
             {
@@ -2282,7 +2287,7 @@ namespace Velvet
             }
             else if (isVariantMotion)
             {
-                // Variant Motion without `initial`: rest at variants[animate], no enter anim.
+                // Variant Motion without `initial`, or one whose exit was cancelled: rest at the animate pose.
                 InvokeEnterComplete(motion, boundaryFiber);
             }
             else

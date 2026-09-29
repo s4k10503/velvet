@@ -231,6 +231,23 @@ namespace Velvet.Tests
             });
         }
 
+        // Keyed children that inherit the label of the Motion above the presence and play the classic Fade
+        // preset's exit on removal.
+        [Component]
+        private static VNode InheritingPresenceHost()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item", key: key.ToString(), variants: s_fade, transition: StyleTransition.Fade));
+            }
+            return V.Motion(name: "host", animate: "visible", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
+            });
+        }
+
         // PresenceHost's presence, taken out of the tree while s_showStore is off.
         [Component]
         private static VNode ShowablePresenceHost()
@@ -350,6 +367,28 @@ namespace Velvet.Tests
             Assert.That(
                 (ReferenceEquals(item, before), item.ClassListContains("opacity-100"), item.ClassListContains("opacity-0")),
                 Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_AnAnchorInheritingItsLabelExiting_When_TheKeyReturnsBeforeTheExitCompletes_Then_ItRestsWithNoPresetEnter()
+        {
+            // Arrange
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
+            Frames(40);
+            keys.Set(string.Empty);
+            Drain(mounted);
+            Frames(3);
+
+            // Act — back mid-exit.
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — resting at the inherited pose, with the Fade preset's enter not started over it.
+            var item = Root.Q<VisualElement>("item");
+            Assert.That((item.ClassListContains("anim-fade-enter-from"), item.ClassListContains("opacity-100")),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
