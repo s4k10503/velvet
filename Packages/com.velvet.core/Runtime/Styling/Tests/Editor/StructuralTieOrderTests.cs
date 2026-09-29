@@ -84,8 +84,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AGroupHoverHoverStackBesidePlainHover_When_BothHold_Then_TheStacksClassAloneRemains()
         {
-            // Arrange — the stack is (0,3,0) against hover's (0,2,0), so it wins though the plain one is written
-            // later, and the projection takes the losing class off the element.
+            // Arrange — the stack outranks plain hover: though the plain one is written later — its parts add a
+            // class, and its variant set holds hover's bit and one more — and the projection takes the losing
+            // class off the element.
             var (group, leaf) = MountFirstChild("group-hover:hover:opacity-75 hover:opacity-50");
 
             // Act

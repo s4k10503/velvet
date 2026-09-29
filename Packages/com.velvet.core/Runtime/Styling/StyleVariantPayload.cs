@@ -120,12 +120,12 @@ namespace Velvet
             VisualElement target, string core, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
+            // An inline layer is keyed by the rule as well as its rank, so a rule turning off clears its own value
+            // and not that of another rule on the same rank (nth-1: beside nth-2:). Both inline paths below take it.
+            var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
                 && StyleArbitraryValueResolver.TryParse(core, out var style))
             {
-                // Keyed by the rule as well as its rank, so a rule turning off clears its own value and not that
-                // of another rule on the same rank (nth-1: beside nth-2:).
-                var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
                 if (on)
                 {
                     StyleArbitraryValueResolver.Apply(target, in style, key);
@@ -150,7 +150,7 @@ namespace Velvet
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
             // active — the shared clear resolves the name syntactically and removes the mirrored class (see
             // TryClearUnregisteredFilterToken).
-            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, effectivePriority))
+            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
             {
                 return (false, false);
             }

@@ -42,8 +42,8 @@ namespace Velvet
         private const string NthLastPrefix = "nth-last-";
 
         /// <summary>
-        /// The rank a structural token's rule takes: an arbitrary [&amp;:…]: selector is one arbitrary variant
-        /// whatever position it names, and a named one is the variant of its kind.
+        /// The family-level rank a structural token's rule takes: every arbitrary [&amp;:…]: selector shares the
+        /// arbitrary one, and a named token takes its kind's.
         /// </summary>
         internal static long PriorityOf(string token, StyleStructuralKind kind) =>
             token.StartsWith(ArbitraryPrefix, StringComparison.Ordinal) ? StyleLayerPriority.ArbitrarySelector

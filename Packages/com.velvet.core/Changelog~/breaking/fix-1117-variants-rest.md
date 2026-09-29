@@ -14,6 +14,6 @@
     lost to them; it still loses to the child's own pseudo-class variants.
   - A stacked variant carries the specificity of all its parts added together and ranks by every part, where it
     took its stronger part's place: `hover:focus:w-[20px] active:w-[10px]` on a hovered, focused, pressed element
-    was 10 px wide and is now 20 px; `dark:hover:shadow-lg hover:shadow-sm` in dark mode paints `shadow-lg`
-    whichever is written later; and a container's `[&>*]:hover:` payload now beats the child's own `hover:`.
+    was 10 px wide and is now 20 px; `dark:hover:shadow-lg hover:shadow-sm` on a hovered element in dark mode
+    paints `shadow-lg` whichever is written later; and a container's `[&>*]:hover:` payload now beats the child's own `hover:`.
   - An `aria-[…]:` and a `data-[…]:` payload no longer tie: `data-[…]:` wins, as Tailwind emits it later.

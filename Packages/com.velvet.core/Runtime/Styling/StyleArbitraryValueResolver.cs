@@ -1064,8 +1064,8 @@ namespace Velvet
             return TryLayeredWinner(map, slot, out var winner) ? winner : null;
         }
 
-        // The highest-priority layer among the properties writing slot; on a tie the narrower property, the
-        // later one in WritersOf.
+        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's className
+        // position — and on an equal key the narrower property, the later one in WritersOf.
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
             winner = default;

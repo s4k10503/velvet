@@ -14,8 +14,8 @@
 
 ### Fixed
 
-- Two variant rules of one rank that set the same inline-resolved property keep a value each, so one turning off
-  no longer removes the other's: `odd:bg-[#fff] even:bg-[#eee]` colours the odd rows, and
+- Two variant rules that set the same inline-resolved property keep a value each, so one turning off no longer
+  removes the other's: `odd:bg-[#fff] even:bg-[#eee]` colours the odd rows, and
   `data-[state=open]:w-[10px] data-[state=closed]:w-[20px]` keeps 10 px while the state is open.
 
 ### Changed

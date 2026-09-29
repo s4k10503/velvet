@@ -198,7 +198,8 @@ namespace Velvet
             : kind == StyleVariantKind.Active && _isActive;
 
         // The same question asked of an element with no manipulator tracking it, such as a child a [&>*]:hover:
-        // payload lands on, answered from UI Toolkit's own pseudo-states.
+        // payload lands on, answered from UI Toolkit's own pseudo-states. Focus-visible reads none here and seeds
+        // off, as checked and disabled need no seed (their inners read their state at hook time).
         internal static bool LiveHolds(VisualElement element, StyleVariantKind kind) =>
             kind == StyleVariantKind.Hover ? element.hasHoverPseudoState
             : kind == StyleVariantKind.Focus ? element.hasFocusPseudoState

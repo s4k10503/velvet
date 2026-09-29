@@ -70,6 +70,20 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 20f)));
         }
 
+        // GREEN_ON_BASE(characterization): md already outranked sm on the base; the case pins it under the rank
+        // rework, where the two sharing a rank would hand the width to the later-written sm.
+        [Test]
+        public void Given_MdWrittenBeforeSm_When_TheRootIsWiderThanMd_Then_TheMdWidthWins()
+        {
+            // Arrange / Act — md's rank is above sm's, so written first it still wins; on one rank the later sm
+            // would.
+            var leaf = MountAndResolveAt(1000f, "md:w-[20px] sm:w-[10px]");
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 20f)));
+        }
+
         [Test]
         public void Given_SmHoverAndMdHoverWidths_When_TheRootShrinksBelowMdWhileHovered_Then_TheSmWidthRemains()
         {
