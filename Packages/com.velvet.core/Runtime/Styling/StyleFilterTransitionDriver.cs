@@ -45,9 +45,8 @@ namespace Velvet
     // site that composes and writes style.filter — so it covers every filter path (base blur-md, arbitrary
     // blur-[6px], custom filter-[name:args], and the variant path hover:blur-md) with no per-manipulator wiring.
     //
-    // animate-hue owns style.filter unconditionally while active; combining a filter transition with animate-hue
-    // on one element is unsupported (Hue wins). Hue's own Detach re-asserts static filters through
-    // ApplyCombinedFilter, so a benign one-shot tween may kick off right after a Hue Detach — harmless.
+    // animate-hue writes style.filter every tick while active and bypasses this driver, so combining a filter
+    // transition with animate-hue on one element is unsupported: while a tween runs, their writes alternate.
     //
     // The phase math (ApplyFrame / channel alignment) is pure and unit-tested directly; the scheduler
     // wiring runs at runtime (the EditMode PlayerLoop does not tick, so tests drive ApplyFrame at explicit
@@ -87,6 +86,15 @@ namespace Velvet
             => s_bindings.GetValue(element, _ => new StyleFilterTransitionBinding());
 
         public static void Unregister(VisualElement element) => s_bindings.Remove(element);
+
+        // Stops whatever tween the element has without writing to it, for an element about to serve another consumer.
+        public static void Release(VisualElement element)
+        {
+            if (s_bindings.TryGetValue(element, out var b))
+            {
+                Cancel(b);
+            }
+        }
 
         // The write hook, called from ApplyCombinedFilter with the freshly composed target list (null = clear).
         // Returns true iff it took ownership of the write (started or redirected a tween); false lets the
@@ -257,12 +265,16 @@ namespace Velvet
             var host = element.panel.visualTree;
             b.Scheduled = host.schedule.Execute(() =>
             {
-                // A removed element may be pooled and handed to another consumer before the tween would end, so
-                // nothing is written to it. The reconciler pauses the ticks of the bindings it made at teardown;
-                // this is what stops one the write hook made.
+                var progress = Progress(b);
+                if (progress >= 1f)
+                {
+                    Settle(element, b);
+                    return;
+                }
+                // Off the panel nothing paints, so no frame is written; the tween's frames resume if the element comes
+                // back. An element handed to another consumer is released by the pool reset (Release).
                 if (element.panel == null)
                 {
-                    Cancel(b);
                     return;
                 }
                 // The resolved transition lists can change WHILE the tween runs — a class swap the reconciler keeps
@@ -271,12 +283,6 @@ namespace Velvet
                 // painted value, so the paint would crawl behind a target that moves each tick. Hand over by
                 // settling once instead, as where nothing runs for filter any more.
                 if (EngineTimesFilterWrites(element) || !FilterTransitionRuns(element))
-                {
-                    Settle(element, b);
-                    return;
-                }
-                var progress = Progress(b);
-                if (progress >= 1f)
                 {
                     Settle(element, b);
                     return;

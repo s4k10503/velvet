@@ -778,8 +778,8 @@ namespace Velvet
         // drives the element's own inline filter with no wrapper. The binding holds a one-shot scheduled tick,
         // so cleanup must PAUSE it (unlike the pure side-tables); FiberElementCleaner / Reconciler.Dispose call
         // StyleFilterTransitionDriver.Detach. The driver's own ConditionalWeakTable is the lookup the resolver
-        // uses during event callbacks (no context there); this dictionary only mirrors the refs so the dispose
-        // sweep can enumerate them (a CWT is not enumerable).
+        // uses during event callbacks (no context there); this dictionary mirrors the bindings made for
+        // transition-filter so the dispose sweep can enumerate them (a CWT is not enumerable).
         public Dictionary<VisualElement, StyleFilterTransitionBinding> FilterTransitionBindings { get; } = new();
 
         // Per-SceneView-element bookkeeping (V.SceneView), keyed by the element itself. The binding

@@ -682,22 +682,61 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARunningTween_When_TheElementLeavesThePanel_Then_TheNextTickStopsIt()
+        public void Given_ARunningTween_When_ItTicksOffThePanel_Then_NoFrameIsWritten()
         {
-            // Arrange — a live tween, then the element taken out of the tree past the reconciler, which would
-            // otherwise pause the tick itself.
+            // Arrange — a live tween, then the element taken out of the tree past the reconciler.
             var element = MountResolved("transition-filter duration-300");
             var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
             var panel = element.panel;
             ApplyBlur(element, 12f);
             var started = binding.Scheduled != null;
             element.RemoveFromHierarchy();
+            var written = element.style.filter.value;
 
             // Act
             EditorPanelTestHelpers.DriveSchedulerOnce(panel);
 
-            // Assert — a tween ran, and its next tick stopped it.
-            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
+            // Assert — a tween ran, it is still running, and the tick wrote no new list.
+            Assert.That((started, binding.Scheduled != null, ReferenceEquals(element.style.filter.value, written)),
+                Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): a tween off the panel past its end settles on its target, as on the base.
+        [Test]
+        public void Given_ARunningTweenOffThePanelPastItsEnd_When_ItTicks_Then_ItSettlesOnItsTarget()
+        {
+            // Arrange — a live tween whose element is taken out of the tree, and its whole duration then past.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var panel = element.panel;
+            ApplyBlur(element, 12f);
+            element.RemoveFromHierarchy();
+            binding.StartTime -= 10;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert
+            Assert.That((binding.Scheduled, element.style.filter.value[0].GetParameter(0).floatValue),
+                Is.EqualTo(((IVisualElementScheduledItem)null, 12f)));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing writes a filter onto an element after its pool reset, as on the base.
+        // The base bound no tween on an element without transition-filter, so none could outlive the reset.
+        [Test]
+        public void Given_ARunningTweenTheWriteHookBound_When_ThePoolResetRuns_Then_TheNextTickWritesNoFilter()
+        {
+            // Arrange — a tween on an element no reconciler owns.
+            var element = AddBareElement();
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+
+            // Act — the reset a pooled element gets, with the element still on the panel as the next consumer's.
+            FiberElementPoolReset.ResetCommonState(element);
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert
+            Assert.That(element.style.filter.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         #endregion
@@ -1438,6 +1477,21 @@ namespace Velvet.Tests
 
             // Assert — half way from CSS's identity 1 to 2; the engine's own padding would put it at 1.
             Assert.That(element.resolvedStyle.filter.ElementAt(2).GetParameter(0).floatValue, Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransitionNamingFilter_When_ABlurSlotIsClearedPastTheLayerMap_Then_TheTweenRunsIt()
+        {
+            // Arrange — a blur at rest on an element the resolver holds no filter layer for, under a list naming filter.
+            var element = AddBareElement();
+            element.style.filter = BlurList(12f);
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            StyleArbitraryValueResolver.ClearInline(element, ArbitraryProperty.FilterBlur);
+
+            // Assert — the removal is the tween's, as a removal through the layer map is.
+            Assert.That(DriverBinding(element)?.Scheduled, Is.Not.Null);
         }
 
         [Test]

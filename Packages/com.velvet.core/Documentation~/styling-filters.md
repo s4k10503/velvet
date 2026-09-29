@@ -110,8 +110,8 @@ Two animators run these changes:
 | has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
 | any other | `transition-filter`, a hand-authored list | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
 
-UI Toolkit's inline-filter setter animates a filter write by the entry for `background-size`, whatever the list
-says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
+UI Toolkit's inline-filter setter animates a filter list write by the entry for `background-size`, whatever the
+list says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
 Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition.
 Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter

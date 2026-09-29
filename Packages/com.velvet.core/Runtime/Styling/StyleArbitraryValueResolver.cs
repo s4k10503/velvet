@@ -1364,9 +1364,9 @@ namespace Velvet
             }
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
             // from-side, so it must run BEFORE the instant write below (never observing its own write). It
-            // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // resolved transition lists the tween does not run under (the engine's own animation runs the change,
-            // or no transition does), or a non-interpolable change.
+            // returns false — deferring to the instant write — off-panel, for resolved transition lists the tween
+            // does not run under (the engine's own animation runs the change, or no transition does), or for a
+            // non-interpolable change.
             if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
             {
                 StyleFilterEngineWrite.Write(element, functions);
@@ -1606,7 +1606,10 @@ namespace Velvet
             // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
-                StyleFilterEngineWrite.Write(element, null);
+                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
+                {
+                    StyleFilterEngineWrite.Write(element, null);
+                }
                 return true;
             }
             return false;

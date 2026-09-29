@@ -611,8 +611,9 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, binding);
             }
             _ctx.AnimationBindings.Clear();
-            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each so a still-mounted
-            // element released at root disposal stops ticking any in-flight filter tween.
+            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each binding transition-filter made,
+            // so a still-mounted element released at root disposal stops ticking its in-flight filter tween. A tween
+            // the write hook bound runs to its end and settles on its own target.
             foreach (var (element, binding) in _ctx.FilterTransitionBindings)
             {
                 StyleFilterTransitionDriver.Detach(element, binding);
