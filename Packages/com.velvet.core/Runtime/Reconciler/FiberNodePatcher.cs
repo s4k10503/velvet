@@ -2620,7 +2620,7 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Attribute, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.AttributeOf(rule.Ns), _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.AttributeVariants.Remove(element);
@@ -2731,7 +2731,7 @@ namespace Velvet
                     present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
                 }
                 var on = StyleAttributeVariantClass.Matches(rule.ExpectedValue, present, actual);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Attribute, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.AttributeOf(rule.Ns), ctx,
                     declarations: rule.Declarations);
             }
         }

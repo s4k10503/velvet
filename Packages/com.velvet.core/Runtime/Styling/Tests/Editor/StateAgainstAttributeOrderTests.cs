@@ -40,6 +40,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_DataAndAriaWidthsWrittenInThatOrder_When_BothHold_Then_TheDataWidthWins()
+        {
+            // Arrange / Act — aria written later, so a shared layer would hand it the width by source order.
+            var leaf = MountLeaf("data-[state=open]:w-[20px] aria-[busy=true]:w-[10px]",
+                data: new Dictionary<string, string> { ["state"] = "open" },
+                aria: new Dictionary<string, string> { ["busy"] = "true" });
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        // GREEN_ON_BASE(characterization): dark:focus: already beat dark:hover: on the base, where each stack
+        // took its state part's layer; the case pins that the stacks' second-part order keeps it now that both
+        // share dark's.
+        [Test]
+        public void Given_DarkFocusAndDarkHoverWidths_When_BothHold_Then_TheDarkFocusWidthWins()
+        {
+            // Arrange
+            var darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = true;
+            try
+            {
+                // dark:hover: written later, so a shared layer would hand it the width by source order.
+                var leaf = MountLeaf("dark:focus:w-[20px] dark:hover:w-[10px]");
+
+                // Act
+                using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+                // Assert
+                Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+            }
+            finally
+            {
+                VelvetTheme.IsDark = darkBefore;
+            }
+        }
+
+        [Test]
         public void Given_ActiveAndDataOpacityClasses_When_TheElementIsPressed_Then_TheDataClassWins()
         {
             // Arrange

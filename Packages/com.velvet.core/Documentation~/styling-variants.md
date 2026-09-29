@@ -170,13 +170,14 @@ do not, each still occupies a layer of its own, so turning one off never disturb
 | 5 | (0,2,0) | Relational — the `group-*` and `peer-*` states |
 | 6 | (0,2,0) | Structural — `first:` · `last:` · `only:` · `odd:` · `even:` |
 | 7 | (0,2,0) | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
-| 8 | (0,2,0) | `has-[…]:` < `data-[…]:` / `aria-[…]:` < `nth-N:` / `nth-last-N:` |
+| 8 | (0,2,0) | `has-[…]:` < `aria-[…]:` < `data-[…]:` < `nth-N:` / `nth-last-N:` |
 | 9 | (0,2,0) | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
 | 10 | | The important band — rows 1–9 again, one level each, for anything carrying `!` |
 
 A **stacked** variant (`dark:hover:bg-red`) takes the specificity of its most specific part and sorts
-just after the latest-emitted part alone: `dark:hover:` outranks plain `hover:` and row 8, because
-`dark` is emitted after all of them, and ranks below row 9.
+by its latest-emitted part, then by the next: `dark:hover:` outranks plain `hover:` and row 8, because
+`dark` is emitted after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus` is
+emitted after `hover`.
 
 ### The important modifier
 

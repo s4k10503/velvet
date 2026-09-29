@@ -150,7 +150,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoAttributeRulesOfTheShadowFamily_When_TheSameStateIsReachedByEitherRuleOrder_Then_TheSameShadowPaints()
         {
-            // Arrange — both rules layer at the SAME priority (every data-/aria- rule does), so the
+            // Arrange — both rules layer at the SAME priority (every data- rule does), so the
             // precedence table cannot separate them and the className's own declaration order is what
             // decides, exactly as source order decides a tie between two equal-specificity CSS rules. The
             // later-declared shadow-sm is what both orders owe.
