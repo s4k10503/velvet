@@ -49,6 +49,7 @@ namespace Velvet.Tests
             s_errorsSeen = null;
             s_errorsProbeRan = false;
             s_errorBoundaryCaught = false;
+            s_router = null;
         }
 
         [TearDown]
@@ -440,8 +441,9 @@ namespace Velvet.Tests
 
         #region Scope lifetime
 
-        // GREEN_ON_BASE(characterization): a whole-reconciler teardown already released the scope, from a
-        // sweep over the scope table rather than from the fiber teardown that precedes it.
+        // GREEN_ON_BASE(characterization): a whole-reconciler teardown already released the scope.
+        // The router is now built through the helper that publishes it, since an Outlet reaches the scope
+        // factory through the router above it rather than through a static.
         [Test]
         public void Given_RoutedOutletWithScope_When_ReconcilerDisposed_Then_ScopeIsDisposed()
         {
@@ -450,19 +452,20 @@ namespace Velvet.Tests
             // it holds, which is a different entrance from the one a route change or a removal takes.
             // Arrange
             var scopeFactory = new TestRouteScopeFactory();
-            var routes = V.Routes(V.Route(path: "/", element: V.Component(SimpleRender, key: "simple")));
-            var router = new Router(routes, scopeFactory);
+            var router = RouterWithScopeFactory(scopeFactory);
             router.NavigateAsync("/").GetAwaiter().GetResult();
             var tree = OutletUnderRouter(router.CurrentLocation!, depth: 0);
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
-            Assume.That(scopeFactory.LastScope, Is.Not.Null, "Precondition: the Outlet created a route scope");
 
             // Act — dispose the whole Reconciler, not the individual Outlet
             _reconciler.Dispose();
             _reconciler = new Reconciler();
 
-            // Assert
-            Assert.That(scopeFactory.LastScope!.IsDisposed, Is.True);
+            // Assert — the scope's creation rides along: the Outlet reaches the factory through the router
+            // published above it, and a scope never created would otherwise read as nothing to dispose.
+            Assert.That(
+                (created: scopeFactory.LastScope != null, disposed: scopeFactory.LastScope?.IsDisposed == true),
+                Is.EqualTo((created: true, disposed: true)));
 
             router.Dispose();
         }
@@ -560,18 +563,25 @@ namespace Velvet.Tests
                 },
             };
 
-        // The scope factory is reached through Router.Current, so a fixture that wants one has to have a
-        // router standing even when it builds its locations by hand.
+        // The router WrapInRouter publishes, which is what an Outlet reaches the scope factory through. A case
+        // that builds no router publishes none, as an Outlet mounted without a RouterProvider has none.
+        private static Router? s_router;
+
         private static Router RouterWithScopeFactory(IRouteScopeFactory scopeFactory)
-            => new Router(V.Routes(V.Route(path: "/", element: V.Component(SimpleRender, key: "simple"))),
-                scopeFactory);
+            => s_router = new Router(
+                V.Routes(V.Route(path: "/", element: V.Component(SimpleRender, key: "simple"))), scopeFactory);
 
         private static VNode WrapInRouter(RouterLocation location, int depth, VNode body)
-            => V.Provider(RouterContext.Location, location,
+        {
+            var spine = V.Provider(RouterContext.Location, location,
                 children: new VNode[]
                 {
                     V.Provider(RouterContext.Depth, depth, children: new VNode[] { body }),
                 });
+            return s_router == null
+                ? spine
+                : V.Provider(RouterContext.Router, s_router, children: new VNode[] { spine });
+        }
 
         private sealed record RoutedAppProps(RouterLocation Location, int Depth);
 

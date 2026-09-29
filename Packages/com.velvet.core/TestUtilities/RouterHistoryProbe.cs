@@ -28,18 +28,11 @@ namespace Velvet.TestUtilities
         /// </summary>
         public static int CountOf(Router router) => ((ICollection)HistoryOf(router)).Count;
 
-        private const string PathFieldName = "Path";
-
         private static IEnumerable<string> EntryPaths(Router router)
         {
             foreach (var entry in HistoryOf(router))
             {
-                var field = entry.GetType().GetField(PathFieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-                if (field == null)
-                {
-                    throw new MissingFieldException(entry.GetType().FullName, PathFieldName);
-                }
-                yield return (string)field.GetValue(entry)!;
+                yield return (string)entry;
             }
         }
 
