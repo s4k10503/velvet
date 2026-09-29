@@ -15,6 +15,7 @@ namespace Velvet
                 element.AddToClassList(cls);
             }
             ClipPathLayoutBox.SyncClasses(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
         }
 
         // Removes each class, except one kept names, which is added instead: a play may have removed it
@@ -34,6 +35,7 @@ namespace Velvet
                 }
             }
             ClipPathLayoutBox.SyncClasses(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element);
         }
     }
 }

@@ -177,8 +177,9 @@ namespace Velvet
             table[(int)ArbitraryProperty.BorderWidth] = (SlotFamily.BorderWidth, SlotA | SlotB | SlotC | SlotD);
 
             // background-color, color, border-color, flex-basis, font-size and letter-spacing are left at the
-            // no-family default because each owns its slot alone — border-color is the only utility writing
-            // the four border colors.
+            // no-family default because no other drivable property writes their slot — border-color is the only
+            // utility writing the four border colors, and the flex shorthand, which writes flex-basis as well,
+            // is not in s_drivable.
             return table;
         }
 

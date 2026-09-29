@@ -1247,8 +1247,9 @@ namespace Velvet
             map?.Watchers?.Remove(watcher);
         }
 
-        // Re-applies every container watching element after its class list changed. A copy is walked, because a
-        // re-apply can claim or release the element and so edit the list.
+        // Re-resolves the flex slots under a flex shorthand layer, and re-applies every container watching
+        // element, after its class list changed. A copy of the watchers is walked, because a re-apply can claim or release the element and so
+        // edit the list.
         internal static void NotifyClassesChanged(VisualElement element)
         {
             if (!s_layers.TryGetValue(element, out var map))
@@ -1508,16 +1509,17 @@ namespace Velvet
             {
                 shorthandPriority = top;
             }
+            var classes = RankFlexClasses(element, map.Projection);
             var style = ClipPathLayoutBox.StyleFor(element, ArbitraryProperty.Flex);
-            if (ShorthandSets(element, map, ArbitraryProperty.FlexGrow, shorthandPriority))
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexGrow, shorthandPriority, classes.Grow))
             {
                 style.flexGrow = shorthand.Value;
             }
-            if (ShorthandSets(element, map, ArbitraryProperty.FlexShrink, shorthandPriority))
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexShrink, shorthandPriority, classes.Shrink))
             {
                 style.flexShrink = shorthand.Value3;
             }
-            if (ShorthandSets(element, map, ArbitraryProperty.FlexBasis, shorthandPriority))
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexBasis, shorthandPriority, classes.Basis))
             {
                 style.flexBasis = float.IsNaN(shorthand.Value2)
                     ? new StyleLength(StyleKeyword.Auto)
@@ -1526,11 +1528,9 @@ namespace Velvet
         }
 
         // Whether the shorthand at shorthandPriority sets longhand's slot. When it does not, the longhand's own
-        // layer is written there, or the slot is cleared for the class list. A class writing all three
-        // (flex-1, flex-none) is ranked against the shorthand as any class against a layer, so it is not a
-        // longhand class here.
+        // layer is written there, or the slot is cleared for the class list.
         private static bool ShorthandSets(VisualElement element, LayerMap map, ArbitraryProperty longhand,
-            int? shorthandPriority)
+            int? shorthandPriority, int? classPriority)
         {
             var hasOwn = TryTopLayer(map, longhand, out var own, out var ownPriority);
             if (hasOwn && !(ownPriority < shorthandPriority))
@@ -1538,8 +1538,6 @@ namespace Velvet
                 ApplyInline(element, own);
                 return false;
             }
-            var classPriority = StyleClassProjection.TopClassPriority(element,
-                StyleArbitraryLonghands.Of(longhand), StyleArbitraryLonghands.Of(ArbitraryProperty.Flex));
             if (shorthandPriority == null || classPriority >= shorthandPriority)
             {
                 ClearInline(element, longhand);
@@ -1547,6 +1545,45 @@ namespace Velvet
             }
             return true;
         }
+
+        private struct FlexClassRanks
+        {
+            public int? Grow;
+            public int? Shrink;
+            public int? Basis;
+        }
+
+        private static readonly StyleLonghandSet s_flexLonghands = StyleArbitraryLonghands.Of(ArbitraryProperty.Flex);
+
+        // Per flex longhand, the priority of the highest live class writing it. The live list is read rather
+        // than the projection, and a class the projection holds no entry for is a base one, so a class a
+        // gesture, motion or drag channel wrote counts the same with a projection as without one. A class
+        // writing all three is the shorthand's own family, where Tailwind breaks a tie by candidate order:
+        // flex-auto, flex-initial and flex-none sort after every flex-<N>, flex-<a>/<b> and flex-[…] and so
+        // count, and flex-1 does not.
+        private static FlexClassRanks RankFlexClasses(VisualElement element, StyleClassProjection.Model? model)
+        {
+            var ranks = default(FlexClassRanks);
+            var classes = element.GetClasses() as IReadOnlyList<string> ?? new List<string>(element.GetClasses());
+            for (var i = 0; i < classes.Count; i++)
+            {
+                var cls = classes[i];
+                StyleUtilityProperties.TryGet(cls, out var rule);
+                var properties = rule.Properties;
+                if (properties.Union(s_flexLonghands) == properties && !char.IsLetter(cls["flex-".Length]))
+                {
+                    continue;
+                }
+                var priority = model?.TopPriority(cls) ?? StyleLayerPriority.Base;
+                ranks.Grow = Raise(ranks.Grow, properties.Contains(StyleLonghand.FlexGrow), priority);
+                ranks.Shrink = Raise(ranks.Shrink, properties.Contains(StyleLonghand.FlexShrink), priority);
+                ranks.Basis = Raise(ranks.Basis, properties.Contains(StyleLonghand.FlexBasis), priority);
+            }
+            return ranks;
+        }
+
+        private static int? Raise(int? top, bool writes, int priority)
+            => writes ? Math.Max(top ?? priority, priority) : top;
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
         {

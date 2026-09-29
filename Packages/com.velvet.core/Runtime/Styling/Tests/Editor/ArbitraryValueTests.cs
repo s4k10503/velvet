@@ -2769,6 +2769,42 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base parses no bare flex fraction. What reddens it is dropping the
+        // `return false` after the denominator's TryParseWhole in TryGetFlexPreset.
+        [Test]
+        public void Given_BareFlexFractionOverAWord_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-1/x", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no bare flex fraction. What reddens it is dropping the
+        // `return false` after the numerator's TryParseWhole in TryGetFlexPreset.
+        [Test]
+        public void Given_BareFlexFractionOfAWord_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-x/2", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket, so each token is its own key. What
+        // reddens it is dropping Value3 from FiberNodePatcher.ValueKey, which leaves the shrink out of the key.
+        [Test]
+        public void Given_TwoFlexBracketsDifferingInTheShrink_When_Keyed_Then_TheKeysDiffer()
+        {
+            // Act
+            var keys = (FiberNodePatcher.ValueKey("flex-[2_1]"), FiberNodePatcher.ValueKey("flex-[2_3]"));
+
+            // Assert
+            Assert.That(keys.Item1, Is.Not.EqualTo(keys.Item2));
+        }
+
         // GREEN_ON_BASE(characterization): the base parses no bare flex number, a leading zero included.
         // What reddens it is dropping the leading-zero check in TryParseWhole.
         [Test]
@@ -2873,6 +2909,46 @@ namespace Velvet.Tests
 
             // Assert — grow, shrink, then the basis and its unit.
             Assert.That(Flex(ok, s), Is.EqualTo("1 1 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketNoneInCapitals_When_Parsed_Then_NeitherGrowsNorShrinks()
+        {
+            // Act — CSS keywords ignore ASCII case.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[NONE]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 0 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketUnset_When_Parsed_Then_ResolvesTheInitialValue()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[unset]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 1 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketRevert_When_Parsed_Then_ResolvesTheInitialValue()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[revert]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 1 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketWithACapitalAutoBasis_When_Parsed_Then_TheBasisIsAuto()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_AUTO]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 1 auto"));
         }
 
         [Test]
@@ -3146,7 +3222,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFlexClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheShorthandSetsTheGrow()
         {
-            // Arrange — flex-1 writes all three longhands, so it is not a longhand class to the shorthand.
+            // Arrange — Tailwind orders flex-1 before flex-2, so the shorthand wins over it.
             var el = new VisualElement();
             el.AddToClassList("flex-1");
 
@@ -3155,6 +3231,123 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(el.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AFlexKeywordClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheClassSetsAllThree()
+        {
+            // Arrange — Tailwind orders flex-none after flex-2, so the class wins over the shorthand.
+            var el = new VisualElement();
+            el.AddToClassList("flex-none");
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert
+            var style = el.style;
+            Assert.That((style.flexGrow.keyword, style.flexShrink.keyword, style.flexBasis.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ABasisClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheClassKeepsTheBasis()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.AddToClassList("basis-auto");
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert — the grow shows the shorthand still landed.
+            Assert.That((el.style.flexGrow.value, el.style.flexBasis.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        private static ArbitraryStyle FlexTwoThree => ArbitraryStyle.Flex(2f, 3f, 0f, LengthUnit.Percent);
+
+        private static void Hover(VisualElement element, bool on)
+        {
+            if (on)
+            {
+                using var over = PointerOverEvent.GetPooled();
+                Velvet.TestUtilities.VisualElementTestExtensions.SimulateEvent(element, over);
+            }
+            else
+            {
+                using var outEvent = PointerOutEvent.GetPooled();
+                Velvet.TestUtilities.VisualElementTestExtensions.SimulateEvent(element, outEvent);
+            }
+        }
+
+        [Test]
+        public void Given_AFlexShorthandBesideAHoverShrinkClass_When_Hovered_Then_TheClassTakesTheShrink()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "flex-[2_3]", whileHoverClass: "shrink-0") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var div = scope.Root[0];
+
+            // Act
+            Hover(div, true);
+
+            // Assert
+            Assert.That(div.style.flexShrink.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AHoveredShrinkClassBesideAFlexShorthand_When_ThePointerLeaves_Then_TheShorthandTakesTheShrinkBack()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "flex-[2_3]", whileHoverClass: "shrink-0") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var div = scope.Root[0];
+            Hover(div, true);
+            var hovered = div.style.flexShrink.keyword;
+
+            // Act
+            Hover(div, false);
+
+            // Assert
+            Assert.That((hovered, div.style.flexShrink.keyword, div.style.flexShrink.value),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, 3f)));
+        }
+
+        [Test]
+        public void Given_AProjectedElementWithAFlexShorthand_When_AHoverShrinkClassArrives_Then_TheClassTakesTheShrink()
+        {
+            // Arrange — p-4 above the base is there to build the projection, which holds no entry for the hover
+            // class.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwoThree);
+            StyleClassProjection.Add(el, "p-4", StyleLayerPriority.ResponsiveMd);
+            el.AddManipulator(new StyleGestureClassManipulator(
+                new[] { "shrink-0" }, System.Array.Empty<string>(), System.Array.Empty<string>()));
+
+            // Act
+            Hover(el, true);
+
+            // Assert
+            Assert.That(el.style.flexShrink.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AProjectedElementWithAHigherFlexShorthand_When_AHoverShrinkClassArrives_Then_TheShorthandKeepsTheShrink()
+        {
+            // Arrange — p-4 sits above the shorthand in the projection, and the hover class, which the
+            // projection holds no entry for, sits at the base below both.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwoThree, StyleLayerPriority.ResponsiveMd);
+            StyleClassProjection.Add(el, "p-4", StyleLayerPriority.ResponsiveLg);
+            el.AddManipulator(new StyleGestureClassManipulator(
+                new[] { "shrink-0" }, System.Array.Empty<string>(), System.Array.Empty<string>()));
+
+            // Act
+            Hover(el, true);
+
+            // Assert — the class rides along, since a hover that never landed leaves the shorthand in place too.
+            Assert.That((el.ClassListContains("shrink-0"), el.style.flexShrink.value), Is.EqualTo((true, 3f)));
         }
 
         // GREEN_ON_BASE(characterization): the base has no flex shorthand to route a longhand through. What

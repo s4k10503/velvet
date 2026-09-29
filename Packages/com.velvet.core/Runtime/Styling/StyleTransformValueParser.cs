@@ -160,22 +160,27 @@ namespace Velvet
             return true;
         }
 
+        // CSS keywords ignore ASCII case. flex is not inherited and carries no user-agent value, so unset and
+        // revert both land on initial.
         private static ArbitraryStyle? FlexKeyword(ReadOnlySpan<char> value)
         {
-            if (value.SequenceEqual("none".AsSpan()))
+            if (IsKeyword(value, "none"))
             {
                 return ArbitraryStyle.Flex(0f, 0f, float.NaN, LengthUnit.Pixel);
             }
-            if (value.SequenceEqual("auto".AsSpan()))
+            if (IsKeyword(value, "auto"))
             {
                 return ArbitraryStyle.Flex(1f, 1f, float.NaN, LengthUnit.Pixel);
             }
-            if (value.SequenceEqual("initial".AsSpan()))
+            if (IsKeyword(value, "initial") || IsKeyword(value, "unset") || IsKeyword(value, "revert"))
             {
                 return ArbitraryStyle.Flex(0f, 1f, float.NaN, LengthUnit.Pixel);
             }
             return null;
         }
+
+        private static bool IsKeyword(ReadOnlySpan<char> value, string keyword)
+            => value.Equals(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase);
 
         // The components read so far. Grow and Shrink are NaN until given; PairClosed is set by a basis that
         // follows the grow, after which no shrink may come.
@@ -204,7 +209,7 @@ namespace Velvet
             }
             parts.HasBasis = true;
             parts.PairClosed = !float.IsNaN(parts.Grow);
-            if (part.SequenceEqual("auto".AsSpan()))
+            if (IsKeyword(part, "auto"))
             {
                 parts.Basis = float.NaN;
                 return true;
