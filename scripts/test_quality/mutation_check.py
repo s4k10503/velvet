@@ -133,8 +133,10 @@ LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the proj
 
 BUILD_SYSTEM_FAILURE = "Internal build system error."
 BUILD_SYSTEM_ATTEMPTS = 2
-BUILD_SYSTEM_FAILED_LINE = ("mutation_check: the build system stopped {} launches with no diagnostic"
-                            .format(BUILD_SYSTEM_ATTEMPTS))
+# How long a build-system relaunch waits for what the failed launch left running before killing it.
+BUILD_SYSTEM_SETTLE = 60
+SETTLE_AFTER_KILL = 5
+BUILD_SYSTEM_FAILED_LINE = "mutation_check: the build system stopped the last launch before any diagnostic"
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -1697,7 +1699,7 @@ def relay(stream, said):
 
 def launch(command, timeout, holder):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
-    once, and what it printed."""
+    once, what it printed, and the process group it ran in."""
     start = time.time()
     said = []
     if holder is not None:
@@ -1739,7 +1741,7 @@ def launch(command, timeout, holder):
     wall = time.time() - start
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
-    return wall, timed_out, peak, "".join(said)
+    return wall, timed_out, peak, "".join(said), child.pid
 
 
 def lock_refused(log):
@@ -1764,9 +1766,14 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     for a mutant that is no longer on disk.
 
     A launch the editor refused because the project was locked is made again, after the lock is
-    waited on. Once `LOCK_ATTEMPTS` were refused, `log` ends with `LOCK_REFUSED_LINE`. A launch that
-    wrote no result and whose log `build_system_failure` reads is made again too, and once
-    `BUILD_SYSTEM_ATTEMPTS` ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`.
+    waited on. Once `LOCK_ATTEMPTS` were refused, `log` ends with `LOCK_REFUSED_LINE`. A launch whose
+    log `build_system_failure` reads is made again too, once `settle` has seen what it left running
+    exit or killed it, up to `BUILD_SYSTEM_ATTEMPTS` in all and never after one that outlived its
+    bound; where the last launch ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`.
+
+    `log` holds what the last launch wrote, and the closing line where there is one: what an earlier
+    run left there is removed before the first launch, and each earlier launch's is moved to
+    `launch_log(log, n)`.
     """
     command = [
         # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
@@ -1774,20 +1781,27 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
     ]
     command += scope
-    refused = failed = 0
+    log = Path(log)
+    if log.is_file():
+        log.unlink()
+    refused = failed = launches = 0
     while True:
+        if launches and log.is_file():
+            os.replace(str(log), str(launch_log(log, launches)))
         wait_for_release(project, LOCK_WAIT)
-        since = time.time()
-        wall, timed_out, peak, printed = launch(command, timeout, holder)
+        wall, timed_out, peak, printed, group = launch(command, timeout, holder)
+        launches += 1
         if LOCK_REFUSAL in printed:
             refused += 1
             if refused < LOCK_ATTEMPTS:
                 continue
             closing = LOCK_REFUSED_LINE
-        elif not written_since(results, since) and build_system_failure(log):
+        elif build_system_failure(log):
             failed += 1
-            if failed < BUILD_SYSTEM_ATTEMPTS:
+            # Not after a timeout, which would charge the mutant a second full bound.
+            if failed < BUILD_SYSTEM_ATTEMPTS and not timed_out:
                 print("{}; launching again".format(build_system_failure(log)), flush=True)
+                settle(group, BUILD_SYSTEM_SETTLE)
                 continue
             closing = BUILD_SYSTEM_FAILED_LINE
         else:
@@ -1799,11 +1813,31 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
         return wall, False, peak
 
 
-def written_since(results, since):
-    try:
-        return os.path.getmtime(str(results)) >= since
-    except OSError:
-        return False
+def launch_log(log, number):
+    """Where `run_suite` moves the log of launch `number`, counted from one, before the next launch."""
+    return log.with_name("{}-launch{}{}".format(log.stem, number, log.suffix))
+
+
+def settle(group, seconds):
+    """Waits up to `seconds` for process group `group` to empty, then kills what is left in it and
+    waits, up to `SETTLE_AFTER_KILL`, for it to go."""
+    deadline = time.time() + seconds
+    killed = False
+    while True:
+        try:
+            os.killpg(group, 0)
+        except (ProcessLookupError, PermissionError):
+            return
+        if time.time() > deadline:
+            if killed:
+                return
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                return
+            killed = True
+            deadline = time.time() + SETTLE_AFTER_KILL
+        time.sleep(0.2)
 
 
 def build_system_failure(log):
@@ -1822,7 +1856,7 @@ def build_system_failure(log):
 
 
 def build_system_failed(log):
-    """The build-system line of a log `run_suite` gave up on because its launches ended on one."""
+    """The build-system line of a log `run_suite` gave up on because its last launch ended on one."""
     try:
         lines = Path(log).read_text(errors="replace").rstrip().splitlines()
     except OSError:
@@ -2485,8 +2519,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                                  "project; read the log".format(LOCK_ATTEMPTS))
             elif counts is None and stalled:
                 mutant.verdict = BUILD_SYSTEM
-                mutant.detail = ("{} launches ended on \"{}\" with no compiler diagnostic; read "
-                                 "the log".format(BUILD_SYSTEM_ATTEMPTS, stalled))
+                mutant.detail = ("the last launch ended on \"{}\" with no compiler diagnostic; read "
+                                 "the log".format(stalled))
             elif counts is None:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the runner wrote no result"
