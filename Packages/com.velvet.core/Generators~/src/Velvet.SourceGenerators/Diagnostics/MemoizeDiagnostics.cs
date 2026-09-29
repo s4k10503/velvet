@@ -74,7 +74,7 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL012",
             "[MemoizeMethod] _Impl reads an instance member the memo does not key on",
             "'{0}' reads '{1}', which the memo generated for '{2}' does not key on; pass it to '{2}' as a parameter",
-            "The generated wrapper keys the memo on its parameters, its type arguments and the instance it is called on, so a field or property that can change while the instance stays the same leaves the cached node stale. A static, const or readonly field and a static or init-only property are fixed for the instance and are not reported.");
+            "The generated wrapper keys the memo on its parameters, its type arguments and the instance it is called on, so a field or property that can change while the instance stays the same leaves the cached node stale. A static, const or readonly field and a static, init-only or get-only auto-property are fixed for the instance and are not reported, and nor is a read in a lambda or local function that runs after _Impl returns.");
 
         public static readonly DiagnosticDescriptor Vel100UseEffectMissingDep = HookWarn(
             "VEL100",

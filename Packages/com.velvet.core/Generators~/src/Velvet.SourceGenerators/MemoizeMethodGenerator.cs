@@ -28,7 +28,7 @@ namespace Velvet.SourceGenerators
     [Generator(LanguageNames.CSharp)]
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
-        private const string ImplSuffix = "_Impl";
+        private const string ImplSuffix = MemoizeImplSignature.Suffix;
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -352,11 +352,12 @@ namespace Velvet.SourceGenerators
             // array-typed argument, V.Memoized's params object?[] would take that array as the whole list,
             // compared element by element, or a null one as no list at all. A method's type arguments are
             // part of the key, since the same position can call it with different ones, and so is an instance
-            // member's receiver, since it can be called there on different instances.
+            // member's receiver, since it can be called there on different instances — unless the _Impl it calls
+            // is static and so cannot read it.
             var keys = method.Parameters.Where(p => !p.IsParams).Select(p => arguments[p.Ordinal])
                 .Concat(method.TypeParameters.Select(tp => $"typeof({EscapeKeyword(tp.Name)})"))
                 .ToList();
-            if (!method.IsStatic)
+            if (!method.IsStatic && !CallsStaticImpl(method))
             {
                 keys.Add("this");
             }
@@ -378,9 +379,11 @@ namespace Velvet.SourceGenerators
             }
             else
             {
-                // arity 0: there are no parameters to key on, and the whole point of the attribute is that the
-                // result is computed once. Omitting the argument would instead ask V.Memoized for no dependency
-                // array at all, which rebuilds every render; the empty array is what says "no dependencies".
+                // Nothing to key on: no parameter, no type parameter, and a static _Impl. Omitting
+                // the argument would instead ask V.Memoized for no dependency array at all, which rebuilds every
+                // render; the empty array is what says "no dependencies". An instance arity-0 method builds its
+                // one-element array per call, as every non-empty list is built; a cached array would need a field
+                // on the user's type, which an interface cannot declare.
                 deps = keys.Count == 0
                     ? "global::System.Array.Empty<object>()"
                     : $"new object?[] {{ {string.Join(", ", keys)} }}";
@@ -500,6 +503,17 @@ namespace Velvet.SourceGenerators
         private static string RenderType(ITypeSymbol type) =>
             string.Concat(type.ToDisplayParts(FullyQualifiedFormat).Select(part =>
                 part.Kind == SymbolDisplayPartKind.Keyword ? part.ToString() : EscapeKeyword(part.ToString())));
+
+        private static bool CallsStaticImpl(IMethodSymbol method)
+        {
+            var impls = new List<IMethodSymbol>();
+            for (var type = method.ContainingType; type is not null; type = type.BaseType)
+            {
+                impls.AddRange(type.GetMembers(method.Name + ImplSuffix).OfType<IMethodSymbol>()
+                    .Where(impl => MemoizeImplSignature.Matches(method, impl)));
+            }
+            return impls.All(impl => impl.IsStatic);
+        }
 
         private static string EscapeKeyword(string identifier) =>
             SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None &&

@@ -66,7 +66,7 @@ namespace MyApp
         public override string ToString() => Name;
         [global::Velvet.MemoizeMethod]
         public partial global::Velvet.VNode Title(string text);
-        private static global::Velvet.VNode Title_Impl(string text) => null;";
+        private global::Velvet.VNode Title_Impl(string text) => null;";
 
             // Act
             var deps = DependenciesOf(
@@ -74,6 +74,26 @@ namespace MyApp
 
             // Assert
             Assert.Equal("a,p|a,q", deps);
+        }
+
+        [Fact]
+        public void Given_AnInstanceMethodWithAStaticImpl_When_CalledOnTwoInstances_Then_TheInstanceIsNotADependency()
+        {
+            // Arrange
+            const string members = @"
+        public string Name = ""p"";
+        public override string ToString() => Name;
+        [global::Velvet.MemoizeMethod]
+        public partial global::Velvet.VNode Title(string text);
+        private static global::Velvet.VNode Title_Impl(string text) => null;
+        private global::Velvet.VNode Title_Impl(int unrelated) => null;";
+
+            // Act
+            var deps = DependenciesOf(
+                members, @"Show(page.Title(""a"")) + ""|"" + Show(new Page { Name = ""q"" }.Title(""a""))");
+
+            // Assert
+            Assert.Equal("a|a", deps);
         }
 
         [Fact]

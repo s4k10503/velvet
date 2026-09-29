@@ -560,6 +560,28 @@ namespace MyApp.@record
         }
 
         [Fact]
+        public void Memoize_ImplDeclaredInABaseType_KeysTheReceiver()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp
+{
+    public class PageBase
+    {
+        protected global::Velvet.VNode Build_Impl(int x) => null;
+    }
+
+    public partial class Page : PageBase
+    {
+        [global::Velvet.MemoizeMethod]
+        private partial global::Velvet.VNode Build(int x);
+    }
+}",
+                expectedHintName: "MyApp.Page.Memoize.g.cs",
+                snapshotFile: "ImplInBaseType.verified.cs");
+        }
+
+        [Fact]
         public void Memoize_VNodeSubtypeOtherThanMemoNode_ReportsVel008()
         {
             AssertOnlyDiagnostic(
