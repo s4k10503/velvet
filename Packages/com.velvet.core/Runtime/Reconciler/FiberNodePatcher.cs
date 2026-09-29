@@ -1057,7 +1057,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.SyncHost(placeholder, target);
+                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1187,7 +1187,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
-            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
