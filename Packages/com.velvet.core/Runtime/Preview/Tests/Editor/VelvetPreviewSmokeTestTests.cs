@@ -17,6 +17,9 @@ namespace Velvet.Tests
         private static bool s_setupThrows;
         private static bool s_teardownThrows;
 
+        // The transition's render runs more than once; throwing on the first keeps its log a single entry.
+        private static bool s_transitionThrew;
+
         [VelvetPreviewSetup]
         private static void ThrowingSetup()
         {
@@ -32,6 +35,7 @@ namespace Velvet.Tests
         {
             s_setupThrows = false;
             s_teardownThrows = false;
+            s_transitionThrew = false;
         }
 
         private static VNode Plain() => V.Div();
@@ -79,7 +83,12 @@ namespace Velvet.Tests
                 startTransition.Invoke(() => setMoved.Invoke(true));
                 return (Action)null;
             }, Array.Empty<object>());
-            if (moved) throw new InvalidOperationException("transition boom");
+            if (moved && !s_transitionThrew)
+            {
+                s_transitionThrew = true;
+                throw new InvalidOperationException("transition boom");
+            }
+
             return V.Div();
         }
 
