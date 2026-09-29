@@ -22,11 +22,8 @@ namespace Velvet.Tests
         [VelvetPreview(Name = "Generic Story", Group = Group)]
         private static VNode GenericStory<T>() => V.Div();
 
-        [VelvetPreview(Name = "Twin", Group = Group)]
-        private static VNode TwinA() => V.Div();
-
-        [VelvetPreview(Name = "Twin", Group = Group)]
-        private static VNode TwinB() => V.Div();
+        [VelvetPreview(Name = "Wrong Return", Group = Group)]
+        private static int WrongReturnStory() => 0;
 
         internal sealed class LabelArgs
         {
@@ -130,8 +127,9 @@ namespace Velvet.Tests
             Assert.That(stories.Any(s => s.Group == Group && s.Name == "Generic Story"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base already skips a story that returns no VNode.
         [Test]
-        public void Given_TwoStoriesShareAnId_When_Discovering_Then_OnlyOneIsRetained()
+        public void Given_AStoryMethodReturningNoVNode_When_Discovering_Then_ItIsExcluded()
         {
             // Arrange
             ExpectDiscoveryWarnings();
@@ -140,7 +138,7 @@ namespace Velvet.Tests
             var stories = DiscoverThisAssembly();
 
             // Assert
-            Assert.That(stories.Count(s => s.Group == Group && s.Name == "Twin"), Is.EqualTo(1));
+            Assert.That(stories.Any(s => s.Group == Group && s.Name == "Wrong Return"), Is.False);
         }
 
         [Test]

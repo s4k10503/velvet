@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Linq;
+using System.Threading;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -101,6 +102,100 @@ namespace Velvet.Tests
             // Assert
             Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
                 Is.EqualTo("AutoAttachPropsProbe.Render"));
+        }
+    }
+
+    internal sealed class DevToolsRegistryLifetimeTests
+    {
+        private VisualElement _root;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            VelvetDevToolsRegistry.Clear();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            VelvetDevToolsRegistry.Clear();
+        }
+
+        [Test]
+        public void Given_AnInteriorFiberRegisteredByHand_When_ItsTreeIsDisposed_Then_ItLeavesTheRegistry()
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Div("", V.Component(InteriorProbe.Render, key: "interior")));
+            var interior = InteriorProbe.Fiber;
+            VelvetDevToolsRegistry.Register(interior, "Page");
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(VelvetDevToolsRegistry.Entries.Any(e => ReferenceEquals(e.Fiber, interior)), Is.False);
+        }
+
+        [Test]
+        public void Given_ADisposedFiber_When_Registered_Then_ItIsNotAdded()
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(AutoAttachProbe.Render, key: "probe"));
+            var root = mounted.Root;
+            mounted.Dispose();
+
+            // Act
+            VelvetDevToolsRegistry.Register(root, "Late");
+
+            // Assert
+            Assert.That(VelvetDevToolsRegistry.Entries.Any(e => ReferenceEquals(e.Fiber, root)), Is.False);
+        }
+
+        [Test]
+        public void Given_ARegisteredFiber_When_RegisteredAgain_Then_ItKeepsItsRegistrationTime()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AutoAttachProbe.Render, key: "probe"));
+            var registeredAt = VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root))
+                .RegisteredAt;
+            Thread.Sleep(20);
+
+            // Act
+            VelvetDevToolsRegistry.Register(mounted.Root, "Renamed");
+
+            // Assert
+            Assert.That(
+                VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).RegisteredAt,
+                Is.EqualTo(registeredAt));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's replacement entry carries the new label too.
+        [Test]
+        public void Given_ARegisteredFiber_When_RegisteredAgain_Then_ItCarriesTheNewLabel()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AutoAttachProbe.Render, key: "probe"));
+
+            // Act
+            VelvetDevToolsRegistry.Register(mounted.Root, "Renamed");
+
+            // Assert
+            Assert.That(
+                VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
+                Is.EqualTo("Renamed"));
+        }
+    }
+
+    internal static class InteriorProbe
+    {
+        public static ComponentFiber Fiber;
+
+        [Component]
+        public static VNode Render()
+        {
+            Fiber = FiberAmbientStack.Current;
+            return V.Label(text: "interior");
         }
     }
 
