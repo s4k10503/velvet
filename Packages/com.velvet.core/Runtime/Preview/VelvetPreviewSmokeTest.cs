@@ -22,7 +22,6 @@ namespace Velvet
         /// <summary>Smoke-tests <paramref name="stories"/> in order, one result each.</summary>
         public static IReadOnlyList<VelvetPreviewSmokeResult> Run(IEnumerable<VelvetPreviewStory> stories)
         {
-            if (stories == null) throw new ArgumentNullException(nameof(stories));
             var results = new List<VelvetPreviewSmokeResult>();
             foreach (var story in stories) results.Add(new VelvetPreviewSmokeResult(story, Mount(story)));
             return results;
@@ -54,7 +53,6 @@ namespace Velvet
             });
 
             var target = new VisualElement();
-            VelvetStyleUtilities.AttachTo(target);
             Application.logMessageReceived += OnLog;
             try
             {

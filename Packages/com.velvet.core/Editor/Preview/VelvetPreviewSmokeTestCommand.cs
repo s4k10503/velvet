@@ -8,7 +8,7 @@ namespace Velvet.Editor.Preview
     /// <summary>
     /// Runs <see cref="VelvetPreviewSmokeTest"/> over every story from the menu, or from a batch-mode editor:
     /// <c>-batchmode -executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit</c> exits 1
-    /// when a story fails or the stories cannot be discovered, and 0 otherwise.
+    /// when a story fails or discovery is refused, and 0 when every story passes.
     /// </summary>
     public static class VelvetPreviewSmokeTestCommand
     {
@@ -16,19 +16,20 @@ namespace Velvet.Editor.Preview
         private static void RunFromMenu() => Report(VelvetPreviewSmokeTest.Run());
 
         /// <summary>The batch-mode entry point; exits the editor with the run's outcome.</summary>
-        public static void RunAndExit()
+        public static void RunAndExit() => EditorApplication.Exit(ExitCode(VelvetPreviewSmokeTest.Run));
+
+        // A refused story index is reported as a failed run rather than thrown out of -executeMethod.
+        internal static int ExitCode(Func<IReadOnlyList<VelvetPreviewSmokeResult>> run)
         {
-            var failed = 1;
             try
             {
-                failed = Report(VelvetPreviewSmokeTest.Run());
+                return Report(run()) == 0 ? 0 : 1;
             }
             catch (InvalidOperationException ex)
             {
                 Debug.LogException(ex);
+                return 1;
             }
-
-            EditorApplication.Exit(failed == 0 ? 0 : 1);
         }
 
         // Each failure is its own error line, so a CI log names every failing story rather than the first.

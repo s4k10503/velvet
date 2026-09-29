@@ -1,5 +1,7 @@
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UIElements;
 using Velvet.DevTools;
 using Velvet.Editor.DevTools;
 
@@ -7,6 +9,8 @@ namespace Velvet.Tests
 {
     internal sealed class DevToolsSelectionTests
     {
+        private const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
+
         private VelvetDevToolsWindow _window;
         private ComponentFiber _first;
         private ComponentFiber _second;
@@ -32,11 +36,32 @@ namespace Velvet.Tests
             VelvetDevToolsRegistry.Clear();
         }
 
+        // What the row toggle does: set the selected fiber, then read it.
+        private void Select(ComponentFiber fiber)
+        {
+            typeof(VelvetDevToolsWindow).GetField("_selectedFiber", Hidden).SetValue(_window, fiber);
+            typeof(VelvetDevToolsWindow).GetMethod("RefreshSelectedComponent", Hidden).Invoke(_window, null);
+        }
+
+        [Test]
+        public void Given_AMountedRoot_When_Selected_Then_TheInspectorReadsItsTree()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Div(name: "probe"));
+
+            // Act
+            Select(mounted.Root);
+
+            // Assert
+            var text = (string)typeof(VelvetDevToolsWindow).GetField("_cachedVNodeText", Hidden).GetValue(_window);
+            Assert.That(text, Does.Contain("probe"));
+        }
+
         [Test]
         public void Given_TheSecondEntrySelected_When_TheFirstLeavesTheRegistry_Then_TheSelectionStaysOnTheSecond()
         {
             // Arrange
-            _window.Select(_second);
+            Select(_second);
 
             // Act
             VelvetDevToolsRegistry.Unregister(_first);
@@ -49,7 +74,7 @@ namespace Velvet.Tests
         public void Given_TheSelectedEntryLeftTheRegistry_When_ItsFiberIsRegisteredAgain_Then_ItIsNotSelected()
         {
             // Arrange
-            _window.Select(_second);
+            Select(_second);
             VelvetDevToolsRegistry.Unregister(_second);
 
             // Act

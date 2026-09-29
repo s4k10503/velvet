@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 using Velvet.Editor.Preview;
 using Velvet.TestUtilities;
@@ -13,26 +17,12 @@ namespace Velvet.Tests
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
         private PanelSettings _settings;
-        private VelvetPreviewWindow _window;
-        private string _zoomBefore;
 
         [SetUp]
         public void SetUp() => _settings = ScriptableObject.CreateInstance<PanelSettings>();
 
         [TearDown]
-        public void TearDown()
-        {
-            if (_window != null)
-            {
-                _window.SetPanelSettings(null);
-                Invoke("SetZoom", _zoomBefore);
-                Invoke("SetViewport", "Full");
-                _window.Close();
-                _window = null;
-            }
-
-            Object.DestroyImmediate(_settings);
-        }
+        public void TearDown() => UnityEngine.Object.DestroyImmediate(_settings);
 
         // Each case against PanelSettings' own resolution, which it keeps internal, so a Unity release that
         // changes the formula reddens here rather than leaving the window's scale silently off.
@@ -67,41 +57,110 @@ namespace Velvet.Tests
             // Assert
             Assert.That(resolved, Is.EqualTo(runtime).Within(1e-6f));
         }
+    }
 
-        [Test]
-        public void Given_PanelSettingsScalingWithAScreenTwiceTheirReference_When_ChosenInTheWindow_Then_TheCanvasLaysOutAtTheReferenceAndPaintsAtTwice()
+    internal sealed class PreviewPanelScaleWindowTests
+    {
+        private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+        private const string PanelSettingsKey = "Velvet.Preview.PanelSettings";
+
+        // ScaleWithScreenSize at a 1280x720 reference, matching width and height equally.
+        private const string StarterPanelSettings = "Assets/VelvetStarterSample/StarterAppPanelSettings.asset";
+
+        private VelvetPreviewWindow _window;
+        private PanelSettings _settings;
+
+        [SetUp]
+        public void SetUp()
         {
-            // Arrange
             TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
-            _zoomBefore = EditorPrefs.GetString("Velvet.Preview.Zoom", "Fit");
-            _window = EditorWindow.GetWindow<VelvetPreviewWindow>();
-            _window.Show();
-            Invoke("SetZoom", "100%");
-            _window.RefreshStories(() => new System.Collections.Generic.List<VelvetPreviewStory>());
-            SetCustomViewport(1920, 1080);
-            _settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-            _settings.referenceResolution = new Vector2Int(960, 540);
-
-            // Act
-            _window.SetPanelSettings(_settings);
-
-            // Assert
-            var canvas = (VisualElement)typeof(VelvetPreviewWindow).GetField("_canvas", Private)?.GetValue(_window);
-            Assert.That(
-                (canvas?.style.width.value.value, canvas?.style.scale.value.value.x),
-                Is.EqualTo(((float?)960f, (float?)2f)));
+            EditorPrefs.DeleteKey("Velvet.Preview.LastStoryId");
+            EditorPrefs.SetString("Velvet.Preview.Viewport", "Full");
+            EditorPrefs.SetString("Velvet.Preview.Zoom", "100%");
+            EditorPrefs.SetString(PanelSettingsKey, string.Empty);
+            _settings = AssetDatabase.LoadAssetAtPath<PanelSettings>(StarterPanelSettings);
+            Open();
         }
 
-        private void Invoke(string method, object argument) =>
-            typeof(VelvetPreviewWindow).GetMethod(method, Private)?.Invoke(_window, new[] { argument });
+        [TearDown]
+        public void TearDown()
+        {
+            EditorPrefs.SetString(PanelSettingsKey, string.Empty);
+            if (_window == null) return;
+            _window.Close();
+            _window = null;
+        }
+
+        private void Open()
+        {
+            _window = EditorWindow.GetWindow<VelvetPreviewWindow>();
+            _window.position = new Rect(0, 0, 640, 480);
+            _window.Show();
+            _window.RefreshStories(() => new List<VelvetPreviewStory>());
+        }
+
+        private void Choose(PanelSettings settings) =>
+            _window.rootVisualElement.Query<ObjectField>().Where(f => f.objectType == typeof(PanelSettings)).First()
+                .value = settings;
+
+        private T Field<T>(string field) =>
+            (T)typeof(VelvetPreviewWindow).GetField(field, Private)?.GetValue(_window);
 
         private void SetCustomViewport(int width, int height)
         {
-            var w = (IntegerField)typeof(VelvetPreviewWindow).GetField("_viewportWidthField", Private)?.GetValue(_window);
-            var h = (IntegerField)typeof(VelvetPreviewWindow).GetField("_viewportHeightField", Private)?.GetValue(_window);
-            w?.SetValueWithoutNotify(width);
-            h?.SetValueWithoutNotify(height);
+            Field<IntegerField>("_viewportWidthField").SetValueWithoutNotify(width);
+            Field<IntegerField>("_viewportHeightField").SetValueWithoutNotify(height);
             typeof(VelvetPreviewWindow).GetMethod("OnViewportFieldChanged", Private)?.Invoke(_window, null);
+        }
+
+        [Test]
+        public void Given_AViewportTwiceThePanelsReference_When_ThePanelSettingsAreChosen_Then_TheCanvasLaysOutAtTheReferenceAndPaintsAtTwice()
+        {
+            // Arrange
+            SetCustomViewport(2560, 1440);
+
+            // Act
+            Choose(_settings);
+
+            // Assert
+            var canvas = Field<VisualElement>("_canvas");
+            var status = Field<Label>("_statusLabel");
+            Assert.That(
+                (canvas?.style.width.value.value, canvas?.style.scale.value.value.x,
+                    status?.text.EndsWith("panel ×2", StringComparison.Ordinal)),
+                Is.EqualTo(((float?)1280f, (float?)2f, (bool?)true)));
+        }
+
+        [Test]
+        public void Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheStageIsTheScreenTheyScaleFor()
+        {
+            // Arrange
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+            var stage = Field<VisualElement>("_stage");
+            var screen = new Vector2(stage.resolvedStyle.width, stage.resolvedStyle.height);
+            var unitsPerPixel = PreviewPanelScale.Resolve(_settings, screen, Screen.dpi);
+
+            // Act
+            Choose(_settings);
+
+            // Assert
+            Assert.That(
+                Field<VisualElement>("_canvas").style.width.value.value,
+                Is.EqualTo(screen.x * unitsPerPixel).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ChosenPanelSettings_When_TheWindowReopens_Then_TheyAreStillChosen()
+        {
+            // Arrange
+            Choose(_settings);
+            _window.Close();
+
+            // Act
+            Open();
+
+            // Assert
+            Assert.That(Field<PanelSettings>("_panelSettings"), Is.SameAs(_settings));
         }
     }
 }

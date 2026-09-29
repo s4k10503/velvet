@@ -95,7 +95,7 @@ namespace Velvet.Editor.Preview
         private ListView _list;
         private VisualElement _stage;     // fixed backdrop the scroll view / zoom box center within
         private ScrollView _stageScroll;  // pans/scrolls when the zoom box exceeds the stage viewport
-        private VisualElement _zoomBox;   // layout-sized box (reference * zoom) that makes zoom affect layout, not just paint
+        private VisualElement _zoomBox;   // layout-sized box (reference * panel scale * zoom) that makes zoom affect layout, not just paint
         private VisualElement _canvas;    // the element the story actually mounts onto
         private CheckerboardBackground _checkerboard;
         private PreviewInspectOverlay _overlay;
@@ -345,11 +345,12 @@ namespace Velvet.Editor.Preview
             return stageScroll;
         }
 
-        // The zoom box: its LAYOUT size is the reference size times the zoom factor, so the scroll view's
-        // scrollable extent matches what is actually painted. flexShrink 0 keeps it from being compressed by
-        // the flex column above it (the original squeeze bug for a fixed-size story taller than the stage).
-        // The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout size
-        // (reference * factor) in unscaled px, so its border is a crisp 1px bezel around the simulated viewport.
+        // The zoom box: its LAYOUT size is the reference size times the panel scale and the zoom factor, so the
+        // scroll view's scrollable extent matches what is actually painted. flexShrink 0 keeps it from being
+        // compressed by the flex column above it (the original squeeze bug for a fixed-size story taller than the
+        // stage). The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout
+        // size (reference * panel scale * factor) in unscaled px, so its border is a crisp 1px bezel around the
+        // simulated viewport.
         // Border colors are left at their default here and set by ApplyBackground (called once from CreateGUI
         // right after this element tree is built, and again on every background change) so the frame always
         // matches the active backdrop.
@@ -475,7 +476,6 @@ namespace Velvet.Editor.Preview
             _panelSettingsField = new ObjectField
             {
                 objectType = typeof(PanelSettings),
-                allowSceneObjects = false,
                 value = _panelSettings,
                 tooltip = "The game's PanelSettings: the canvas takes the scale a runtime panel on it would for the " +
                     "viewport's screen size.",
@@ -577,7 +577,7 @@ namespace Velvet.Editor.Preview
             ApplyZoom();
         }
 
-        // Applies the current zoom factor to BOTH the zoom box's layout size and the canvas's paint scale. Paint
+        // Applies the current zoom factor, times the panel scale, to BOTH the zoom box's layout size and the canvas's paint scale. Paint
         // scale alone only repaints the canvas larger without changing the space it occupies, so the stage would
         // center the UNSCALED box: at 200% the painted content would overflow the stage's Hidden clip with
         // nothing to scroll to, and at 50%/Fit the centered (but unscaled) box would leave dead space below a
@@ -708,11 +708,11 @@ namespace Velvet.Editor.Preview
         private float PanelScale()
         {
             if (_panelSettings == null) return 1f;
-            var (screenW, screenH) = ViewportSize();
-            if (screenW <= 0f || screenH <= 0f) (screenW, screenH) = StageSize();
-            if (!IsResolved(screenW) || !IsResolved(screenH)) return 1f;
+            var screen = ViewportSize();
+            if (screen.Width <= 0f) screen = StageSize();
 
-            var unitsPerPixel = PreviewPanelScale.Resolve(_panelSettings, new Vector2(screenW, screenH), Screen.dpi);
+            var unitsPerPixel = PreviewPanelScale.Resolve(
+                _panelSettings, new Vector2(screen.Width, screen.Height), Screen.dpi);
             return IsResolved(unitsPerPixel) ? 1f / unitsPerPixel : 1f;
         }
 
@@ -864,7 +864,9 @@ namespace Velvet.Editor.Preview
             }
 
             var (viewportW, viewportH) = ViewportSize();
-            if (viewportW > 0f && viewportH > 0f) return (viewportW / panelScale, viewportH / panelScale, true);
+            viewportW /= panelScale;
+            viewportH /= panelScale;
+            if (viewportW > 0f && viewportH > 0f) return (viewportW, viewportH, true);
 
             return (stageW, stageH, false);
         }

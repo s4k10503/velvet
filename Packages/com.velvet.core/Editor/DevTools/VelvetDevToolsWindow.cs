@@ -199,7 +199,7 @@ namespace Velvet.Editor.DevTools
             GUILayout.Box(string.Empty, GUILayout.Width(PaneDividerWidth), GUILayout.ExpandHeight(true));
 
             EditorGUILayout.BeginVertical(GUILayout.ExpandWidth(true));
-            DrawRightPane();
+            DrawRightPane(entries);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
@@ -234,7 +234,9 @@ namespace Velvet.Editor.DevTools
                 var nowSelected = GUILayout.Toggle(isSelected, GUIContent.none, GUILayout.Width(EntryToggleWidth));
                 if (nowSelected != isSelected)
                 {
-                    Select(isSelected ? null : entry.Fiber);
+                    _selectedFiber = isSelected ? null : entry.Fiber;
+                    InvalidateCache();
+                    RefreshSelectedComponent();
                 }
 
                 GUILayout.Label(label, isSelected ? EditorStyles.selectionRect : EditorStyles.label);
@@ -249,10 +251,10 @@ namespace Velvet.Editor.DevTools
         #endregion
 
         #region Right Pane
-        private void DrawRightPane()
+        private void DrawRightPane(IReadOnlyList<VelvetDevToolsRegistry.ComponentEntry> entries)
         {
-            var entry = SelectedEntry();
-            if (entry == null)
+            var entry = SelectedEntry(entries);
+            if (entry is null)
             {
                 EditorGUILayout.HelpBox("Select a fiber from the left pane.", MessageType.None);
                 return;
@@ -406,17 +408,12 @@ namespace Velvet.Editor.DevTools
         #endregion
 
         #region Cache Management
-        internal void Select(ComponentFiber fiber)
-        {
-            _selectedFiber = fiber;
-            InvalidateCache();
-            RefreshSelectedComponent();
-        }
+        internal VelvetDevToolsRegistry.ComponentEntry SelectedEntry() => SelectedEntry(VelvetDevToolsRegistry.Entries);
 
-        internal VelvetDevToolsRegistry.ComponentEntry SelectedEntry()
+        private VelvetDevToolsRegistry.ComponentEntry SelectedEntry(
+            IReadOnlyList<VelvetDevToolsRegistry.ComponentEntry> entries)
         {
-            if (_selectedFiber == null) return null;
-            foreach (var entry in VelvetDevToolsRegistry.Entries)
+            foreach (var entry in entries)
             {
                 if (ReferenceEquals(entry.Fiber, _selectedFiber)) return entry;
             }

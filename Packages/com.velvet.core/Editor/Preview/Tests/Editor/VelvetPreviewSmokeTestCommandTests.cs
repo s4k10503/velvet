@@ -35,12 +35,40 @@ namespace Velvet.Tests
             // Arrange
             var results = new[] { Result(nameof(Passes), null), Result(nameof(Fails), "story boom") };
             LogAssert.Expect(LogType.Error, new Regex("'SmokeCommandFixture/Fails' failed: story boom"));
+            LogAssert.Expect(LogType.Log, "[VelvetPreview] smoke test: 1 of 2 stories passed.");
 
             // Act
             var failed = VelvetPreviewSmokeTestCommand.Report(results);
 
             // Assert
             Assert.That(failed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_EveryStoryPassing_When_RunFromTheCommandLine_Then_TheExitCodeIsZero()
+        {
+            // Arrange
+            var results = new[] { Result(nameof(Passes), null) };
+            LogAssert.Expect(LogType.Log, "[VelvetPreview] smoke test: 1 of 1 stories passed.");
+
+            // Act
+            var code = VelvetPreviewSmokeTestCommand.ExitCode(() => results);
+
+            // Assert
+            Assert.That(code, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ARefusedStoryIndex_When_RunFromTheCommandLine_Then_TheRefusalIsLoggedAndTheExitCodeIsOne()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: duplicate ids");
+
+            // Act
+            var code = VelvetPreviewSmokeTestCommand.ExitCode(() => throw new InvalidOperationException("duplicate ids"));
+
+            // Assert
+            Assert.That(code, Is.EqualTo(1));
         }
     }
 }

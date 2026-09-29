@@ -36,6 +36,12 @@ namespace Velvet.Tests
 
         private static VNode BoundaryCatches() => V.Component(BoundaryRender, key: "boundary");
 
+        private static VNode CaughtThenEffectThrows() =>
+            V.Div(
+                "",
+                V.Component(BoundaryRender, key: "boundary"),
+                V.Component(ThrowingEffectRender, key: "effect"));
+
         [Component]
         private static VNode ThrowingRender() => throw new InvalidOperationException("render boom");
 
@@ -136,6 +142,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(failure, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnErrorABoundaryCatchesThenAnEffectThatThrowsWithNoBoundary_When_SmokeTested_Then_ItFailsWithTheEffects()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: render boom");
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: effect boom");
+
+            // Act
+            var failure = FailureOf(nameof(CaughtThenEffectThrows));
+
+            // Assert
+            Assert.That(failure, Is.EqualTo("InvalidOperationException: effect boom"));
         }
 
         [Test]
