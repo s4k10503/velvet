@@ -108,6 +108,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADisposedEnvironment_When_DisposedAgain_Then_NoTeardownRunsTwice()
+        {
+            // Arrange
+            var environment = VelvetPreviewRegistry.RunSetupFor(ThisAssembly);
+            environment?.Dispose();
+            s_log.Clear();
+
+            // Act
+            environment?.Dispose();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.Empty);
+        }
+
+        [Test]
         public void Given_ALaterTeardownThatThrows_When_Disposed_Then_TheEarlierTeardownStillRuns()
         {
             // Arrange

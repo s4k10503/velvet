@@ -1,15 +1,17 @@
 ### Added
 
-- `VelvetPreviewSmokeTest.Run` mounts every preview story with its default args and its setups, runs the
-  effects the mount left pending and the renders they schedule, and reports each story whose build, mount or
+- `VelvetPreviewSmokeTest.Run` mounts every preview story with its default args and its setups onto a
+  runtime panel, runs pending passive effects and the renders and transitions they schedule over 100 rounds,
+  and reports each story whose build, mount or
   setup threw, or during which an exception no error boundary in the story caught was logged, as Storybook's
   test runner smoke-tests a story. **Window ▸ Velvet ▸ Run Preview Smoke Test** logs the failures, and
   `-executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit` runs it in a batch-mode
-  editor and exits 1 when a story fails.
+  editor and exits 1 when a story fails or none is found.
 
 - The preview window's toolbar takes the game's `PanelSettings`. With one chosen, the canvas is laid out in
-  the units a runtime panel on those settings uses for the viewport's screen size, and painted at that
-  panel's scale. The window used to render at the editor panel's own scale only.
+  the units a runtime panel on those settings uses for the viewport's screen size, or for their target
+  texture's size when they have one, and painted at that panel's scale; the canvas is the responsive scope
+  under Full as well. The window used to render at the editor panel's own scale only.
 
 ### Changed
 

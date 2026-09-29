@@ -58,6 +58,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASelectedMountedRoot_When_ItsTreeIsDisposed_Then_NothingIsSelected()
+        {
+            // Arrange
+            var mounted = V.Mount(new VisualElement(), V.Div());
+            Select(mounted.Root);
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(_window.SelectedEntry(), Is.Null);
+        }
+
+        [Test]
         public void Given_TheSecondEntrySelected_When_TheFirstLeavesTheRegistry_Then_TheSelectionStaysOnTheSecond()
         {
             // Arrange

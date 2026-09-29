@@ -230,12 +230,15 @@ resize.
 
 ### Panel scale
 
-The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset. With one chosen, the window
-treats the viewport as a screen of that many pixels (the stage itself under **Full**), resolves the scale
-a runtime panel on those settings takes for it — `ConstantPixelSize`, `ConstantPhysicalSize` at
-`Screen.dpi`, or `ScaleWithScreenSize` with its reference resolution and screen match mode — and
-lays the canvas out in that panel's units, painted at that scale under the zoom. So a story's explicit
-`Width`/`Height`, and under a Custom viewport its breakpoints, are read in the panel's units, and the
+The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset, and the choice is remembered
+per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. With one chosen, the window
+treats the viewport as a screen of that many pixels (the stage itself under **Full**), or the settings'
+target texture as the screen when they have one, and resolves the scale a runtime panel on those settings
+takes for it — `ConstantPixelSize`, `ConstantPhysicalSize` at `Screen.dpi`, or `ScaleWithScreenSize` with
+its reference resolution and screen match mode; a world-space panel takes 1. It lays the canvas out in
+that panel's units, painted at that scale under the zoom, and makes the canvas the responsive scope under
+**Full** as a Custom viewport does, remounting the story when the choice changes. So a story's explicit
+`Width`/`Height`, and the breakpoints of a story without one, are read in the panel's units, and the
 status line shows the scale. With the field empty the canvas keeps the editor panel's own scale.
 
 ### Outline / Measure
@@ -254,17 +257,19 @@ zoomed canvas transform, so outlines and boxes stay aligned at any zoom level.
 ## Smoke test
 
 `VelvetPreviewSmokeTest.Run()` is the counterpart of Storybook's test runner run over stories without
-a play function: it mounts every discovered story with its default args, through its
-`[VelvetPreviewSetup]` environment, runs the effects the mount left pending and the renders they
-schedule, and returns one `VelvetPreviewSmokeResult` per story. A story fails when building or mounting
-it throws, a setup throws, or an exception no error boundary in the story catches is logged meanwhile.
-`Failure` names the build or mount exception, else the first such logged one. An error a boundary catches is logged as usual and does not fail the story.
-`Run` throws, as discovery does, when two stories share an id.
+a play function. It mounts every discovered story with its default args, through its
+`[VelvetPreviewSetup]` environment, onto a runtime panel that renders into a 1280×720 texture. It then
+runs pending passive effects and the renders and transitions they schedule, over 100 rounds, and
+returns one `VelvetPreviewSmokeResult` per story. A story fails when building or mounting it throws, a
+setup throws, or an exception no error boundary in the story catches is logged meanwhile. `Failure`
+names the build or mount exception, else the first such logged one. An error a boundary catches is
+logged as usual and does not fail the story. `Run` throws, as discovery does, when two stories share an
+id.
 
 **Window ▸ Velvet ▸ Run Preview Smoke Test** logs one error per failing story. A CI job runs it in a
 batch-mode editor with
 `-batchmode -executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit`, which
-exits 1 when a story fails or discovery is refused, and 0 when every story passes.
+exits 1 when a story fails, discovery is refused or no story is found, and 0 when every story found passes.
 
 ## Headless screenshot capture
 

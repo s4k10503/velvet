@@ -29,6 +29,7 @@ namespace Velvet
 
         /// <summary>
         /// Runs the setups' teardowns in reverse setup order. One that throws is logged and the rest still run.
+        /// A second call runs none.
         /// </summary>
         public void Dispose()
         {
@@ -43,6 +44,8 @@ namespace Velvet
                     Debug.LogException(ex);
                 }
             }
+
+            _teardowns.Clear();
         }
     }
 }
