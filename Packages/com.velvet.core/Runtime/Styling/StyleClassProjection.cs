@@ -84,6 +84,33 @@ namespace Velvet
         // and can itself be outranked by a class above it.
         internal static void OnInlineLayersChanged(VisualElement element, Model model) => model.Recompute(element);
 
+        // The highest priority at which a live, ungated class writes one of longhands without writing the whole
+        // of shorthand; null when none does. Without a model, a class on the element is read at the base priority.
+        internal static int? TopClassPriority(VisualElement element, StyleLonghandSet longhands,
+            StyleLonghandSet shorthand)
+        {
+            var model = StyleArbitraryValueResolver.TryGetProjection(element);
+            if (model != null)
+            {
+                return model.TopPriority(longhands, shorthand);
+            }
+            foreach (var cls in element.GetClasses())
+            {
+                StyleUtilityProperties.TryGet(cls, out var rule);
+                if (WritesLonghand(rule.Properties, (int)rule.Gate, longhands, shorthand))
+                {
+                    return StyleLayerPriority.Base;
+                }
+            }
+            return null;
+        }
+
+        private static bool WritesLonghand(StyleLonghandSet properties, int gate, StyleLonghandSet longhands,
+            StyleLonghandSet shorthand)
+            => gate == (int)StyleUtilityGate.None && properties.Overlaps(longhands) && !IsSubset(shorthand, properties);
+
+        private static bool IsSubset(StyleLonghandSet a, StyleLonghandSet b) => b.Union(a) == b;
+
         // The inline half of the cascade, seen from the class half. Implemented by the layer map the model is
         // stored on, so a recompute reaches it directly rather than resolving the element through the weak
         // table once per question — three lookups per toggle on a list that toggles every row.
@@ -321,7 +348,18 @@ namespace Velvet
                 }
             }
 
-            private static bool IsSubset(StyleLonghandSet a, StyleLonghandSet b) => b.Union(a) == b;
+            public int? TopPriority(StyleLonghandSet longhands, StyleLonghandSet shorthand)
+            {
+                int? top = null;
+                foreach (var entry in _entries)
+                {
+                    if (!entry.Dead && WritesLonghand(entry.Properties, entry.Gate, longhands, shorthand))
+                    {
+                        top = top == null ? entry.Priority : System.Math.Max(top.Value, entry.Priority);
+                    }
+                }
+                return top;
+            }
 
             private bool IsAlive(string cls)
             {

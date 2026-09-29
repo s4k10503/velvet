@@ -808,10 +808,21 @@ namespace Velvet
             VisualElement element, LayerMap map, Dictionary<ArbitraryProperty, int> floors)
         {
             var previous = map.Floors;
-            if (SameFloors(previous, floors))
+            if (!SameFloors(previous, floors))
             {
-                return;
+                InstallFloors(element, map, previous, floors);
             }
+            // Which longhand class is alive decides the flex slots too, and a verdict can change that with the
+            // floors unchanged.
+            if (map.ContainsKey(ArbitraryProperty.Flex))
+            {
+                ApplyCombinedFlex(element, map);
+            }
+        }
+
+        private static void InstallFloors(VisualElement element, LayerMap map,
+            Dictionary<ArbitraryProperty, int>? previous, Dictionary<ArbitraryProperty, int> floors)
+        {
             map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, int>(floors);
             foreach (var pair in floors)
             {
@@ -866,6 +877,20 @@ namespace Velvet
                 return false;
             }
             style = layers.Values[top];
+            return true;
+        }
+
+        // TryWinningLayer, with the priority the winner sits at.
+        private static bool TryTopLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style,
+            out int priority)
+        {
+            priority = 0;
+            if (!TryWinningLayer(map, property, out style))
+            {
+                return false;
+            }
+            var layers = map[property];
+            priority = layers.Keys[layers.Count - 1];
             return true;
         }
 
@@ -1226,8 +1251,15 @@ namespace Velvet
         // re-apply can claim or release the element and so edit the list.
         internal static void NotifyClassesChanged(VisualElement element)
         {
-            s_layers.TryGetValue(element, out var map);
-            var watchers = map?.Watchers;
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            if (map.ContainsKey(ArbitraryProperty.Flex))
+            {
+                ApplyCombinedFlex(element, map);
+            }
+            var watchers = map.Watchers;
             if (watchers == null)
             {
                 return;
@@ -1280,12 +1312,10 @@ namespace Velvet
             var found = false;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
-                if (!TryWinningLayer(map, writer, out var style))
+                if (!TryTopLayer(map, writer, out var style, out var priority))
                 {
                     continue;
                 }
-                var layers = map[writer];
-                var priority = layers.Keys[layers.Count - 1];
                 if (priority >= best)
                 {
                     winner = style;
@@ -1448,6 +1478,11 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
+            if (property == ArbitraryProperty.Flex || (IsFlexLonghand(property) && map.ContainsKey(ArbitraryProperty.Flex)))
+            {
+                ApplyCombinedFlex(element, map);
+                return;
+            }
             if (TryWinningLayer(map, property, out var winner))
             {
                 ApplyInline(element, winner);
@@ -1457,6 +1492,60 @@ namespace Velvet
                 ClearInline(element, property);
             }
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property));
+        }
+
+        private static bool IsFlexLonghand(ArbitraryProperty property)
+            => property == ArbitraryProperty.FlexGrow || property == ArbitraryProperty.FlexShrink
+                || property == ArbitraryProperty.FlexBasis;
+
+        // The flex shorthand and its longhands write the same three slots. Tailwind declares `flex` before
+        // grow, shrink and basis, so at one priority a longhand wins, a bracket layer or a bundled class
+        // alike; across priorities the higher one does.
+        private static void ApplyCombinedFlex(VisualElement element, LayerMap map)
+        {
+            int? shorthandPriority = null;
+            if (TryTopLayer(map, ArbitraryProperty.Flex, out var shorthand, out var top))
+            {
+                shorthandPriority = top;
+            }
+            var style = ClipPathLayoutBox.StyleFor(element, ArbitraryProperty.Flex);
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexGrow, shorthandPriority))
+            {
+                style.flexGrow = shorthand.Value;
+            }
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexShrink, shorthandPriority))
+            {
+                style.flexShrink = shorthand.Value3;
+            }
+            if (ShorthandSets(element, map, ArbitraryProperty.FlexBasis, shorthandPriority))
+            {
+                style.flexBasis = float.IsNaN(shorthand.Value2)
+                    ? new StyleLength(StyleKeyword.Auto)
+                    : new StyleLength(new Length(shorthand.Value2, shorthand.Unit2));
+            }
+        }
+
+        // Whether the shorthand at shorthandPriority sets longhand's slot. When it does not, the longhand's own
+        // layer is written there, or the slot is cleared for the class list. A class writing all three
+        // (flex-1, flex-none) is ranked against the shorthand as any class against a layer, so it is not a
+        // longhand class here.
+        private static bool ShorthandSets(VisualElement element, LayerMap map, ArbitraryProperty longhand,
+            int? shorthandPriority)
+        {
+            var hasOwn = TryTopLayer(map, longhand, out var own, out var ownPriority);
+            if (hasOwn && !(ownPriority < shorthandPriority))
+            {
+                ApplyInline(element, own);
+                return false;
+            }
+            var classPriority = StyleClassProjection.TopClassPriority(element,
+                StyleArbitraryLonghands.Of(longhand), StyleArbitraryLonghands.Of(ArbitraryProperty.Flex));
+            if (shorthandPriority == null || classPriority >= shorthandPriority)
+            {
+                ClearInline(element, longhand);
+                return false;
+            }
+            return true;
         }
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
@@ -1666,8 +1755,8 @@ namespace Velvet
             // are written through their dedicated UITK style properties.
             switch (style.Property)
             {
-                // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
-                // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
+                // Scale (uniform + per-axis), both translate axes and the flex shorthand are composed by
+                // ResolveAndApply's combined appliers and never reach here; what lands is every transform
                 // property written in one go — rotate, transform-origin — plus aspect-ratio.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
@@ -1676,16 +1765,6 @@ namespace Velvet
                     element.style.transformOrigin = new TransformOrigin(
                         new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2));
                     return;
-                case ArbitraryProperty.Flex:
-                {
-                    var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
-                    flex.flexGrow = style.Value;
-                    flex.flexShrink = style.Value3;
-                    flex.flexBasis = float.IsNaN(style.Value2)
-                        ? new StyleLength(StyleKeyword.Auto)
-                        : new StyleLength(new Length(style.Value2, style.Unit2));
-                    return;
-                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -1801,14 +1880,6 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
-                case ArbitraryProperty.Flex:
-                {
-                    var flex = ClipPathLayoutBox.StyleFor(element, property);
-                    flex.flexGrow = StyleKeyword.Null;
-                    flex.flexShrink = StyleKeyword.Null;
-                    flex.flexBasis = StyleKeyword.Null;
-                    return true;
-                }
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
                 // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a

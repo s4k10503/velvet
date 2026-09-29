@@ -329,9 +329,13 @@ spells it, and the percent form especially would otherwise read as a factor of f
 
 The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow N, shrink 1, basis 0%),
 `flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
-`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_auto]`. A
-value the CSS shorthand rejects, such as `flex-[column]`, is not recognized. `flex-1`, `flex-auto`,
-`flex-initial` and `flex-none` are the USS classes they always were.
+`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_1_0]`. A
+value the CSS shorthand rejects, such as `flex-[column]` or `flex-[1_1_-10px]`, is not recognized.
+`flex-1`, `flex-auto`, `flex-initial` and `flex-none` are the USS classes they always were.
+
+Tailwind declares `flex` before `grow`, `shrink` and `basis`, so a longhand beside the shorthand takes
+its own part whatever the class order: `flex-2 shrink-0` grows at 2 and does not shrink. A variant
+still outranks the base, so `md:flex-2` overrides a base `shrink-0` from the `md` breakpoint up.
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.

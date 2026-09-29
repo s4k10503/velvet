@@ -2886,7 +2886,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
-        // the `number < 0f` rejection in TakeFlexPart.
+        // the `number < 0f` rejection in TakeFlexNumber.
         [Test]
         public void Given_FlexBracketWithANegativeFactor_When_Parsed_Then_DeclinesToParse()
         {
@@ -2898,7 +2898,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
-        // the rejection of a number after the shrink in TakeFlexPart.
+        // the `number != 0f` rejection of a number after the shrink in TakeFlexNumber.
         [Test]
         public void Given_FlexBracketWithThreeNumbers_When_Parsed_Then_DeclinesToParse()
         {
@@ -2916,6 +2916,50 @@ namespace Velvet.Tests
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse("flex-[10px_20px]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_FlexBracketWithAUnitlessZeroAfterThePair_When_Parsed_Then_TheZeroIsTheBasis()
+        {
+            // Act — CSS reads `flex: 1 1 0` as a zero basis.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[1_1_0]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("1 1 0Pixel"));
+        }
+
+        [Test]
+        public void Given_FlexBracketWithAZeroPercentBasis_When_Parsed_Then_TheZeroIsTheBasis()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_0%]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 1 0Percent"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the `HasBasis` rejection of a unitless zero in TakeFlexNumber.
+        [Test]
+        public void Given_FlexBracketWithTwoUnitlessZeroesAfterThePair_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[1_1_0_0]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the `Basis >= 0f` rejection in TakeFlexPart.
+        [Test]
+        public void Given_FlexBracketWithANegativeBasis_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[1_1_-10px]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -2989,6 +3033,184 @@ namespace Velvet.Tests
             // Assert — the applied shrink rides along, since a fresh element already reads Null.
             Assert.That((applied, el.style.flexGrow.keyword, el.style.flexShrink.keyword, el.style.flexBasis.keyword),
                 Is.EqualTo((3f, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        private static ArbitraryStyle FlexTwo => ArbitraryStyle.Flex(2f, 1f, 0f, LengthUnit.Percent);
+
+        [Test]
+        public void Given_AShrinkClass_When_AFlexShorthandIsApplied_Then_TheClassKeepsTheShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.AddToClassList("shrink-0");
+
+            // Act — Tailwind declares flex before shrink, so at one priority shrink-0 wins whatever the order.
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert — the grow shows the shorthand still landed.
+            Assert.That((el.style.flexGrow.value, el.style.flexShrink.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AFlexShorthand_When_AShrinkClassArrives_Then_TheClassTakesTheShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Act
+            StyleClassProjection.Add(el, "shrink-0", StyleLayerPriority.Base);
+
+            // Assert — the grow shows the shorthand still landed.
+            Assert.That((el.style.flexGrow.value, el.style.flexShrink.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AShrinkClassBelowAFlexShorthand_When_Applied_Then_TheShorthandSetsTheShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.AddToClassList("shrink-0");
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo, StyleLayerPriority.ResponsiveMd);
+
+            // Assert
+            Assert.That(el.style.flexShrink.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AFlexShorthandBelowAShrinkClass_When_Applied_Then_TheClassTakesTheShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleClassProjection.Add(el, "shrink-0", StyleLayerPriority.ResponsiveMd);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert — the grow shows the shorthand still landed.
+            Assert.That((el.style.flexGrow.value, el.style.flexShrink.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AGrowLayer_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheGrowLayerKeepsTheGrow()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("grow-[3]", out var grow);
+            StyleArbitraryValueResolver.Apply(el, grow);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert — the shrink shows the shorthand still landed.
+            Assert.That((el.style.flexGrow.value, el.style.flexShrink.value), Is.EqualTo((3f, 1f)));
+        }
+
+        [Test]
+        public void Given_AFlexShorthand_When_AHigherGrowLayerIsApplied_Then_TheGrowLayerSetsTheGrow()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+            StyleArbitraryValueResolver.TryParse("grow-[3]", out var grow);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, grow, StyleLayerPriority.ResponsiveMd);
+
+            // Assert
+            Assert.That(el.style.flexGrow.value, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_AFlexShorthandAboveTheLonghandLayers_When_TheyAreApplied_Then_TheShorthandSetsAllThree()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwo, StyleLayerPriority.ResponsiveMd);
+
+            // Act
+            foreach (var cls in new[] { "grow-[3]", "shrink-[2]", "basis-[10px]" })
+            {
+                StyleArbitraryValueResolver.TryParse(cls, out var longhand);
+                StyleArbitraryValueResolver.Apply(el, longhand);
+            }
+
+            // Assert
+            var style = el.style;
+            Assert.That((style.flexGrow.value, style.flexShrink.value, style.flexBasis.value),
+                Is.EqualTo((2f, 1f, new Length(0f, LengthUnit.Percent))));
+        }
+
+        [Test]
+        public void Given_AFlexClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheShorthandSetsTheGrow()
+        {
+            // Arrange — flex-1 writes all three longhands, so it is not a longhand class to the shorthand.
+            var el = new VisualElement();
+            el.AddToClassList("flex-1");
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+
+            // Assert
+            Assert.That(el.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base has no flex shorthand to route a longhand through. What
+        // reddens it is dropping `&& map.ContainsKey(ArbitraryProperty.Flex)` from ResolveAndApply's flex
+        // routing, which clears the shrink and basis slots whenever a grow layer resolves.
+        [Test]
+        public void Given_AShrinkWrittenOutsideTheLayers_When_AGrowLayerIsApplied_Then_TheShrinkIsKept()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.style.flexShrink = 0f;
+            StyleArbitraryValueResolver.TryParse("grow-[3]", out var grow);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, grow);
+
+            // Assert
+            Assert.That((el.style.flexShrink.keyword, el.style.flexShrink.value),
+                Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_AGrowLayerAboveAFlexShorthand_When_TheGrowLayerIsCleared_Then_TheShorthandsGrowReturns()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+            StyleArbitraryValueResolver.TryParse("grow-[3]", out var grow);
+            StyleArbitraryValueResolver.Apply(el, grow, StyleLayerPriority.ResponsiveMd);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.FlexGrow, StyleLayerPriority.ResponsiveMd);
+
+            // Assert
+            Assert.That(el.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AShrinkClassAnotherLayerSuppressed_When_ThatLayerIsCleared_Then_TheClassTakesTheShrinkBack()
+        {
+            // Arrange — grow-0 above the base is there to build the projection, which is what lets a shrink-[2]
+            // layer beside it take shrink-0 off the element.
+            var el = new VisualElement();
+            el.AddToClassList("shrink-0");
+            StyleArbitraryValueResolver.Apply(el, FlexTwo);
+            StyleClassProjection.Add(el, "grow-0", StyleLayerPriority.ResponsiveMd);
+            StyleArbitraryValueResolver.TryParse("shrink-[2]", out var shrink);
+            StyleArbitraryValueResolver.Apply(el, shrink, StyleLayerPriority.ResponsiveMd);
+            var suppressed = el.ClassListContains("shrink-0");
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.FlexShrink, StyleLayerPriority.ResponsiveMd);
+
+            // Assert
+            Assert.That((suppressed, el.ClassListContains("shrink-0"), el.style.flexShrink.keyword),
+                Is.EqualTo((false, true, StyleKeyword.Null)));
         }
 
         [Test]

@@ -189,27 +189,14 @@ namespace Velvet
             public bool PairClosed;
         }
 
-        // One space-separated component: a number is the grow, or the shrink straight after it; anything else is
-        // the basis.
+        // One space-separated component: a number is the grow, or the shrink straight after it; a unitless zero
+        // after the pair is the basis, as CSS reads `flex: 1 1 0`; anything else is the basis, which may not be
+        // negative.
         private static bool TakeFlexPart(ReadOnlySpan<char> part, ref FlexParts parts)
         {
             if (StyleArbitraryValueResolver.TryParseFloat(part, out var number))
             {
-                if (number < 0f)
-                {
-                    return false;
-                }
-                if (float.IsNaN(parts.Grow))
-                {
-                    parts.Grow = number;
-                    return true;
-                }
-                if (!float.IsNaN(parts.Shrink) || parts.PairClosed)
-                {
-                    return false;
-                }
-                parts.Shrink = number;
-                return true;
+                return TakeFlexNumber(number, ref parts);
             }
             if (parts.HasBasis)
             {
@@ -222,7 +209,34 @@ namespace Velvet
                 parts.Basis = float.NaN;
                 return true;
             }
-            return StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit);
+            return StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit)
+                && parts.Basis >= 0f;
+        }
+
+        private static bool TakeFlexNumber(float number, ref FlexParts parts)
+        {
+            if (number < 0f)
+            {
+                return false;
+            }
+            if (float.IsNaN(parts.Grow))
+            {
+                parts.Grow = number;
+                return true;
+            }
+            if (float.IsNaN(parts.Shrink) && !parts.PairClosed)
+            {
+                parts.Shrink = number;
+                return true;
+            }
+            if (number != 0f || parts.HasBasis)
+            {
+                return false;
+            }
+            parts.HasBasis = true;
+            parts.Basis = 0f;
+            parts.Unit = LengthUnit.Pixel;
+            return true;
         }
 
         private static bool TryParseTranslate(ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate,
