@@ -541,6 +541,25 @@ namespace MyApp.@event
         }
 
         [Fact]
+        public void Memoize_ContextualKeywordNamedTypesAndTypeParameters_AreEscaped()
+        {
+            AssertGeneratedMatchesSnapshot(
+                inputSource: @"
+namespace MyApp.@record
+{
+    public static partial class @record<@required>
+    {
+        [global::Velvet.MemoizeMethod]
+        private static partial global::Velvet.VNode Build<@scoped>(@scoped x, @required y);
+
+        private static global::Velvet.VNode Build_Impl<@scoped>(@scoped x, @required y) => null;
+    }
+}",
+                expectedHintName: "MyApp.record.record_T1.Memoize.g.cs",
+                snapshotFile: "ContextualKeywordNamedTypes.verified.cs");
+        }
+
+        [Fact]
         public void Memoize_VNodeSubtypeOtherThanMemoNode_ReportsVel008()
         {
             AssertOnlyDiagnostic(
@@ -591,8 +610,6 @@ namespace MyApp
         [Fact]
         public void Memoize_Arity0_PureImpl_GeneratesEmptyDepsMemoCall()
         {
-            // arity 0 with a Pure _Impl is allowed; the generated wrapper declares an empty dependency set
-            // so V.Memoized caches the VNode forever (factory is deterministic).
             var result = GeneratorTestHelper.Run(@"
 namespace MyApp.Pages
 {

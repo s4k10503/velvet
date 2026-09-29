@@ -315,7 +315,7 @@ namespace Velvet.SourceGenerators
                     .Append(EscapeKeyword(method.Name)).Append(typeArguments)
                     .Append('(')
                     .Append(string.Join(", ", method.Parameters.Select(p =>
-                        $"{ParameterModifier(method, p)}{p.Type.ToDisplayString(FullyQualifiedFormat)} {EscapeKeyword(p.Name)}")))
+                        $"{ParameterModifier(method, p)}{RenderType(p.Type)} {EscapeKeyword(p.Name)}")))
                     .Append(')')
                     .ToString(),
             };
@@ -351,10 +351,15 @@ namespace Velvet.SourceGenerators
             // The dependency array is always built here rather than left to overload resolution: with one
             // array-typed argument, V.Memoized's params object?[] would take that array as the whole list,
             // compared element by element, or a null one as no list at all. A method's type arguments are
-            // part of the key, since the same position can call it with different ones.
+            // part of the key, since the same position can call it with different ones, and so is an instance
+            // member's receiver, since it can be called there on different instances.
             var keys = method.Parameters.Where(p => !p.IsParams).Select(p => arguments[p.Ordinal])
                 .Concat(method.TypeParameters.Select(tp => $"typeof({EscapeKeyword(tp.Name)})"))
                 .ToList();
+            if (!method.IsStatic)
+            {
+                keys.Add("this");
+            }
             string deps;
             var paramsParameter = method.Parameters.FirstOrDefault(p => p.IsParams);
             if (paramsParameter is not null)
@@ -475,7 +480,7 @@ namespace Velvet.SourceGenerators
                     constraints.Add("notnull");
                 }
 
-                constraints.AddRange(typeParameter.ConstraintTypes.Select(t => t.ToDisplayString(FullyQualifiedFormat)));
+                constraints.AddRange(typeParameter.ConstraintTypes.Select(RenderType));
 
                 if (typeParameter.HasConstructorConstraint)
                 {
@@ -490,8 +495,17 @@ namespace Velvet.SourceGenerators
             return clauses.ToImmutable();
         }
 
+        // The display format escapes reserved keywords only, so a contextual one naming a type, a type parameter
+        // or a namespace is escaped here. A keyword part is the keyword itself (`global`, `dynamic`) and stays.
+        private static string RenderType(ITypeSymbol type) =>
+            string.Concat(type.ToDisplayParts(FullyQualifiedFormat).Select(part =>
+                part.Kind == SymbolDisplayPartKind.Keyword ? part.ToString() : EscapeKeyword(part.ToString())));
+
         private static string EscapeKeyword(string identifier) =>
-            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None ? identifier : "@" + identifier;
+            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None &&
+            SyntaxFacts.GetContextualKeywordKind(identifier) == SyntaxKind.None
+                ? identifier
+                : "@" + identifier;
 
         private static string RenderAccessibility(Accessibility accessibility) => accessibility switch
         {

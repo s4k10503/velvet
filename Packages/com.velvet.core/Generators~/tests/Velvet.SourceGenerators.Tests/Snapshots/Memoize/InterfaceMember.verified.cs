@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial interface IPage
     {
         public partial global::Velvet.VNode Build(int x)
-            => global::Velvet.V.Memoized(() => Build_Impl(x), new object?[] { x });
+            => global::Velvet.V.Memoized(() => Build_Impl(x), new object?[] { x, this });
     }
 }

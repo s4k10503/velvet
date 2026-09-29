@@ -21,7 +21,7 @@ public static partial class HomePage
 }
 ```
 
-The generator emits a wrapper that calls `V.Memoized` with a deps array holding each parameter and, for a generic method, each type argument, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
+The generator emits a wrapper that calls `V.Memoized` with a deps array holding each parameter, each type argument of a generic method and the instance an instance member is called on, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
 
 ## What the declaration may carry
 
@@ -31,6 +31,7 @@ The generated wrapper repeats the declaration's signature, so any number of para
 - A `params` array is keyed by its length and its elements rather than by the array, which the compiler builds afresh at every call; a null array is told apart from an empty one.
 - Any other array is one dependency, compared by instance like any other reference, including when it is the only parameter.
 - A generic method's type arguments are dependencies too, so calling it at one position with another type argument rebuilds.
+- An instance member's receiver is a dependency, compared by instance for a class and by value for a struct, so calling it at one position on another instance rebuilds. What a class instance holds is not a dependency: VEL012 reports an `_Impl` reading a field or property of `this` that can change while the instance stays the same — any but a `static`, `const` or `readonly` field and a `static` or init-only property. Pass the value as a parameter instead.
 
 Two rules come from C# itself, which compiles the declaration and the generated implementation as the two halves of one extended partial method:
 
@@ -62,6 +63,7 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 | VEL009 | partial method already has a body |
 | VEL010 | ref struct or pointer parameter |
 | VEL011 | struct instance member that is not readonly, or of a ref struct |
+| VEL012 | `_Impl` reads a field or property of `this` the memo does not key on |
 
 For every diagnostic the package's analyzers report, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
 
