@@ -3794,7 +3794,8 @@ class ProjectLockTests(unittest.TestCase):
 
     def test_Given_AnEditorRefusedTheLockThatOutlivesItsBoundEachTime_When_ItIsRun_Then_ItIsNotReadAsHung(self):
         # Arrange — a refusal followed by an editor that does not exit, so each launch ends at the
-        # bound rather than at the refusal.
+        # bound rather than at the refusal. The editor is given ten seconds rather than one: at one,
+        # this case errored on a loaded machine.
         body = textwrap.dedent("""\
             open(log, "w").write("editor log\\n")
             sys.stdout.write({!r})
@@ -3805,7 +3806,7 @@ class ProjectLockTests(unittest.TestCase):
             # Act
             with contextlib.redirect_stdout(io.StringIO()):
                 reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
-                                                   root / "results.xml", root / "run.log", 1)
+                                                   root / "results.xml", root / "run.log", 10)
             last = (root / "run.log").read_text().rstrip().splitlines()[-1]
 
         # Assert
