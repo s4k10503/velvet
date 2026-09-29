@@ -125,6 +125,15 @@ namespace Velvet
         public float DelaySec { get; init; }
 
         /// <summary>
+        /// The transition a <c>layoutId</c> move takes in place of this one — Framer's <c>transition.layout</c>.
+        /// When null, the move takes this transition itself; its <see cref="Type"/> decides the curve as it does
+        /// for a variant swap. A <c>layoutId</c> Motion whose caller gives <c>V.Motion</c> no transition, duration,
+        /// easing or delay moves on Framer's default layout transition, a 0.45 s tween eased by
+        /// <c>cubic-bezier(0.4, 0, 0.1, 1)</c>.
+        /// </summary>
+        public StyleTransitionConfig? Layout { get; init; }
+
+        /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
         /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
         /// When set, transition-property switches from the implicit "all" catch-all — used for a variant class
@@ -144,18 +153,19 @@ namespace Velvet
         public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
 
         /// <summary>
-        /// Delay interval (seconds) applied sequentially to each DESCENDANT Motion that inherits its active
-        /// label from this Motion (it declares <c>variants</c> but no own <c>animate</c> — see
-        /// <see cref="Velvet.MotionNode.Animate"/>) when that ambient label changes: the i-th such inheriting
-        /// descendant, visited in document order, is delayed an additional <c>DelayChildrenSec + StaggerChildrenSec
+        /// Delay interval (seconds) applied sequentially to each child Motion that inherits its active
+        /// label from this Motion (it declares <c>variants</c> and none of <c>animate</c>, <c>initial</c> and <c>exit</c> — see
+        /// <see cref="Velvet.MotionNode.Animate"/>) when that label changes or this Motion's mount enter plays:
+        /// the i-th such child, in document order, is delayed an additional <c>DelayChildrenSec + StaggerChildrenSec
         /// * i</c> on top of its OWN <see cref="DelaySec"/>. 0 (default) means no stagger (every inheriting
-        /// descendant responds at the same time). Unlike AnimatePresence's own per-child enter/exit stagger
+        /// child responds at the same time). Unlike AnimatePresence's own per-child enter/exit stagger
         /// (<c>V.AnimatePresence(staggerSec:)</c>), this orchestrates a PLAIN parent → child label propagation —
         /// no AnimatePresence boundary is required; toggling this Motion's <c>animate</c> prop is enough. A
-        /// descendant with its OWN explicit <c>animate</c> opts out of both the label inheritance and this
-        /// stagger — it is driven by its own render, not this propagation. The
-        /// stagger index is transitive: an inheriting descendant with no stagger config of its own passes this
-        /// orchestration through to ITS OWN inheriting children, who continue claiming from the SAME sequence.
+        /// descendant naming a label of its own opts out of both the label inheritance and this stagger, as
+        /// Framer's controlling variant nodes do. As Framer Motion's <c>staggerChildren</c> does, the index counts
+        /// this Motion's own children: a child with variants numbers its own inheriting children from zero,
+        /// starting them with itself, and only a Motion with neither variants nor a label of its own hands this
+        /// sequence on to the children below it.
         /// </summary>
         public float StaggerChildrenSec { get; init; }
 
@@ -167,7 +177,7 @@ namespace Velvet
 
         /// <summary>
         /// Sequences this Motion's own class swap against its inheriting descendants' swaps (see
-        /// <see cref="StaggerChildrenSec"/>) when its active label changes. Defaults to
+        /// <see cref="StaggerChildrenSec"/>) when its active label changes or its mount enter plays. Defaults to
         /// <see cref="TransitionWhen.Together"/>.
         /// </summary>
         public TransitionWhen When { get; init; } = TransitionWhen.Together;
@@ -225,8 +235,9 @@ namespace Velvet
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, or the spring model.
+                // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
+                Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
@@ -381,9 +392,7 @@ namespace Velvet
 
         /// <summary>
         /// The name implies this Motion's own transition would wait for every inheriting descendant to finish
-        /// first. Not implemented: Velvet applies this Motion's own class swap before its descendants are even
-        /// visited during the reconcile walk, so the descendant count / durations needed to delay THIS swap are
-        /// not known in time. Setting this value logs a warning and behaves like <see cref="Together"/> (no
+        /// first. Not implemented: setting this value logs a warning and behaves like <see cref="Together"/> (no
         /// parent/child sequencing) rather than silently applying the wrong delay.
         /// </summary>
         AfterChildren,

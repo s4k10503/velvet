@@ -57,7 +57,7 @@ namespace Velvet
 
         /// <summary>
         /// Activates <paramref name="label"/> on the sequence's coordinator — feeds straight into
-        /// <c>V.Motion(animate:, transition:)</c>. Descendant Motions with no own <c>animate</c> inherit it
+        /// <c>V.Motion(animate:, transition:)</c>. Descendant Motions naming no label of their own inherit it
         /// exactly as they do for any hand-toggled label, including <c>StaggerChildrenSec</c> fan-out when
         /// <paramref name="transition"/> declares it — "one at a time" across a list of such descendants needs
         /// no separate multi-target API.

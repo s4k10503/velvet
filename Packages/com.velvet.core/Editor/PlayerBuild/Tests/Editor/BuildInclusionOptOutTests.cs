@@ -201,6 +201,7 @@ namespace Velvet.Tests
             Assert.That((saved.ExcludeStyleSheet, saved.Excludes(VelvetShaders.DropShadow)), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already silences the report for an excluded holder.
         [Test]
         public void Given_TheHolderExcluded_When_ATreeIsMountedOnAPanelWithoutTheSheet_Then_OnlyALaterMountIsReported()
         {
@@ -210,10 +211,12 @@ namespace Velvet.Tests
             var bare = OnBarePanel("bare");
 
             // Act — the second mount follows lifting the exclusion, so a report the first one made would have
-            // taken the run's only one.
+            // taken the run's only one. Each panel is ticked, which is where the check runs.
             Mount(silenced);
+            EditorPanelTestHelpers.DriveSchedulerOnce(silenced.panel);
             VelvetBuildSettings.Change(settings => settings.ExcludeStyleSheet = false);
             Mount(bare);
+            EditorPanelTestHelpers.DriveSchedulerOnce(bare.panel);
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));

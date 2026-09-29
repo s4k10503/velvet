@@ -124,6 +124,32 @@ namespace Velvet.Tests
         private static VNode CoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
             exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) });
 
+        // child0 has an inheriting child of its own, which is its to number rather than the coordinator's.
+        [Component]
+        private static VNode NestedCoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
+            exit: "hidden", children: new[]
+            {
+                V.Motion(name: "child0", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 0.05f },
+                    children: new[] { InheritingMotion(3) }),
+                InheritingMotion(1),
+            });
+
+        // Ahead of the two inheriting children: a Motion naming its own exit, one naming its own animate, and a
+        // variant child whose variants name no pose for the exit label.
+        [Component]
+        private static VNode MixedCoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
+            exit: "hidden", children: new[]
+            {
+                V.Motion(name: "own-exit", variants: s_fade, exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                V.Motion(name: "own-animate", variants: s_fade, animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                V.Motion(name: "no-pose", variants: new Dictionary<string, MotionVariant> { ["visible"] = "opacity-100" },
+                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                InheritingMotion(1),
+                InheritingMotion(2),
+            });
+
         // The keyed child s_wrapper names: the same TimedMotion, or a wrapper around it. "nested" puts it inside
         // a Motion that plays no exit of its own.
         private static VNode KeyedChild(string key) => s_wrapper switch
@@ -138,6 +164,8 @@ namespace Velvet.Tests
                 children: new[] { TimedMotion(null) }),
             "toggled" => V.Component(ToggledMotionRender, key: key),
             "coordinator" => V.Component(CoordinatorRender, key: key),
+            "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
+            "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             "inner-presence" => V.Div(key: key, children: new VNode[]
             {
                 V.AnimatePresence(key: "inner", children: new[] { TimedMotion("inner-item") }),
@@ -343,6 +371,41 @@ namespace Velvet.Tests
                 swapped.Add(Root.Q<VisualElement>("child" + i)?.ClassListContains("opacity-0") == true);
             }
             Assert.That(string.Join(",", swapped), Is.EqualTo("True,False,False"));
+        }
+
+        [Test]
+        public void Given_ACoordinatorStaggeringItsExit_When_AChildOfItsInheritingChildExits_Then_ItExitsWithItsOwnParent()
+        {
+            // Arrange — Framer numbers each variant parent's own children: child3 belongs to child0, so child1 is
+            // the coordinator's second child.
+            using var mounted = MountSettled("coordinator-nested", "a");
+            using var keys = s_keyStore;
+
+            // Act — past the first slot, short of the second's 100ms.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(4);
+
+            // Assert
+            Assert.That((HasClass("child0", "opacity-0"), HasClass("child3", "opacity-0"), HasClass("child1", "opacity-0")),
+                Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_ACoordinatorStaggeringItsExit_When_ItsChildrenMixOwnLabelsAndAPoselessVariantChild_Then_OnlyTheVariantChildrenTakeSlots()
+        {
+            // Arrange — own-exit and own-animate carry labels of their own and take no slot; no-pose is a variant
+            // child with nothing to play and still takes slot 0, as Framer counts every variant child.
+            using var mounted = MountSettled("coordinator-mixed", "a");
+            using var keys = s_keyStore;
+
+            // Act — past child1's 100ms slot, short of child2's 200ms one.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(9);
+
+            // Assert
+            Assert.That((HasClass("child1", "opacity-0"), HasClass("child2", "opacity-0")), Is.EqualTo((true, false)));
         }
 
         // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.

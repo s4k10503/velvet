@@ -652,6 +652,10 @@ namespace Velvet
         /// </summary>
         internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
 
+        // Whether a Motion this fiber mounts outside every presence emission withholds its mount enter: what
+        // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
+        internal bool BlocksInitialEnters { get; set; }
+
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
