@@ -50,6 +50,51 @@ namespace Velvet
         }
 
         #endregion
+
+        #region render-scoped rental journal
+
+        // What component bodies rent while one renders, so that a memo hit in a woven body can let go of what
+        // the body built ahead of its gate: the hit returns the cached tree, whose retirement never reaches
+        // those nodes, and their parts would stay in the rented-out sets for good. Letting go is disowning
+        // rather than returning, for the reason s_ownedProps gives about a factory's arguments; so a render
+        // opened inside another, whose rentals share the outer render's journal, costs a disowned part its
+        // recycling and nothing else.
+        private static readonly List<object> s_rentalJournal = new();
+        private static int s_rentalJournalDepth;
+
+        internal static void BeginRentalJournal() => s_rentalJournalDepth++;
+
+        internal static void EndRentalJournal()
+        {
+            if (--s_rentalJournalDepth == 0) s_rentalJournal.Clear();
+        }
+
+        internal static void DisownJournaledRentals()
+        {
+            foreach (var rented in s_rentalJournal)
+            {
+                switch (rented)
+                {
+                    case FiberElementProps props:
+                        s_ownedProps.Remove(props);
+                        break;
+                    case FiberEventBinding[] events:
+                        s_ownedSingleEventArrays.Remove(events);
+                        break;
+                    case VNode?[] nodes:
+                        s_ownedNodeArrays.Remove(nodes);
+                        break;
+                }
+            }
+        }
+
+        private static void Journal(object rented)
+        {
+            if (s_rentalJournalDepth > 0) s_rentalJournal.Add(rented);
+        }
+
+        #endregion
+
         // Sized to absorb peak reconcile churn (typically ~30 mounts/unmounts in deep reflows).
         private const int MaxLabelPoolSize = 32;
         private const int MaxButtonPoolSize = 32;
@@ -80,6 +125,7 @@ namespace Velvet
         {
             var rented = s_propsPool.Count > 0 ? s_propsPool.Pop() : new FiberElementProps();
             s_ownedProps.Add(rented);
+            Journal(rented);
             return rented;
         }
 
@@ -163,6 +209,7 @@ namespace Velvet
         {
             var rented = s_singleEventPool.Count > 0 ? s_singleEventPool.Pop() : new FiberEventBinding[1];
             s_ownedSingleEventArrays.Add(rented);
+            Journal(rented);
             return rented;
         }
 
@@ -215,6 +262,7 @@ namespace Velvet
                 ? pool.Pop()
                 : new VNode?[length];
             s_ownedNodeArrays.Add(rented);
+            Journal(rented);
             return rented;
         }
 

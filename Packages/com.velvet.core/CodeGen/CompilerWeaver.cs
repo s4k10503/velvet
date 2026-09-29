@@ -283,7 +283,7 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            var hookPipedLocals = new List<VariableDefinition>();
+            var hookPipedLocals = new List<(VariableDefinition Local, Instruction Stored)>();
             var hookCalls = new List<Instruction>();
             if (!TryScanHookSection(body, transitiveHookCache, hookPipedLocals, hookCalls,
                     out var lastHookBoundary))
@@ -480,7 +480,7 @@ namespace Velvet.CodeGen
         // into. False means the shape is unweavable and the whole method bails; a true result with a null
         // boundary means the body reached no hook at all.
         private static bool TryScanHookSection(MethodBody body, Dictionary<string, bool> transitiveHookCache,
-            List<VariableDefinition> hookPipedLocals, List<Instruction> hookCalls,
+            List<(VariableDefinition Local, Instruction Stored)> hookPipedLocals, List<Instruction> hookCalls,
             out Instruction? lastHookBoundary)
         {
             lastHookBoundary = null;
@@ -520,7 +520,7 @@ namespace Velvet.CodeGen
                 }
                 if (capture == HookCaptureMatch.Matched)
                 {
-                    hookPipedLocals.Add(local!);
+                    hookPipedLocals.Add((local!, boundary!));
                     lastHookBoundary = boundary;
                     continue;
                 }
@@ -1055,12 +1055,23 @@ namespace Velvet.CodeGen
             body.Variables.Add(cachedLocal);
             body.Variables.Add(resultLocal);
 
+            // Each hook value is copied into a local of the weaver's own where it is stored, and the deps array
+            // reads the copies: Roslyn gives two nested hooks' results one temp, and a statement's local can be
+            // assigned again before the gate, so the local a hook stored into need not hold its value there.
+            var copies = new List<(VariableDefinition Local, Instruction Stored, VariableDefinition Copy)>();
+            foreach (var (local, stored) in analysis.HookCaptures)
+            {
+                var copy = new VariableDefinition(local.VariableType);
+                body.Variables.Add(copy);
+                copies.Add((local, stored, copy));
+            }
+
             var insertAfter = analysis.LastHookBoundary;
             // Deps layout: each component parameter (a reactive prop) first, then every value flowing out of a
             // hook call. A prop change is therefore a miss under the same Object.is comparison as a hook input.
             var parameters = method.Parameters;
             var paramCount = parameters.Count;
-            var depsCount = paramCount + analysis.HookPipedLocals.Count;
+            var depsCount = paramCount + copies.Count;
 
             var injected = new List<Instruction>();
             injected.Add(Instruction.Create(OpCodes.Ldc_I4, depsCount));
@@ -1078,11 +1089,11 @@ namespace Velvet.CodeGen
                 }
                 injected.Add(Instruction.Create(OpCodes.Stelem_Ref));
             }
-            for (var i = 0; i < analysis.HookPipedLocals.Count; i++)
+            var depIndex = paramCount;
+            foreach (var (_, _, local) in copies)
             {
-                var local = analysis.HookPipedLocals[i];
                 injected.Add(Instruction.Create(OpCodes.Dup));
-                injected.Add(Instruction.Create(OpCodes.Ldc_I4, paramCount + i));
+                injected.Add(Instruction.Create(OpCodes.Ldc_I4, depIndex++));
                 injected.Add(Instruction.Create(OpCodes.Ldloc, local));
                 if (local.VariableType.IsValueType || local.VariableType.IsGenericParameter)
                 {
@@ -1126,6 +1137,13 @@ namespace Velvet.CodeGen
                 {
                     il.InsertBefore(entry, ins);
                 }
+            }
+
+            // After the gate, so that a copy lands between its store and the gate where that store is the boundary.
+            foreach (var (local, stored, copy) in copies)
+            {
+                il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
+                il.InsertAfter(stored, Instruction.Create(OpCodes.Ldloc, local));
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
@@ -1210,17 +1228,17 @@ namespace Velvet.CodeGen
 
         private readonly struct HookAnalysis
         {
-            public HookAnalysis(IReadOnlyList<VariableDefinition> hookPipedLocals,
+            public HookAnalysis(IReadOnlyList<(VariableDefinition Local, Instruction Stored)> hookCaptures,
                 Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns,
                 int stackDepthAtGate)
             {
-                HookPipedLocals = hookPipedLocals;
+                HookCaptures = hookCaptures;
                 LastHookBoundary = lastHookBoundary;
                 Returns = returns;
                 StackDepthAtGate = stackDepthAtGate;
             }
-            public IReadOnlyList<VariableDefinition> HookPipedLocals { get; }
+            public IReadOnlyList<(VariableDefinition Local, Instruction Stored)> HookCaptures { get; }
             public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
             public int StackDepthAtGate { get; }

@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using NUnit.Framework;
@@ -19,7 +20,8 @@ namespace Velvet.Tests
     /// <c>UseMemo</c> value, a safe void effect hook alongside a value hook, and the stable references from
     /// <c>UseRef</c> / <c>UseService</c> are all analyzable shapes. The cache gate is injected after the whole
     /// hook section, so no hook call is skipped on a cache hit. A hook nested in an argument list is analyzable
-    /// too, and its gate pops the operands evaluated ahead of the hook before returning a cached VNode.</item>
+    /// too, and its gate pops the operands evaluated ahead of the hook before returning a cached VNode. Each hook
+    /// value keys the cache on its own, even where Roslyn stores two hooks' results into one local.</item>
     /// <item>A props-only body — parameters and no hook — is woven too, keyed on its parameters alone with the
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
     /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
@@ -473,6 +475,53 @@ namespace Velvet.Tests
         public static VNode ConditionalAheadOfNestedHookComponent()
             => V.Label(className: "row",
                 text: (s_wide ? "wide " : "narrow ") + Hooks.UseStore(s_countStore, value => value + 7).ToString());
+
+        private sealed class SettableStore : Store<int>
+        {
+            public SettableStore(int initial) : base(initial) { }
+            public void Set(int value) => SetState(_ => value);
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static SettableStore s_firstStore = null!;
+        private static SettableStore s_secondStore = null!;
+
+        [Component]
+        public static VNode TwoNestedHooksComponent()
+            => V.Label(text: Hooks.UseStore(s_firstStore, value => value).ToString() + "/"
+                + Hooks.UseStore(s_secondStore, value => value).ToString());
+
+        [Component]
+        public static VNode TwoHookStatementsComponent()
+        {
+            var first = Hooks.UseStore(s_firstStore, value => value).ToString();
+            var second = Hooks.UseStore(s_secondStore, value => value).ToString();
+            return V.Label(text: first + "/" + second);
+        }
+
+        private static System.Action<int> s_rowParentSetTick = null!;
+        private static int s_rowBuilds;
+
+        private static string CountRowBuild()
+        {
+            s_rowBuilds++;
+            return "value";
+        }
+
+        // The list ahead of the hook rents a node array, and its button a props bag and an event array; a memo
+        // hit drops all three with the gate's pops.
+        [Component]
+        public static VNode SiblingAheadOfNestedHookComponent()
+            => V.Div("row", V.Div(children: V.List(new[] { "add" }, id => id, id => V.Button(text: id, onClick: () => { }))),
+                V.Label(text: Hooks.UseStore(s_countStore, value => value).ToString(), name: CountRowBuild()));
+
+        [Component]
+        public static VNode SiblingRowParent()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_rowParentSetTick = setTick;
+            return V.Component(SiblingAheadOfNestedHookComponent, key: "row");
+        }
 
         #region Woven shapes (gate + commit injected)
 
@@ -983,9 +1032,101 @@ namespace Velvet.Tests
                 "A conditional operand evaluated ahead of a nested hook leaves a woven body the runtime accepts");
         }
 
+        [Test]
+        public void Given_TwoNestedHooks_When_OnlyTheFirstStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            using var second = new SettableStore(2);
+            s_firstStore = first;
+            s_secondStore = second;
+            using var mounted = V.Mount(_root, V.Component(TwoNestedHooksComponent, key: "two-nested"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9/2"),
+                "Each nested hook keys the memo on its own value");
+        }
+
+        [Test]
+        public void Given_TwoHookStatements_When_OnlyTheFirstStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            using var second = new SettableStore(2);
+            s_firstStore = first;
+            s_secondStore = second;
+            using var mounted = V.Mount(_root, V.Component(TwoHookStatementsComponent, key: "two-statements"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9/2"),
+                "Each hook statement keys the memo on its own value");
+        }
+
+        [Test]
+        public void Given_SiblingBuiltAheadOfNestedHook_When_ParentReRendersWithEqualDeps_Then_NoRentedPropsAreLeftBehind()
+        {
+            // Arrange
+            s_rowBuilds = 0;
+            using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
+            var before = Rented();
+
+            // Act
+            s_rowParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert — one build means the second render hit the memo, which is the render that drops the sibling.
+            var after = Rented();
+            Assert.That(
+                (s_rowBuilds, after.Props - before.Props, after.EventArrays - before.EventArrays,
+                    after.NodeArrays - before.NodeArrays),
+                Is.EqualTo((1, 0, 0, 0)),
+                "A memo hit leaves nothing the sibling rented ahead of the gate in the pool's rented sets");
+        }
+
+        [Test]
+        public void Given_ALabelBuiltOutsideAnyRender_When_AMemoHitFollows_Then_ItsPropsStayRented()
+        {
+            // Arrange
+            s_rowBuilds = 0;
+            using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
+            var outside = V.Label(text: "outside");
+
+            // Act
+            s_rowParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert — one build means the render after the label was built hit the memo.
+            Assert.That((s_rowBuilds, RentedFromThePool(outside.Props!)), Is.EqualTo((1, true)),
+                "Only what a body rents while it renders is let go on a hit; a label built outside one stays rented");
+        }
+
         #endregion
 
         #region Helpers
+
+        private static bool RentedFromThePool(FiberElementProps props)
+            => ((System.Collections.Generic.HashSet<FiberElementProps>)typeof(VNodePool)
+                .GetField("s_ownedProps", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!).Contains(props);
+
+        // The props bags, single-event arrays and node arrays the pool counts as rented out.
+        private static (int Props, int EventArrays, int NodeArrays) Rented()
+        {
+            static int Count(string field)
+            {
+                var set = typeof(VNodePool).GetField(field, BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+                return (int)set.GetType().GetProperty("Count")!.GetValue(set)!;
+            }
+            return (Count("s_ownedProps"), Count("s_ownedSingleEventArrays"), Count("s_ownedNodeArrays"));
+        }
 
         // A body is woven iff both the gate (TryGetMemoizedVNode) and the commit (StoreMemoizedVNode) are
         // injected; an unwoven body has neither.
