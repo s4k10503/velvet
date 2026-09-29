@@ -27,8 +27,9 @@ internal static class MyPreviews
 ```
 
 The method is invoked whenever the host builds the story tree — at mount, and again for each
-args change, which disposes the mounted tree first. So state held in the story's own hooks does not
-survive a knob edit, and the method runs once per keystroke on an edited field. The annotated method must be `static`,
+args change, whose tree is reconciled against the mounted one rather than replacing it. So a component
+that keeps its type and position keeps its state across a knob edit, and the method runs once per
+keystroke on an edited field. The annotated method must be `static`,
 non-generic, return `VNode`, and take either no parameters or a single args object. An invalid
 signature is skipped with a console warning rather than silently dropped, so a mistyped story
 is noticed.
@@ -42,8 +43,10 @@ is noticed.
 | `Width` | `int` | `0` (fill the window) | Preferred mount width in reference pixels |
 | `Height` | `int` | `0` (fill the window) | Preferred mount height in reference pixels |
 
-Stories are addressed by a stable `Group/Name` id, so two stories must not collide on both —
-a duplicate id is reported and dropped. Stories declared in **test-runner assemblies are
+Stories are addressed by a stable `Group/Name` id, so two stories must not collide on both.
+Discovery refuses a set holding a duplicate id: `VelvetPreviewRegistry.DiscoverStories()` throws an
+`InvalidOperationException` naming each story whose id an earlier one holds together with that earlier
+one, and the window lists no stories and shows that message in its status line. Stories declared in **test-runner assemblies are
 excluded**, so fixture stories authored for unit tests never leak into the window or the
 capture set.
 
@@ -55,9 +58,10 @@ one a fixed viewport can simulate — see [Viewport](#viewport)).
 
 Cross-cutting setup that several stories share — registering fonts, seeding a store, wiring a
 localization resolver — belongs on a `[VelvetPreviewSetup]` method. Each full story mount runs
-the setup for its assembly before building the tree, then tears it down when that story is
-replaced or its host is disposed. Args-control updates rebuild only the tree and retain the
-current environment.
+every valid setup its assembly declares before building the tree, ordered by declaring type and then
+method name, and tears them down in the reverse order when that story is replaced or its host is
+disposed. A teardown that throws is logged and the rest still run. Args-control updates re-render
+only the tree and retain the current environment.
 
 The method must be `static`, parameterless, and return one of three teardown shapes:
 
@@ -67,14 +71,12 @@ The method must be `static`, parameterless, and return one of three teardown sha
 | `Action` | the returned delegate is invoked on teardown |
 | `void` | nothing to undo |
 
-At most one setup per assembly is honored; a second is ignored with a warning so the
-environment a story mounts into stays unambiguous.
-
 A setup can also hand the host an extra stylesheet to layer over Velvet's utilities — a
 project's design-token `:root` overrides or a custom theme — by setting
-`VelvetStyleHints.PreviewStyleSheet`. The host attaches that sheet **after** Velvet's utility
-sheet (so its later source order lets equal-specificity `:root` overrides win), consumes the
-hint on the next mount, and removes the sheet it added on teardown. A sheet overriding the
+`VelvetStyleHints.PreviewStyleSheet`. The host consumes the hint as each setup returns and attaches
+that sheet **after** Velvet's utility sheet (so its later source order lets equal-specificity
+`:root` overrides win), so the sheets of several setups layer in setup order. It removes the sheets
+it added on teardown. A sheet overriding the
 semantic colours declares them per theme set the way
 [styling-variants.md](styling-variants.md) describes.
 
@@ -147,25 +149,37 @@ it survives remounts and domain reloads.
 
 The **Controls** addon is the Storybook "controls" equivalent. If a story takes one supported
 args value, the window creates typed editor knobs for its supported public, writable members.
-Editing a knob updates the current args value and rebuilds the story from it, **without tearing down
+Editing a knob replaces the current args value and re-renders the story with it, **without tearing down
 the assembly environment** — so a knob edited per keystroke does not re-register fonts, re-seed the
-store, or recreate the dummy API each time. What the rebuild does to the tree is above, under
+store, or recreate the dummy API each time. What the re-render does to the tree is above, under
 [Declaring a story](#declaring-a-story--velvetpreview). An args type with no supported writable members
 shows no editable knobs.
 
-Public, writable fields and properties are turned into controls; supported member types map to
-these controls:
+Public, writable fields and properties are turned into controls. The member's type, and a
+`[Range]` on it, pick the control where Storybook reads `argTypes`; the Storybook control each one
+stands for is named beside it, and an enum splits at five values where Storybook's inference does:
 
 | Member type | Control |
 |---|---|
 | `bool` | `Toggle` |
-| `int` | `IntegerField` |
-| `float` | `FloatField` |
+| `int`, `long`, `float`, `double` | `IntegerField`, `LongField`, `FloatField`, `DoubleField` |
+| `int` or `float` carrying `[Range(min, max)]` | `SliderInt` / `Slider` over that range (Storybook's `range`) |
 | `string` | `TextField` |
-| `enum` | `EnumField` |
+| `enum` of up to five values | `RadioButtonGroup` (Storybook's `radio`) |
+| `enum` of more than five values | `EnumField` (Storybook's `select`) |
+| `[Flags]` enum | `EnumFlagsField` (Storybook's `check`) |
 | `Color` (`UnityEngine.Color`) | `ColorField` |
+| `DateTime` | `TextField` holding the date as 2020-01-02 03:04:05; text that does not parse leaves the value as it was (Storybook's `date`) |
+| A `UnityEngine.Object` type | `ObjectField` picking assets of that type (Storybook's `file`) |
+| A one-dimensional array, a `List<T>`, or a class or struct with public writable members | A foldout of controls for its elements or members (Storybook's `object`) |
 
-An unsupported member type shows a read-only note rather than crashing. Value-type args begin
+A foldout is built when it is first expanded. An array or list foldout starts with a **Length**
+field that resizes it; a `null` one shows a **Set object** button when the type can be created (an
+array, or a non-abstract type with a public parameterless constructor); and a value that refers back
+to an object above it in the args shows a **cycle** note instead of its members. An edit hands the
+story a new args instance, copying each nested object, struct, array or list on the path to the
+edited member, so a component that takes part of the args as props sees the edit. A member no control edits — a delegate, a multi-dimensional array —
+shows a read-only note rather than crashing. Value-type args begin
 at `default(T)`; a class or record needs a public parameterless constructor. The first
 mount and the capture harness both use that initial value, which may be `null` for a
 nullable value type.
@@ -251,9 +265,9 @@ a hand-rolled harness can share story discovery and mount lifecycle with the liv
 
 Velvet also ships **DevTools** — the React DevTools equivalent — a real-time VNode-tree
 inspector with time-travel through a component's state-change history, opened via **Window ▸
-Velvet ▸ DevTools Inspector**. In the editor, a successful `V.Mount` registers its root and
-`MountedTree.Dispose` unregisters that root — and only that root, so an interior fiber registered
-by hand is yours to `Unregister`, or it stays for the session as a row the inspector greys out.
-`Clear` empties the whole registry. Calling `VelvetDevToolsRegistry.Register(fiber, "Label")` on a
-fiber already registered replaces its entry rather than editing it, so its **Registered At** moves
-to now.
+Velvet ▸ DevTools Inspector**. In the editor, a successful `V.Mount` registers its root, and a
+registered fiber leaves the registry when it is disposed — a root when its `MountedTree` is
+disposed, and an interior fiber registered by hand with `VelvetDevToolsRegistry.Register(fiber,
+"Label")` when its tree unmounts it. A disposed fiber is not registered. Registering a fiber that is
+already registered relabels its entry and keeps its **Registered At**. `Clear` empties the whole
+registry.

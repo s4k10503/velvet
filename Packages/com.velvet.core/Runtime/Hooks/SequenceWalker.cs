@@ -14,12 +14,6 @@ namespace Velvet
     // floating now, stay floating for 0.5s".
     internal sealed class SequenceWalker
     {
-        // A Spring-typed To step with no explicit HoldSec has no statically knowable settle time; rather than
-        // stall the sequence forever (or throw from inside a per-frame tick — this codebase's animation config
-        // validators warn-and-degrade instead of throwing, see StyleAnimationScheduler.ValidateSpringParameters),
-        // fall back to this fixed estimate and log once per step index per Reset.
-        private const float FallbackSpringHoldSec = 0.5f;
-
         // Bounds the number of Reset() calls a Call step's own callback can trigger reentrantly (e.g. a
         // "restart on checkpoint" pattern) within one arrival — see ArriveAtStart. Recursing through Arrive
         // itself for this would grow the C# call stack without limit (a Call step that always restarts is a
@@ -37,7 +31,6 @@ namespace Velvet
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
-        private HashSet<int>? _springFallbackWarnedIndices;
 
         // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
         // true (the caller gates it), so there is nothing more for this flag to do here.
@@ -122,7 +115,6 @@ namespace Velvet
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
-            _springFallbackWarnedIndices?.Clear();
             WarnAboutUnvalidatedToSteps();
             return _isComplete;
         }
@@ -211,7 +203,7 @@ namespace Velvet
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
                     _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
-                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(index, _currentTransition));
+                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
                     break;
                 case AnimationSequenceStepKind.Wait:
                     _currentHoldSec = Math.Max(0f, step.HoldSec ?? 0f);
@@ -223,24 +215,18 @@ namespace Velvet
             }
         }
 
-        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec. A Spring
-        // has no statically knowable settle time and a Bezier drives every channel with one fixed-duration curve
-        // — both are handled specially below and ignore PropertyOverrides. Only a Tween reads them, mirroring
-        // StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest overridden property wins" rule: a
-        // PropertyOverrides entry can give one property a longer duration/delay than the top-level values
-        // (StyleTransitionConfig's own documented example: opacity in 0.15s while scale takes 0.5s), and the
-        // walker must not advance past a Tween step while a property that override still governs is mid-tween.
-        private float ResolveHoldFromTransition(int index, StyleTransitionConfig transition)
+        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec. Only a
+        // Tween reads PropertyOverrides, mirroring StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest
+        // overridden property wins" rule: a PropertyOverrides entry can give one property a longer duration/delay
+        // than the top-level values (StyleTransitionConfig's own documented example: opacity in 0.15s while scale
+        // takes 0.5s), and the walker must not advance past a Tween step while a property that override still
+        // governs is mid-tween.
+        private static float ResolveHoldFromTransition(StyleTransitionConfig transition)
         {
             if (transition.Type == TransitionType.Spring)
             {
-                if ((_springFallbackWarnedIndices ??= new HashSet<int>()).Add(index))
-                {
-                    FiberLogger.LogWarning("AnimationSequence",
-                        "A To step used a Spring transition with no explicit holdSec — a spring's settle time is "
-                        + $"physics-derived, not statically knowable. Falling back to {FallbackSpringHoldSec}s.");
-                }
-                return FallbackSpringHoldSec;
+                return Math.Max(0f, transition.DelaySec)
+                    + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
@@ -268,6 +254,42 @@ namespace Velvet
                 }
             }
             return hold;
+        }
+
+        // Framer Motion's sequence gives a spring segment the duration its generator reports done at: sampled
+        // every 50ms, travelling 0→100 when the keyframes carry no distance of their own — as a label carries
+        // none — resting within 0.5 of the target at a speed of at most 2 per second, and at most 20 seconds.
+        private const double SpringTravel = 100.0;
+        private const double SpringRestDelta = 0.5;
+        private const double SpringRestSpeed = 2.0;
+        private const int SpringSampleMs = 50;
+        private const int MaxSpringDurationMs = 20000;
+
+        // Zero for parameters a play refuses to tick, since that play completes at once.
+        private static float SpringDurationSec(float stiffness, float damping, float mass)
+        {
+            if (!SpringIntegrator.AreValidParameters(stiffness, damping, mass))
+            {
+                return 0f;
+            }
+            // MUTANT_SURVIVES(equivalent): a sample at the ceiling that rests returns the ceiling, as one that does
+            // not rest falls through to it, so `<=` changes nothing.
+            for (var ms = 0; ms < MaxSpringDurationMs; ms += SpringSampleMs)
+            {
+                if (SpringRestsAt(ms / 1000.0, stiffness, damping, mass))
+                {
+                    return ms / 1000f;
+                }
+            }
+            return MaxSpringDurationMs / 1000f;
+        }
+
+        private static bool SpringRestsAt(double t, float stiffness, float damping, float mass)
+        {
+            var (displacement, velocity) = SpringIntegrator.Solve(SpringTravel, 0.0, t, (stiffness, damping, mass));
+            // MUTANT_SURVIVES(equivalent): `<` differs only on a sample landing exactly on 0.5 or on 2, and no
+            // sample of the springs the sequence cases time lands on either.
+            return Math.Abs(displacement) <= SpringRestDelta && Math.Abs(velocity) <= SpringRestSpeed;
         }
     }
 }
