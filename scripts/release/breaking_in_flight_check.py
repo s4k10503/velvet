@@ -21,15 +21,15 @@ next closed a minor over a section already empty. So a change closing a version 
 commit of main from the newest such tag the result descends from to the change's base -- the base
 rather than the result, since the result's own history is the pull request's, where a line is written
 and corrected without reaching main -- and an entry the section held at any of them, that the result
-carries neither there nor in a major closed since the tag, is refused. A change closing nothing is
-asked nothing by this reading. And a dated section is the note its release shipped: one whose version
-the remote tags, whichever line published it, has to be the base's but for the put-back
-`only_put_back` admits -- the base rather than the copy, since main's older sections were reworded
-and reordered after their releases and carry a Highlights block their tags' copies do not -- one the
-base has not got arrives as that copy and nothing else, the copy being the only text of it here and
-an addition to a published note belonging in the release that follows, and one gone that the base or
-the last release on this line carried is refused, whatever the change closes, since the file cannot
-tell a correction from a deletion.
+carries neither there nor in a major closed since the tag, as written or as a correction a breaking
+fragment records, is refused. A change closing nothing is asked nothing by this reading. And a dated
+section is the note its release shipped: one whose version the remote tags, whichever line published
+it, has to be the base's but for the put-back `only_put_back` admits -- the base rather than the
+copy, since main's older sections were reworded and reordered after their releases and carry a
+Highlights block their tags' copies do not -- one the base has not got arrives as that copy and
+nothing else, the copy being the only text of it here and an addition to a published note belonging
+in the release that follows, and one gone that the base or the last release on this line carried is
+refused, whatever the change closes, since the file cannot tell a correction from a deletion.
 Where the remote tags no release the result descends from -- a repository before its first
 release -- the breaking section is read one step deep from `--base`, and the pass says so. A remote
 that cannot be listed is refused as unread instead, since none is the reading that passes, and so is
@@ -99,6 +99,40 @@ def at(rev, path, cwd=None):
     return out
 
 
+BREAKING_DIRECTORY = next(name for name, heading in release_notes.FRAGMENT_SECTIONS.items()
+                          if heading == BREAKING)
+
+
+def corrections(body):
+    """Each `release_notes.CORRECTS` line of one fragment, as (the first line it names, the first line
+    of the entry it sits under). `release_notes.parse_fragment` refuses one under no entry."""
+    above = None
+    for line in body.splitlines():
+        if line.startswith("- "):
+            above = line.strip()
+        elif release_notes.SUBSECTION_HEADING.match(line):
+            above = None
+        elif (named := release_notes.CORRECTS.match(line.rstrip())) and above is not None:
+            yield named.group("entry").strip(), above
+
+
+def reading(rev, cwd=None, leaving_out=()):
+    """(what `changelog_at` gives for a revision, every correction the breaking fragments there
+    record, as `corrections` gives them). None and none wherever git could not show the revision."""
+    text = at(rev, CHANGELOG, cwd)
+    if text is None:
+        return None, []
+    try:
+        fragments = release_notes.fragments_at(cwd or ".", rev, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None, []
+    fragments = [(path, body) for path, body in fragments
+                 if Path(path).parts[0] not in leaving_out]
+    return (release_notes.compose(text, fragments),
+            [pair for path, body in fragments
+             if Path(path).parent.as_posix() == BREAKING_DIRECTORY for pair in corrections(body)])
+
+
 def changelog_at(rev, cwd=None, leaving_out=()):
     """The CHANGELOG at a revision with that revision's fragments filed into its open sections, or
     None where git could not show either. A fragment `release_notes.compose` refuses raises.
@@ -106,16 +140,7 @@ def changelog_at(rev, cwd=None, leaving_out=()):
     `leaving_out` drops the fragments under those directories, by name, for a caller reading one
     section.
     """
-    text = at(rev, CHANGELOG, cwd)
-    if text is None:
-        return None
-    try:
-        fragments = release_notes.fragments_at(cwd or ".", rev, timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    fragments = [(path, body) for path, body in fragments
-                 if Path(path).parts[0] not in leaving_out]
-    return release_notes.compose(text, fragments)
+    return reading(rev, cwd, leaving_out)[0]
 
 
 def closing(base, result, tags=()):
@@ -178,16 +203,23 @@ def adds_breaking(pull, base):
 
 
 def lost_from_breaking(base, result):
-    """Entries the breaking section held at the base that the result carries nowhere at all.
+    """Entries the breaking section held at the base that the result carries nowhere at all -- no
+    line of its file is the entry's first line, and no breaking fragment of it records a correction
+    of that line.
 
     Moving one out is legitimate -- reclassifying an entry as non-breaking is what moving the
     TabIndex one was -- and a move leaves it somewhere in the file. A removal leaves it nowhere, and
     the emptiness reading only ever saw a section emptied completely: measured, moving a single
     entry out moved no case at all.
+
+    A line rather than a substring of the file, since the history reading compares whole lines: read
+    as a substring, a first line kept as the start of a longer one passed here and was refused at the
+    release.
     """
-    before = section(changelog_at(base), BREAKING)
-    after = (changelog_at(result) or "")
-    return [entry for entry in before if entry.strip() not in after]
+    before = changelog_at(base)
+    after, corrected = reading(result)
+    carried = {line.strip() for line in (after or "").splitlines()} | {old for old, _ in corrected}
+    return [entry for entry in section(before, BREAKING) if entry.strip() not in carried]
 
 
 def left_in_breaking(result):
@@ -266,7 +298,8 @@ def reachable_release(result, tags, cwd=None):
 def held_in_breaking(release, base, cwd=None):
     """Every entry the breaking section held at the release, at the base, or at any commit between
     them that touched the CHANGELOG or a fragment, oldest sighting first, or None when that history
-    could not be read.
+    could not be read. Each is a list of first lines, oldest sighting first: an entry's, and each
+    one a breaking fragment at one of those commits records as its correction.
 
     The base rather than the result: the result's own history is the pull request's, where a line is
     written and corrected without ever reaching main, and the memory here is main's. The release
@@ -278,12 +311,27 @@ def held_in_breaking(release, base, cwd=None):
                   "--", CHANGELOG, release_notes.FRAGMENT_PATH], cwd=cwd)
     if out is None:
         return None
-    held = []
+    sighted, joined, recorded = [], {}, []
     for revision in [release] + out.split()[::-1] + [base]:
-        for entry in section(changelog_at(revision, cwd), BREAKING):
-            if entry.strip() not in held:
-                held.append(entry.strip())
-    return held
+        text, corrected = reading(revision, cwd)
+        for entry in section(text, BREAKING):
+            if entry.strip() not in joined:
+                sighted.append(entry.strip())
+                joined[entry.strip()] = entry.strip()
+        recorded += corrected
+
+    def root(text):
+        while joined[text] != text:
+            text = joined[text]
+        return text
+
+    for old, new in recorded:
+        if old in joined and new in joined:
+            joined[root(new)] = root(old)
+    held = {}
+    for text in sighted:
+        held.setdefault(root(text), []).append(text)
+    return list(held.values())
 
 
 def published_sections(text):
@@ -585,7 +633,10 @@ def main():
             "{} entries left '{}' and the result carries them nowhere:\n{}\n\n"
             "Reclassifying one is a move -- it lands in another section and is still in the file.\n"
             "Nothing here removes a break from the record, so this is a move that lost its\n"
-            "destination.\n".format(len(lost), BREAKING, "\n".join("  " + one for one in lost)))
+            "destination. A reword is read by the whole first line, so it lands here too until a\n"
+            "breaking fragment records it under the new line as '{}'.\n".format(
+                len(lost), BREAKING, "\n".join("  " + one for one in lost),
+                release_notes.CORRECTS_FORM))
         return UNNAMED
 
     # Whatever the change closes, since a change closing nothing can edit a published note, and the
@@ -676,18 +727,20 @@ def main():
                   if named not in dated_sections(changelog_at(release[1]))
                   and named in order and published_check.is_major_bump(order, named)]
         carried = {entry.strip() for named in opened for entry in section(result_text, named)}
-        astray = [entry for entry in held if entry not in still and entry not in carried]
+        astray = [texts[-1] for texts in held
+                  if not any(text in still or text in carried for text in texts)]
         if astray:
             sys.stderr.write(
                 "{} closes here, and since {} '{}' has held {} entr(y|ies) that this result carries "
                 "in no major:\n{}\n\n"
                 "A break leaves that section for a major and for nothing else, however many changes\n"
                 "the leaving takes: one moved out by an earlier change ships here with nothing calling\n"
-                "it a break, and one dropped ships undescribed. Compared as text, so one reworded on\n"
-                "the way reads as dropped. Put each back under '## [{}]' as it was written, or close a\n"
-                "major that carries it.\n".format(
+                "it a break, and one dropped ships undescribed. An entry is read by its first line,\n"
+                "whole, so one reworded reads as dropped unless a breaking fragment records the\n"
+                "correction under the new line as '{}'. Put each back under '## [{}]' as it\n"
+                "was written, or close a major that carries it.\n".format(
                     ", ".join(versions), release[0], BREAKING, len(astray),
-                    "\n".join("  " + one for one in astray), BREAKING))
+                    "\n".join("  " + one for one in astray), release_notes.CORRECTS_FORM, BREAKING))
             return UNNAMED
 
     pulls, failure = open_pull_requests(args.repo)

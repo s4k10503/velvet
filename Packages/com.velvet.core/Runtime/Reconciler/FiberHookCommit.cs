@@ -122,18 +122,24 @@ namespace Velvet
             for (var i = 0; i < slots.Count; i++)
             {
                 var slot = slots[i];
-                if (slot.NextNeedsReregister)
+                var predicate = slot.NextPredicate;
+                if (predicate != null)
                 {
-                    // Register before releasing the previous registration: RouteBlockerManager.SettleProceeding
-                    // reads whether a registered entry is still Blocked, and a swap that releases first takes
-                    // this Blocker out of that reading for the width of the swap — arming the Blockers that
-                    // released their navigation while this one is still Blocked.
-                    var released = slot.Registration;
-                    slot.Registration = slot.NextRegister?.Invoke();
-                    released?.Dispose();
+                    if (slot.Registration != null && ReferenceEquals(slot.LastRouter, slot.NextRouter))
+                    {
+                        // Swapped in place rather than re-registered: the router consults the Blocker
+                        // registered last, and a re-registration would move this one to the end.
+                        RouteBlockerManager.UpdatePredicate(slot.Registration, predicate);
+                    }
+                    else
+                    {
+                        slot.Registration?.Dispose();
+                        slot.Registration = slot.NextRouter!.RouteBlockerManager.Register(predicate, slot.State);
+                    }
                 }
                 slot.LastDeps = slot.NextDeps;
-                slot.NextRegister = null;
+                slot.LastRouter = slot.NextRouter;
+                slot.NextPredicate = null;
             }
         }
     }
