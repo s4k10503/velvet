@@ -1062,6 +1062,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
+                VelvetStyleUtilities.SyncHost(placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1121,13 +1122,8 @@ namespace Velvet
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
-            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
-            // another Portal already bridged is not double-attached.
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
-            {
-                _ctx.SamePanelPortalBridges[resolvedTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(resolvedTarget, _ctx);
-            }
+            // synthetic-bubbling bridge gets attached.
+            _ctx.BindPortalTarget(resolvedTarget);
             return (resolvedTarget, true);
         }
 
@@ -1196,6 +1192,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
+            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {

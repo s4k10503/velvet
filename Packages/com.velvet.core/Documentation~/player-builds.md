@@ -14,11 +14,8 @@ in a scene. So the package adds them to **Graphics Settings ▸ Always Included 
 `IPreprocessBuildWithReport` step and removes them again in the matching post-process step. There is nothing
 to install, no list to maintain and no build step to run.
 
-**What has and has not been shown.** That the four names are in Always Included Shaders while the build runs
-is pinned by `BundledShaderInclusionTests`. That they then resolve from inside a running player has **not**
-been observed here: seven attempts at a standalone-player test run produced one that reported and six
-that timed out with the player booted and idle, and no pixel-readback fixture can pass in a player until the
-themeless test host is fixed. If a shader-backed paint draws nothing in your build, the player log carries a
+That the four names are in Always Included Shaders while the build runs is pinned by
+`BundledShaderInclusionTests`. If a shader-backed paint draws nothing in your build, the player log carries a
 `Shader not found` warning naming it, and that is a bug report worth filing.
 
 **What that costs.**
