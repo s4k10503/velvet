@@ -1830,14 +1830,16 @@ namespace Velvet
         /// container exists yet. Style it like any Div.
         /// </summary>
         /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
-        /// snapped back within the same event flush (a press on empty space that clears focus to nothing
-        /// re-focuses on the panel's next tick).</param>
+        /// snapped back within the same event flush unless it lands in a contained scope created after this
+        /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
+        /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
+        /// in a contained scope created after this one).</param>
         /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
         /// when it first entered the scope.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
-        /// arrow/dpad navigation inside is untouched.</param>
+        /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
@@ -2120,6 +2122,14 @@ namespace Velvet
             };
         }
 
+        /// <summary>
+        /// Shorthand overload: variadic <c>children</c> and no key, the counterpart of JSX's
+        /// <c>&lt;&gt;…&lt;/&gt;</c>. For a keyed Fragment, use the overload taking <c>key</c>.
+        /// </summary>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="FragmentNode"/>.</returns>
+        public static FragmentNode Fragment(params VNode?[] children) => Fragment(children, key: null);
+
         #endregion
 
         #region Motion
@@ -2130,7 +2140,9 @@ namespace Velvet
         /// </summary>
         /// <param name="children">Child VNodes whose enter / exit transitions are tracked.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <param name="initial">When false, suppresses enter animations on the very first mount.</param>
+        /// <param name="initial">When false, suppresses the enter animations of the children the first render
+        /// mounts, and of the Motions mounting under them for as long as they stay, other than an inner
+        /// presence's children.</param>
         /// <param name="staggerSec">Delay (seconds) staggered between sequential children.</param>
         /// <param name="mode">Exit / enter sequencing. <see cref="AnimatePresenceMode.Sync"/> (default) overlaps
         /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight
@@ -2214,17 +2226,14 @@ namespace Velvet
         /// <paramref name="variants"/> but leaves <paramref name="animate"/> null inherits the nearest ANCESTOR
         /// Motion's active label and resolves it against its OWN variants — so setting <paramref name="animate"/>
         /// on a parent drives the whole subtree.</param>
-        /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When null, the
-        /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
-        /// <param name="initial">Mount-time starting variant label. When this Motion also sets
-        /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
-        /// and transitions to <c>variants[animate]</c> (its persistent resting state) — played by
-        /// AnimatePresence when this Motion is a keyed child's anchor, and by the Motion itself on mount
-        /// anywhere else (the motion guide's <i>Exits</i> section says which Motion is the anchor); a
-        /// presence's <c>initial: false</c> suppresses it in the Motions its first render creates outside a portal.
-        /// <see cref="MotionVariant.Transition"/>
-        /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
-        /// must apply for the enter to play at all.</param>
+        /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When this Motion
+        /// names none of <paramref name="animate"/>, <paramref name="initial"/> and <paramref name="exit"/>, the
+        /// nearest ancestor Motion's labels are inherited; naming any of them, it inherits none.</param>
+        /// <param name="initial">Mount-time starting variant label. The enter starts at <c>variants[initial]</c>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state); with no
+        /// <paramref name="animate"/>, the Motion rests at <c>variants[initial]</c>. The motion guide's
+        /// <i>Enter on mount</i> section owns who plays the enter and when a presence withholds it.
+        /// <see cref="MotionVariant.Transition"/> resolves the timing.</param>
         /// <param name="exit">Exit variant label. When the keyed AnimatePresence child this Motion sits in,
         /// however deep, is removed, the Motion animates from its resting pose to <c>variants[exit]</c> before
         /// the child unmounts, and hands the label down to the Motions inheriting its labels.
@@ -2339,12 +2348,13 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key, held to
-        /// <see cref="VNode.Key"/>'s rule on what a key may contain. Must not be null. An item whose key
-        /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
-        /// range update rather than from this call, which has no item's key to refuse yet. A null key is
-        /// no key, the answer <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/>
-        /// gives the same selector: the row renders, and a range change reuses it by its item index.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key. Must not be null. The key
+        /// is compared only with the other keys of this list, so it is not held to <see cref="VNode.Key"/>'s
+        /// rule on what a key may contain. A null key is no key, the answer
+        /// <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/> gives the same selector:
+        /// the row renders, and a range change reuses it by its item index. Items sharing a key all render
+        /// and are told apart by their item index, each keeping the row rendered at its own index while it
+        /// stays in the range; two of them rendered in one range log a warning naming the key.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
         /// A key it sets on the node it returns plays no part in which row a range change reuses —
@@ -2404,18 +2414,16 @@ namespace Velvet
         #region Routing DSL
 
         /// <summary>
-        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes its location, loader
-        /// data and loader errors to the routing hooks that read a router, then renders the matched route
-        /// through an <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes it, with its location,
+        /// loader data and loader errors, to the routing hooks, then renders the matched route through an
+        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates, and once: rendered beneath
+        /// another, it throws <see cref="InvalidOperationException"/>, as React Router's <c>Router</c> does.
         /// </summary>
         /// <remarks>
         /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is
         /// the route table's own elements. A value for <c>UseOutletContext</c> comes from an
         /// <see cref="Outlet"/> written in a layout route, which is where React Router's
         /// <c>&lt;Outlet context&gt;</c> lives too.
-        /// <para/>
-        /// The hooks that act on a router rather than read from it go to <see cref="Router.Current"/>, not to
-        /// <paramref name="router"/>; the routing guide lists which hooks fall on which side.
         /// </remarks>
         /// <param name="router">The router to publish. Navigation may start before or after this mounts.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2427,6 +2435,55 @@ namespace Velvet
                 global::Velvet.RouterProvider.Render,
                 new global::Velvet.RouterProvider.Props(router),
                 key);
+        }
+
+        /// <summary>
+        /// Renders the value a <see cref="Deferred{T}"/> resolves to: React Router's <c>&lt;Await&gt;</c>. While
+        /// the value is still on its way it suspends to the nearest <see cref="Suspense"/>, which shows its
+        /// fallback. <c>Hooks.UseAsyncValue</c> reads the value beneath it.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Renders the resolved value.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering the value throws; <c>Hooks.UseAsyncError</c> reads the exception beneath
+        /// it. Without one, the exception propagates to the nearest error boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering the value.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            Func<T, VNode?> children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(
+                RouteAwait.Render,
+                new RouteAwait.Props(resolve, value => children((T)value!), null, errorElement),
+                key);
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> once a <see cref="Deferred{T}"/> resolves: React Router's
+        /// <c>&lt;Await&gt;</c> with element children, which read the value through
+        /// <c>Hooks.UseAsyncValue</c>. Suspends and fails as
+        /// <see cref="Await{T}(Deferred{T}, Func{T, VNode}, VNode, string)"/> does.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Rendered once the value resolves.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering <paramref name="children"/> throws.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering <paramref name="children"/>.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            VNode children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(RouteAwait.Render, new RouteAwait.Props(resolve, null, children, errorElement), key);
         }
 
         /// <summary>
@@ -2532,7 +2589,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// No element participates in layout while the active <see cref="Router"/> handles the target.
+        /// No element participates in layout while the <see cref="Router"/> the nearest
+        /// <see cref="RouterProvider"/> publishes handles the target.
         /// </summary>
         /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
         /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate(bool)"/>.</param>

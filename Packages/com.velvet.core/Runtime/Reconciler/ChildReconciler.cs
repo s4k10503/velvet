@@ -245,13 +245,14 @@ namespace Velvet
                     // Fast path: the container is a flat list of host leaves (no ComponentNode /
                     // ContextProviderNode / FragmentNode / SuspenseNode / MemoNode / null). This
                     // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
-                    // path is selected if either side carries a key (unifying keyed/unkeyed transitions).
+                    // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
+                    // or an old leaf's slot is not its flat index.
                     _general.RunOrphanEffectCleanups(oldFibers, newFibers);
                     var newNodes = newChildren ?? Array.Empty<VNode>();
                     // Null where the old side needed no expansion; OldKey says what that stands for.
                     var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
                     if (_keying.HasAnyKey(newNodes)
-                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.HasAnyKey(scopedOldKeys)))
+                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.AnyKeyOffItsFlatIndex(scopedOldKeys)))
                     {
                         ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
                     }
@@ -431,7 +432,8 @@ namespace Velvet
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 try
                 {
-                    Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
+                    Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
+                        slotStart: slotStart);
                 }
                 finally
                 {
@@ -506,6 +508,7 @@ namespace Velvet
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
             }
             var target = layerHost.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(placeholder, target);
             var children = layerPortal.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
                 layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
@@ -518,6 +521,7 @@ namespace Velvet
             var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
             _ctx.WorldSpaceBindings[placeholder] = record;
             var target = record.Document.rootVisualElement;
+            VelvetStyleUtilities.CarryToHost(placeholder, target);
             var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
                 worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
@@ -530,20 +534,14 @@ namespace Velvet
             // The target was resolved (non-null) at enqueue: the create path never queues a registry
             // portal without one, and an element-valued portal arrives already holding its container.
             var children = samePanelPortal.Children ?? Array.Empty<VNode>();
-            // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
-            // guarded by SamePanelPortalBridges (see its own comment for why the guard
-            // lives here rather than at a single creation call site — unlike a layer/
-            // world-space host, a same-panel target is an ordinary, already-existing
-            // element with no one-time "just created it" moment to hook). Never attached
-            // from FiberPortalRegistry.Register itself: that registry is a bare global
+            // Same-panel synthetic-bubbling bridge: attached here, at resolution, ONCE per resolved target
+            // through BindPortalTarget's guard — unlike a layer/world-space host, a same-panel target is an
+            // ordinary, already-existing element with no one-time "just created it" moment to hook. Never
+            // attached from FiberPortalRegistry.Register itself: that registry is a bare global
             // static with no ReconcilerContext to guard duplicate attaches with or later
             // dispose the bridge through.
             var samePanelTarget = target!;
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(samePanelTarget))
-            {
-                _ctx.SamePanelPortalBridges[samePanelTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(samePanelTarget, _ctx);
-            }
+            _ctx.BindPortalTarget(samePanelTarget);
             return (samePanelTarget, children);
         }
 

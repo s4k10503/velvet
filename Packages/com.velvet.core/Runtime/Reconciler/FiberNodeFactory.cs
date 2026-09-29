@@ -290,8 +290,7 @@ namespace Velvet
             // against this stored value to detect an ACTUAL label change before it (re-)triggers
             // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
             // would see no previous entry and could misfire even when the label held steady across
-            // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
-            // label change (see FiberNodePatcher.PatchMotion), never on mount. A null childLabel needs no
+            // mount and the first re-render. A null childLabel needs no
             // removal here: a brand-new element was never in this map, and a pooled one already had its
             // entry cleared by ReconcilerContext.ClearElementSideTables when it was returned (see
             // MotionChildLabel's own doc).
@@ -301,6 +300,9 @@ namespace Velvet
                 _ctx.MotionChildLabel[element] = childLabel;
             }
             CaptureOwnRawText(element, motionNode.Props);
+            // Resolved before the children reconcile, because a mount enter orchestrates the enters of the
+            // inheriting descendants created under it the way a label change orchestrates their swaps.
+            var enter = ResolveMountEnter(motionNode, motionAmbient);
             if (motionNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -309,14 +311,17 @@ namespace Velvet
                 // stack round-trip entirely when there is no label to propagate (the common case).
                 if (childLabel != null)
                 {
-                    _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
+                    var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
+                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec);
+                    MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
+                        childOrchestration);
                     try
                     {
                         ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
                     }
                     finally
                     {
-                        _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
+                        MotionContext.PopForChildren(_ctx.ComponentContextStack);
                     }
                 }
                 else
@@ -349,29 +354,26 @@ namespace Velvet
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives
-            // (GeneralPathReconciler.ExpandAnimatePresenceInline) — just with no stagger (there is no
-            // AnimatePresence boundary to stagger against). The element above was created carrying the
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline). The element above was created carrying the
             // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
             // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
             // purely a transient visual state: a later patch (PatchMotion) always diffs against the
             // resting baseline and never replays this entrance.
-            // Gated on IDENTITY: the presence expansion drives an enter for
-            // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
-            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly), so every
-            // OTHER Motion created while that expansion is on the stack plays this one, unless
-            // PresenceSuppressesInitial says the presence's initial: false covers it.
-            if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
+            // The presence expansion plays the variant enter of its anchor Motion (PresenceAnchorMotion, set by
+            // GeneralPathReconciler around the exact EmitPresenceChild call whose enter/exit it dispatches) where
+            // that Motion names its own animate; this plays every other one, and says so for the anchor through
+            // PresenceAnchorEnterHandled so the expansion plays nothing over it.
+            var isAnchor = ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion);
+            if (!isAnchor || motionNode.Animate == null)
             {
-                if (GeneralPathReconciler.TryResolveVariantInitial(
-                        motionNode, out var standaloneFromClasses, out var standaloneToClasses,
-                        out var standaloneTransition)
-                    && standaloneTransition != null)
+                if (enter.Resolved)
                 {
+                    _ctx.PresenceAnchorEnterHandled |= isAnchor;
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
                     var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
-                    if (_ctx.PresenceSuppressesInitial)
+                    if (EntersBlocked)
                     {
                         // The same completion a suppressed anchor enter reports.
                         enterComplete?.Invoke();
@@ -379,22 +381,20 @@ namespace Velvet
                     else
                     {
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
-                            standaloneFromClasses!, standaloneTransition);
-                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses,
-                            standaloneToClasses, standaloneTransition, enterComplete, onSwap: onSwap);
+                            enter.From!, enter.Transition!);
+                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
+                            enter.Transition!, enterComplete, enter.DelaySec, onSwap);
                     }
                 }
-                else
+                else if (motionNode.Initial != null && motionNode.Animate != null)
                 {
-                    // Initial declared but unresolvable: no own Animate (an inherited-label
-                    // configuration is not yet driven by the standalone enter), the label is missing
-                    // from Variants / maps to an empty class, or neither the target variant nor this
-                    // Motion carries a transition to play on. Warn instead of silently mounting inert,
-                    // matching the exit diagnostic in WarnIgnoredMotionUtilities.
+                    // Both labels declared and no enter between them: the initial label is missing from
+                    // Variants, or neither the target variant nor this Motion carries a transition to play on.
+                    // Warn instead of silently mounting inert, matching the exit diagnostic in
+                    // WarnIgnoredMotionUtilities. An initial with no animate is a pose to rest at.
                     FiberLogger.LogWarning("Motion",
-                        "initial is set but has no resolvable enter: this Motion needs its own animate + "
-                        + "variants (with initial mapping to a non-empty class) for a standalone mount "
-                        + "enter. An inherited animate label does not yet drive one.");
+                        "initial is set but has no resolvable enter: this Motion needs variants holding a "
+                        + "pose for its initial label, and a transition, for a mount enter.");
                 }
             }
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
@@ -411,6 +411,46 @@ namespace Velvet
                 return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
             }
             return element;
+        }
+
+        // The variant enter a Motion plays as it mounts, from its own labels or inherited ones. DelaySec is the
+        // slot a variant child claims from an ancestor's entering orchestration, plus, for the presence's anchor
+        // Motion, the slot the presence enters its keyed child in.
+        private MountEnter ResolveMountEnter(MotionNode motionNode, string? motionAmbient)
+        {
+            var initialLabel = MotionVariantResolver.InitialLabel(motionNode,
+                _ctx.ComponentContextStack.Get(MotionContext.InitialLabel));
+            var ambient = _ctx.ComponentContextStack.Get(MotionContext.Orchestration);
+            var resolved = GeneralPathReconciler.TryResolveVariantEnter(motionNode, initialLabel,
+                MotionVariantResolver.LabelForChildren(motionNode, motionAmbient), out var from, out var to,
+                out var transition);
+            var delaySec = MotionVariantResolver.IsVariantChild(motionNode) && ambient != null
+                ? ambient.ClaimNextChildDelaySec()
+                : 0f;
+            if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
+            {
+                delaySec += _ctx.PresenceAnchorEnterDelaySec;
+            }
+            return new MountEnter
+            {
+                From = from, To = to, Transition = transition, InitialLabel = initialLabel, Ambient = ambient,
+                Resolved = resolved, DelaySec = delaySec,
+            };
+        }
+
+        private bool EntersBlocked
+            => _ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
+                ?? _ctx.FiberStack.Current?.BlocksInitialEnters ?? false;
+
+        private readonly struct MountEnter
+        {
+            internal string[]? From { get; init; }
+            internal string[]? To { get; init; }
+            internal StyleTransitionConfig? Transition { get; init; }
+            internal string? InitialLabel { get; init; }
+            internal MotionOrchestrationFrame? Ambient { get; init; }
+            internal bool Resolved { get; init; }
+            internal float DelaySec { get; init; }
         }
 
         // The utilities a Motion host silently cannot honour. Each is diagnosed rather than applied,

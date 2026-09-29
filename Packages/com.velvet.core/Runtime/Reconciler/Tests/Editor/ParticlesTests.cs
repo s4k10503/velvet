@@ -488,6 +488,8 @@ namespace Velvet.Tests
             Assert.That(binding.RepaintTick, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the single advisory is behaviour the base already has; this change
+        // only attaches the sheet so the new missing-sheet warning cannot land in the log it asserts over.
         [Test]
         public void Given_AnEffectSwapOnOneElement_When_BothSourcesAreMisconfigured_Then_TheAdvisoryFiresOnce()
         {
@@ -500,6 +502,9 @@ namespace Velvet.Tests
             var mainB = s_effectB.main;
             mainB.simulationSpace = ParticleSystemSimulationSpace.World;
             LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+            // V.Mount warns once per run about a panel without the utility stylesheet, and in a run where this
+            // case mounts first that would be the unexpected log it asserts against.
+            _host.Root.styleSheets.Add(VelvetStyleUtilities.Sheet);
             MountAndLayout(V.Component(SwappingHost, key: "root"));
 
             // Act — swap to a different (differently named) but equally misconfigured source.

@@ -43,5 +43,7 @@
       href: guides/player-builds.md
     - name: Fonts
       href: guides/fonts.md
+    - name: VirtualList
+      href: guides/virtual-list.md
 - name: API Reference
   href: api/

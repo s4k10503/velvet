@@ -25,7 +25,7 @@ are on the Unity registry and resolve automatically. See the repository root REA
 
 Then attach the bundled utility stylesheet to the panel you mount onto — without it every class the
 sheet declares resolves to nothing, while arbitrary values and the many families Velvet resolves
-itself rather than declaring keep working.
+itself rather than declaring keep working; `V.Mount` warns when its panel lacks the sheet.
 See [Documentation~/setup.md](./Documentation~/setup.md).
 
 **For a screen that already runs, import the Starter App sample** from the package's Samples section in

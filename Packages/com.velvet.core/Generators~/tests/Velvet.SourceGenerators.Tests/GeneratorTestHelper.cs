@@ -69,7 +69,7 @@ namespace Velvet
 
     public readonly struct TransitionStarter { }
 
-    public sealed class NavigationAttempt { }
+    public sealed class BlockerFunctionArgs { }
     public sealed class RouteBlockerState { }
 
     public readonly struct VelvetTask<T> { }
@@ -109,16 +109,11 @@ namespace Velvet
         public static T UseCallback<T>(T callback, params object[] deps) where T : global::System.Delegate => callback;
         public static T UseMemo<T>(global::System.Func<T> factory) => factory();
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
+        public static global::Velvet.RouteBlockerState UseBlocker(bool shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock) => null;
+            global::System.Func<global::Velvet.BlockerFunctionArgs, bool> shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
-        public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Velvet.VelvetTask<bool>> shouldBlock) => null;
-        public static global::Velvet.RouteBlockerState UseBlocker(
-            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Velvet.VelvetTask<bool>> shouldBlock, params object[] deps) => null;
+            global::System.Func<global::Velvet.BlockerFunctionArgs, bool> shouldBlock, params object[] deps) => null;
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(T initial) =>
             (initial, default);
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(global::System.Func<T> initialFactory) =>
@@ -197,7 +192,7 @@ namespace Velvet
                 assemblyName: "TestAssembly",
                 syntaxTrees: syntaxTrees,
                 references: references,
-                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 generators.Select(g => g.AsSourceGenerator()).ToArray());
@@ -218,6 +213,101 @@ namespace Velvet
                     .SelectMany(r => r.Diagnostics)
                     .ToImmutableArray(),
                 CompilationErrors: compilationDiagnostics);
+        }
+
+        /// <summary>
+        /// Compiles <paramref name="userSource"/> the way a Unity consumer assembly is compiled — C# 9, the
+        /// language version of an assembly with no csc.rsp of its own — against a Velvet assembly built from
+        /// the stub with the MemoOverloadGenerator overloads in it, so the emitted wrapper binds against the
+        /// same V.Memoized overload set the package ships. The Velvet half is compiled at the latest version,
+        /// as the package's own asmdefs are.
+        /// </summary>
+        public static ConsumerRunResult RunAsCSharp9Consumer(string userSource)
+        {
+            var velvet = CSharpCompilation.Create(
+                assemblyName: "Velvet",
+                syntaxTrees: new[]
+                {
+                    CSharpSyntaxTree.ParseText(
+                        VelvetStubSource, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest)),
+                },
+                references: ReferenceAssemblies(),
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            CSharpGeneratorDriver.Create(new MemoOverloadGenerator().AsSourceGenerator())
+                .RunGeneratorsAndUpdateCompilation(velvet, out var velvetWithOverloads, out _);
+            var velvetImage = Emit(velvetWithOverloads);
+
+            var consumerParseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9);
+            var consumer = CSharpCompilation.Create(
+                assemblyName: "Consumer",
+                syntaxTrees: new[] { CSharpSyntaxTree.ParseText(userSource, consumerParseOptions) },
+                references: ReferenceAssemblies().Append(MetadataReference.CreateFromImage(velvetImage)),
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                new[] { new MemoizeMethodGenerator().AsSourceGenerator() }, parseOptions: consumerParseOptions);
+            driver = driver.RunGeneratorsAndUpdateCompilation(consumer, out var updated, out _);
+
+            var errors = updated.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .ToImmutableArray();
+            return new ConsumerRunResult(
+                Diagnostics: driver.GetRunResult().Results.SelectMany(r => r.Diagnostics).ToImmutableArray(),
+                CompilationErrors: errors,
+                VelvetImage: velvetImage,
+                ConsumerImage: errors.IsEmpty ? Emit(updated) : ImmutableArray<byte>.Empty);
+        }
+
+        /// <summary>
+        /// Loads a <see cref="RunAsCSharp9Consumer"/> result and calls a public static parameterless method on
+        /// it, returning what it returns.
+        /// </summary>
+        public static object? Invoke(ConsumerRunResult run, string typeName, string methodName)
+        {
+            if (!run.CompilationErrors.IsEmpty)
+            {
+                throw new System.InvalidOperationException(
+                    "The consumer does not compile: " + string.Join("; ", run.CompilationErrors));
+            }
+
+            var context = new ConsumerLoadContext(run.VelvetImage);
+            try
+            {
+                var assembly = context.LoadFromStream(new System.IO.MemoryStream(run.ConsumerImage.ToArray()));
+                return assembly.GetType(typeName, throwOnError: true)!.GetMethod(methodName)!.Invoke(null, null);
+            }
+            finally
+            {
+                context.Unload();
+            }
+        }
+
+        private static ImmutableArray<byte> Emit(Compilation compilation)
+        {
+            using var stream = new System.IO.MemoryStream();
+            var result = compilation.Emit(stream);
+            if (!result.Success)
+            {
+                throw new System.InvalidOperationException(
+                    $"{compilation.AssemblyName} does not emit: " +
+                    string.Join("; ", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+            }
+            return stream.ToArray().ToImmutableArray();
+        }
+
+        private sealed class ConsumerLoadContext : System.Runtime.Loader.AssemblyLoadContext
+        {
+            private readonly ImmutableArray<byte> _velvetImage;
+
+            public ConsumerLoadContext(ImmutableArray<byte> velvetImage)
+                : base(isCollectible: true)
+            {
+                _velvetImage = velvetImage;
+            }
+
+            protected override System.Reflection.Assembly? Load(System.Reflection.AssemblyName assemblyName) =>
+                assemblyName.Name == "Velvet"
+                    ? LoadFromStream(new System.IO.MemoryStream(_velvetImage.ToArray()))
+                    : null;
         }
 
         public static ImmutableArray<Diagnostic> RunAnalyzer(string userSource, DiagnosticAnalyzer analyzer) =>
@@ -284,7 +374,8 @@ namespace Velvet
             {
                 foreach (var path in trustedAssemblies.Split(System.IO.Path.PathSeparator))
                 {
-                    if (path.EndsWith("netstandard.dll") || path.EndsWith("System.Runtime.dll"))
+                    if (path.EndsWith("netstandard.dll") || path.EndsWith("System.Runtime.dll") ||
+                        path.EndsWith("Microsoft.CSharp.dll") || path.EndsWith("System.Linq.Expressions.dll"))
                     {
                         list.Add(MetadataReference.CreateFromFile(path));
                     }
@@ -300,4 +391,10 @@ namespace Velvet
         ImmutableArray<Diagnostic> CompilationErrors);
 
     internal sealed record GeneratedSource(string HintName, string Source);
+
+    internal sealed record ConsumerRunResult(
+        ImmutableArray<Diagnostic> Diagnostics,
+        ImmutableArray<Diagnostic> CompilationErrors,
+        ImmutableArray<byte> VelvetImage,
+        ImmutableArray<byte> ConsumerImage);
 }
