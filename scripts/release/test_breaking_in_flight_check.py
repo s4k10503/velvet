@@ -1832,6 +1832,162 @@ class FragmentsInTheSection(ReleaseHistory):
         self.assertEqual((done.returncode, "carries in no major" in done.stderr), (UNNAMED, True))
 
 
+WRITTEN = "- `V.Mount` warns when its target's panel lacks the sheet.\n"
+CORRECTED = "- `V.Mount` warns at the panel's next update when it lacks the sheet.\n"
+NEIGHBOUR = "- A second break in the same change.\n"
+
+
+def correcting(entry):
+    """The line recording that the entry above it rewrites `entry`."""
+    return f"<!-- corrects: {entry.strip()} -->\n"
+
+
+def major_carrying(*entries):
+    return OPEN.replace("## [Unreleased]\n",
+                        "## [Unreleased]\n\n## [3.0.0] - 2026-09-01\n\n### Changed\n\n" + "".join(entries))
+
+
+class CorrectedInPlace(ReleaseHistory):
+    """A breaking entry no release has carried, reworded under a line naming what it rewrites."""
+
+    def write(self, root, *lines, path=FRAGMENT, message="a fragment"):
+        """One more commit on the checked-out branch, writing the fragment at `path` with `lines`
+        under one heading and touching nothing else. Returns it."""
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text("### Changed\n\n" + "".join(lines))
+        git(root, "add", path)
+        git(root, "commit", "--quiet", "-m", message)
+        return revision(root)
+
+    def shown(self, root, rev, path=FRAGMENT):
+        """The text at `path` at `rev`."""
+        return subprocess.run(["git", "-C", str(root), "show", f"{rev}:{path}"],
+                              capture_output=True, text=True).stdout
+
+    def closed(self, root, *entries):
+        """One more commit deleting the fragment and closing 3.0.0 over `entries`."""
+        git(root, "rm", "--quiet", FRAGMENT)
+        return self.commit(root, major_carrying(*entries), "a major")
+
+    # GREEN_ON_BASE(characterization): the base files the correction line into the composed file,
+    # where the old first line is a substring of it, which is the whole of why the base passes this.
+    # What this pins is that the correction carries the entry once no line of the file holds it.
+    def test_Given_AFirstLineRewordedUnderACorrectionNamingIt_When_TheChangeClosesNothing_Then_ItPasses(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN)
+        self.write(root, CORRECTED, correcting(WRITTEN), message="a correction")
+        reworded = WRITTEN not in self.shown(root, "HEAD").replace(correcting(WRITTEN), "")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert -- the reword rides along: without it the result is the base, which passes for no
+        # reason.
+        self.assertEqual((reworded, done.returncode, done.stderr), (True, 0, ""))
+
+    def test_Given_AnEntryCorrectedSinceTheRelease_When_AMajorClosesCarryingTheCorrection_Then_ItPasses(self):
+        # Arrange -- the first wording is on main at one commit and in no later one, and the major
+        # deletes the fragment the correction was recorded in, so only the history walked back to the
+        # release still reads either.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        written = WRITTEN in self.shown(root, self.write(root, WRITTEN))
+        base = self.write(root, CORRECTED, correcting(WRITTEN), message="a correction")
+        self.closed(root, CORRECTED)
+
+        # Act
+        done = run(root, base, "[]", body="A major.")
+
+        # Assert -- the first wording rides along: without it on main the history sights nothing the
+        # major could fail to carry.
+        self.assertEqual((written, done.returncode, done.stderr), (True, 0, ""))
+
+    # GREEN_ON_BASE(characterization): the base refuses every first line the result stops carrying.
+    # What this pins is that a line written where a dropped entry stood does not stand in for it
+    # unless a correction names the dropped line -- the shape a conflict resolved to one side leaves.
+    def test_Given_AnEntryReplacedWhereItStood_When_NoCorrectionNamesIt_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN, NEIGHBOUR)
+        self.write(root, WRITTEN, CORRECTED, message="a replacement")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    def test_Given_AFirstLineKeptAsTheStartOfALongerOne_When_NoCorrectionNamesIt_Then_ItIsRefused(self):
+        # Arrange -- read as a substring of the file, the old line was still there; the release
+        # reading compares whole lines and refused the same entry at the major.
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN)
+        self.write(root, WRITTEN.rstrip("\n") + " It names the panel.\n", message="an extension")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    def test_Given_ACorrectionInAnUnreleasedFragment_When_TheEntryLeavesTheBreakingSection_Then_ItIsRefused(self):
+        # Arrange -- a reword and a move out of the section in one change, where a move is read only
+        # as the line it was.
+        root, commits = self.history(OPEN)
+        base = self.write(root, WRITTEN)
+        git(root, "rm", "--quiet", FRAGMENT)
+        self.write(root, CORRECTED, correcting(WRITTEN),
+                   path=FRAGMENT.replace("/breaking/", "/unreleased/"), message="reclassified")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    # GREEN_ON_BASE(characterization): the base walks every parent of a merge on main, as this does.
+    # What this pins is that an entry a merge resolved away, with the other side's line in its
+    # place, is refused at the major carrying what the merge kept.
+    def test_Given_AMergeOnMainResolvingAnEntryAway_When_AMajorClosesCarryingTheRest_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.write(root, WRITTEN)
+        git(root, "checkout", "--quiet", "-b", "side")
+        self.write(root, WRITTEN, NEIGHBOUR, message="the side adds a line")
+        git(root, "checkout", "--quiet", "main")
+        self.commit(root, OPEN.replace("## [Unreleased]\n", "## [Unreleased]\n\n### Fixed\n\n- A fix.\n"))
+        subprocess.run(["git", "-C", str(root), "merge", "--quiet", "--no-ff", "--no-commit", "side"],
+                       capture_output=True)
+        base = self.write(root, NEIGHBOUR, message="the merge keeps the side's line alone")
+        two_parents = len(subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%P"],
+                                         capture_output=True, text=True).stdout.split()) == 2
+        self.closed(root, NEIGHBOUR)
+
+        # Act
+        done = run(root, base, "[]", body="A major.")
+
+        # Assert
+        self.assertEqual((two_parents, done.returncode, "carries in no major" in done.stderr),
+                         (True, UNNAMED, True))
+
+    def test_Given_AnInlineEntryMovedIntoAFragmentUnderACorrection_When_AMajorClosesCarryingIt_Then_EachPasses(self):
+        # Arrange -- the entry is in the file's own section, where no line can record a correction.
+        root, commits = self.history(OPEN.replace(
+            "## [Unreleased — breaking]\n", "## [Unreleased — breaking]\n\n### Changed\n\n" + WRITTEN),
+            tags={0: RELEASE})
+        (root / CHANGELOG).write_text(OPEN)
+        git(root, "add", CHANGELOG)
+        moved = self.write(root, CORRECTED, correcting(WRITTEN), message="moved and corrected")
+        self.closed(root, CORRECTED)
+
+        # Act
+        move = run(root, commits[0], "[]", result=moved)
+        close = run(root, moved, "[]", body="A major.")
+
+        # Assert
+        self.assertEqual((move.returncode, close.returncode, close.stderr), (0, 0, ""))
+
+
 class DispatchMirror(unittest.TestCase):
     """What this module restates from upm.yml: the `-main` tag it leaves on the release commit."""
 

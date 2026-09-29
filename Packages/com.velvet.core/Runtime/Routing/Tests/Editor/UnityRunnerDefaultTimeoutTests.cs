@@ -7,8 +7,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the per-case bound the test runner applies to a case that declares none of its own. The
     /// <c>[Timeout]</c> on <see cref="RouterTests"/>, <see cref="RouterCancellationUnwindTests"/> and
-    /// <see cref="RouterUnfinishedNavigationTests"/> is chosen against it, and
-    /// <c>RouteTestStubs.MakeOneShotBlocker</c> states what the choice buys.
+    /// <see cref="RouterUnfinishedNavigationTests"/> is chosen against it.
     /// </summary>
     // This fixture must keep declaring no [Timeout] of its own: the reading below is the runner's own
     // bound only for as long as nothing overrides it.

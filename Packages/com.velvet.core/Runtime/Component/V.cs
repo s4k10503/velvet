@@ -2413,18 +2413,16 @@ namespace Velvet
         #region Routing DSL
 
         /// <summary>
-        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes its location, loader
-        /// data and loader errors to the routing hooks that read a router, then renders the matched route
-        /// through an <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes it, with its location,
+        /// loader data and loader errors, to the routing hooks, then renders the matched route through an
+        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates, and once: rendered beneath
+        /// another, it throws <see cref="InvalidOperationException"/>, as React Router's <c>Router</c> does.
         /// </summary>
         /// <remarks>
         /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is
         /// the route table's own elements. A value for <c>UseOutletContext</c> comes from an
         /// <see cref="Outlet"/> written in a layout route, which is where React Router's
         /// <c>&lt;Outlet context&gt;</c> lives too.
-        /// <para/>
-        /// The hooks that act on a router rather than read from it go to <see cref="Router.Current"/>, not to
-        /// <paramref name="router"/>; the routing guide lists which hooks fall on which side.
         /// </remarks>
         /// <param name="router">The router to publish. Navigation may start before or after this mounts.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2436,6 +2434,55 @@ namespace Velvet
                 global::Velvet.RouterProvider.Render,
                 new global::Velvet.RouterProvider.Props(router),
                 key);
+        }
+
+        /// <summary>
+        /// Renders the value a <see cref="Deferred{T}"/> resolves to: React Router's <c>&lt;Await&gt;</c>. While
+        /// the value is still on its way it suspends to the nearest <see cref="Suspense"/>, which shows its
+        /// fallback. <c>Hooks.UseAsyncValue</c> reads the value beneath it.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Renders the resolved value.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering the value throws; <c>Hooks.UseAsyncError</c> reads the exception beneath
+        /// it. Without one, the exception propagates to the nearest error boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering the value.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            Func<T, VNode?> children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(
+                RouteAwait.Render,
+                new RouteAwait.Props(resolve, value => children((T)value!), null, errorElement),
+                key);
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> once a <see cref="Deferred{T}"/> resolves: React Router's
+        /// <c>&lt;Await&gt;</c> with element children, which read the value through
+        /// <c>Hooks.UseAsyncValue</c>. Suspends and fails as
+        /// <see cref="Await{T}(Deferred{T}, Func{T, VNode}, VNode, string)"/> does.
+        /// </summary>
+        /// <param name="resolve">The deferred value, typically read out of a route's loader data.</param>
+        /// <param name="children">Rendered once the value resolves.</param>
+        /// <param name="errorElement">Rendered in place of <paramref name="children"/> when the deferred value's
+        /// task fails, or when rendering <paramref name="children"/> throws.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> rendering <paramref name="children"/>.</returns>
+        public static ComponentNode Await<T>(
+            Deferred<T> resolve,
+            VNode children,
+            VNode? errorElement = null,
+            string? key = null)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+            return Component(RouteAwait.Render, new RouteAwait.Props(resolve, null, children, errorElement), key);
         }
 
         /// <summary>
@@ -2541,7 +2588,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// No element participates in layout while the active <see cref="Router"/> handles the target.
+        /// No element participates in layout while the <see cref="Router"/> the nearest
+        /// <see cref="RouterProvider"/> publishes handles the target.
         /// </summary>
         /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
         /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate(bool)"/>.</param>
