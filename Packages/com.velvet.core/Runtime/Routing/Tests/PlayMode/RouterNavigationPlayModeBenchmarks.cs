@@ -12,6 +12,8 @@ namespace Velvet.Tests.Performance
         private const int WarmupCount = 5;
         private const int MeasurementCount = 20;
 
+        // GREEN_ON_BASE(refactor): the benchmark times the same navigation as it did before the branch.
+        // Its Blocker takes the synchronous predicate, since the branch removes the asynchronous one.
         [Test, Performance]
         public void NavigateAsync_LoaderAndBlocker()
         {
@@ -55,7 +57,7 @@ namespace Velvet.Tests.Performance
             });
 
             router.RouteBlockerManager.Register(
-                (_, ct) => VelvetTask.FromResult(false),
+                _ => false,
                 new RouteBlockerState());
 
             return router;

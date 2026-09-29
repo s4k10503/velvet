@@ -9,32 +9,37 @@ namespace Velvet
     // patches at a box different from the one the SAME id stood at — including across a DIFFERENT
     // physical element entirely, e.g. after a same-key type flip or a move to a different parent — it
     // tweens from the old box to the new one instead of jump-cutting: capture the OLD box, let this
-    // frame's layout settle at the NEW one, compute the delta, apply it as an inline inverse transform
-    // (Invert), then spring that inverse back to zero (Play). Reuses MotionSpringDriver's existing
-    // panel-independent physics channels (translate x/y, uniform scale) — the same machinery every other
-    // spring-driven Motion transition already shares — rather than building a second driver.
+    // frame's layout settle at the NEW one, and draw the element over the old box with an inline translate
+    // and scale that its layout transition then carries back to its layout.
     //
-    // A box is a layout rect together with the parent it was read under, and its centre and size in panel
-    // space. A box read under this same parent compares layout rects; any other is taken into the new parent
-    // less the inverse translate every ancestor still waiting on its own layoutId settle is about to apply.
-    // A box in LayoutIdRegistry forgets its parent when the pool takes that parent back (ForgetParent), since
-    // the pool can hand it to another Motion's element before the box is claimed.
+    // A projection draws the element at its natural box divided by the scale its projected ancestors are
+    // drawn at, about the parent's corner, so a layoutId Motion inside a growing or shrinking one keeps its
+    // own size and its offset from that corner on every frame. Its natural box is lerped from the old box to
+    // the layout by one progress value, driven by the transition LayoutIdTiming resolves. One frame per panel steps every projection and then writes them,
+    // each after its ancestors, since a write reads the scale its ancestors are drawn at in that frame.
+    //
+    // A box is the rect an element is drawn at inside its parent, together with that parent, its centre and
+    // size in panel space, and the scale its projected ancestors were drawn at. A box read under this same
+    // parent is compared relative to the parent's drawn corner; any other is taken into the new parent
+    // through the parent's panel transform. A box in LayoutIdRegistry forgets
+    // its parent when the pool takes that parent back (ForgetParent), since the pool can hand it to another
+    // Motion's element before the box is claimed.
     // Panel space throughout was rejected: an inner layoutId Motion that moves inside an outer one still
     // tweening then no longer tweens by its own move inside it
     // (Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove).
-    // The ancestors' translate is subtracted rather than read off their transform: an inner Motion settles
-    // before the outer one has applied it
-    // (Given_ALayoutIdMotionInsideATypeFlippedOne_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
     // The centre is mapped as a point and the size through each parent's scale factors rather than as a
     // rect: a rect's panel mapping is the bounding box of its transformed corners, which a rotated ancestor
     // inflates
     // (Given_ALayoutIdMotionInARotatedBoard_When_ItMovesToTheOtherColumn_Then_ItTweensFromItsOldPlaceAtItsOwnSize).
     //
-    // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v),
-    // so a non-uniform rect change (width and height scale by different factors) averages the two axis
-    // scale factors into one uniform factor instead of distorting the element on two independent axes.
     internal static class MotionLayoutIdDriver
     {
+        // An edge this close to its layout, in pixels, and moving this slowly ends a projection's spring.
+        internal const float RestPixels = 0.1f;
+
+        private static int s_pass;
+        private static readonly List<VisualElement> s_ended = new();
+
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
         // resolved rect at this point (this frame's Yoga pass has not run yet) — capturing it now is the
@@ -43,7 +48,7 @@ namespace Velvet
         // trustworthy yet (a reparented/freshly-created element's .layout stays stale until the next
         // Yoga pass — see FiberWrapperElementAppliers's clip-wrapper comment on the same window), so it
         // is captured on this element's own first post-patch GeometryChangedEvent instead.
-        internal static void OnPatched(VisualElement element, string layoutId, float stiffness, float damping, float mass, ReconcilerContext ctx)
+        internal static void OnPatched(VisualElement element, string layoutId, LayoutIdTiming timing, ReconcilerContext ctx)
         {
             // The old box is read off whichever element the id is registered to — this one, or the one it
             // replaces, which teardown has not reached yet — rather than stored at registration: a freshly
@@ -53,7 +58,9 @@ namespace Velvet
             LayoutIdBox? oldBox = null;
             if (ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous))
             {
-                oldBox = previous.Element != null && TryReadBox(previous.Element, out var live) ? live : previous.Box;
+                oldBox = previous.Element != null && TryReadBox(previous.Element, previous.Element.layout, ctx, out var live)
+                    ? live
+                    : previous.Box;
             }
 
             ctx.ElementToLayoutId[element] = layoutId;
@@ -63,70 +70,303 @@ namespace Velvet
             CancelPendingSettle(element, ctx);
             if (oldBox is not { } fromBox) return;
 
-            var pending = new LayoutIdPendingSettle(fromBox);
-            pending.Callback = _ =>
-            {
-                CancelPendingSettle(element, ctx);
-                var plan = ComputeDeltaPlan(FromRect(element, fromBox, ctx), element.layout, TransformOrigin(element));
-                if (plan.IsEmpty) return;
-
-                var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
-                if (state == null) return;
-
-                // Supersede a tween already in flight on this same element before starting a fresh one — a
-                // rapid-fire re-layout (two patches within one tween's own lifetime) must not stack a second
-                // independent tick. Not CancelForTeardown: that also drops the registration written just
-                // above, and the next move of this id would then find nothing to tween from.
-                StopTick(element, ctx);
-                MotionSpringDriver.ApplyCurrentValues(element, state);
-                StartTick(element, state, ctx);
-            };
+            var pending = new LayoutIdPendingSettle(fromBox, element.layout, timing, ReferenceEquals(previous.Element, element));
+            pending.Callback = _ => Settle(element, ctx);
             element.RegisterCallback(pending.Callback);
             ctx.LayoutIdPendingSettles[element] = pending;
+        }
+
+        private static void Settle(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.LayoutIdPendingSettles.TryGetValue(element, out var pending)) return;
+            // An ancestor whose layout moved settles in this same layout pass, and this element's old box is
+            // taken into the frame that ancestor is drawn in, so the ancestor goes first whichever event fires
+            // first.
+            SettleMovedAncestors(element, ctx);
+            CancelPendingSettle(element, ctx);
+            ForgetFallbackParent(element, ctx);
+            Start(element, pending, ctx);
+        }
+
+        private static void SettleMovedAncestors(VisualElement element, ReconcilerContext ctx)
+        {
+            List<VisualElement>? moved = null;
+            for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent)
+            {
+                if (ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)
+                    && IsFiniteRect(ancestor.layout) && ancestor.layout != pending.PatchedLayout)
+                {
+                    (moved ??= new List<VisualElement>()).Add(ancestor);
+                }
+            }
+            if (moved == null) return;
+            for (var i = moved.Count - 1; i >= 0; i--)
+            {
+                Settle(moved[i], ctx);
+            }
+        }
+
+        // Once the element is laid out, a read takes its own box for as long as it stays in the tree, and the
+        // parent the fallback box names would keep that parent alive, removed or not
+        // (Given_ALayoutIdMotionThatLeftARemovedParent_When_ItsTweenStarts_Then_ItsIdNoLongerHoldsThatParent).
+        private static void ForgetFallbackParent(VisualElement element, ReconcilerContext ctx)
+        {
+            if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
+                && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)
+                && ReferenceEquals(entry.Element, element) && entry.Box is { } box)
+            {
+                ctx.LayoutIdRegistry[layoutId] = (element, box.Detached());
+            }
+        }
+
+        private static void Start(VisualElement element, LayoutIdPendingSettle pending, ReconcilerContext ctx)
+        {
+            var host = element.panel?.visualTree;
+            var parent = element.hierarchy.parent;
+            var layout = element.layout;
+            // MUTANT_SURVIVES(unreachable): a settling element is in a panel, under a parent, and laid out.
+            // A settle runs from the element's own GeometryChangedEvent or from a descendant's, which settles
+            // only an ancestor laid out.
+            if (host == null || parent == null || !IsFiniteRect(layout)) return;
+
+            // A box the patch read off this element is read again where that patch left it unless a move of its
+            // own is still drawing it: a patch that moved nothing leaves a wait that a later layout change can
+            // fire after the move that drew the box has ended
+            // (Given_ALayoutIdMotionPatchedMidTweenWithoutMoving_When_ALaterLayoutChangeMovesIt_Then_ItDoesNotStartFromWhereTheTweenDrewItThen).
+            var fromBox = pending.From;
+            if (pending.ReadOffItself && !IsMoving(element, ctx) && TryReadBox(element, pending.PatchedLayout, ctx, out var redrawn))
+            {
+                fromBox = redrawn;
+            }
+
+            var parentScale = AncestorScale(parent, ctx);
+            // Taken to undistorted units: a box read under this parent was drawn at the scale its ancestors had
+            // when it was read, and one mapped in from elsewhere at the scale they have now.
+            var readScale = ReferenceEquals(fromBox.Parent, parent) ? fromBox.AncestorScale : parentScale;
+            var drawnFrom = FromRect(element, fromBox, ctx);
+            var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
+            var moves = pending.Timing.Animates() && !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty;
+
+            ctx.LayoutIdProjections.TryGetValue(element, out var projection);
+            if (!moves && projection == null && IsUnit(parentScale)) return;
+            projection ??= CreateProjection(element, host, ctx);
+            projection.From = from;
+            projection.Moving = moves;
+            projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
+            Project(host, ctx);
+            EnsureFrame(host, ctx);
         }
 
         // The old box in the frame of the element's current parent.
         private static Rect FromRect(VisualElement element, LayoutIdBox fromBox, ReconcilerContext ctx)
         {
-            var parent = element.hierarchy.parent;
+            var parent = element.hierarchy.parent!;
             if (ReferenceEquals(fromBox.Parent, parent)) return fromBox.Local;
-            var centre = parent.WorldToLocal(fromBox.PanelCentre - PendingPanelShift(parent, ctx));
-            var size = fromBox.PanelSize / PanelScale(parent);
+            var world = parent.worldTransform;
+            Vector2 centre = world.inverse.MultiplyPoint3x4(fromBox.PanelCentre);
+            var size = fromBox.PanelSize / AxisLengths(world);
             return new Rect(centre - size / 2f, size);
         }
 
-        // How long a unit step along each local axis is in panel space.
-        private static Vector2 PanelScale(VisualElement element)
+        private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
-            var origin = element.LocalToWorld(Vector2.zero);
-            return new Vector2((element.LocalToWorld(Vector2.right) - origin).magnitude,
-                (element.LocalToWorld(Vector2.up) - origin).magnitude);
+            var translate = element.style.translate;
+            var scale = element.style.scale;
+            var resolved = element.resolvedStyle;
+            var projection = new LayoutIdProjection(host, translate, scale,
+                translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate,
+                scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value)
+            {
+                From = element.layout,
+            };
+            ctx.LayoutIdProjections[element] = projection;
+            return projection;
         }
+
+        // Computes and writes every projection on the panel, first giving one to each registered layoutId
+        // Motion under a scaling projection that has none, whether or not anything moved it.
+        private static void Project(VisualElement host, ReconcilerContext ctx)
+        {
+            var pass = ++s_pass;
+            foreach (var element in ctx.ElementToLayoutId.Keys)
+            {
+                if (!ctx.LayoutIdProjections.ContainsKey(element) && element.panel?.visualTree == host
+                    && element.hierarchy.parent is { } parent && !IsUnit(ProjectedScale(parent, pass, ctx)))
+                {
+                    CreateProjection(element, host, ctx);
+                }
+            }
+            foreach (var entry in ctx.LayoutIdProjections)
+            {
+                if (entry.Key.panel?.visualTree == host) Compute(entry.Key, entry.Value, pass, ctx);
+            }
+        }
+
+        // The product of the scales the projections on this element and its ancestors are drawn at in this pass.
+        private static Vector2 ProjectedScale(VisualElement element, int pass, ReconcilerContext ctx)
+        {
+            var scale = Vector2.one;
+            for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (ctx.LayoutIdProjections.TryGetValue(e, out var projection)) scale *= Compute(e, projection, pass, ctx);
+            }
+            return scale;
+        }
+
+        // The same product, as last drawn.
+        private static Vector2 AncestorScale(VisualElement element, ReconcilerContext ctx)
+        {
+            var scale = Vector2.one;
+            for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (ctx.LayoutIdProjections.TryGetValue(e, out var projection)) scale *= projection.Scale;
+            }
+            return scale;
+        }
+
+        private static Vector2 Compute(VisualElement element, LayoutIdProjection projection, int pass, ReconcilerContext ctx)
+        {
+            // MUTANT_SURVIVES(equivalent): a second computation in one pass reads the same layouts, progress and
+            // ancestor scales as the first, and writes back the values the first wrote.
+            if (projection.Pass == pass) return projection.Scale;
+            projection.Pass = pass;
+            var layout = element.layout;
+            if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
+
+            projection.ParentScale = ProjectedScale(parent, pass, ctx);
+            var delta = ComputeDelta(Drawn(projection, layout, projection.ParentScale), layout, TransformOrigin(element));
+            projection.Scale = delta.Scale;
+            Write(element, projection, delta.Translate);
+            return projection.Scale;
+        }
+
+        private static Rect Drawn(LayoutIdProjection projection, Rect layout, Vector2 parentScale)
+        {
+            var t = projection.Moving ? projection.Progress.Value : 0f;
+            var position = Vector2.LerpUnclamped(layout.position, projection.From.position, t);
+            var size = Vector2.LerpUnclamped(layout.size, projection.From.size, t);
+            return new Rect(position / parentScale, size / parentScale);
+        }
+
+        // The element's own translate adds to the projection's and its own scale multiplies the projection's.
+        // A slot is left alone until the projection first needs a value there other than the element's own.
+        private static void Write(VisualElement element, LayoutIdProjection projection, Vector2 translate)
+        {
+            AdoptForeignWrites(element, projection);
+            if (projection.WritesTranslate || translate != Vector2.zero)
+            {
+                if (!projection.WritesTranslate)
+                {
+                    projection.WritesTranslate = true;
+                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                }
+                var own = projection.OwnTranslate;
+                element.style.translate = new Translate(new Length(own.x + translate.x), new Length(own.y + translate.y), own.z);
+                projection.WrittenTranslate = element.style.translate;
+            }
+            if (projection.WritesScale || !IsUnit(projection.Scale))
+            {
+                if (!projection.WritesScale)
+                {
+                    projection.WritesScale = true;
+                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                }
+                var own = projection.OwnScale;
+                element.style.scale = new Scale(new Vector3(own.x * projection.Scale.x, own.y * projection.Scale.y, own.z));
+                projection.WrittenScale = element.style.scale;
+            }
+        }
+
+        // A slot that no longer holds the last value written here was written by someone else — the element's
+        // own arbitrary-value class re-applied by a patch, a drag, another driver — and that value is the
+        // element's own from then on: composed with, and handed back when the projection ends.
+        private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
+        {
+            var translate = element.style.translate;
+            if (projection.WritesTranslate && translate != projection.WrittenTranslate)
+            {
+                projection.OwnInlineTranslate = translate;
+                projection.OwnTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : Vector3.zero;
+            }
+            var scale = element.style.scale;
+            if (projection.WritesScale && scale != projection.WrittenScale)
+            {
+                projection.OwnInlineScale = scale;
+                projection.OwnScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : Vector3.one;
+            }
+        }
+
+        private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
+        {
+            if (ctx.LayoutIdFrames.ContainsKey(host)) return;
+            ctx.LayoutIdFrames[host] = host.schedule.Execute((TimerState ts) =>
+            {
+                var dt = ts.deltaTime / 1000f;
+                if (dt <= 0f) return;
+                Frame(host, dt, ctx);
+            }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        private static void Frame(VisualElement host, float dt, ReconcilerContext ctx)
+        {
+            foreach (var entry in ctx.LayoutIdProjections)
+            {
+                var projection = entry.Value;
+                if (!projection.Moving || entry.Key.panel?.visualTree != host) continue;
+                if (projection.Progress.Step(dt)) projection.Moving = false;
+            }
+            Project(host, ctx);
+
+            var remaining = false;
+            foreach (var entry in ctx.LayoutIdProjections)
+            {
+                var projection = entry.Value;
+                if (projection.Host != host) continue;
+                // One whose element left the panel with no teardown is ended too, since no pass projects it there.
+                if (entry.Key.panel?.visualTree != host || !projection.Moving && IsUnit(projection.ParentScale)) s_ended.Add(entry.Key);
+                else remaining = true;
+            }
+            foreach (var element in s_ended)
+            {
+                End(element, ctx);
+            }
+            s_ended.Clear();
+            if (!remaining && ctx.LayoutIdFrames.Remove(host, out var frame)) frame.Pause();
+        }
+
+        // Hands the slots back to what held them before the projection, and the transition suspension with them.
+        private static void End(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
+            AdoptForeignWrites(element, projection);
+            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
+            MotionNativeTransitionGuard.Release(element, projection);
+        }
+
+        private static Vector3 Pixels(Translate translate, Rect layout) => new(
+            translate.x.unit == LengthUnit.Percent ? translate.x.value / 100f * layout.width : translate.x.value,
+            translate.y.unit == LengthUnit.Percent ? translate.y.value / 100f * layout.height : translate.y.value,
+            translate.z);
+
+        // How long a unit step along each local axis is in panel space.
+        private static Vector2 AxisLengths(Matrix4x4 world) =>
+            new(world.MultiplyVector(Vector3.right).magnitude, world.MultiplyVector(Vector3.up).magnitude);
 
         private static Vector2 TransformOrigin(VisualElement element) => element.resolvedStyle.transformOrigin;
 
-        // How far, in panel space, the inverse translates the ancestors' pending settles will apply move this
-        // element. Only translate: an ancestor's inverse scale is not accounted for.
-        private static Vector2 PendingPanelShift(VisualElement? ancestor, ReconcilerContext ctx)
-        {
-            var shift = Vector2.zero;
-            for (; ancestor?.hierarchy.parent is { } parent; ancestor = parent)
-            {
-                if (!ctx.LayoutIdPendingSettles.TryGetValue(ancestor, out var pending)) continue;
-                var layout = ancestor.layout;
-                var plan = ComputeDeltaPlan(FromRect(ancestor, pending.From, ctx), layout, TransformOrigin(ancestor));
-                var translate = new Vector2(plan.TranslateX?.from ?? 0f, plan.TranslateY?.from ?? 0f);
-                shift += parent.LocalToWorld(layout.position + translate) - parent.LocalToWorld(layout.position);
-            }
-            return shift;
-        }
+        private static bool IsMoving(VisualElement element, ReconcilerContext ctx) =>
+            ctx.LayoutIdProjections.TryGetValue(element, out var projection) && projection.Moving;
 
-        private static bool TryReadBox(VisualElement element, out LayoutIdBox box)
+        // The box the element is drawn at while its layout is the given one.
+        private static bool TryReadBox(VisualElement element, Rect layout, ReconcilerContext ctx, out LayoutIdBox box)
         {
             box = default;
-            var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return false;
-            box = new LayoutIdBox(parent, layout, parent.LocalToWorld(layout.center), layout.size * PanelScale(parent));
+            var parentScale = AncestorScale(parent, ctx);
+            var drawn = ctx.LayoutIdProjections.TryGetValue(element, out var projection) ? Drawn(projection, layout, parentScale) : layout;
+            var world = parent.worldTransform;
+            box = new LayoutIdBox(parent, drawn, world.MultiplyPoint3x4(drawn.center), drawn.size * AxisLengths(world), parentScale);
             return true;
         }
 
@@ -134,33 +374,9 @@ namespace Velvet
         {
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
+                // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
+                // the wait that replaced it, which that wait's own callback settles on the same event.
                 element.UnregisterCallback(pending.Callback);
-            }
-        }
-
-        private static void StartTick(VisualElement element, MotionSpringState state, ReconcilerContext ctx)
-        {
-            var host = element.panel?.visualTree;
-            if (host == null) return;
-
-            var tick = host.schedule.Execute((TimerState ts) =>
-            {
-                var dt = ts.deltaTime / 1000f;
-                if (dt <= 0f) return;
-                if (!MotionSpringDriver.Step(element, state, dt)) return;
-                StopTick(element, ctx);
-            }).Every(StyleAnimateDriver.TickMs);
-            ctx.LayoutIdTicks[element] = (tick, state);
-        }
-
-        // Ends the in-flight tween the way its own settle does, so one superseded mid-flight hands back the
-        // transition suspension it took, which no later settle would release.
-        private static void StopTick(VisualElement element, ReconcilerContext ctx)
-        {
-            if (ctx.LayoutIdTicks.Remove(element, out var running))
-            {
-                running.Tick.Pause();
-                MotionSpringDriver.ClearInlineOverrides(element, running.State);
             }
         }
 
@@ -171,18 +387,13 @@ namespace Velvet
         // drops what nobody claimed where the render ends.
         internal static void CancelForTeardown(VisualElement element, ReconcilerContext ctx)
         {
-            if (ctx.LayoutIdTicks.Remove(element, out var running))
-            {
-                running.Tick.Pause();
-            }
-            CancelPendingSettle(element, ctx);
             if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)
                 && ReferenceEquals(current.Element, element))
             {
                 if (ctx.CurrentPass != null)
                 {
-                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, out var live) ? live : current.Box);
+                    ctx.LayoutIdRegistry[layoutId] = (null, TryReadBox(element, element.layout, ctx, out var live) ? live : current.Box);
                     ctx.LayoutIdSnapshots.Add(layoutId);
                 }
                 else
@@ -190,6 +401,8 @@ namespace Velvet
                     ctx.LayoutIdRegistry.Remove(layoutId);
                 }
             }
+            ctx.LayoutIdProjections.Remove(element);
+            CancelPendingSettle(element, ctx);
         }
 
         // Called from FiberElementCleaner as it returns an element to the pool.
@@ -230,67 +443,216 @@ namespace Velvet
         // A power of two, so a rect off by exactly this much is representable and the boundary testable.
         internal const float PixelTolerance = 1f / 128f;
 
-        // Pure(ish) mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for
-        // testing the spring math directly): resolves an old→new rect pair into a SpringPlan whose Scale
-        // channel animates the (averaged, uniform) size ratio back to 1 and whose TranslateX/Y channels
-        // animate back to zero the offset between the new rect's transform origin (in its own pixels) and
-        // the point at the same fraction of the old rect — the scale holds the origin still, so aligning
-        // those two points is what starts the tween over the old rect. Empty (IsEmpty) when the rects differ
-        // by no more than PixelTolerance, so the caller can skip building spring state for a patch that
-        // didn't actually move/resize anything, and when either rect is not finite: NaN before a first
-        // layout, infinite in a parent drawn at zero scale.
-        internal static MotionSpringClassParser.SpringPlan ComputeDeltaPlan(Rect oldRect, Rect newRect, Vector2 origin)
+        // Pure mechanics, panel-free by design (mirrors MotionSpringDriverTests' own rationale for testing the
+        // spring math directly): resolves an old→new rect pair into the scale on each axis that takes the new
+        // rect's size to the old one's, and the translate that then moves the new rect's transform origin (in
+        // its own pixels) onto the point at the same fraction of the old rect — the scale holds the origin
+        // still, so aligning those two points is what starts the tween over the old rect. Empty (IsEmpty) when
+        // the rects differ by no more than PixelTolerance, and when either rect is not finite: NaN before a
+        // first layout, infinite in a parent drawn at zero scale.
+        internal static LayoutIdDelta ComputeDelta(Rect oldRect, Rect newRect, Vector2 origin)
         {
-            if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return default;
+            if (!IsFiniteRect(oldRect) || !IsFiniteRect(newRect)) return LayoutIdDelta.None;
 
-            var scaleX = newRect.width > 0.01f ? oldRect.width / newRect.width : 1f;
-            var scaleY = newRect.height > 0.01f ? oldRect.height / newRect.height : 1f;
-            var scale = (scaleX + scaleY) / 2f;
-            var oldOrigin = oldRect.position + new Vector2(origin.x * scaleX, origin.y * scaleY);
+            var scale = new Vector2(newRect.width > 0.01f ? oldRect.width / newRect.width : 1f,
+                newRect.height > 0.01f ? oldRect.height / newRect.height : 1f);
+            var oldOrigin = oldRect.position + Vector2.Scale(origin, scale);
             var delta = oldOrigin - (newRect.position + origin);
 
             // In pixels, not float equality: a box mapped through a rotated parent carries float noise.
             var translateChanged = Mathf.Abs(delta.x) > PixelTolerance || Mathf.Abs(delta.y) > PixelTolerance;
-            var scaleChanged = Mathf.Abs(scale - 1f) * Mathf.Max(newRect.width, newRect.height) > PixelTolerance;
-
-            return new MotionSpringClassParser.SpringPlan
-            {
-                TranslateX = translateChanged ? (delta.x, 0f) : null,
-                TranslateY = translateChanged ? (delta.y, 0f) : null,
-                Scale = scaleChanged ? (scale, 1f) : null,
-            };
+            var scaleChanged = Mathf.Abs(scale.x - 1f) * newRect.width > PixelTolerance
+                || Mathf.Abs(scale.y - 1f) * newRect.height > PixelTolerance;
+            return new LayoutIdDelta(translateChanged ? delta : Vector2.zero, scaleChanged ? scale : Vector2.one);
         }
+
+        // The farthest any edge of one rect lies from the same edge of the other.
+        private static float EdgeTravel(Rect a, Rect b) => Mathf.Max(
+            Mathf.Max(Mathf.Abs(a.xMin - b.xMin), Mathf.Abs(a.xMax - b.xMax)),
+            Mathf.Max(Mathf.Abs(a.yMin - b.yMin), Mathf.Abs(a.yMax - b.yMax)));
+
+        // MUTANT_SURVIVES(equivalent): no float s puts |s - 1| at exactly 1e-5f. Near 1, s - 1 is exact and a
+        // whole number of s's spacing, 2^-23 or 2^-24, and 1e-5f is a whole number of neither.
+        private static bool IsUnit(Vector2 scale) => Mathf.Abs(scale.x - 1f) <= 1e-5f && Mathf.Abs(scale.y - 1f) <= 1e-5f;
 
         private static bool IsFiniteRect(Rect r) =>
             float.IsFinite(r.x) && float.IsFinite(r.y) && float.IsFinite(r.width) && float.IsFinite(r.height);
     }
 
+    internal readonly struct LayoutIdDelta
+    {
+        public static readonly LayoutIdDelta None = new(Vector2.zero, Vector2.one);
+
+        public LayoutIdDelta(Vector2 translate, Vector2 scale)
+        {
+            Translate = translate;
+            Scale = scale;
+        }
+
+        public Vector2 Translate { get; }
+        public Vector2 Scale { get; }
+        public bool IsEmpty => Translate == Vector2.zero && Scale == Vector2.one;
+    }
+
     internal readonly struct LayoutIdBox
     {
-        public LayoutIdBox(VisualElement? parent, Rect local, Vector2 panelCentre, Vector2 panelSize)
+        public LayoutIdBox(VisualElement? parent, Rect local, Vector2 panelCentre, Vector2 panelSize, Vector2 ancestorScale)
         {
             Parent = parent;
             Local = local;
             PanelCentre = panelCentre;
             PanelSize = panelSize;
+            AncestorScale = ancestorScale;
         }
 
         public VisualElement? Parent { get; }
         public Rect Local { get; }
         public Vector2 PanelCentre { get; }
         public Vector2 PanelSize { get; }
+        public Vector2 AncestorScale { get; }
 
         // Without the parent it was read under, which the pool has taken back and can hand to another
         // Motion's element, where it would pass for that parent
         // (Given_TwoListComponentsHoldingTheCardInAPooledButton_When_TheSecondIsSelected_Then_TheCardTweensFromTheFirst).
-        public LayoutIdBox Detached() => new(null, Local, PanelCentre, PanelSize);
+        public LayoutIdBox Detached() => new(null, Local, PanelCentre, PanelSize, AncestorScale);
     }
 
     internal sealed class LayoutIdPendingSettle
     {
-        public LayoutIdPendingSettle(LayoutIdBox from) => From = from;
+        public LayoutIdPendingSettle(LayoutIdBox from, Rect patchedLayout, LayoutIdTiming timing, bool readOffItself)
+        {
+            From = from;
+            PatchedLayout = patchedLayout;
+            Timing = timing;
+            ReadOffItself = readOffItself;
+        }
 
         public LayoutIdBox From { get; }
+        // From was read off this same element rather than off another holder of the id.
+        public bool ReadOffItself { get; }
+        public Rect PatchedLayout { get; }
+        public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
+    }
+
+    internal sealed class LayoutIdProjection
+    {
+        public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale, Vector3 ownTranslate, Vector3 ownScale)
+        {
+            Host = host;
+            OwnInlineTranslate = ownInlineTranslate;
+            OwnInlineScale = ownInlineScale;
+            OwnTranslate = ownTranslate;
+            OwnScale = ownScale;
+        }
+
+        // The panel whose frame steps and ends this projection.
+        public readonly VisualElement Host;
+
+        // The natural box where the progress starts, relative to the parent's drawn corner in undistorted units.
+        public Rect From;
+        public LayoutIdProgress Progress = null!;
+        public bool Moving;
+
+        // The pass these were last computed in: the scale the projected ancestors are drawn at, and the
+        // scale this projection writes on each axis.
+        public int Pass;
+        public Vector2 ParentScale = Vector2.one;
+        public Vector2 Scale = Vector2.one;
+
+        public StyleTranslate OwnInlineTranslate;
+        public StyleScale OwnInlineScale;
+        public Vector3 OwnTranslate;
+        public Vector3 OwnScale;
+
+        public bool WritesTranslate;
+        public bool WritesScale;
+        public StyleTranslate WrittenTranslate;
+        public StyleScale WrittenScale;
+    }
+
+    // The transition a layoutId move takes: the Motion's own `transition`, or its Layout in place of it when
+    // set, as Framer reads `transition.layout`, with Framer's default layout transition where the caller gave
+    // V.Motion no timing at all. Its type decides the curve, the way it does for a variant swap.
+    internal readonly struct LayoutIdTiming
+    {
+        // Framer's defaultLayoutTransition: { duration: 0.45, ease: [0.4, 0, 0.1, 1] }.
+        private static readonly StyleTransitionConfig s_default = new()
+        {
+            Type = TransitionType.Bezier, DurationSec = 0.45f, BezierX1 = 0.4f, BezierY1 = 0f, BezierX2 = 0.1f, BezierY2 = 1f,
+        };
+
+        private readonly StyleTransitionConfig _config;
+
+        private LayoutIdTiming(StyleTransitionConfig config)
+        {
+            _config = config;
+        }
+
+        public bool IsSpring => _config.Type == TransitionType.Spring;
+        public float Stiffness => _config.Stiffness;
+        public float Damping => _config.Damping;
+        public float Mass => _config.Mass;
+        public float DurationSec => _config.DurationSec;
+        public float DelaySec => Mathf.Max(_config.DelaySec, 0f);
+
+        public static LayoutIdTiming From(StyleTransitionConfig? transition) => new(transition?.Layout ?? transition ?? s_default);
+
+        // False for a zero duration or a configuration the scheduler rejects, which lands the move at once.
+        // Asked once a move has settled rather than on every patch, since a rejected one warns.
+        public bool Animates()
+        {
+            var t = _config;
+            // Not a switch naming each type: its catch-all would have to throw, where LayoutIdProgress, Ease and
+            // StyleAnimationScheduler time a type neither a spring nor a bezier as a tween.
+            return t.Type == TransitionType.Spring
+                ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
+                : t.Type == TransitionType.Bezier
+                    ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
+                    : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
+        }
+
+        // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold.
+        public LayoutIdProgress Start(float travel) => new(this, travel);
+
+        public float Ease(float t) => _config.Type == TransitionType.Bezier
+            ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
+            : UssEasing.Evaluate(_config.Easing, t);
+    }
+
+    // How far a projection still has to go, from 1 at the old box to 0 at the layout.
+    internal sealed class LayoutIdProgress
+    {
+        private readonly LayoutIdTiming _timing;
+        private readonly float _rest;
+        // A mutable struct stepped in place, so a field rather than a property.
+        private SpringIntegrator _spring = new(1f);
+        private float _elapsedSec;
+
+        public LayoutIdProgress(LayoutIdTiming timing, float travel)
+        {
+            _timing = timing;
+            _rest = MotionLayoutIdDriver.RestPixels / Mathf.Max(travel, MotionLayoutIdDriver.RestPixels);
+        }
+
+        public float Value { get; private set; } = 1f;
+
+        // Returns true once the progress has arrived.
+        public bool Step(float dtSec)
+        {
+            _elapsedSec += dtSec;
+            // Inside the delay active is not positive, and needs no guard: SpringIntegrator.Step ignores a step
+            // that is not positive, and both curves clamp a time below 0 to their start.
+            var active = _elapsedSec - _timing.DelaySec;
+            if (_timing.IsSpring)
+            {
+                _spring.Step(Mathf.Min(dtSec, active), 0f, _timing.Stiffness, _timing.Damping, _timing.Mass);
+                Value = _spring.Value;
+                return _spring.IsSettled(0f, _rest, _rest);
+            }
+            var t = active / _timing.DurationSec;
+            Value = 1f - _timing.Ease(t);
+            return t >= 1f;
+        }
     }
 }

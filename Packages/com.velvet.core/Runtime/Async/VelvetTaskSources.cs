@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Velvet
 {
@@ -27,8 +30,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version)
         {
@@ -79,8 +82,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
@@ -148,8 +151,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version)
         {
@@ -168,69 +171,54 @@ namespace Velvet
         }
     }
 
-    internal sealed class AttachExternalCancellationVelvetTaskSource : IVelvetTaskSource
+    // Off the main thread a yield resumes where Task.Yield() does, in its order: through the awaiting
+    // thread's synchronization context, then through a task scheduler other than the default, then on
+    // the thread pool. Nothing is queued before the continuation is registered, so the await never finds
+    // it complete.
+    internal sealed class OffMainThreadYieldVelvetTaskSource : IVelvetTaskSource
     {
-        static readonly Action<object?> CancellationCallback = static state =>
-        {
-            var self = (AttachExternalCancellationVelvetTaskSource)state!;
-            self._source.TrySetCanceled(self._cancellationToken);
-        };
+        static readonly SendOrPostCallback PostCompletion = Complete;
+        static readonly Action<object?> ScheduleCompletion = Complete;
+        static readonly WaitCallback QueueCompletion = Complete;
 
         readonly VelvetTaskSource _source = new();
-        readonly CancellationToken _cancellationToken;
-        CancellationTokenRegistration _registration;
-
-        public AttachExternalCancellationVelvetTaskSource(VelvetTask task, CancellationToken cancellationToken)
-        {
-            _cancellationToken = cancellationToken;
-            _registration = cancellationToken.Register(CancellationCallback, this);
-            WireAwait(task);
-        }
 
         public short Version => _source.Version;
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread)
+        {
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
+            var context = SynchronizationContext.Current;
+            if (context != null && context.GetType() != typeof(SynchronizationContext))
+            {
+                context.Post(PostCompletion, this);
+            }
+            else if (TaskScheduler.Current != TaskScheduler.Default)
+            {
+                Task.Factory.StartNew(
+                    ScheduleCompletion,
+                    this,
+                    CancellationToken.None,
+                    TaskCreationOptions.PreferFairness,
+                    TaskScheduler.Current);
+            }
+            else
+            {
+                ThreadPool.QueueUserWorkItem(QueueCompletion, this);
+            }
+        }
 
         public void GetResult(short version) => _source.GetResult(version);
 
-        void WireAwait(VelvetTask task)
-        {
-            var awaiter = task.GetAwaiter();
-            if (awaiter.IsCompleted)
-            {
-                Complete(awaiter);
-                return;
-            }
-
-            awaiter.OnCompleted(() => Complete(task.GetAwaiter()));
-        }
-
-        void Complete(VelvetTask.Awaiter awaiter)
-        {
-            try
-            {
-                awaiter.GetResult();
-                _source.TrySetResult();
-            }
-            catch (OperationCanceledException)
-            {
-                _source.TrySetCanceled(_cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _source.TrySetException(ex);
-            }
-            finally
-            {
-                _registration.Dispose();
-            }
-        }
+        static void Complete(object? state) => ((OffMainThreadYieldVelvetTaskSource)state!)._source.TrySetResult();
     }
 
-    internal sealed class AttachExternalCancellationVelvetTaskSource<T> : IVelvetTaskSource<T>
+    // Settles with the awaited task's outcome as it stands -- every fault, and the task's own cancellation --
+    // on the thread that completes it, unless the attached token cancels first. VelvetTaskHelperEditorTests
+    // pins each of those choices.
+    internal sealed class AttachExternalCancellationVelvetTaskSource<T> : IVelvetTaskSource<T>, IVelvetTaskFaults
     {
         static readonly Action<object?> CancellationCallback = static state =>
         {
@@ -241,50 +229,50 @@ namespace Velvet
         readonly VelvetTaskSource<T> _source = new();
         readonly CancellationToken _cancellationToken;
         CancellationTokenRegistration _registration;
+        IReadOnlyList<ExceptionDispatchInfo>? _faults;
 
-        public AttachExternalCancellationVelvetTaskSource(VelvetTask<T> task, CancellationToken cancellationToken)
+        internal AttachExternalCancellationVelvetTaskSource(CancellationToken cancellationToken)
         {
             _cancellationToken = cancellationToken;
             _registration = cancellationToken.Register(CancellationCallback, this);
-            WireAwait(task);
         }
 
         public short Version => _source.Version;
 
         public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
         public T GetResult(short version) => _source.GetResult(version);
 
-        void WireAwait(VelvetTask<T> task)
-        {
-            var awaiter = task.GetAwaiter();
-            if (awaiter.IsCompleted)
-            {
-                Complete(awaiter);
-                return;
-            }
+        public IReadOnlyList<ExceptionDispatchInfo>? GetFaults(short version) =>
+            GetStatus(version) == VelvetTaskStatus.Faulted ? _faults : null;
 
-            awaiter.OnCompleted(() => Complete(task.GetAwaiter()));
-        }
-
-        void Complete(VelvetTask<T>.Awaiter awaiter)
+        internal void Complete(VelvetTaskOutcome<T> outcome)
         {
             try
             {
-                _source.TrySetResult(awaiter.GetResult());
-            }
-            catch (OperationCanceledException)
-            {
-                _source.TrySetCanceled(_cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _source.TrySetException(ex);
+                if (outcome.Faults != null)
+                {
+                    _faults = outcome.Faults;
+                    // Lost to the attached token, the fault is logged as the already-cancelled path's Forget()
+                    // logs it, rather than dropped.
+                    if (!_source.TrySetException(outcome.Faults[0].SourceException))
+                    {
+                        VelvetTaskScheduler.PublishUnobservedFaults(outcome.Faults);
+                    }
+                }
+                else if (outcome.Cancellation != null)
+                {
+                    _source.TrySetException(outcome.Cancellation);
+                }
+                else
+                {
+                    _source.TrySetResult(outcome.Result);
+                }
             }
             finally
             {
@@ -293,9 +281,11 @@ namespace Velvet
         }
     }
 
-    internal abstract class WhenAllVelvetTaskSourceBase
+    internal abstract class WhenAllVelvetTaskSourceBase : IVelvetTaskFaults
     {
-        readonly Exception?[] _failures;
+        readonly IReadOnlyList<ExceptionDispatchInfo>?[] _faults;
+        readonly OperationCanceledException?[] _cancellations;
+        List<ExceptionDispatchInfo>? _allFaults;
         int _remaining;
 
         // The count is whole before the derived constructor wires its first member, because a member that
@@ -303,45 +293,45 @@ namespace Velvet
         // such a member and publishes there.
         protected WhenAllVelvetTaskSourceBase(int memberCount)
         {
-            _failures = new Exception?[memberCount];
+            _faults = new IReadOnlyList<ExceptionDispatchInfo>?[memberCount];
+            _cancellations = new OperationCanceledException?[memberCount];
             _remaining = memberCount;
         }
 
-        protected void OnMemberSettled(int index, Exception? failure)
+        public abstract VelvetTaskStatus GetStatus(short version);
+
+        public IReadOnlyList<ExceptionDispatchInfo>? GetFaults(short version) =>
+            GetStatus(version) == VelvetTaskStatus.Faulted ? _allFaults : null;
+
+        protected void OnMemberSettled<T>(int index, VelvetTaskOutcome<T> outcome)
         {
-            _failures[index] = failure;
+            _faults[index] = outcome.Faults;
+            _cancellations[index] = outcome.Cancellation;
             if (Interlocked.Decrement(ref _remaining) == 0)
             {
-                Publish(FirstFault() ?? FirstCancellation());
+                PublishSettled();
             }
         }
 
         protected abstract void Publish(Exception? failure);
 
-        Exception? FirstFault()
+        // Task.WhenAll's order: every member's faults in argument order, and a cancellation only where no
+        // member faulted -- the first cancelled member's in argument order.
+        void PublishSettled()
         {
-            foreach (var failure in _failures)
+            OperationCanceledException? cancellation = null;
+            for (var i = 0; i < _faults.Length; i++)
             {
-                if (failure is not null and not OperationCanceledException)
+                var memberFaults = _faults[i];
+                if (memberFaults != null)
                 {
-                    return failure;
+                    (_allFaults ??= new List<ExceptionDispatchInfo>()).AddRange(memberFaults);
                 }
+
+                cancellation ??= _cancellations[i];
             }
 
-            return null;
-        }
-
-        Exception? FirstCancellation()
-        {
-            foreach (var failure in _failures)
-            {
-                if (failure is OperationCanceledException)
-                {
-                    return failure;
-                }
-            }
-
-            return null;
+            Publish(_allFaults?[0].SourceException ?? cancellation);
         }
     }
 
@@ -355,17 +345,16 @@ namespace Velvet
             for (var i = 0; i < tasks.Length; i++)
             {
                 var index = i;
-                var awaiter = tasks[i].GetAwaiter();
-                awaiter.OnCompleted(() => Settle(index, awaiter));
+                VelvetTaskOutcome.OnSettled(tasks[i], outcome => OnMemberSettled(index, outcome));
             }
         }
 
         public short Version => _source.Version;
 
-        public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
+        public override VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version) => _source.GetResult(version);
 
@@ -384,21 +373,6 @@ namespace Velvet
                 _source.TrySetException(failure);
             }
         }
-
-        void Settle(int index, VelvetTask.Awaiter awaiter)
-        {
-            Exception? failure = null;
-            try
-            {
-                awaiter.GetResult();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-
-            OnMemberSettled(index, failure);
-        }
     }
 
     internal sealed class WhenAllVelvetTaskSource<T> : WhenAllVelvetTaskSourceBase, IVelvetTaskSource<T[]>
@@ -413,17 +387,20 @@ namespace Velvet
             for (var i = 0; i < tasks.Length; i++)
             {
                 var index = i;
-                var awaiter = tasks[i].GetAwaiter();
-                awaiter.OnCompleted(() => Settle(index, awaiter));
+                VelvetTaskOutcome.OnSettled(tasks[i], outcome =>
+                {
+                    _results[index] = outcome.Result;
+                    OnMemberSettled(index, outcome);
+                });
             }
         }
 
         public short Version => _source.Version;
 
-        public VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
+        public override VelvetTaskStatus GetStatus(short version) => _source.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _source.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _source.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 
@@ -444,20 +421,107 @@ namespace Velvet
                 _source.TrySetException(failure);
             }
         }
+    }
 
-        void Settle(int index, VelvetTask<T>.Awaiter awaiter)
+    // Settles once and then answers any number of reads and awaits: its version never moves, which is what
+    // lets the same task be consumed again. Preserve() settles it from the task it preserves, a completion
+    // source from its own Set calls.
+    internal sealed class MultiAwaitVelvetTaskSource<T> : IVelvetTaskSource<T>, IVelvetTaskFaults
+    {
+        readonly object _gate = new();
+        List<(Action<object?> Continuation, object? State, bool ResumeOnMainThread)>? _waiting = new();
+        VelvetTaskOutcome<T> _outcome;
+
+        public short Version => 0;
+
+        internal bool TrySettle(VelvetTaskOutcome<T> outcome)
         {
-            Exception? failure = null;
-            try
+            List<(Action<object?> Continuation, object? State, bool ResumeOnMainThread)> waiting;
+            lock (_gate)
             {
-                _results[index] = awaiter.GetResult();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
+                if (_waiting == null)
+                {
+                    return false;
+                }
+
+                _outcome = outcome;
+                waiting = _waiting;
+                _waiting = null;
             }
 
-            OnMemberSettled(index, failure);
+            foreach (var (continuation, state, resumeOnMainThread) in waiting)
+            {
+                // Taken per continuation rather than once, since each may have been registered on a
+                // different thread; the rule itself is VelvetTaskCompletionSourceCore's.
+                if (resumeOnMainThread && !VelvetMainThread.IsCurrent)
+                {
+                    VelvetMainThread.Post(continuation, state);
+                }
+                else
+                {
+                    continuation(state);
+                }
+            }
+
+            return true;
+        }
+
+        public VelvetTaskStatus GetStatus(short version)
+        {
+            lock (_gate)
+            {
+                return _waiting == null ? _outcome.Status : VelvetTaskStatus.Pending;
+            }
+        }
+
+        public IReadOnlyList<ExceptionDispatchInfo>? GetFaults(short version)
+        {
+            lock (_gate)
+            {
+                return _waiting == null ? _outcome.Faults : null;
+            }
+        }
+
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread)
+        {
+            lock (_gate)
+            {
+                if (_waiting != null)
+                {
+                    _waiting.Add((continuation, state, resumeOnMainThread));
+                    return;
+                }
+            }
+
+            continuation(state);
+        }
+
+        void IVelvetTaskSource.GetResult(short version) => GetResult(version);
+
+        public T GetResult(short version)
+        {
+            VelvetTaskOutcome<T> outcome;
+            lock (_gate)
+            {
+                if (_waiting != null)
+                {
+                    throw new InvalidOperationException("The VelvetTask is not completed.");
+                }
+
+                outcome = _outcome;
+            }
+
+            if (outcome.Faults != null)
+            {
+                outcome.Faults[0].Throw();
+            }
+
+            if (outcome.Cancellation != null)
+            {
+                throw outcome.Cancellation;
+            }
+
+            return outcome.Result;
         }
     }
 

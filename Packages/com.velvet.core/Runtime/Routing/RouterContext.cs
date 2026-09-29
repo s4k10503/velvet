@@ -5,6 +5,13 @@ namespace Velvet
 {
     public static class RouterContext
     {
+        /// <summary>
+        /// The router <c>V.RouterProvider</c> publishes. The hooks that act on a router act on this one,
+        /// and the hooks React Router refuses outside a router throw where it is null.
+        /// </summary>
+        public static readonly ComponentContext<Router> Router =
+            ComponentContext<Router>.Create(null);
+
         public static readonly ComponentContext<RouterLocation> Location =
             ComponentContext<RouterLocation>.Create(null);
 

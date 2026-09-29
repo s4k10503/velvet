@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.TestTools;
 using Velvet.TestUtilities;
 
@@ -38,6 +39,8 @@ namespace Velvet.Tests
             return await tcs.Task;
         }
 
+        static async VelvetTask<int> AwaitAwaitable(AwaitableCompletionSource<int> source) => await source.Awaitable;
+
         static async VelvetTask<int> ThrowingAsyncMethod()
         {
             await VelvetTask.CompletedTask;
@@ -74,6 +77,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(completedSynchronously, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): an Awaitable resumes an async VelvetTask when Unity completes it.
+        // No editor update runs in between, so neither frame hook is what resumes it.
+        [Test]
+        public void Given_AsyncMethodAwaitingAnAwaitable_When_TheAwaitableCompletesInEditMode_Then_ItResumesWithoutAnEditorUpdate()
+        {
+            // Arrange
+            var source = new AwaitableCompletionSource<int>();
+            var task = AwaitAwaitable(source);
+            var statusBeforeCompletion = task.Status;
+
+            // Act
+            source.SetResult(42);
+
+            // Assert
+            Assert.That((statusBeforeCompletion, task.GetAwaiter().GetResult()), Is.EqualTo((VelvetTaskStatus.Pending, 42)));
         }
 
         [Test]

@@ -647,6 +647,40 @@ class ComposeFragments(unittest.TestCase):
         with self.assertRaises(ReleaseNotesError):
             release_notes.compose(INLINE, fragments)
 
+    def test_Given_ACorrectionUnderABreakingEntry_When_Composed_Then_NoLineOfItIsFiled(self):
+        # Arrange — breaking_in_flight_check.py reads the line from the fragment; a note is built
+        # from the composed text, which is what compile_changelog.py writes over the file.
+        fragments = [("breaking/api.md", "### Changed\n\n- New wording.\n  continued.\n"
+                      "<!-- corrects: - Old wording. -->\n")]
+
+        # Act
+        section = extract_version_section(release_notes.compose(INLINE, fragments), BREAKING_SECTION)
+
+        # Assert
+        self.assertEqual(section, ["", "### Changed", "", "- New wording.", "  continued.", ""])
+
+    def test_Given_ACorrectionUnderNoEntry_When_Composed_Then_ItIsRefusedAsOne(self):
+        # Arrange — it names the entry it sits under, so above the first there is none to name.
+        fragments = [("breaking/api.md",
+                      "### Changed\n\n<!-- corrects: - Old wording. -->\n- New wording.\n")]
+
+        # Act
+        with self.assertRaises(ReleaseNotesError) as refused:
+            release_notes.compose(INLINE, fragments)
+
+        # Assert
+        self.assertIn("no entry is above", str(refused.exception))
+
+    def test_Given_ACorrectionNotNamingAFirstLine_When_Composed_Then_ItIsRefused(self):
+        # Arrange — without its `- ` it names no line breaking_in_flight_check.py reads, and passed
+        # over it would ship in the note.
+        fragments = [("breaking/api.md",
+                      "### Changed\n\n- New wording.\n<!-- corrects: Old wording. -->\n")]
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            release_notes.compose(INLINE, fragments)
+
 
 def git(cwd, *args):
     return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True,

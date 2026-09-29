@@ -65,7 +65,7 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
-            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
+            "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "ForTest",
             "AllocatingGCMemory",
@@ -201,6 +201,9 @@ namespace Velvet.Tests
             + "|#[^\n]*",
             RegexOptions.Compiled | RegexOptions.Singleline);
 
+        // GREEN_ON_BASE(characterization): what this change alters in this file is one allowlist entry.
+        // This case does not read the allowlist, so on the base it reads the base's own content through code
+        // the branch left as it was.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_EachFormatsCommentsAreTaken()
         {
@@ -261,6 +264,9 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", unheld.Distinct()), Is.Empty);
         }
 
+        // GREEN_ON_BASE(characterization): what this change alters in this file is one allowlist entry.
+        // This case does not read the allowlist, so on the base it reads the base's own content through code
+        // the branch left as it was.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_TheRegionStripTakesOnlyLabelWords()
         {
@@ -302,6 +308,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): what this change alters in this file is one allowlist entry.
+        // This case does not read the allowlist, so on the base it reads the base's own content through code
+        // the branch left as it was.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_ItKeepsEveryDirectiveCondition()
         {
@@ -337,6 +346,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): what this change alters in this file is one allowlist entry.
+        // This case does not read the allowlist, so on the base it reads the base's own content through code
+        // the branch left as it was.
         [Test]
         public void Given_TheMarkdownTheWalkFinds_When_ComparedAgainstTheScannedSet_Then_EveryFileIsScanned()
         {
@@ -358,6 +370,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Write `V.NoSuchFactory` into a guide and this reddens.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()
         {
@@ -378,6 +393,9 @@ namespace Velvet.Tests
                 "Documentation references V.* members that do not exist on typeof(V):\n" + string.Join("\n", unresolved));
         }
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Write `UseNoSuchHook` in backticks into a guide and this reddens.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForBacktickedHookReferences_Then_EveryReferenceExistsOnHooks()
         {
@@ -405,6 +423,9 @@ namespace Velvet.Tests
                 "Documentation references Hooks.* members that do not exist on typeof(Hooks):\n" + string.Join("\n", unresolved));
         }
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Drop the `memoization.md` row from `Documentation~/README.md` and this reddens.
         [Test]
         public void Given_DocumentationReadmeIndex_When_ComparedAgainstDirectoryContents_Then_LinksAndFilesMatchExactly()
         {
@@ -427,6 +448,9 @@ namespace Velvet.Tests
                 "Documentation~/README.md's index is out of sync with the directory's actual .md files:\n" + string.Join("\n", diff));
         }
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Drop the `guides/memoization.md` entry from `docs/toc.yml` and this reddens.
         [Test]
         public void Given_TheDocfxTableOfContents_When_ComparedAgainstTheGuideDirectory_Then_LinksAndFilesMatchExactly()
         {
@@ -449,6 +473,9 @@ namespace Velvet.Tests
                 "docs/toc.yml is out of sync with Documentation~'s actual .md files:\n" + string.Join("\n", diff));
         }
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Misspell `Runtime/Plugins/Generators/Velvet.SourceGenerators.dll` in `memoization.md` and this reddens.
         [Test]
         public void Given_ProjectMarkdown_When_ScannedForBacktickedPaths_Then_EveryPathExistsInTheRepo()
         {
@@ -490,10 +517,12 @@ namespace Velvet.Tests
         // one that hides: the entry suppresses nothing while the source spelling it is there, and becomes
         // load-bearing the day that source is deleted, with no review in between.
         //
-        // GREEN_ON_BASE(characterization): the list this reads is declared above, in a file the base run
-        // carries from the branch along with the case, so the base answers over the branch's own entries
-        // whatever it holds. What stands in for the base run is each dropped entry put back and the case
-        // run, measured: ContinuousIntegrationBuild names the first arm, SIGTERM the second.
+        // GREEN_ON_BASE(characterization): the list this reads is carried onto the base from the branch
+        // with the case, so the base answers over the branch's own entries, and dropping one cannot turn it
+        // red. What stands in for the base run is a dropped entry put back and the case run, measured for
+        // two: ContinuousIntegrationBuild names the first arm, SIGTERM the second. RoslynAdditionalFileImporter,
+        // dropped with the README sentence that wrote it, is written in no scanned span now, so put back it
+        // falls to the first arm; that one is read off the spans, not run.
         [Test]
         public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheSpansAndTheSources_Then_EveryEntrySuppressesAReport()
         {
@@ -534,6 +563,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(construction): both sides of this comparison are the base's own content, and on
         // the base they agree — this repository's markdown against its scripts. Misspell a reference as
         // `published_check.unpublished_reasonn` and this case reddens; no base run can perform that.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
@@ -557,6 +587,9 @@ namespace Velvet.Tests
         // going or the walk stopping short of them, and either wants reading before the number moves.
         private const int ScriptSymbolSpanFloor = 2;
 
+        // GREEN_ON_BASE(characterization): what this change alters in this file is one allowlist entry.
+        // This case does not read the allowlist, so on the base it reads the base's own content through code
+        // the branch left as it was.
         [Test]
         public void Given_TheScriptSymbolCheck_When_ItsLiveSpansAreCounted_Then_SomeMarkdownStillReachesIt()
         {
@@ -599,6 +632,7 @@ namespace Velvet.Tests
         // An import binds into the module, so the check above has to resolve an imported name rather than
         // report it. Which name a statement binds differs by spelling, and a statement can write a name it
         // does not bind — `import a.b` writes b and binds a — so both directions are asked here.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_TheImportSpellings_When_EachNameIsSoughtInTheModule_Then_OnlyABoundOneResolves()
         {
@@ -701,6 +735,7 @@ namespace Velvet.Tests
         // declared in this same file, which the base lane carries with the cases. What the wiring
         // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
         // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_ADatedChangelogSection_When_TheProseIsRead_Then_ItIsNotThere()
         {
@@ -723,6 +758,7 @@ namespace Velvet.Tests
         // declared in this same file, which the base lane carries with the cases. What the wiring
         // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
         // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_AHighlightsBlockInsideADatedSection_When_TheProseIsRead_Then_ItGoesWithIt()
         {
@@ -743,6 +779,7 @@ namespace Velvet.Tests
         // declared in this same file, which the base lane carries with the cases. What the wiring
         // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
         // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_ADatedHeadingInAnotherDocument_When_TheProseIsRead_Then_ItIsLeftAlone()
         {
@@ -950,6 +987,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this one is green either way here — the checkout it runs in
         // holds no untracked markdown at the top level on a runner, which is the whole asymmetry. What
         // separates the readings is the case below, and only running it says whether it does.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
         {
@@ -972,6 +1010,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the reading under test sits in `DocumentationCorpus`, a
         // test-side file the base lane carries with the cases, so no base run can separate them.
         // Restoring the filesystem walk by hand and re-running the fixture fails this one.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_MarkdownGitDoesNotTrack_When_TheUnwalkedRootsAreRead_Then_ItNamesNoRoot()
         {
@@ -1023,6 +1062,7 @@ namespace Velvet.Tests
         // file the base run carries from the branch along with the case, so the base answers over the
         // branch's own lists. What stands in for the base run is an entry added and the case run, measured:
         // adding Samples~ named Packages/com.velvet.core/Samples~/StarterApp/README.md.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_EveryTrackedMarkdownFileUnderAWalkedRoot_When_TheCorpusIsRead_Then_TheWalkReachedIt()
         {
@@ -1061,6 +1101,7 @@ namespace Velvet.Tests
         // file the base run carries from the branch along with the case, so the base answers with the
         // branch's own code. What stands in for the base run is the safe.directory pair dropped and the
         // case run, measured: the trusted listing came back as nothing too.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
@@ -1098,6 +1139,7 @@ namespace Velvet.Tests
         // test-assembly file the base run carries from the branch along with the case. What stands in for
         // the base run is the resolution removed and the case run, measured: the listing came back as
         // nothing.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers()
         {
@@ -1144,6 +1186,7 @@ namespace Velvet.Tests
         // test-assembly file the base run carries from the branch along with the case. What stands in
         // for the base run is the reachability branch removed and the case run, measured: the listing
         // came back holding the checkout's one tracked file.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_ALinkedWorktreeGitCanFindOnItsOwn_When_TheTrackedListingIsRead_Then_TheOwnershipRefusalStillFires()
         {
@@ -1367,6 +1410,7 @@ namespace Velvet.Tests
         // is a test-assembly file, so the base run carries the branch's own list and answers with it. What
         // stands in for the base run is the entry removed and the case run, measured: it reported
         // scripts/.pytest_cache and the markdown under it as walked.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_APytestCacheUnderAWalkedRoot_When_TheWalkRuns_Then_ItsMarkdownStaysOutOfTheCorpus()
         {
@@ -1410,6 +1454,7 @@ namespace Velvet.Tests
         // test-assembly file the base run carries from the branch along with the case, so the base answers
         // over the branch's own lists. What stands in for the base run is the entry removed and the case
         // run, measured: it reported the markdown staged under the directory as walked.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_TheDocBuildStagedTheGuides_When_TheWalkRuns_Then_TheStagedCopyStaysOutOfTheCorpus()
         {
@@ -1479,6 +1524,7 @@ namespace Velvet.Tests
         // test-assembly file the base run carries from the branch along with the case, so the base answers
         // over the branch's own list. What stands in for the base run is docfx.json's output renamed to
         // site and the case run, measured: it reported docs/site/docfx-output-probe.md as walked.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_TheDocfxGeneratedDirectories_When_TheWalkRuns_Then_NeitherEntersTheCorpus()
         {
@@ -1544,6 +1590,9 @@ namespace Velvet.Tests
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
 
+        // GREEN_ON_BASE(construction): both sides are the repository's own content, and on the base they agree.
+        // What this change alters in this file is one identifier-allowlist entry, which this case does not
+        // read. Write `docs/_site` into a workflow and this reddens.
         [Test]
         public void Given_TheDocfxGeneratedDirectories_When_TheWorkflowsAreScanned_Then_NoneIsWrittenOutAgain()
         {
@@ -1575,6 +1624,7 @@ namespace Velvet.Tests
         // That is a test-assembly file the base run carries from the branch along with the case, so the
         // base answers over the branch's own list. What stands in for the base run is the entry removed
         // and the case run, measured: it reported the record as walked.
+        // This change drops one identifier-allowlist entry, which this case does not read.
         [Test]
         public void Given_ACampaignHoldsItsRecord_When_TheWalkRuns_Then_TheRecordStaysOutOfTheCorpus()
         {

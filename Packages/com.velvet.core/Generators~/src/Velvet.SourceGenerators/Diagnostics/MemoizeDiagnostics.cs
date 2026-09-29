@@ -22,35 +22,17 @@ namespace Velvet.SourceGenerators.Diagnostics
         private static DiagnosticDescriptor Info(string id, string title, string messageFormat, string description) =>
             new(id, title, messageFormat, Category, DiagnosticSeverity.Info, isEnabledByDefault: true, description);
 
-        public static readonly DiagnosticDescriptor Vel001ArityZeroCannotProvePurity = Warn(
-            "VEL001",
-            "[MemoizeMethod] arity 0 cannot prove purity",
-            "Method '{0}' has no parameters and the corresponding _Impl method is not provably Pure; the deps-less cache may serve a stale VNode forever",
-            "[MemoizeMethod] with no parameters (arity 0) caches a deps-less value — generation proceeds, but PurityAnalyzer could not statically prove the _Impl method has no side effects. Either annotate the _Impl with [Pure], remove the [MemoizeMethod] attribute, or accept the warning if you trust the body is deterministic.");
-
-        public static readonly DiagnosticDescriptor Vel002ArityExceedsLimit = Warn(
-            "VEL002",
-            "[MemoizeMethod] supports only 1-8 parameters",
-            "Method '{0}' has {1} parameters; [MemoizeMethod] supports 1-8 parameters",
-            "Arity 9+ is not supported. If needed, future expansion to params object[] is planned.");
-
-        public static readonly DiagnosticDescriptor Vel003GenericMethodNotSupported = Warn(
-            "VEL003",
-            "[MemoizeMethod] does not support generic methods",
-            "Method '{0}' is generic; [MemoizeMethod] does not support generic methods",
-            "[MemoizeMethod] on generic methods is not supported. Future support is planned.");
-
         public static readonly DiagnosticDescriptor Vel004AsyncMethodNotSupported = Warn(
             "VEL004",
             "[MemoizeMethod] does not support async methods",
-            "Method '{0}' is async or returns Task; [MemoizeMethod] does not support async methods",
-            "[MemoizeMethod] on async methods is not supported. Future support is planned.");
+            "Method '{0}' is async or returns a task; [MemoizeMethod] does not support async methods",
+            "V.Memoized places a node synchronously, so there is nothing to place until a task completes. To memoize the task itself, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel005RefOutParameterNotSupported = Warn(
             "VEL005",
-            "[MemoizeMethod] does not support ref/out/in parameters",
-            "Method '{0}' has a ref/out/in parameter; [MemoizeMethod] does not support by-reference parameters",
-            "ref/out/in parameters cannot be safely used as deps and are not supported.");
+            "[MemoizeMethod] does not support ref/out parameters",
+            "Method '{0}' has a ref or out parameter; the factory that calls its _Impl runs later, during reconcile, and cannot capture the parameter",
+            "The generated wrapper hands V.Memoized a factory that calls the _Impl method, and the reconciler runs that factory after the wrapper has returned, so no write through a ref or out parameter could reach the caller; a lambda cannot capture one either (CS1628). An in parameter is supported: it is copied, and the memo keys on the copy.");
 
         public static readonly DiagnosticDescriptor Vel006MissingAccessibilityModifier = Warn(
             "VEL006",
@@ -66,15 +48,27 @@ namespace Velvet.SourceGenerators.Diagnostics
 
         public static readonly DiagnosticDescriptor Vel008NonVNodeReturnType = Warn(
             "VEL008",
-            "[MemoizeMethod] method must return Velvet.VNode or a derived type",
-            "Method '{0}' return type '{1}' is not Velvet.VNode or a derived type",
-            "V.Memo returns a MemoNode (which derives from VNode), so the target method's return type must derive from VNode.");
+            "[MemoizeMethod] method must return Velvet.VNode",
+            "Method '{0}' return type '{1}' is not Velvet.VNode or Velvet.MemoNode returned by value",
+            "The generated body returns the MemoNode V.Memoized builds, by value, so the declared return type must be one MemoNode converts to: VNode or MemoNode itself, without ref. To memoize any other value, call UseMemo.");
 
         public static readonly DiagnosticDescriptor Vel009PartialMethodAlreadyHasBody = Warn(
             "VEL009",
             "[MemoizeMethod] partial method declaration must not have a body",
             "Method '{0}' already has a body; write implementation in '{0}_Impl' instead",
             "[MemoizeMethod] partial methods are declarations only; the implementation must be written in a separate method with the '_Impl' suffix by convention.");
+
+        public static readonly DiagnosticDescriptor Vel010UnboxableParameterNotSupported = Warn(
+            "VEL010",
+            "[MemoizeMethod] does not support ref struct or pointer parameters",
+            "Method '{0}' has parameter '{1}' of type '{2}', which cannot be a dependency; [MemoizeMethod] keys on every parameter",
+            "Each parameter is a dependency: it is stored in the object?[] V.Memoized compares and read by the factory lambda. A ref struct such as Span<T> can be neither stored nor captured, a pointer cannot be stored, and a type holding one, such as int*[], needs an unsafe context the generated code does not open. Pass an array or a value the span or pointer was read from instead.");
+
+        public static readonly DiagnosticDescriptor Vel011StructReceiverNotSupported = Warn(
+            "VEL011",
+            "[MemoizeMethod] instance member of a struct must be readonly and not of a ref struct",
+            "Method '{0}' is an instance member of '{1}'; [MemoizeMethod] supports a struct instance member only when it is readonly and the struct is not a ref struct",
+            "A lambda in a struct cannot capture this, so the generated factory calls _Impl on a copy of it: a write _Impl makes to the struct would reach the copy and be lost, so the member must be readonly. A ref struct cannot be copied into anything the factory can capture at all.");
 
         public static readonly DiagnosticDescriptor Vel100UseEffectMissingDep = HookWarn(
             "VEL100",
