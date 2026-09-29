@@ -7,8 +7,9 @@
 
 - A `V.AnimatePresence` keyed child whose Motion is created again under the same key, as an `elementType`
   change does, enters again, as Framer mounts the new child of a kept `PresenceChild` with its enter. It used
-  to appear at rest. A child the presence's first render created under `initial: false` still enters nothing.
+  to appear at rest, and one whose key returned mid-exit did too. A child the presence's first render created
+  under `initial: false` still enters nothing.
 
-- A presence child's Motion that inherits its labels from the Motion above the presence rests at its pose
-  when its key returns mid-exit, as one naming its own labels does. It used to start its transition preset's
-  enter, such as `StyleTransition.Fade`'s, over that pose.
+- A presence child's Motion that inherits its labels from the Motion above the presence rests at its pose when
+  its key returns mid-exit, or when it is added with no `initial` label to enter from, as one naming its own
+  labels does. It used to start its transition preset's enter, such as `StyleTransition.Fade`'s, over that pose.

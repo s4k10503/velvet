@@ -1329,8 +1329,9 @@ namespace Velvet
 
         // Per-property override path: transition-property becomes "all" on the top-level timing followed by the
         // overridden properties (in declaration order), as Framer's per-value transition leaves every value it does
-        // not name on the default one. The "all" entry has to come first: UI Toolkit takes the LAST entry naming a
-        // property (MotionPerPropertyTransitionTests pins both halves). Duration / delay are positionally-matched lists, rented EMPTY
+        // not name on the default one. The "all" entry has to come first: UI Toolkit takes the last entry naming a
+        // property among those whose span is positive (MotionPerPropertyTransitionTests pins both halves).
+        // Duration / delay are positionally-matched lists, rented EMPTY
         // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
         // the SAME pools the single-entry path above uses, so they are returned through the existing
         // PendingAnimation.DurationList / DelayList bookkeeping unchanged. A null override field falls back to
@@ -1365,13 +1366,23 @@ namespace Velvet
             {
                 var o = i < 0 ? default : overrides[i];
                 easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
-                durationList.Add(new TimeValue((int)((o.DurationSec ?? defaultDurationSec) * 1000), TimeUnit.Millisecond));
+                var durationMs = (int)((o.DurationSec ?? defaultDurationSec) * 1000);
                 var delaySec = o.DelaySec ?? defaultDelaySec;
                 if (delaySec > 0f)
                 {
                     hasDelay = true;
                 }
-                delayList.Add(new TimeValue((int)(delaySec * 1000), TimeUnit.Millisecond));
+                var delayMs = (int)(delaySec * 1000);
+                // UI Toolkit drops an entry whose span is not positive before it looks for the last one naming a
+                // property, which would leave that property on the "all" entry's timing: a 1ms span lands it
+                // instead, as LandOnHeldTransition does (MotionPerPropertyTransitionTests).
+                if (Math.Max(0, durationMs) + delayMs <= 0)
+                {
+                    durationMs = 1;
+                    delayMs = 0;
+                }
+                durationList.Add(new TimeValue(durationMs, TimeUnit.Millisecond));
+                delayList.Add(new TimeValue(delayMs, TimeUnit.Millisecond));
             }
 
             element.style.transitionProperty = propertyNames;

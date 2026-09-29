@@ -1841,7 +1841,7 @@ namespace Velvet
             // anchor-targeted transition plays instead.
             var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
             var exitTransition = variantExit ?? ghostMotionNode?.Transition;
-            var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
+            var exitTarget = variantExit != null ? ghostMotionElement! : ClassicTarget(ghostAnchor, ghostMotionElement);
             // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired from
             // inside one of the PlayExit calls below) is queued instead of run inline.
             void Settled()
@@ -2020,20 +2020,24 @@ namespace Velvet
                     ReleaseDescendantExits(state, key);
                 }
 
-                // A live key whose anchor was created again under the same key — a type flip — remounts with an enter,
-                // as a Framer PresenceChild's new child does, unless the key still withholds its first render's.
-                var remounted = anchorEmission.Created && !state.InitialBlocked.Contains(key);
-                var isEnter = wasExiting || wasExitComplete || remounted || !PresenceContainsKey(prevCommitted, key);
+                var isEnter = wasExiting || wasExitComplete || Remounted(anchorEmission, state, key)
+                    || !PresenceContainsKey(prevCommitted, key);
                 // The create path already played, or withheld, the enter of an anchor inheriting its labels.
                 if (isEnter && !anchorEmission.EnterHandled)
                 {
-                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
+                    // A cancelled exit's reversal returns the same element to rest; a new one enters.
+                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting && !anchorEmission.Created);
                 }
             }
 
             pass.NextCommitted.Add((key, node));
             pass.Tally.VisualIndex++;
         }
+
+        // A live key whose anchor was created again under the same key — a type flip — remounts with an enter, as a
+        // Framer PresenceChild's new child does, unless the key still withholds its first render's.
+        private static bool Remounted(in AnchorEmission emission, ReconcilerContext.PresenceBoundaryState state, string key)
+            => emission.Created && !state.InitialBlocked.Contains(key);
 
         // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in. A child
         // present at the first render under initial: false keeps withholding mount enters for as long as it
@@ -2178,7 +2182,7 @@ namespace Velvet
                 // A completed classic exit leaves its to classes on the anchor it played on.
                 if (motion?.Transition != null)
                 {
-                    StyleAnimationClassUtils.RemoveClasses(anchor, motion.Transition.ExitToClasses);
+                    StyleAnimationClassUtils.RemoveClasses(ClassicTarget(anchor, motionElement), motion.Transition.ExitToClasses);
                 }
                 return;
             }
@@ -2294,14 +2298,20 @@ namespace Velvet
             else
             {
                 // As for the variant enter above; of the classic enters, only a timed tween cancels it.
+                var target = ClassicTarget(anchor, motionElement);
                 if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
                 {
-                    _patcher.LandInlineHold(anchor);
+                    _patcher.LandInlineHold(target);
                 }
-                _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
+                _ctx.StyleAnimationScheduler.PlayEnter(target, motion.Transition,
                     ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
         }
+
+        // Where a classic enter or exit plays: the keyed child's anchor, which holds the Motion or is it, unless the
+        // Motion's element sits outside it — a keyed Fragment placing another element ahead of its Motion.
+        private static VisualElement ClassicTarget(VisualElement anchor, VisualElement? motionElement)
+            => motionElement != null && !anchor.Contains(motionElement) ? motionElement : anchor;
 
         private static bool PresenceContainsKey(
             List<(string key, VNode node)> list, string? key)

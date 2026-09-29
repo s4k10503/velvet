@@ -99,8 +99,7 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
   Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A keyed
-  `V.Fragment` is a keyed child like any other: every element it places is held until its Motions' exits
-  finish.
+  `V.Fragment` child holds every element it places until its Motions' exits finish.
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no
   pose plays the classic exit instead.

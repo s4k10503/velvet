@@ -61,6 +61,7 @@ namespace Velvet.Tests
         private static VisualElement s_portalTarget;
         private static Dictionary<string, MotionVariant> s_inheritingVariants;
         private static string s_hostLabel;
+        private static bool s_nestInner;
 
         private EditorPanelSimulator _sim;
 
@@ -79,6 +80,7 @@ namespace Velvet.Tests
             s_portalTarget = null;
             s_inheritingVariants = s_fade;
             s_hostLabel = "visible";
+            s_nestInner = false;
         }
 
         [TearDown]
@@ -218,20 +220,27 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new[] { Presence(keys), OutsidePortal() });
         }
 
-        // One keyed child whose element type flips with s_flagStore while its key stays, so the reconciler creates
-        // its Motion again rather than patching it.
+        // Keyed children whose element type flips with s_flagStore while their keys stay, so the reconciler creates
+        // their Motions again rather than patching them. Under s_nestInner each Motion holds an inner presence whose
+        // only child carries no Motion.
         [Component]
         private static VNode TypeFlipPresenceHost()
         {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
             var on = Hooks.UseStore(s_flagStore, s => s.On);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item", key: key.ToString(), elementType: on ? null : typeof(Box),
+                    variants: s_fade, initial: "hidden", animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f },
+                    children: s_nestInner
+                        ? new VNode[] { V.AnimatePresence(key: "inner", children: new VNode[] { V.Div(key: "x") }) }
+                        : null));
+            }
             return V.Div(name: "host", children: new VNode[]
             {
-                V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: new[]
-                {
-                    V.Motion(name: "item", key: "a", elementType: on ? null : typeof(Box), variants: s_fade,
-                        initial: "hidden", animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
-                }),
+                V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
             });
         }
 
@@ -248,6 +257,26 @@ namespace Velvet.Tests
                     transition: StyleTransition.Fade));
             }
             return V.Motion(name: "host", animate: s_hostLabel, children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
+            });
+        }
+
+        // Keyed Fragments placing a Label ahead of a Motion that plays the Fade preset's enter and exit.
+        [Component]
+        private static VNode LabelFirstFragmentHost()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Fragment(new VNode[]
+                {
+                    V.Label(name: "caption", text: "x"),
+                    V.Motion(name: "item", transition: StyleTransition.Fade),
+                }, key: key.ToString()));
+            }
+            return V.Div(name: "host", children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
             });
@@ -387,6 +416,25 @@ namespace Velvet.Tests
             Frames(3);
 
             // Act — back mid-exit.
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — resting at the inherited pose, with the Fade preset's enter not started over it.
+            var item = Root.Q<VisualElement>("item");
+            Assert.That((item.ClassListContains("anim-fade-enter-from"), item.ClassListContains("opacity-100")),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnAnchorInheritingItsLabelWithNoInitial_When_ItsKeyIsAdded_Then_ItRestsWithNoPresetEnter()
+        {
+            // Arrange — no initial label anywhere, so no variant enter resolves.
+            using var keys = new KeySetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
             keys.Set("a");
             Drain(mounted);
 
@@ -551,6 +599,53 @@ namespace Velvet.Tests
         {
             // Arrange — initial: true, so the key withholds nothing; settled well past the mount enter.
             s_presenceInitial = true;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            flag.Set(false);
+            Drain(mounted);
+
+            // Assert — a new element, with the 300ms enter timing written on it.
+            Assert.That((Root.Q<VisualElement>("item") is Box, ItemDurationMs()), Is.EqualTo((true, 300f)));
+        }
+
+        [Test]
+        public void Given_AKeyedMotionExiting_When_ItsKeyReturnsWithATypeFlip_Then_TheNewElementEnters()
+        {
+            // Arrange — settled, then removed, and still exiting.
+            s_presenceInitial = true;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
+            Frames(40);
+            keys.Set(string.Empty);
+            Drain(mounted);
+            Frames(3);
+
+            // Act — the key returns in the same render that flips its element type.
+            flag.Set(false);
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — a new element, with the 300ms enter timing written on it.
+            Assert.That((Root.Q<VisualElement>("item") is Box, ItemDurationMs()), Is.EqualTo((true, 300f)));
+        }
+
+        [Test]
+        public void Given_AKeyedMotionHoldingAnInnerPresence_When_ATypeFlipCreatesItAgain_Then_TheNewElementEnters()
+        {
+            // Arrange — the inner presence's only child carries no Motion, so its own emission reports none created.
+            s_presenceInitial = true;
+            s_nestInner = true;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
             using var flag = new FlagStore();
             s_flagStore = flag;
             using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
@@ -586,6 +681,8 @@ namespace Velvet.Tests
         public void Given_AKeyedMotionTheFirstRenderMountedUnderInitialFalse_When_ATypeFlipCreatesItAgain_Then_NoEnterPlays()
         {
             // Arrange — initial: false, which the key keeps withholding for as long as it stays.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
             using var flag = new FlagStore();
             s_flagStore = flag;
             using var mounted = V.Mount(Root, V.Component(TypeFlipPresenceHost, key: "root"));
@@ -597,6 +694,42 @@ namespace Velvet.Tests
 
             // Assert — the new element, with no enter timing on it.
             Assert.That((Root.Q<VisualElement>("item") is Box, float.IsNaN(ItemDurationMs())), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentPlacingALabelAheadOfItsMotion_When_ItsKeyIsAdded_Then_TheMotionPlaysTheEnter()
+        {
+            // Arrange
+            using var keys = new KeySetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(LabelFirstFragmentHost, key: "root"));
+            Frames(40);
+
+            // Act
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — the Fade preset's enter has started on the Motion and not on the Label.
+            Assert.That((HasClass("caption", "anim-fade-enter-from"), HasClass("item", "anim-fade-enter-from")),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentPlacingALabelAheadOfItsMotion_When_ItsKeyIsRemoved_Then_TheMotionPlaysTheExit()
+        {
+            // Arrange
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(LabelFirstFragmentHost, key: "root"));
+            Frames(40);
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert — the Fade preset's exit has started on the Motion and not on the Label.
+            Assert.That((HasClass("caption", "anim-fade-exit-from"), HasClass("item", "anim-fade-exit-from")),
+                Is.EqualTo((false, true)));
         }
 
         // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
