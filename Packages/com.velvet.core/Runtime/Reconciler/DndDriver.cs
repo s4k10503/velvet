@@ -247,21 +247,17 @@ namespace Velvet
     // Settles the press-derived styling state after the session swallowed the real PointerUp
     // (StopImmediatePropagation runs before the bubble-phase signal callbacks, and captured delivery
     // hides it from every other element entirely): every manipulator holding an ElementLocalVariantSignals
-    // on the press path below the source, on the source, OR on any of its ancestors is told to observe a
-    // synthetic release, since the press's own PointerDown may have lit its whileTap / active: (and
-    // stacked forms). The path comes from the session's list, not from the press target's parents: a
+    // on an element of the press chain — the elements the press's own PointerDown reached, so the ones
+    // whose whileTap / active: (and stacked forms) it may have lit — is told to observe a synthetic
+    // release. The chain is the session's press-time list rather than a walk from the press target: a
     // descendant unmounted mid-drag no longer has the source above it.
     internal static class DndPressVariantSettler
     {
-        public static void Settle(VisualElement source, System.Collections.Generic.List<VisualElement> pressPath, ReconcilerContext ctx)
+        public static void Settle(System.Collections.Generic.List<VisualElement> pressChain, ReconcilerContext ctx)
         {
-            foreach (var element in pressPath)
+            foreach (var element in pressChain)
             {
                 SettleOn(element, ctx);
-            }
-            for (var current = source; current != null; current = current.parent)
-            {
-                SettleOn(current, ctx);
             }
         }
 

@@ -55,7 +55,8 @@ pointer-up never reaches those listeners.
 
 A press on an interactive child that captures the pointer at its own pointer-down (a button
 inside a draggable card) drags the card once the constraint is met, and the child's click is
-aborted; a sub-threshold release stays the child's click. A control that has a pointer gesture of
+aborted; a sub-threshold release stays the child's click. The same holds for an interactive
+ancestor that captures (a draggable inside a button). A control that has a pointer gesture of
 its own — a slider, a scroller, a text field's selection — loses it to the drag the same way. Set
 `FiberElementProps.NoDrag` on the control or on an element around it
 (`V.Div(props: new FiberElementProps { NoDrag = true }, children: ...)`) and a press inside it

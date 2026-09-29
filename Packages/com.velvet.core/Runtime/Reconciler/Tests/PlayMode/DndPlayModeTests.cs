@@ -352,6 +352,48 @@ namespace Velvet.Tests
             Assert.That((s_started.Count, s_ended.Count, clicks), Is.EqualTo((1, 1, 0)));
         }
 
+        // A draggable card inside a Button, whose Clickable captures at its own pointer-down after the
+        // card's armer has run.
+        [Component]
+        private static VNode ButtonAroundDraggableScene() => V.DndContext(
+            onDragStart: e => s_started.Add(e.Active.Id),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                new ElementNode
+                {
+                    Key = "host",
+                    ElementType = typeof(Button),
+                    Name = "host",
+                    ClassNames = V.ParseClassNames("absolute left-[0px] top-[0px] w-[150px] h-[150px]"),
+                    Children = new VNode[]
+                    {
+                        V.Draggable("card", name: "card", activation: s_cardActivation,
+                            className: "w-[100px] h-[100px]"),
+                    },
+                    Events = System.Array.Empty<FiberEventBinding>(),
+                },
+            });
+
+        [UnityTest]
+        public IEnumerator Given_ADraggableInsideAClickableButton_When_APressOnItTravelsPastTheDistance_Then_TheDragStarts()
+        {
+            // Arrange — a dnd-kit draggable inside a button drags: the button takes no pointer capture.
+            // Here the Button does, so the moves are delivered to it alone.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ButtonAroundDraggableScene, key: "root"));
+            yield return null;
+            yield return null;
+            SendPointerDown(Main("card"), new Vector2(10, 10));
+
+            // Act — dispatched with no preset target, so the engine routes it to the capturing Button.
+            SendPointerMoveUntargeted(Main("card").panel, new Vector2(60, 10));
+            yield return null;
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "card" }));
+        }
+
         [Component]
         private static VNode OverlayScene() => V.DndContext(
             onDragStart: e => s_started.Add(e.Active.Id),

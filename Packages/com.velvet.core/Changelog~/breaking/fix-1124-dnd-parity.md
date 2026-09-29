@@ -8,9 +8,9 @@
   `DragActivation.None`.
 
 - A press on an interactive child that captures the pointer at its own pointer-down, such as a button
-  inside a draggable card, drags the card once the activation constraint is met, and the child's click
-  is aborted. Such a child used to block the drag, so a distance constraint alone does not bring the old
-  behaviour back: a control inside a draggable that keeps its own pointer gesture (a slider, a scroller,
+  inside a draggable card, or on a draggable inside such a control, drags once the activation constraint
+  is met, and the control's click is aborted. Such a control used to block the drag, so a distance
+  constraint alone does not bring the old behaviour back: a control inside a draggable that keeps its own pointer gesture (a slider, a scroller,
   a text field's selection) now needs `FiberElementProps.NoDrag` on it or on an element around it.
 
 - When draggables nest, the innermost enabled one under the press takes it, as dnd-kit's innermost

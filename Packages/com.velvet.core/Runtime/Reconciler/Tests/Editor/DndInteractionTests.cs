@@ -535,6 +535,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode UndeclaredActivationScene() => V.DndContext(
             onDragStart: e => s_started.Add(e.Active.Id),
+            onDragCancel: _ => s_cancelCount++,
             className: "w-[300px] h-[300px]",
             children: new VNode[]
             {
@@ -556,21 +557,26 @@ namespace Velvet.Tests
         }
 
         // A draggable whose whole face is a grip child: every press lands on the grip, and both carry a
-        // whileTap class.
+        // whileTap class. The flag disables the draggable.
         [Component]
-        private static VNode TappedGripScene() => V.DndContext(
-            onDragEnd: e => s_ended.Add(e.Over?.Id),
-            activation: new DragActivation(Distance: 4f),
-            className: "w-[300px] h-[300px]",
-            children: new VNode[]
-            {
-                V.Draggable("item", name: "item", whileTapClass: "lifted",
-                    className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
-                    children: new VNode[]
-                    {
-                        V.Div(name: "grip", className: "w-[50px] h-[50px]", whileTapClass: "pressed"),
-                    }),
-            });
+        private static VNode TappedGripScene()
+        {
+            var (disabled, setDisabled) = Hooks.UseState(false);
+            s_setFlag = setDisabled;
+            return V.DndContext(
+                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item", disabled: disabled, whileTapClass: "lifted",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]",
+                        children: new VNode[]
+                        {
+                            V.Div(name: "grip", className: "w-[50px] h-[50px]", whileTapClass: "pressed"),
+                        }),
+                });
+        }
 
         [Test]
         public void Given_ADragPressedOnADescendantCarryingWhileTap_When_TheDragEnds_Then_TheDescendantsTapClassIsSettled()
@@ -818,6 +824,106 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((ReferenceEquals(marked, plain), s_started.Count), Is.EqualTo((true, 1)));
+        }
+
+        [Test]
+        public void Given_ADragPressedOnADescendantCarryingWhileTap_When_ARenderDisablesTheDraggableMidDrag_Then_TheDescendantsTapClassIsSettled()
+        {
+            // Arrange — disabling the active source cancels its session teardown-flavored.
+            Mount(TappedGripScene);
+            var grip = Q("grip");
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            var pressedDuringTheDrag = grip.ClassListContains("pressed");
+
+            // Act
+            s_setFlag.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((pressedDuringTheDrag, grip.ClassListContains("pressed")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APendingPress_When_APointerCancelArrives_Then_LaterTravelPastTheDistanceStartsNoDrag()
+        {
+            // Arrange
+            Mount(Scene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+
+            // Act
+            using (var cancel = PointerCancelEvent.GetPooled())
+            {
+                cancel.target = item;
+                item.SendEvent(cancel);
+            }
+            SendPointerMove(item, new Vector2(30, 10));
+
+            // Assert
+            Assert.That(s_started, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AnActiveDrag_When_APointerCancelArrives_Then_TheDragCancels()
+        {
+            // Arrange
+            Mount(Scene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act
+            using (var cancel = PointerCancelEvent.GetPooled())
+            {
+                cancel.target = item;
+                item.SendEvent(cancel);
+            }
+
+            // Assert
+            Assert.That((s_started.Count, s_cancelCount), Is.EqualTo((1, 1)));
+        }
+
+        private static void SendTouch<TEvent>(VisualElement target, TouchPhase phase)
+            where TEvent : PointerEventBase<TEvent>, new()
+        {
+            using var evt = PointerEventBase<TEvent>.GetPooled(
+                new Touch { fingerId = 0, phase = phase, position = new Vector2(10, 10) });
+            evt.target = target;
+            target.SendEvent(evt);
+        }
+
+        [Test]
+        public void Given_ATouchDragWhoseReleaseWentUnseen_When_TheSameFingerPressesAgain_Then_TheStaleDragCancels()
+        {
+            // Arrange — a finger cannot go down twice, so a second press under its id means the
+            // first release never reached the session.
+            Mount(UndeclaredActivationScene);
+            var item = Q("item");
+            SendTouch<PointerDownEvent>(item, TouchPhase.Began);
+
+            // Act — the second press, then a release that leaves the finger up for later fixtures.
+            SendTouch<PointerDownEvent>(item, TouchPhase.Began);
+            SendTouch<PointerUpEvent>(item, TouchPhase.Ended);
+
+            // Assert
+            Assert.That(s_cancelCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AMountedNoDragElement_When_TheTreeIsDisposed_Then_TheContextStopsHoldingIt()
+        {
+            // Arrange
+            Mount(NoDragChildScene);
+            var context = _mounted.Root.Reconciler.Context;
+            var heldWhileMounted = context.NoDragElements.Count;
+
+            // Act
+            _mounted.Dispose();
+            _mounted = null;
+
+            // Assert
+            Assert.That((heldWhileMounted, context.NoDragElements.Count), Is.EqualTo((1, 0)));
         }
 
         #region Collision strategies (pure functions, no panel)
