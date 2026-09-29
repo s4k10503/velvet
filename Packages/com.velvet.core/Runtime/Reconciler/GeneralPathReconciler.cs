@@ -1574,7 +1574,7 @@ namespace Velvet
 
             if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
             {
-                StartPresenceExit(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode);
+                StartPresenceExit(in pass, key, node, ghostAnchor, ghostMotionElement, ghostMotionNode);
                 pass.Tally.ExitIndex++;
             }
 
@@ -1739,6 +1739,7 @@ namespace Velvet
         private void StartPresenceExit(
             in PresenceExpansion pass,
             string key,
+            VNode node,
             VisualElement ghostAnchor,
             VisualElement? ghostMotionElement,
             MotionNode? ghostMotionNode)
@@ -1751,7 +1752,7 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
@@ -2141,7 +2142,7 @@ namespace Velvet
             {
                 _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
                 // `anchor` (this keyed child's own top-level element), which for a Div wrapping
@@ -2163,7 +2164,7 @@ namespace Velvet
             VNode node,
             bool freshReplacement)
         {
-            if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
+            if (PopsOutOfFlow(presence, node) && !freshReplacement)
             {
                 // The out-of-flow pin outlives its exit (only the drop would have removed the
                 // element). Skipped for a fresh replacement: the pin lives on the discarded
@@ -2334,6 +2335,11 @@ namespace Velvet
                 }
             }
         }
+
+        // A keyed Fragment exits in flow, as under Framer's popLayout: its PopChild pins only an HTML element the
+        // child's ref resolves to, which a Fragment's never does.
+        private static bool PopsOutOfFlow(AnimatePresenceNode presence, VNode node)
+            => presence.Mode == AnimatePresenceMode.PopLayout && node is not FragmentNode;
 
         // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
         // it via absolute positioning at the last rect Yoga resolved for it in-flow (anchor.layout is parent-

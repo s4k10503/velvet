@@ -117,7 +117,8 @@ V.AnimatePresence(mode: AnimatePresenceMode.PopLayout, children: items);
 Framer's `mode="popLayout"`: the exiting child is pinned **out of flow** (absolute, at its last
 laid-out rect, margins accounted for) so surviving siblings reflow *immediately* while the ghost
 plays its exit in place. The `gap-*` / `grid-cols-*` / `divide-*` emulations skip pinned ghosts
-in their index math, so spacing recomputes as if the child were already gone. Note the ghost
+in their index math, so spacing recomputes as if the child were already gone. A keyed `V.Fragment` is not
+pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
 keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
 
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
