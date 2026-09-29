@@ -29,11 +29,13 @@ namespace Velvet
             // takes its token along at the promotion and the retire of this round leaves it running.
             internal readonly Dictionary<string?, RouteCancellationSource> Loads = new();
 
-            // The routes this round took from the live one rather than running their loaders.
-            internal readonly List<string?> Kept = new();
+            // The routes this round took from the live one rather than running their loaders; null while none.
+            internal List<string?>? Kept;
 
             internal bool Retired;
         }
+
+        private static readonly List<string?> NoneKept = new();
 
         private LoaderRound _currentRound;
 
@@ -176,7 +178,7 @@ namespace Velvet
             _liveRound = round;
             if (departing != null && !ReferenceEquals(departing, round))
             {
-                foreach (var key in round.Kept)
+                foreach (var key in round.Kept ?? NoneKept)
                 {
                     if (departing.Loads.Remove(key, out var load))
                     {
@@ -198,21 +200,21 @@ namespace Velvet
                 return false;
             }
             round.Results[key] = result!;
-            round.Kept.Add(key);
+            (round.Kept ??= new List<string?>()).Add(key);
             return true;
         }
 
         private static void Retire(LoaderRound round)
         {
             round.Retired = true;
-            foreach (var load in round.Loads.Values)
+            foreach (var load in round.Loads)
             {
                 // A callback the application registered on this round's token must not decide the outcome of
                 // the operation ending the round: the caller is installing a different round or disposing the
                 // runner, and the callback belongs to neither. Reported on Announce's terms.
                 try
                 {
-                    load.Cancel();
+                    load.Value.Cancel();
                 }
                 catch (Exception cancellationFailure)
                 {

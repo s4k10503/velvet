@@ -307,10 +307,13 @@ namespace Velvet.Tests
         #region Which action a submission goes to
 
         private Router IndexRouter(string start) => BuildRouter(start,
-            Route("/", action: (_, _) => VelvetTask.FromResult<object>("layout"), children: new[]
-            {
-                Route("", action: (_, _) => VelvetTask.FromResult<object>("index")),
-            }));
+            Route("/", action: Logged("layout"), children: new[] { Route("", action: Logged("index")) }));
+
+        private Func<RouteActionContext, CancellationToken, VelvetTask<object>> Logged(string name) => (_, _) =>
+        {
+            _log.Add(name);
+            return VelvetTask.FromResult<object>(name);
+        };
 
         [Test]
         public void Given_AnIndexRouteWithAnAction_When_ItSubmitsWithoutNamingOne_Then_ItsOwnActionRuns()
@@ -323,7 +326,7 @@ namespace Velvet.Tests
                 .GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(router.CurrentActionData["/?index"], Is.EqualTo("index"));
+            Assert.That(string.Join(",", _log), Is.EqualTo("index"));
         }
 
         [Test]
@@ -337,7 +340,7 @@ namespace Velvet.Tests
                 .GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(router.CurrentActionData["/"], Is.EqualTo("layout"));
+            Assert.That(string.Join(",", _log), Is.EqualTo("layout"));
         }
 
         [Test]
