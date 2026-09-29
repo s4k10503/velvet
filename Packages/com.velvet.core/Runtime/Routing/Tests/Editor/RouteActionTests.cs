@@ -247,6 +247,23 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", _log), Is.EqualTo("root,projects,project"));
         }
 
+        [Test]
+        public void Given_ASubmissionAGuardRedirects_When_TheTargetLoads_Then_TheSubmissionIsStillReported()
+        {
+            // Arrange
+            var router = BuildRouter("/start",
+                Route("start"),
+                V.Route("items", V.Component(StubA), guard: _ => "/other", action: Created),
+                Route("other", loader: (_, _) => new VelvetTaskCompletionSource<object>().Task));
+
+            // Act
+            router.SubmitAsync("lamp", PostToItems).Forget();
+
+            // Assert
+            Assert.That($"{router.PendingLocation?.Path} {router.PendingSubmission?.FormMethod} {_log.Contains("action")}",
+                Is.EqualTo("/other post False"));
+        }
+
         #endregion
 
         #region History
