@@ -5,7 +5,7 @@ namespace Velvet
     public enum RouterStatus
     {
         Idle,
-        /// <summary>The path has matched, and the matched routes' guards and blockers are running.</summary>
+        /// <summary>The path has matched, and the matched routes' guards are running.</summary>
         Matching,
         Loading,
         Ready,
@@ -46,7 +46,7 @@ namespace Velvet
 
     public sealed class RouterLocation
     {
-        /// <summary>The committed path, including its query string.</summary>
+        /// <summary>The path, including its query string.</summary>
         public string? Path { get; init; }
         /// <summary>Path parameters captured across the full matched branch.</summary>
         public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
@@ -74,10 +74,8 @@ namespace Velvet
         public NavigationLifecycle State { get; init; }
         /// <summary>
         /// While <see cref="State"/> is <see cref="NavigationLifecycle.Loading"/>, the location being
-        /// navigated to; while it is <see cref="NavigationLifecycle.Idle"/>, the committed location (null
-        /// before the first navigation). Branch on <see cref="State"/> rather than on this being null: the
-        /// routing guide states where the idle half sits relative to React Router's
-        /// <c>navigation.location</c>.
+        /// navigated to; null while it is <see cref="NavigationLifecycle.Idle"/>, as React Router's
+        /// <c>navigation.location</c> is <c>undefined</c> then.
         /// </summary>
         public RouterLocation? Location { get; init; }
     }

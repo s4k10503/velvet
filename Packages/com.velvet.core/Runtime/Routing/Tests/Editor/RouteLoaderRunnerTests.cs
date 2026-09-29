@@ -130,8 +130,9 @@ namespace Velvet.Tests
 
         #region Suspend mode
 
-        // GREEN_ON_BASE(characterization): the base drops a cancelled Suspend loader's exception the same
-        // way. What the case adds is a reading of the error map after one, which no case made.
+        // GREEN_ON_BASE(refactor): the base drops a cancelled Suspend loader's exception the same way.
+        // What says the loader has finished moves from the round's settled flag, which the history cache
+        // needed and this change deletes with it, to the runner's count of running Suspend loaders.
         [UnityTest]
         public IEnumerator Given_ASuspendLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
@@ -150,10 +151,10 @@ namespace Velvet.Tests
             await VelvetTask.Yield();
 
             // Assert
-            Assert.That($"settled={round.Settled} errors={round.Errors.Count}",
-                Is.EqualTo("settled=True errors=0"),
+            Assert.That($"running={runner.ActiveSuspendTaskCount} errors={round.Errors.Count}",
+                Is.EqualTo("running=0 errors=0"),
                 "A Suspend loader whose task was cancelled has no failure of its own for the route to "
-                + "present, and settled is in the comparison because a loader still running records none either");
+                + "present, and the running count is in the comparison because a loader still running records none either");
         });
 
         [UnityTest]
@@ -381,9 +382,6 @@ namespace Velvet.Tests
         public IEnumerator Given_ASupersededRound_When_OneSuspendLoaderSucceedsAndAnotherFails_Then_BothOutcomesAreRecorded()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Pending is counted off on both paths whatever the round's currency, so a round that records only
-            // one of the two reports itself settled while holding neither a result nor an error for the route
-            // the other path owns.
             // Arrange
             var runner = new RouteLoaderRunner();
             var succeeding = new VelvetTaskCompletionSource<object>();
@@ -413,30 +411,6 @@ namespace Velvet.Tests
         #region Announcement failures
 
         [UnityTest]
-        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrows_Then_TheRoundStillSettles()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // A round holding nothing for the route would settle too, so the result is folded in.
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var tcs = new VelvetTaskCompletionSource<object>();
-            runner.OnSuspendLoaderCompleted += (_, __) => throw new InvalidOperationException("handler-threw");
-            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
-            var round = runner.RunLoadersSync(matches, CancellationToken.None);
-            runner.Promote(round);
-            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "handler-threw");
-
-            // Act
-            tcs.TrySetResult("deferred-data");
-            await VelvetTask.Yield();
-
-            // Assert
-            Assert.That($"settled={round.Settled} results=[{string.Join("|", round.Results.Keys)}]",
-                Is.EqualTo("settled=True results=[test]"),
-                "A subscriber's failure must not count this round's pending loader off a second time");
-        });
-
-        [UnityTest]
         public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrows_Then_NoLoadErrorIsRecorded()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -462,13 +436,14 @@ namespace Velvet.Tests
                 "What failed is the subscriber, so a caller reading this route's loader error would be reading a load failure that did not happen");
         });
 
+        // GREEN_ON_BASE(refactor): the base reports a subscriber's cancellation the same way.
+        // The settled flag the base case also read is deleted with the history cache that needed it.
         [UnityTest]
-        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrowsACancellation_Then_TheRunnerStillSettlesAndReportsIt()
+        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrowsACancellation_Then_TheRunnerReportsIt()
             => VelvetTask.ToCoroutine(async () =>
         {
             // A cancellation is the spelling the await's other catch clause takes, so a containment written
-            // against the general one alone leaves this round short a pending count and its report to
-            // whatever observes a forgotten task.
+            // against the general one alone leaves its report to whatever observes a forgotten task.
             // Arrange
             var runner = new RouteLoaderRunner();
             var tcs = new VelvetTaskCompletionSource<object>();
@@ -484,7 +459,7 @@ namespace Velvet.Tests
             await VelvetTask.Yield();
 
             // Assert
-            Assert.That($"settled={round.Settled} reports={reports.Count}", Is.EqualTo("settled=True reports=1"),
+            Assert.That(reports.Count, Is.EqualTo(1),
                 "A cancellation raised by a subscriber is that subscriber's failure, not this round's cancellation");
         });
 
@@ -955,30 +930,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Round settlement
-
-        [Test]
-        public void Given_ARoundWithAnUnfinishedSuspendLoader_When_ALaterRoundHasNone_Then_EachRoundReportsItsOwn()
-        {
-            // The router asks a round whether it finished at the moment it commits the entry that round's
-            // data went into, which can be after another round has started — a loader delegate that
-            // navigates starts one before the round it belongs to has even finished launching. A round that
-            // answered for whichever round is current would report an unfinished one as finished.
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var unresolved = new VelvetTaskCompletionSource<object>();
-            var firstRound = runner.RunLoadersSync(
-                MakeMatch("slow", loader: (ctx, ct) => unresolved.Task, loaderMode: LoaderMode.Suspend),
-                CancellationToken.None);
-
-            // Act
-            var secondRound = runner.RunLoadersSync(MakeMatch("plain"), CancellationToken.None);
-
-            // Assert
-            Assert.That($"first={firstRound.Settled} second={secondRound.Settled}",
-                Is.EqualTo("first=False second=True"),
-                "A round reports its own outstanding loaders, not those of whichever round is current");
-        }
+        #region Rounds started inside a loader
 
         [Test]
         public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderLaunches_Then_ItGetsTheOuterRoundsToken()

@@ -59,7 +59,7 @@ namespace Velvet
     /// </para>
     /// <para>
     /// Suspension is tracked by OWNER because two drivers can write one element at once (a scheduler variant
-    /// play and a <c>layoutId</c> spring registered by the same patch): an absolute restore would let whichever
+    /// play and a <c>layoutId</c> move registered by the same patch): an absolute restore would let whichever
     /// settled first un-suspend the other mid-flight. Owners are held in a set rather than counted, so a release
     /// for an owner that never suspended — or a second release of the same one — is a no-op instead of
     /// unbalancing the state.
@@ -99,7 +99,7 @@ namespace Velvet
             var held = HoldsAForeignValue(element) && element.style.transitionProperty.value != null;
             if (held)
             {
-                ExcludeFromHeldList(element, drivenSlots);
+                ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
             }
             if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -130,7 +130,7 @@ namespace Velvet
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
-            ExcludeFromHeldList(element, drivenSlots);
+            ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
             if (drivenSlots == MotionTransitionSlots.None
                 || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -167,7 +167,7 @@ namespace Velvet
         // Whether the slot holds a value this class did not write, which is a variant tween's transition-property
         // (StyleAnimationScheduler.ApplyTransitionStyles): a driver can start or stop with the tween's list
         // already in the slot (FiberNodePatcher starts a swap before the class passes that attach and detach an
-        // animate-* driver, and a layoutId spring starts on the layout pass after its patch), and writing or
+        // animate-* driver, and a layoutId move starts on the layout pass after its patch), and writing or
         // reverting it there would cancel that tween. What puts a still-held suspension back afterwards is the
         // tween's own teardown, through RestoreAfterForeignWrite. Compared by CONTENT rather than by list
         // identity, which the read back out of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests
@@ -334,14 +334,13 @@ namespace Velvet
             return names;
         }
 
-        // Rewrites the held transition-property list without the longhands drivenSlots covers — an `all` entry
+        // Rewrites the held transition-property list without the driven longhands — an `all` entry
         // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
         // since those pair with transition-property by position. The expansion never names `filter`: under the
         // `all` it replaces StyleFilterTransitionDriver stands down, and a list naming filter hands a filter
         // change to that driver instead.
-        private static void ExcludeFromHeldList(VisualElement element, MotionTransitionSlots drivenSlots)
+        internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
-            var driven = LonghandsOf(drivenSlots);
             var held = element.style.transitionProperty.value;
             if (held == null)
             {

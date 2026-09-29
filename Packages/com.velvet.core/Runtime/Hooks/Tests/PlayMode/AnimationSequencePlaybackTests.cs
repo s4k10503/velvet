@@ -59,7 +59,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode SequenceHost()
         {
-            var (state, _) = Hooks.UseAnimationSequence(s_steps);
+            var (state, _) = Hooks.UseAnimationSequence(s_steps, deps: System.Array.Empty<object>());
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", className: "absolute w-[50px] h-[50px]", variants: s_poses,
@@ -95,6 +95,8 @@ namespace Velvet.Tests
         private static bool AnyStrictlyBetween(List<float> samples, float low, float high)
             => samples.Exists(x => x > low + Margin && x < high - Margin);
 
+        // GREEN_ON_BASE(characterization): an empty dependency list plays once per mount, as the base's
+        // omitted list did, so the host's new required argument leaves this playback as the base has it.
         [UnityTest]
         public IEnumerator Given_ANearInstantStepThenATweenStep_When_FramesAdvance_Then_TheTweenStepPassesThroughAnIntermediateTranslate()
         {
@@ -114,6 +116,8 @@ namespace Velvet.Tests
             Assert.That(AnyStrictlyBetween(samples, 0f, 300f), Is.True, string.Join(", ", samples));
         }
 
+        // GREEN_ON_BASE(characterization): an empty dependency list plays once per mount, as the base's
+        // omitted list did, so the host's new required argument leaves this playback as the base has it.
         [UnityTest]
         public IEnumerator Given_AnAwayCoverHoldGoneSequence_When_FramesAdvance_Then_BothMovingStepsPassThroughAnIntermediateTranslate()
         {

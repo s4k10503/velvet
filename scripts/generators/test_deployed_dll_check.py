@@ -186,6 +186,17 @@ class RecompileTests(unittest.TestCase):
         # Assert
         self.assertIn("--no-incremental", command)
 
+    def test_Given_TheRealBuildScript_When_ItsBuildCommandIsAsked_Then_ThePdbIsDropped(self):
+        # Arrange — the projects no longer drop it themselves, so the deploy build is the only place
+        # the property that keeps the pair reproducible across machines is set.
+        real = load_build_script()
+
+        # Act
+        command = real.build_command("src/Only/Only.csproj")
+
+        # Assert
+        self.assertIn("-p:DebugType=none", command)
+
     def test_Given_ABuildScriptNamingAnotherConfiguration_When_Loaded_Then_ItRefuses(self):
         with tempfile.TemporaryDirectory() as directory:
             # Arrange — the committed pair is Release, and what makes it reproducible is declared per

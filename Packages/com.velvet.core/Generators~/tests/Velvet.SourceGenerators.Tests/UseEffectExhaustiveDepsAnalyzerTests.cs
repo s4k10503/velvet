@@ -477,8 +477,8 @@ namespace MyApp.Pages
         public void Reports_When_UseBlocker_Predicate_Captures_Local_Missing_From_Deps()
         {
             // Arrange
-            // UseBlocker's predicate receives the navigation attempt, so it is the one deps-comparing factory
-            // whose lambda is not parameterless.
+            // UseBlocker's predicate receives the blocker function's argument, so its factory lambda takes one
+            // parameter.
             const string source = @"
 namespace MyApp.Pages
 {
@@ -598,37 +598,10 @@ namespace MyApp.Pages
         }
 
         [Fact]
-        public void Reports_When_UseBlocker_TwoParameter_Predicate_Captures_Local_Missing_From_Deps()
-        {
-            // Arrange
-            // The async overload's predicate takes attempt + cancellation token: the widest factory this
-            // hook's descriptor admits, distinguishing its maximum from the one-parameter case.
-            const string source = @"
-namespace MyApp.Pages
-{
-    public static class HomePage
-    {
-        public static void Render()
-        {
-            var isDirty = true;
-            global::Velvet.Hooks.UseBlocker((attempt, ct) => Build(isDirty), new object[] { });
-        }
-        private static global::Velvet.VelvetTask<bool> Build(bool flag) => default;
-    }
-}";
-
-            // Act
-            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
-
-            // Assert
-            Assert.Contains("isDirty", Assert.Single(diagnostics.Where(d => d.Id == "VEL100")).GetMessage());
-        }
-
-        [Fact]
         public void DoesNotReport_When_Factory_Lambda_Exceeds_The_Hooks_Maximum_Arity()
         {
             // Arrange
-            // Three parameters is wider than any UseBlocker overload accepts, so the lambda is not this
+            // Two parameters is wider than any UseBlocker overload accepts, so the lambda is not this
             // hook's factory and must not be read as one — the gate that keeps V.Memo's props lambda out.
             const string source = @"
 namespace MyApp.Pages
@@ -638,7 +611,7 @@ namespace MyApp.Pages
         public static void Render()
         {
             var isDirty = true;
-            global::Velvet.Hooks.UseBlocker((attempt, ct, extra) => isDirty, new object[] { });
+            global::Velvet.Hooks.UseBlocker((args, extra) => isDirty, new object[] { });
         }
     }
 }";
@@ -1080,9 +1053,11 @@ namespace MyApp.Pages
                 new UseEffectExhaustiveDepsAnalyzer(),
                 new Vel100FillMissingDepsCodeFixProvider(),
                 codeActionTitle: "Add missing local to hook deps array",
-                expectedDiagnosticId: "VEL100");
-            // The new dep `c` lands on its own line (multi-line trivia preserved). Single-line `, c }` would
-            // indicate trivia loss. SeparatedList.Add does not append a trailing comma to the new tail element.
+                expectedDiagnosticId: "VEL100",
+                formatDocument: false);
+            // Read without formatting the whole document, which would re-indent the new element whatever the fix
+            // produced. The new dep `c` lands on its own line; a single-line `, c }` would mean the layout was
+            // lost. SeparatedList.Add does not append a trailing comma to the new tail element.
             var normalized = fixedText.Replace("\r\n", "\n");
             Assert.Contains("                a,\n", normalized);
             Assert.Contains("                b,\n", normalized);

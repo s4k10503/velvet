@@ -97,9 +97,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABackStepAGuardRedirected_When_Proceed_Then_TheRedirectLandsOnTheBackTargetsSlot()
         {
-            // Arrange — the Guard on "/b" lets the first arrival through and redirects the Back step, which
-            // reaches the Blocker as a Replace to "/login". The step the user asked for is what says which
-            // slot that Replace belongs in.
+            // Arrange — the Guard on "/b" lets the first arrival through and redirects the released Back step
+            // as a Replace to "/login". The step the user asked for is what says which slot that Replace
+            // belongs in.
             var guardChecks = 0;
             var router = BuildRouter("/a", Route("a"),
                 Route("b", guard: _ => ++guardChecks == 1 ? null : "/login"),
@@ -139,26 +139,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlockedPush_When_ANavigationMatchesNoRoute_Then_ProceedReIssuesTheAttemptStillHeld()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var state = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, state);
-            var blockedResult = router.NavigateSync("/other");
-            var unmatchedResult = router.NavigateSync("/nowhere");
-
-            // Act
-            state.Proceed();
-
-            // Assert — the unmatched navigation's own outcome rides along, since a router that matched it
-            // would have cleared the block and left Proceed() re-issuing that navigation instead.
-            Assert.That(
-                (blockedResult, unmatchedResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, NavigationResult.NotFound, "/other")));
-        }
-
-        [Test]
         public void Given_ASecondNavigationBlockedOverTheFirst_When_Proceed_Then_TheSecondIsWhatLands()
         {
             // Arrange
@@ -176,62 +156,6 @@ namespace Velvet.Tests
             Assert.That(
                 (firstResult, secondResult, router.CurrentLocation.Path),
                 Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/third")));
-        }
-
-        [Test]
-        public void Given_AProceedingBlocker_When_AnUnrelatedNavigationIsChecked_Then_ItIsPassedOverForThatOneToo()
-        {
-            // Arrange — the second Blocker vetoes the re-issue, which is what keeps the first Proceeding
-            // past its own navigation and into one it never held.
-            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
-            var proceededChecks = 0;
-            var proceeded = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ =>
-            {
-                proceededChecks++;
-                return true;
-            }, proceeded);
-            var holdingChecks = 0;
-            router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, new RouteBlockerState());
-            var blockedResult = router.NavigateSync("/other");
-            proceeded.Proceed();
-
-            // Act
-            var unrelatedResult = router.NavigateSync("/third");
-
-            // Assert — the check count is what says the first Blocker was passed over rather than asked,
-            // and the landing is what says being passed over let a navigation through that it vetoes.
-            Assert.That(
-                (blockedResult, proceededChecks, unrelatedResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 1, NavigationResult.Success, "/third")));
-        }
-
-        [Test]
-        public void Given_ABlockerThatProceeded_When_AnotherIsConsultedByTheResumedNavigation_Then_ItStillHoldsItsAttempt()
-        {
-            // Arrange — the second Blocker allows everything and reads the first one from inside the resumed
-            // navigation's own check, which is before the commit that clears it.
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var proceeding = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, proceeding);
-            var checks = 0;
-            string attemptSeenOnResume = null;
-            router.RouteBlockerManager.Register(_ =>
-            {
-                checks++;
-                if (checks == 2)
-                {
-                    attemptSeenOnResume = proceeding.Attempt?.NextPath;
-                }
-                return false;
-            }, new RouteBlockerState());
-            var blockedResult = router.NavigateSync("/other");
-
-            // Act
-            proceeding.Proceed();
-
-            // Assert
-            Assert.That((blockedResult, attemptSeenOnResume), Is.EqualTo((NavigationResult.Blocked, "/other")));
         }
 
         [Test]
@@ -296,34 +220,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlockedBlockerWhoseRegistrationDied_When_Proceed_Then_ItSettlesAfterTheResume()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var state = new RouteBlockerState();
-            var registration = router.RouteBlockerManager.Register(_ => true, state);
-            var blockedResult = router.NavigateSync("/other");
-            var statusBeforeProceed = state.Status;
-            registration.Dispose();
-
-            // Act
-            state.Proceed();
-
-            // Assert
-            Assert.That(
-                (blockedResult, statusBeforeProceed, state.Status, state.Attempt, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Blocked, RouteBlockerStatus.Idle,
-                    (NavigationAttempt)null, "/other")));
-        }
-
-        [Test]
         public void Given_AResumedNavigationThatCommitsNothing_When_NavigatingAgain_Then_TheBlockerBlocksIt()
         {
-            // Arrange — the Guard lets the first attempt through to the Blocker and sends the resumed one at
-            // a path no route matches, so the resume ends without a commit.
+            // Arrange — the Guard is asked only once the Blocker has let an attempt through, and it sends the
+            // resumed one at a path no route matches, so the resume ends without a commit.
             var guardChecks = 0;
             var router = BuildRouter("/home", Route("home"),
-                Route("other", guard: _ => ++guardChecks == 1 ? null : "/nowhere"),
+                Route("other", guard: _ =>
+                {
+                    guardChecks++;
+                    return "/nowhere";
+                }),
                 Route("third"));
             var state = new RouteBlockerState();
             router.RouteBlockerManager.Register(_ => true, state);
@@ -334,135 +241,10 @@ namespace Velvet.Tests
             var nextResult = router.NavigateSync("/third");
 
             // Assert — the Guard count rides along because a Proceed() that re-issued nothing also leaves
-            // the next navigation blocked, and the second Guard reading is what says the resume happened.
+            // the next navigation blocked, and the Guard reading is what says the resume happened.
             Assert.That(
                 (blockedResult, guardChecks, nextResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 2, NavigationResult.Blocked, "/home")));
-        }
-
-        [Test]
-        public void Given_ASecondBlockerHoldingTheResumedAttempt_When_ItProceedsToo_Then_TheAttemptCommits()
-        {
-            // Arrange — the second Blocker blocks its second pass only, which is the resumed navigation.
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var proceeded = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, proceeded);
-            var holding = new RouteBlockerState();
-            var checks = 0;
-            router.RouteBlockerManager.Register(_ => ++checks == 2, holding);
-            var blockedResult = router.NavigateSync("/other");
-            proceeded.Proceed();
-
-            // Act
-            holding.Proceed();
-
-            // Assert — the first block rides along because a router that blocked nothing would reach "/other"
-            // without either Proceed().
-            Assert.That(
-                (blockedResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, "/other")));
-        }
-
-        [Test]
-        public void Given_AProceedingBlockerWhoseRegistrationDiedBesideAHoldingBlocker_When_TheHolderProceeds_Then_BothSettle()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var released = new RouteBlockerState();
-            var releasedRegistration = router.RouteBlockerManager.Register(_ => true, released);
-            var holding = new RouteBlockerState();
-            var holdingChecks = 0;
-            router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, holding);
-            var blockedResult = router.NavigateSync("/other");
-            released.Proceed();
-            var statusesBeforeFinalProceed = (released.Status, holding.Status);
-            releasedRegistration.Dispose();
-
-            // Act
-            holding.Proceed();
-
-            // Assert
-            Assert.That(
-                (blockedResult, holdingChecks, statusesBeforeFinalProceed, released.Status, released.Attempt,
-                    holding.Status, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 2,
-                    (RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked), RouteBlockerStatus.Idle,
-                    (NavigationAttempt)null, RouteBlockerStatus.Idle, "/other")));
-        }
-
-        [Test]
-        public void Given_AProceedingBlockerBesideAHoldingBlockerWhoseRegistrationDies_When_NavigatingAgain_Then_TheLiveBlockerIsRearmed()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
-            var released = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, released);
-            var holding = new RouteBlockerState();
-            var holdingChecks = 0;
-            var holdingRegistration = router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, holding);
-            var blockedResult = router.NavigateSync("/other");
-            released.Proceed();
-            var statusesBeforeDispose = (released.Status, holding.Status);
-            holdingRegistration.Dispose();
-            var statusesAfterDispose = (released.Status, holding.Status, holding.Attempt?.NextPath);
-
-            // Act
-            var nextResult = router.NavigateSync("/third");
-
-            // Assert
-            Assert.That(
-                (blockedResult, holdingChecks, statusesBeforeDispose, statusesAfterDispose, nextResult,
-                    router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 2,
-                    (RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked),
-                    (RouteBlockerStatus.Idle, RouteBlockerStatus.Blocked, "/other"),
-                    NavigationResult.Blocked, "/home")));
-        }
-
-        [Test]
-        public void Given_ASecondBlockerHoldingTheResumedAttempt_When_ItResets_Then_TheFirstBlocksTheNextNavigation()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
-            var proceeded = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, proceeded);
-            var holding = new RouteBlockerState();
-            var checks = 0;
-            router.RouteBlockerManager.Register(_ => ++checks == 2, holding);
-            var blockedResult = router.NavigateSync("/other");
-            proceeded.Proceed();
-            holding.Reset();
-
-            // Act
-            var nextResult = router.NavigateSync("/third");
-
-            // Assert — the check count rides along because a Proceed() that re-issued nothing also leaves the
-            // next navigation blocked, and the third reading is what says the resume reached this Blocker.
-            Assert.That(
-                (blockedResult, checks, nextResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 3, NavigationResult.Blocked, "/home")));
-        }
-
-        [Test]
-        public void Given_TwoBlockersHoldingOneAttempt_When_OneResets_Then_TheOthersProceedResumesNothing()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var first = new RouteBlockerState();
-            var second = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, first);
-            router.RouteBlockerManager.Register(_ => true, second);
-            var blockedResult = router.NavigateSync("/other");
-            first.Reset();
-
-            // Act
-            second.Proceed();
-
-            // Assert — the first Blocker's status is what says the declined attempt is gone: a resume would
-            // put it back in front of the same dialog, at the same location either way.
-            Assert.That(
-                (blockedResult, first.Status, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/home")));
+                Is.EqualTo((NavigationResult.Blocked, 1, NavigationResult.Blocked, "/home")));
         }
 
         [Test]

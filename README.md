@@ -79,7 +79,7 @@ registry and resolve automatically.
 One more step before anything renders styled: attach the bundled utility stylesheet to the panel you
 mount onto. Most utility classes are USS rules, and a panel without the sheet resolves every class the
 sheet declares to nothing — while arbitrary values and the many families Velvet resolves itself rather
-than declaring keep working, which reads as a styling bug rather than a missing sheet. See
+than declaring keep working, so `V.Mount` logs a warning when its panel lacks the sheet. See
 [setup.md](Packages/com.velvet.core/Documentation~/setup.md) for the one-line call and the
 scene-reference alternative.
 
@@ -187,7 +187,7 @@ Styling is composed entirely from utility classes — no per-component USS files
 - **`StyleArbitraryValueResolver`** — arbitrary-value JIT syntax (`w-[120px]`, `scale-[1.4]`, `rotate-[45deg]`, etc.).
 - **Variants** — Tailwind-style prefixes: state (`hover:` / `focus:` / `active:` / `checked:`), theme (`dark:`), responsive (`sm:` / `md:` / `lg:` / `xl:` / `2xl:`), relational (`group-` / `peer-`), and stacked (`dark:hover:`, order-independent). See [styling-variants.md](Packages/com.velvet.core/Documentation~/styling-variants.md).
 - **Container queries** — `@container` (apply via `VelvetResponsive.ContainerClass`) marks an element a responsive root, so its descendants' `sm:` / `md:` / … evaluate against **that** element's width instead of the panel root's (the CSS `container-type: inline-size` equivalent). Binding is resolved when a descendant attaches, so toggle the marker before a subtree mounts (or re-mount to re-point it).
-- **Transforms & transitions** — `scale-*` / `translate-*` / `rotate-*`, `transition-*` / `duration-*` / `ease-*`. Note: UI Toolkit 6.x cannot transition the combined `transform`, so these map onto the independent `translate` / `scale` / `rotate` properties.
+- **Transforms & transitions** — `scale-*` / `translate-*` / `rotate-*`, `transition-*` / `duration-*` / `ease-*`. The transform utilities write the `translate` / `scale` / `rotate` properties, and `transition-transform` transitions all three together, as CSS's `transition-property: transform` does.
 
 ### Animation (Framer Motion)
 
@@ -243,11 +243,12 @@ See [Packages/com.velvet.core/README.md](Packages/com.velvet.core/README.md#desi
 the full rationale — the three pillars, and what Velvet intentionally does not do (no new UXML/USS
 authoring, no runtime-object control).
 
-**A known trade-off, stated honestly.** Reproducing React faithfully *without* JSX means the
-`new VNode[] { ... }` scaffolding can take up roughly 15–30% of a file as structural noise — the
-necessary friction of "React-faithful × C# constraints." The practical mitigation is the same as
-in React: split by component — extract each section into its own `[Component]` (or a private
-`static VNode` helper) so the entry render lists sections instead of nesting them.
+**Children without JSX.** A child list is a C# array, so a long-form factory takes
+`children: new VNode?[] { ... }`. The shorthand overloads take their children as `params` arguments
+instead, with no array written out: `V.Div`, `V.Button`, `V.ScrollView` and `V.Custom<T>` after a
+class string, and `V.Fragment(a, b)` for `<>{a}{b}</>`. Deep nesting is split the way it is in React:
+extract each section into its own `[Component]` (or a private `static VNode` helper) so the entry
+render lists sections instead of nesting them.
 
 ## Documentation
 

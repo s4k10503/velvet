@@ -173,6 +173,7 @@ namespace Velvet
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
         }
 
@@ -232,6 +233,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
+            StyleAnimateDriver.ReassertLoop(element);
         }
 
         /// <summary>
@@ -327,7 +329,54 @@ namespace Velvet
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
+            StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
+        }
+
+        /// <summary>
+        /// Stops driving every channel that writes one of <paramref name="named"/> and hands its inline slot back to
+        /// the element's variant layers, as <see cref="ClearInlineOverrides"/> does, leaving the rest running.
+        /// </summary>
+        public static void ReleaseChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named)
+        {
+            if (state.Opacity != null && named.Contains(StyleLonghand.Opacity))
+            {
+                state.Opacity = null;
+                element.style.opacity = StyleKeyword.Null;
+            }
+            // X and Y are created together, so they are dropped together.
+            if (state.TranslateX != null && named.Contains(StyleLonghand.Translate))
+            {
+                state.TranslateX = null;
+                state.TranslateY = null;
+                element.style.translate = StyleKeyword.Null;
+            }
+            if (state.Scale != null && named.Contains(StyleLonghand.Scale))
+            {
+                state.Scale = null;
+                element.style.scale = StyleKeyword.Null;
+            }
+            if (state.Rotate != null && named.Contains(StyleLonghand.Rotate))
+            {
+                state.Rotate = null;
+                element.style.rotate = StyleKeyword.Null;
+            }
+            state.Colors?.RemoveAll(c => ReleasesProperty(element, c.Property, named));
+            state.Lengths?.RemoveAll(l => ReleasesProperty(element, l.Property, named));
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
+            StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
+            StyleAnimateDriver.ReassertLoop(element);
+        }
+
+        internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
+        {
+            if (!StyleArbitraryLonghands.Of(property).Overlaps(named))
+            {
+                return false;
+            }
+            StyleArbitraryValueResolver.ClearInline(element, property);
+            return true;
         }
 
         /// <summary>

@@ -8,77 +8,71 @@ namespace Velvet
         Blocked,
         /// <summary>
         /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is on
-        /// its way. <see cref="RouteBlockerState.Attempt"/> still reports that navigation, and this Blocker
-        /// is consulted about no navigation at all until that one settles.
+        /// its way. <see cref="RouteBlockerState.Location"/> still reports that navigation's destination, and
+        /// this Blocker is not consulted. A commit ends it, as does a navigation ending without one while none
+        /// other is under way, a kept <see cref="RouteBlockerState.Reset"/> or the registration's disposal.
         /// </summary>
         Proceeding,
     }
 
-    /// <summary>Observable state for an individual navigation Blocker.</summary>
+    /// <summary>Observable state for an individual navigation Blocker: React Router's <c>Blocker</c>.</summary>
     public sealed class RouteBlockerState
     {
-        public RouteBlockerStatus Status { get; internal set; } = RouteBlockerStatus.Idle;
+        public RouteBlockerStatus Status { get; private set; } = RouteBlockerStatus.Idle;
+
         /// <summary>
-        /// The transition presented to this Blocker's predicate. <see cref="Proceed"/> re-issues the caller's
-        /// request instead, which can differ after a Guard redirect. null when
+        /// Where the navigation this Blocker holds, or released, is heading; null when
         /// <see cref="RouteBlockerStatus.Idle"/>.
         /// </summary>
-        public NavigationAttempt? Attempt { get; internal set; }
-
-        private Action? _resume;
-        private Action? _abandon;
+        public RouterLocation? Location { get; private set; }
 
         /// <summary>
-        /// Releases the block and re-issues the request the caller made — the whole navigation runs again,
-        /// without consulting this Blocker — so a Guard that rewrote the destination rewrites it again, and
-        /// a blocked Back or Forward lands on the slot that step resolves. Does nothing unless
-        /// <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
+        /// Releases the block and sends the navigation it holds through again, without consulting this
+        /// Blocker. Null unless <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>. The delegate
+        /// is bound to the navigation it was handed out for: invoked once the Blocker has left that block it
+        /// throws <see cref="InvalidOperationException"/>, and invoked while the Blocker holds a newer
+        /// navigation it releases the one it was handed out for.
         /// </summary>
-        public void Proceed()
-        {
-            if (Status != RouteBlockerStatus.Blocked)
-            {
-                return;
-            }
-
-            // Set before the re-issue rather than after: the navigation it starts consults the Blockers, and
-            // this status is what tells that pass to leave this one alone.
-            Status = RouteBlockerStatus.Proceeding;
-            var resume = _resume;
-            _resume = null;
-            resume?.Invoke();
-        }
+        public Action? Proceed { get; private set; }
 
         /// <summary>
-        /// Releases the block and abandons the navigation this Blocker held, leaving the router where it is.
-        /// Every Blocker is released with it — this one, the others still blocking, and the ones that had
-        /// already proceeded alike. Does nothing unless <see cref="Status"/> is
-        /// <see cref="RouteBlockerStatus.Blocked"/>.
+        /// Releases the block and abandons the navigation, leaving the router where it is. Null unless
+        /// <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>; a delegate kept from then returns
+        /// the Blocker to <see cref="RouteBlockerStatus.Idle"/> whatever its status is by the time it runs.
         /// </summary>
-        public void Reset()
+        public Action? Reset { get; private set; }
+
+        // Raised after every change, so UseBlocker can re-render the component reading this state.
+        internal Action? StateChanged;
+
+        internal void Block(RouterLocation location, Action resume)
         {
-            if (Status != RouteBlockerStatus.Blocked)
+            void ProceedWithThisNavigation()
             {
-                return;
+                if (Status != RouteBlockerStatus.Blocked)
+                {
+                    throw new InvalidOperationException(
+                        $"Invalid blocker state transition: {Status} -> {RouteBlockerStatus.Proceeding}");
+                }
+
+                // Set before the re-issue rather than after: the navigation it starts consults this Blocker,
+                // and this status is what tells that consultation to pass it over.
+                Set(RouteBlockerStatus.Proceeding, location, null, null);
+                resume();
             }
 
-            _abandon?.Invoke();
+            Set(RouteBlockerStatus.Blocked, location, ProceedWithThisNavigation, ToIdle);
         }
 
-        internal void InternalReset()
-        {
-            Status = RouteBlockerStatus.Idle;
-            Attempt = null;
-            _resume = null;
-            _abandon = null;
-        }
+        internal void ToIdle() => Set(RouteBlockerStatus.Idle, null, null, null);
 
-        internal void Block(NavigationAttempt attempt, Action resume, Action abandon)
+        private void Set(RouteBlockerStatus status, RouterLocation? location, Action? proceed, Action? reset)
         {
-            Status = RouteBlockerStatus.Blocked;
-            Attempt = attempt;
-            _resume = resume;
-            _abandon = abandon;
+            Status = status;
+            Location = location;
+            Proceed = proceed;
+            Reset = reset;
+            StateChanged?.Invoke();
         }
     }
 }

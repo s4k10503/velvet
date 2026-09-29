@@ -78,8 +78,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         public void GetResult(short version)
         {
@@ -159,8 +159,8 @@ namespace Velvet
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
-        public void OnCompleted(Action<object?> continuation, object? state, short version) =>
-            _core.OnCompleted(continuation, state, version);
+        public void OnCompleted(Action<object?> continuation, object? state, short version, bool resumeOnMainThread) =>
+            _core.OnCompleted(continuation, state, version, resumeOnMainThread);
 
         void IVelvetTaskSource.GetResult(short version) => GetResult(version);
 

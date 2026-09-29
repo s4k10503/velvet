@@ -230,11 +230,7 @@ namespace Velvet.Editor.DevTools
             {
                 var entry = entries[i];
                 var isSelected = i == _selectedEntryIndex;
-                var isDisposed = entry.Fiber.IsDisposed;
-
-                EditorGUI.BeginDisabledGroup(isDisposed);
-
-                var label = isDisposed ? $"[Disposed] {entry.Label}" : entry.Label;
+                var label = entry.Label;
 
                 EditorGUILayout.BeginHorizontal();
 
@@ -251,8 +247,6 @@ namespace Velvet.Editor.DevTools
                 GUILayout.Label(entry.TypeName, EditorStyles.miniLabel);
 
                 EditorGUILayout.EndHorizontal();
-
-                EditorGUI.EndDisabledGroup();
             }
 
             EditorGUILayout.EndScrollView();

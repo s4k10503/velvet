@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Velvet
 {
     // Reconciliation identity, shared by both reconcile paths: which ChildKey a node participates under
-    // (explicit VNode.Key, a Fragment-scoped key, or its positional index when unkeyed), the old-side
+    // (explicit VNode.Key, a Fragment-scoped key, or its slot when unkeyed), the old-side
     // key→(index,node) map, and the CanPatch decision (whether two nodes share enough identity to patch in
     // place vs remove + recreate). The fast path (Indexed/Keyed diff in ChildReconciler) and the general path
     // (live-context walk in GeneralPathReconciler) both resolve identity through this single collaborator.
@@ -26,8 +26,10 @@ namespace Velvet
             return false;
         }
 
-        // Whether any old leaf was emitted under an explicit key — its own, or one a keyed wrapper scoped.
-        internal bool HasAnyKey(List<ChildKey> keys)
+        // Whether any old leaf was emitted under a key other than the one the indexed diff would read it by —
+        // an explicit key, its own or one a keyed wrapper scoped, or the slot of a leaf written after a null or
+        // under a wrapper. Such a container takes the keyed diff, which reads these keys.
+        internal bool AnyKeyOffItsFlatIndex(List<ChildKey> keys)
         {
             for (var i = 0; i < keys.Count; i++)
             {
@@ -36,12 +38,11 @@ namespace Velvet
             return false;
         }
 
-        // siblingIndex counts the flat list the diff matches from where the emitting fiber's output begins;
-        // nodeIndex counts the array the leaf is written in, which is what a scope composes an unkeyed leaf with.
-        internal static ChildKey ScopedKey(VNode? node, string? scope, int nodeIndex, int siblingIndex)
+        // nodeIndex counts the array the leaf is written in, nulls included; slotPath is that array's SlotPath.
+        internal static ChildKey ScopedKey(VNode? node, string? scope, int nodeIndex, long slotPath)
         {
             var key = scope == null ? node?.Key : FiberKeying.LeafScope(scope, node?.Key, nodeIndex);
-            return key != null ? ChildKey.Explicit(key) : ChildKey.Positional(siblingIndex);
+            return key != null ? ChildKey.Explicit(key) : ChildKey.Positional(slotPath, nodeIndex);
         }
 
         // The key of a sibling in a child array holding no wrapper, so no scope can apply. An unkeyed node
