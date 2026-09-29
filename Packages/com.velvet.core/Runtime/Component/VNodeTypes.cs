@@ -214,7 +214,7 @@ namespace Velvet
         /// <see cref="Animate"/>: a layoutId tween runs from the ACTUAL rect delta, not a class-defined
         /// from/to pair. Null = no layout animation (ordinary jump-cut on a rect change, matching every other
         /// element). Several Motions may hold one id at once: the one that took it last leads, and the others are
-        /// drawn over it while it moves from one of their boxes, fading out as it crossfades, and hidden
+        /// drawn over it while it moves from a box it took from another holder, fading out as it crossfades, and hidden
         /// otherwise; when the lead leaves, the holder of those left that took the id most recently leads in its
         /// place, tweening from the lead's box.
         /// </summary>

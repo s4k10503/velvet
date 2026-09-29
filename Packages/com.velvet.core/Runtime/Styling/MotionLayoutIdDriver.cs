@@ -311,8 +311,8 @@ namespace Velvet
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
                 return IsCrossfading(leading) ? 1f - CrossfadeOut(CrossfadeProgress(leading!)) : float.NaN;
             }
-            // MUTANT_SURVIVES(equivalent): Crossfade is set only with a tween, so without it only in the pass that
-            // tween arrives in, where the curve gives 1, and the frame clears it before another pass reads it.
+            // MUTANT_SURVIVES(equivalent): Crossfade is set only with a tween, and the frame its tween lands in clears it
+            // before its pass, so a pass never finds it set on a lead not moving.
             return projection.Crossfade && projection.Moving ? CrossfadeIn(CrossfadeProgress(projection)) : float.NaN;
         }
 
@@ -466,9 +466,9 @@ namespace Velvet
                 if (!projection.Moving || entry.Key.panel?.visualTree != host) continue;
                 if (projection.Progress.Step(dt)) projection.Moving = false;
             }
-            Project(host, ctx);
-
+            // Before the pass, so that no pass draws a lead whose shared tween has landed as still crossfading.
             EndSharedTweens(ctx);
+            Project(host, ctx);
             SettleLandings(ctx);
 
             var remaining = false;
@@ -617,7 +617,7 @@ namespace Velvet
                     var lead = ctx.LayoutIdRegistry[layoutId].Element!;
                     if (IsMoving(lead, ctx))
                     {
-                        ctx.LayoutIdLandings.Add(new LayoutIdLanding(layoutId, landed));
+                        ctx.LayoutIdLandings.Add(new LayoutIdLanding(root, layoutId, landed));
                         moving++;
                     }
                     break;
@@ -627,28 +627,33 @@ namespace Velvet
         }
 
         // Called from GeneralPathReconciler as a V.AnimatePresence child's exit is cancelled by its key coming back.
-        // Each layoutId Motion in it takes its id's lead again, as Framer promotes a node that is present again.
+        // Each layoutId Motion in it takes its id's lead again, as Framer promotes a node that is present again, and
+        // the landings the cancelled exit waited on are dropped, so that none settles an exit started later.
         internal static void Present(VisualElement root, ReconcilerContext ctx)
         {
+            ctx.LayoutIdLandings.RemoveAll(landing => ReferenceEquals(landing.Root, root));
             foreach (var element in RegisteredWithin(root, ctx))
             {
                 if (ctx.LayoutIdExiting.Remove(element)) Resume(element, ctx.ElementToLayoutId[element], ctx);
             }
         }
 
+        // In tree order, an ancestor before its descendants, as Framer notifies them: a descendant that takes a lead
+        // checks whether an ancestor is crossfading already.
         private static List<VisualElement> RegisteredWithin(VisualElement root, ReconcilerContext ctx)
         {
             var within = new List<VisualElement>();
-            foreach (var element in ctx.ElementToLayoutId.Keys)
-            {
-                for (VisualElement? e = element; e != null; e = e.hierarchy.parent)
-                {
-                    if (!ReferenceEquals(e, root)) continue;
-                    within.Add(element);
-                    break;
-                }
-            }
+            CollectRegistered(root, within, ctx);
             return within;
+        }
+
+        private static void CollectRegistered(VisualElement element, List<VisualElement> into, ReconcilerContext ctx)
+        {
+            if (ctx.ElementToLayoutId.ContainsKey(element)) into.Add(element);
+            for (var i = 0; i < element.hierarchy.childCount; i++)
+            {
+                CollectRegistered(element.hierarchy[i], into, ctx);
+            }
         }
 
         private static LayoutIdBox? ReadBox(VisualElement element, ReconcilerContext ctx) =>
@@ -877,12 +882,15 @@ namespace Velvet
     // A relegated presence child waiting for the lead its id passed to.
     internal sealed class LayoutIdLanding
     {
-        public LayoutIdLanding(string layoutId, System.Action landed)
+        public LayoutIdLanding(VisualElement root, string layoutId, System.Action landed)
         {
+            Root = root;
             LayoutId = layoutId;
             Landed = landed;
         }
 
+        // The element the child's exit started on.
+        public VisualElement Root { get; }
         public string LayoutId { get; }
         public System.Action Landed { get; }
     }

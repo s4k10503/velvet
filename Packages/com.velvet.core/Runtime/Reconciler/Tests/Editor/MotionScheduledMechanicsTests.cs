@@ -71,7 +71,7 @@ namespace Velvet.Tests
             s_bTransition = null;
             s_sharedClasses = null;
             (s_bFadesIn, s_cMounted, s_cTransition) = (false, false, null);
-            (s_modalTransition, s_exitCompletions) = (null, 0);
+            (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
         }
@@ -2945,6 +2945,8 @@ namespace Velvet.Tests
         // The modal's transition when not the one-second tween, and how many times the presence's exits completed.
         private static StyleTransitionConfig s_modalTransition;
         private static int s_exitCompletions;
+        // Whether the modal's V.AnimatePresence is rendered at all.
+        private static bool s_presenceGone;
 
         // A card at the left, and a modal 300px right under the same id inside a V.AnimatePresence, with a
         // one-second fade out as its exit.
@@ -2957,7 +2959,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "card", name: "card", layoutId: "card", transition: s_cardTransition ?? s_slowTween,
                     className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
-                V.AnimatePresence(key: "presence", onExitComplete: () => s_exitCompletions++, children: s_modalOpen
+                s_presenceGone ? V.Div(key: "gone") : V.AnimatePresence(key: "presence", onExitComplete: () => s_exitCompletions++, children: s_modalOpen
                     ? new VNode[]
                     {
                         V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
@@ -3100,6 +3102,93 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_exitCompletions, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AModalWaitingForTheCardToLand_When_ItsAnimatePresenceIsRemoved_Then_NoExitCompletes()
+        {
+            // Arrange
+            s_modalTransition = s_quickTween;
+            using var mounted = CloseTheModalFor(15);
+
+            // Act
+            s_presenceGone = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_exitCompletions, Is.EqualTo(0));
+        }
+
+        // Set before each render of NestedModalRender: whether the modal is open.
+        private static bool s_nestedModalOpen;
+
+        // A card holding "card" with a title inside it holding "title", and a modal 300px right holding the same two
+        // ids inside a V.AnimatePresence, with a one-second fade out as its exit.
+        [Component]
+        private static VNode NestedModalRender()
+        {
+            var (_, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode Title(string name) => V.Motion(key: "title", name: name + "-title", layoutId: "title", transition: s_slowTween,
+                className: "left-[10px] top-[10px] w-[50px] h-[20px]");
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(key: "card", name: "card", layoutId: "card", transition: s_slowTween,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("card") }),
+                V.AnimatePresence(key: "presence", children: s_nestedModalOpen
+                    ? new VNode[]
+                    {
+                        V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
+                            exit: "hidden", transition: s_slowTween,
+                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("modal") }),
+                    }
+                    : Array.Empty<VNode>()),
+            });
+        }
+
+        // Opens the modal over the card and lets its tween end, then closes it and plays the given frames.
+        private MountedTree CloseTheNestedModalFor(int frames)
+        {
+            s_nestedModalOpen = false;
+            var mounted = V.Mount(Root, V.Component(NestedModalRender, key: "root"));
+            Tick();
+            s_nestedModalOpen = true;
+            RenderShared(mounted);
+            AdvancePast(1f);
+            s_nestedModalOpen = false;
+            RenderShared(mounted);
+            for (var i = 0; i < frames; i++) Tick();
+            return mounted;
+        }
+
+        [Test]
+        public void Given_ACardAndAModalWithTitlesSharingIds_When_TheModalStartsItsExit_Then_TheCardsTitleDoesNotFadeAgain()
+        {
+            // Arrange / Act
+            using var mounted = CloseTheNestedModalFor(10);
+
+            // Assert — the card fading in, its title drawn under it at its own opacity.
+            var title = Root.Q<VisualElement>("card-title");
+            Assert.That((FadeOf(Root.Q<VisualElement>("card")) < 1f, FadeOf(title), title.resolvedStyle.visibility),
+                Is.EqualTo((true, 1f, Visibility.Visible)));
+        }
+
+        [Test]
+        public void Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleDoesNotFadeAgain()
+        {
+            // Arrange
+            using var mounted = CloseTheNestedModalFor(1);
+
+            // Act
+            s_nestedModalOpen = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — the modal fading in again, its title drawn under it at its own opacity.
+            var title = Root.Q<VisualElement>("modal-title");
+            Assert.That((FadeOf(Root.Q<VisualElement>("modal")) < 1f, FadeOf(title), title.resolvedStyle.visibility),
+                Is.EqualTo((true, 1f, Visibility.Visible)));
         }
 
         [Test]
