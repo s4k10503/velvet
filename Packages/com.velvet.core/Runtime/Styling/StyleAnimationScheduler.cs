@@ -1349,10 +1349,10 @@ namespace Velvet
             VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
             IReadOnlyList<StylePropertyTransition> overrides)
         {
-            var count = overrides.Count + 1;
+            var count = overrides.Count;
             var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
             {
-                var names = new List<StylePropertyName>(ov.Count + 1) { s_allTransitionProperties[0] };
+                var names = new List<StylePropertyName> { s_allTransitionProperties[0] };
                 for (var i = 0; i < ov.Count; i++)
                 {
                     names.Add(new StylePropertyName(ov[i].Property));
@@ -1362,13 +1362,11 @@ namespace Velvet
             var easingList = new List<EasingFunction>(count);
             var durationList = _listPool.RentEmptyDurationList(count);
             var delayList = _listPool.RentEmptyDelayList(count);
-            easingList.Add(GetOrCreateEasingList(defaultEasing)[0]);
-            durationList.Add(new TimeValue((int)(defaultDurationSec * 1000), TimeUnit.Millisecond));
-            delayList.Add(new TimeValue((int)(defaultDelaySec * 1000), TimeUnit.Millisecond));
-            var hasDelay = defaultDelaySec > 0f;
-            for (var i = 0; i < overrides.Count; i++)
+            var hasDelay = false;
+            // i = -1 is the leading "all" entry: an override with every field left null takes the top-level timing.
+            for (var i = -1; i < count; i++)
             {
-                var o = overrides[i];
+                var o = i < 0 ? default : overrides[i];
                 easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
                 durationList.Add(new TimeValue((int)((o.DurationSec ?? defaultDurationSec) * 1000), TimeUnit.Millisecond));
                 var delaySec = o.DelaySec ?? defaultDelaySec;

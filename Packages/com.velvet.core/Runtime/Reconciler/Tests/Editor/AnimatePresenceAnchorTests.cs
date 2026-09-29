@@ -59,6 +59,8 @@ namespace Velvet.Tests
         private static int s_exitsCompleted;
         private static bool s_presenceInitial;
         private static VisualElement s_portalTarget;
+        private static Dictionary<string, MotionVariant> s_inheritingVariants;
+        private static string s_hostLabel;
 
         private EditorPanelSimulator _sim;
 
@@ -75,6 +77,8 @@ namespace Velvet.Tests
             s_exitsCompleted = 0;
             s_presenceInitial = false;
             s_portalTarget = null;
+            s_inheritingVariants = s_fade;
+            s_hostLabel = "visible";
         }
 
         [TearDown]
@@ -231,8 +235,8 @@ namespace Velvet.Tests
             });
         }
 
-        // Keyed children that inherit the label of the Motion above the presence and play the classic Fade
-        // preset's exit on removal.
+        // Keyed children that inherit the label of the Motion above the presence, s_hostLabel, and play the classic
+        // Fade preset's exit on removal.
         [Component]
         private static VNode InheritingPresenceHost()
         {
@@ -240,9 +244,10 @@ namespace Velvet.Tests
             var children = new List<VNode>();
             foreach (var key in keys)
             {
-                children.Add(V.Motion(name: "item", key: key.ToString(), variants: s_fade, transition: StyleTransition.Fade));
+                children.Add(V.Motion(name: "item", key: key.ToString(), variants: s_inheritingVariants,
+                    transition: StyleTransition.Fade));
             }
-            return V.Motion(name: "host", animate: "visible", children: new VNode[]
+            return V.Motion(name: "host", animate: s_hostLabel, children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray()),
             });
@@ -389,6 +394,44 @@ namespace Velvet.Tests
             var item = Root.Q<VisualElement>("item");
             Assert.That((item.ClassListContains("anim-fade-enter-from"), item.ClassListContains("opacity-100")),
                 Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion no animate label reaches plays its preset's enter, as before.
+        [Test]
+        public void Given_AMotionWithVariantsThatNoLabelReaches_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
+        {
+            // Arrange
+            s_hostLabel = null;
+            using var keys = new KeySetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — the Fade preset's enter has started on it.
+            Assert.That(HasClass("item", "anim-fade-enter-from"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion with no variants plays its preset's enter under a label, as before.
+        [Test]
+        public void Given_AMotionWithNoVariantsUnderAnInheritedLabel_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays()
+        {
+            // Arrange
+            s_inheritingVariants = null;
+            using var keys = new KeySetStore(string.Empty);
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(InheritingPresenceHost, key: "root"));
+            Frames(40);
+
+            // Act
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert — the Fade preset's enter has started on it.
+            Assert.That(HasClass("item", "anim-fade-enter-from"), Is.True);
         }
 
         [Test]
