@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -102,6 +103,9 @@ namespace Velvet.Editor.Preview
         private PreviewInspectOverlay _overlay;
         private PreviewControlsPanel _controls;
         private Label _statusLabel;
+
+        // The registry's refusal of the story set, shown in place of any story until the collision is fixed.
+        private string _indexError;
         private ToolbarMenu _backgroundMenu;
         private ToolbarMenu _zoomMenu;
         private ToolbarMenu _viewportMenu;
@@ -700,7 +704,16 @@ namespace Velvet.Editor.Preview
             var rememberedId = _selected?.Id ?? EditorPrefs.GetString(LastSelectionKey, null);
 
             _stories.Clear();
-            _stories.AddRange(VelvetPreviewRegistry.DiscoverStories());
+            _indexError = null;
+            try
+            {
+                _stories.AddRange(VelvetPreviewRegistry.DiscoverStories());
+            }
+            catch (InvalidOperationException ex)
+            {
+                _indexError = ex.Message;
+            }
+
             _list?.RefreshItems();
 
             var restored = _stories.FindIndex(s => s.Id == rememberedId);
@@ -850,9 +863,9 @@ namespace Velvet.Editor.Preview
             if (_statusLabel == null) return;
             if (_selected == null)
             {
-                _statusLabel.text = _stories.Count == 0
+                _statusLabel.text = _indexError ?? (_stories.Count == 0
                     ? "No [VelvetPreview] stories found. Add [VelvetPreview] to a static method returning VNode."
-                    : "Select a story.";
+                    : "Select a story.");
                 return;
             }
 
