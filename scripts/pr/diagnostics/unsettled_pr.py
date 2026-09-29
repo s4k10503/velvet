@@ -168,7 +168,8 @@ def owed(pr, checks):
     jobs = {run.get("id"): expected_checks.listed_jobs(
                 api(expected_checks.jobs_path("{owner}/{repo}", run)))
             for run in expected_checks.open_runs(runs, now)}
-    return Owed(expected_checks.unfinished(runs, jobs, now), expected_checks.failed(runs), base,
+    return Owed(expected_checks.unfinished(runs, jobs, now), expected_checks.failed(runs, jobs, now),
+                base,
                 expected_checks.absent(required, (check.get("name") for check in checks)))
 
 

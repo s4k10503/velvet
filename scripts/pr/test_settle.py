@@ -229,8 +229,10 @@ TEST_PENDING_EXIT = "Test (pending, run 36512896182: `gh run cancel 36512896182`
 # left out, so the jobs are all that separate it from a run still going.
 STUCK = {"id": 31128456870, "name": "Source generators", "workflow_id": 2, "run_number": 80,
          "run_attempt": 1, "status": "queued", "conclusion": None}
-COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed"},
-                  {"name": "Required checks (generators)", "status": "completed"}]
+COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed",
+                   "conclusion": "success"},
+                  {"name": "Required checks (generators)", "status": "completed",
+                   "conclusion": "success"}]
 
 # The label that owes a head a campaign.
 AUTOMERGE = "automerge"
@@ -240,8 +242,8 @@ CAMPAIGN = ".github/workflows/mutation.yml"
 
 def campaign_run(number, conclusion, path=CAMPAIGN, status="completed", suite=None):
     """One entry of the Actions runs listing for a head."""
-    return {"run_number": number, "path": path, "status": status, "conclusion": conclusion,
-            "check_suite_id": suite if suite is not None else number}
+    return {"id": 9000 + number, "run_number": number, "path": path, "status": status,
+            "conclusion": conclusion, "check_suite_id": suite if suite is not None else number}
 
 
 CAMPAIGN_PASSED = [campaign_run(1, "success")]
@@ -1145,7 +1147,7 @@ class CampaignMergeTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert — the reading rides along, since a settle that never asks reports nothing as well.
-        self.assertEqual((decided, settle.campaign.state(states[1].runs)), ([], "cancelled"))
+        self.assertEqual((decided, settle.campaign_state(states[1].runs, {}, 0)), ([], "cancelled"))
 
     def test_Given_ALabelledHeadWhoseCampaignConcludedSkipped_When_Decided_Then_ItIsRefused(self):
         # Arrange — `success` alone is a pass, and a skipped run measured nothing.
@@ -1171,6 +1173,31 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, ["its head is on another repository: this settles branches on origin"])
 
+    def test_Given_ACampaignLeftQueuedWhoseJobsAllPassed_When_TheMergeIsDecided_Then_NothingBlocks(self):
+        # Arrange — labelled, so the campaign has to have passed, and GitHub still calls it queued.
+        run = campaign_run(1, None, status="queued")
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[run], jobs={run["id"]: COMPLETED_JOBS})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ACampaignLeftQueuedPastTheBound_When_TheMergeIsDecided_Then_ItReadsAsCancelled(self):
+        # Arrange — no job listed, so the bound is all that ends it; a labelled head then owes another.
+        run = dict(campaign_run(1, None, status="queued"), updated_at="2026-08-06T21:55:26Z")
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[run])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
+                                   "again dispatches another"])
+
     def test_Given_ACampaignQueuedWithNoCheckYet_When_TheMergeIsDecided_Then_ItIsRefused(self):
         # Arrange — a dispatched run carries no check until its first job starts.
         states = {1: fabricate(1, runs=[campaign_run(1, None, status="queued")])}
@@ -1180,7 +1207,8 @@ class CampaignMergeTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 has not finished"])
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 has not finished (run 9001: "
+                                   "`gh run cancel 9001` if it is stuck)"])
 
     # GREEN_ON_BASE(characterization): the watcher prints every finished check on both sides.
     # A loop waiting on the campaign reads this line, which a filter over the output would drop.

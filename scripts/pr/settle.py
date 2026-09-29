@@ -286,6 +286,18 @@ def run_jobs(project, runs, now):
     return found
 
 
+def campaign_state(runs, jobs, now):
+    """`campaign.state`, with what a run concluded read the way `expected_checks` reads it."""
+    return campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now))
+
+
+def campaign_reason(labels, runs, jobs, now, head):
+    """`campaign.reason` for a head, naming how to end its newest campaign where it is stuck."""
+    newest = campaign.newest(runs)
+    return campaign.reason(labels, campaign_state(runs, jobs, now), head,
+                           expected_checks.stuck_exit(newest) if newest else "")
+
+
 def required_contexts(project, base):
     """The status-check contexts the rulesets over `base` require."""
     contexts = expected_checks.required(rest_json(expected_checks.rules_path(repository(project),
@@ -520,7 +532,7 @@ def blocking_reasons(project, number, base=None, states=None):
     results = checks(project, before.sha, runs)
     now = time.time()
     others = campaign.others(runs)
-    jobs = run_jobs(project, others, now)
+    jobs = run_jobs(project, runs, now)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -541,10 +553,10 @@ def blocking_reasons(project, number, base=None, states=None):
                                  behind_release=behind_release,
                                  long_lived_head=long_lived_head,
                                  runs_unfinished=expected_checks.unfinished(others, jobs, now),
-                                 runs_failed=expected_checks.failed(others),
+                                 runs_failed=expected_checks.failed(others, jobs, now),
                                  required=state.required,
-                                 owed_campaign=None if before.fork else campaign.reason(
-                                     before.labels, campaign.state(runs), before.sha)),
+                                 owed_campaign=None if before.fork else campaign_reason(
+                                     before.labels, runs, jobs, now, before.sha)),
                     after, before.branch, results, target)
 
 

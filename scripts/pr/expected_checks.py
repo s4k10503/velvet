@@ -28,6 +28,9 @@ STALE_AFTER = 24 * 60 * 60
 
 FAILED = frozenset({"failure", "startup_failure"})
 
+# The job conclusions a run built from its jobs reads as a pass.
+PASSING = frozenset({"success", "skipped", "neutral"})
+
 # The rules listing carries no total, so a page this full is read as one that may have dropped a rule.
 RULE_PAGE = 100
 
@@ -58,7 +61,7 @@ def untouched_for(run, now):
 
 
 def open_runs(runs, now):
-    """The runs whose jobs `unfinished` reads: not `completed`, and touched inside `STALE_AFTER`.
+    """The runs whose jobs `conclusion` reads: not `completed`, and touched inside `STALE_AFTER`.
 
     Every status but `completed` counts, so one GitHub adds later holds the merge until somebody
     classifies it — the rule settle.py's `_BUCKET` follows.
@@ -67,26 +70,47 @@ def open_runs(runs, now):
             if run.get("status") != "completed" and untouched_for(run, now) < STALE_AFTER]
 
 
-def unfinished(runs, jobs, now):
-    """A reason for each run in `open_runs` whose latest attempt still has a job to complete.
+def conclusion(run, jobs, now):
+    """What `run` concluded, or None while it has not finished.
 
-    `jobs` maps a run's id to those jobs; one missing from it, or mapped to None, counts as a job
-    still to complete, and so does an attempt that lists no job yet. The reason names the run and how
-    to end it, since a run GitHub never finishes holds its head until somebody ends it or
-    `STALE_AFTER` passes.
+    `jobs` maps a run's id to its latest attempt's jobs; one missing from it, or mapped to None,
+    counts as a job still to complete, and so does an attempt that lists no job yet. A run GitHub
+    still calls open concludes from those jobs once every one has completed: `success` where each
+    passed, `cancelled` where one was cancelled and none failed, `failure` otherwise. One untouched
+    for `STALE_AFTER` measured nothing, and concludes `cancelled`.
     """
-    return sorted(f"{name_of(run)} ({run.get('status')}, run {run.get('id')}: "
-                  f"`gh run cancel {run.get('id')}` if it is stuck)"
-                  for run in open_runs(runs, now)
-                  if not (jobs.get(run.get("id"))
-                          and all(job.get("status") == "completed" for job in jobs[run.get("id")])))
+    if run.get("status") == "completed":
+        return run.get("conclusion")
+    listed = jobs.get(run.get("id"))
+    if listed and all(job.get("status") == "completed" for job in listed):
+        found = {job.get("conclusion") for job in listed}
+        if found <= PASSING:
+            return "success"
+        return "cancelled" if found <= PASSING | {"cancelled"} else "failure"
+    return "cancelled" if untouched_for(run, now) >= STALE_AFTER else None
 
 
-def failed(runs):
-    """A reason for each workflow whose newest run on the head completed as a failure.
+def stuck_exit(run):
+    """How to end `run` where GitHub never will, which a reason naming an open run carries."""
+    return f"run {run.get('id')}: `gh run cancel {run.get('id')}` if it is stuck"
+
+
+def unfinished(runs, jobs, now):
+    """A reason for each run that has not concluded, as `conclusion` reads it over `jobs`.
+
+    The reason names the run and how to end it, since a run GitHub never finishes holds its head
+    until somebody ends it or `STALE_AFTER` passes.
+    """
+    return sorted(f"{name_of(run)} ({run.get('status')}, {stuck_exit(run)})"
+                  for run in runs if conclusion(run, jobs, now) is None)
+
+
+def failed(runs, jobs, now):
+    """A reason for each workflow whose newest run on the head concluded as a failure.
 
     Newest by run number and then attempt: an older run of the same workflow is superseded, and a
-    failure there would otherwise hold the head however often it ran again.
+    failure there would otherwise hold the head however often it ran again. What it concluded is
+    `conclusion`'s reading, so a run GitHub left open after its jobs failed counts.
     """
     newest = {}
     for run in runs:
@@ -94,9 +118,8 @@ def failed(runs):
         order = (run.get("run_number") or 0, run.get("run_attempt") or 1)
         if workflow not in newest or order > newest[workflow][0]:
             newest[workflow] = (order, run)
-    return sorted(f"{name_of(run)} ({run.get('conclusion')}, run {run.get('id')})"
-                  for _, run in newest.values()
-                  if run.get("status") == "completed" and run.get("conclusion") in FAILED)
+    return sorted(f"{name_of(run)} ({conclusion(run, jobs, now)}, run {run.get('id')})"
+                  for _, run in newest.values() if conclusion(run, jobs, now) in FAILED)
 
 
 def name_of(run):

@@ -196,7 +196,7 @@ class OwedChecks(unittest.TestCase):
         stuck = json.dumps({"total_count": 1, "workflow_runs": [
             {"id": 31128456870, "name": "Source generators", "run_attempt": 1, "status": "queued"}]})
         jobs = json.dumps({"total_count": 1, "jobs": [
-            {"name": "Source generators (dotnet)", "status": "completed"}]})
+            {"name": "Source generators (dotnet)", "status": "completed", "conclusion": "success"}]})
 
         # Act
         said = self.judge_with(PASSING, "CLEAN", runs=stuck, jobs=jobs)

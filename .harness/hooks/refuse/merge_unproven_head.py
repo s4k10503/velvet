@@ -111,11 +111,20 @@ def campaign_runs(cwd, sha):
         gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)]))
 
 
-def run_jobs(cwd, runs, now):
-    """The jobs of each run in `expected_checks.open_runs` by run id, None for one left unread."""
+# What one merge reads: the pull request, its checks, its runs, its base's rules and its head again,
+# and then the jobs of at most `JOB_READS` runs still open. Each reading is bounded by `repository.gh`,
+# and `ReadingBudgetTests` holds the sum under the timeout this hook is registered with — past which
+# the harness abandons the hook and the merge goes ahead unguarded. A head with more open runs than
+# that is refused rather than read.
+READINGS = 5
+JOB_READS = 1
+
+
+def run_jobs(cwd, runs):
+    """The jobs of each run in `runs` by run id, None for one left unread."""
     return {run.get("id"): expected_checks.listed_jobs(
                 gh_json(cwd, ["api", expected_checks.jobs_path("{owner}/{repo}", run)]))
-            for run in expected_checks.open_runs(runs, now)}
+            for run in runs}
 
 
 def required_contexts(cwd, base):
@@ -153,7 +162,8 @@ def unproven(asked, cwd):
         runs = campaign_runs(cwd, before)
         now = time.time()
         others = campaign.others(runs or [])
-        jobs = run_jobs(cwd, others, now)
+        opened = expected_checks.open_runs(runs or [], now)
+        jobs = run_jobs(cwd, opened) if len(opened) <= JOB_READS else None
         required = required_contexts(cwd, base)
         after = head_sha(cwd, number)
 
@@ -175,9 +185,15 @@ def unproven(asked, cwd):
         elif labels is None:
             found.append((label, f"its labels could not be read, so whether it owes a "
                                  f"{campaign.WORKFLOW} run is not known"))
+        elif jobs is None:
+            found.append((label, f"{len(opened)} workflow runs at {before[:7]} are still open, and "
+                                 f"this guard reads the jobs of at most {JOB_READS} inside its "
+                                 f"timeout: wait for them, or end a stuck one ("
+                                 + "; ".join(expected_checks.stuck_exit(run) for run in opened)
+                                 + "), or ask `settle.py merge`, which reads them all"))
         else:
             waiting = expected_checks.unfinished(others, jobs, now)
-            failing = expected_checks.failed(others)
+            failing = expected_checks.failed(others, jobs, now)
             absent = expected_checks.absent(required, (entry["name"] for entry in listed))
             unfinished = sorted(entry["name"] for entry in listed
                                 if entry["bucket"] not in TERMINAL_PASS)
@@ -195,7 +211,11 @@ def unproven(asked, cwd):
             if failing:
                 found.append((label, "workflow runs failed at {}: {}".format(
                     before[:7], ", ".join(failing))))
-            if owed := campaign.reason(labels, campaign.state(runs), before):
+            # The reading `settle.campaign_reason` takes, which this hook cannot import.
+            newest = campaign.newest(runs)
+            if owed := campaign.reason(
+                    labels, campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now)),
+                    before, expected_checks.stuck_exit(newest) if newest else ""):
                 found.append((label, owed))
     return found
 

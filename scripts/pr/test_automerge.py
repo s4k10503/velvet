@@ -72,7 +72,7 @@ class Invocation:
     """
 
     def __init__(self, pulls, event=None, argv=(), token="a-token", merge_code=0, reading_fails=False,
-                 runs=(), gh_fails=False):
+                 runs=(), gh_fails=False, jobs=None):
         self.pulls = pulls
         self.calls = []
         self.dispatched = []
@@ -112,6 +112,8 @@ class Invocation:
                 # `create`, so these cases are posed to a settle without the reading as well.
                 stack.enter_context(mock.patch.object(automerge.settle, "campaign_runs",
                                                       lambda _project, _sha: list(runs), create=True))
+                stack.enter_context(mock.patch.object(automerge.settle, "run_jobs",
+                                                      lambda *_: dict(jobs or {}), create=True))
                 stack.enter_context(contextlib.redirect_stdout(self.printed))
                 environ = {"GH_TOKEN": token, "GITHUB_RUN_ID": "99"} if token else {}
                 self.code = automerge.main(arguments, environ)
@@ -402,7 +404,7 @@ def campaign(conclusion, status="completed", path=".github/workflows/mutation.ym
     """The head's runs: Test's, and one more of `path`."""
     return [{"run_number": 5, "path": ".github/workflows/test.yml", "status": "completed",
              "conclusion": "success"},
-            {"run_number": 3, "path": path, "status": status, "conclusion": conclusion}]
+            {"id": 31, "run_number": 3, "path": path, "status": status, "conclusion": conclusion}]
 
 
 class HandOffTests(unittest.TestCase):
@@ -450,6 +452,28 @@ class HandOffTests(unittest.TestCase):
         # Assert — the reason rides along, because a hand-off that recognised nothing dispatches
         # nothing as well.
         self.assertEqual((ran.dispatched, "still running" in ran.printed), ([], True))
+
+    def test_Given_ACampaignLeftQueuedWhoseJobsAllPassed_When_HandedOff_Then_TheMergeRunIsDispatched(self):
+        # Arrange — GitHub still calls the run queued, and every job of its latest attempt passed.
+        jobs = {31: [{"name": "Mutation campaign", "status": "completed", "conclusion": "success"}]}
+
+        # Act
+        ran = Invocation({7: pull()}, event=handed(), runs=campaign(None, status="queued"),
+                         jobs=jobs)
+
+        # Assert
+        self.assertEqual(ran.dispatched, [MERGE_DISPATCH])
+
+    def test_Given_ACampaignLeftQueuedPastTheBound_When_HandedOff_Then_AnotherIsDispatched(self):
+        # Arrange — untouched for weeks with no job listed, so the bound is all that ends it.
+        runs = campaign(None, status="queued")
+        runs[-1]["updated_at"] = "2026-08-06T21:55:26Z"
+
+        # Act
+        ran = Invocation({7: pull()}, event=handed(), runs=runs)
+
+        # Assert
+        self.assertEqual(ran.dispatched, [CAMPAIGN_DISPATCH])
 
     def test_Given_ASkippedCampaignOfAnotherWorkflow_When_HandedOff_Then_ACampaignIsDispatched(self):
         # Arrange — a run of test.yml that carried a job of the campaign's name, skipped.

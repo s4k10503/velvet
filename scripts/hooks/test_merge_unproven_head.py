@@ -240,11 +240,33 @@ class HeadCheckVerdictTests(unittest.TestCase):
         stuck = json.dumps({"total_count": 1, "workflow_runs": [
             {"id": 31128456870, "name": "Source generators", "run_attempt": 1, "status": "queued"}]})
         result = self.ask(runs=stuck, jobs=json.dumps({"total_count": 1, "jobs": [
-            {"name": "Source generators (dotnet)", "status": "completed"}]}))
+            {"name": "Source generators (dotnet)", "status": "completed", "conclusion": "success"}]}))
 
         # Assert — the reading count rides along: the jobs read is the one that ends the run, and a
         # guard that let the merge through without it reads nothing about the run at all.
         self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS + 1))
+
+    def test_Given_ALabelledHeadWhoseCampaignWasLeftQueuedAfterPassing_When_Asked_Then_ItIsLetThrough(self):
+        # Arrange / Act — the campaign's jobs all passed, and GitHub still calls the run queued.
+        runs = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 41, "run_number": 2, "path": ".github/workflows/mutation.yml", "status": "queued"}]})
+        result = self.ask(labels=LABELLED, runs=runs, jobs=json.dumps({"total_count": 1, "jobs": [
+            {"name": "Mutation campaign", "status": "completed", "conclusion": "success"}]}))
+
+        # Assert — the reading count rides along for the reason the stuck-run case gives.
+        self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS + 1))
+
+    def test_Given_MoreOpenRunsThanItReads_When_TheMergeIsAsked_Then_ItIsRefusedNamingTheCapAndExit(self):
+        # Arrange / Act — two runs still open, one more than the guard reads jobs for.
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 5, "name": "Test", "status": "queued"},
+            {"id": 6, "name": "Source generators", "status": "queued"}]})
+        result = self.ask(runs=runs)
+
+        # Assert — the reading count rides along: nothing past the cap was read.
+        self.assertEqual((result.returncode, "reads the jobs of at most 1" in result.stderr,
+                          "`gh run cancel 6`" in result.stderr, self.consulted()),
+                         (REFUSED, True, True, READINGS))
 
     def test_Given_TheNewestRunOfAWorkflowFailed_When_TheMergeIsAsked_Then_ItIsNamed(self):
         # Arrange / Act — failed before its jobs reported a check, so the check list passes.
