@@ -12,8 +12,9 @@ namespace Velvet.Tests
     {
         private const string Group = nameof(VelvetPreviewSmokeTestTests);
 
-        // Every story in this assembly mounts through this setup, so it throws only while a case asks it to.
+        // Every story in this assembly mounts through these setups, so they throw only while a case asks them to.
         private static bool s_setupThrows;
+        private static bool s_teardownThrows;
 
         [VelvetPreviewSetup]
         private static void ThrowingSetup()
@@ -21,8 +22,16 @@ namespace Velvet.Tests
             if (s_setupThrows) throw new InvalidOperationException("setup boom");
         }
 
+        [VelvetPreviewSetup]
+        private static Action ThrowingTeardownSetup() =>
+            s_teardownThrows ? () => throw new InvalidOperationException("teardown boom") : null;
+
         [TearDown]
-        public void TearDown() => s_setupThrows = false;
+        public void TearDown()
+        {
+            s_setupThrows = false;
+            s_teardownThrows = false;
+        }
 
         private static VNode Plain() => V.Div();
 
@@ -35,12 +44,6 @@ namespace Velvet.Tests
         private static VNode UpdateThrows() => V.Component(ThrowAfterEffectUpdateRender, key: "child");
 
         private static VNode BoundaryCatches() => V.Component(BoundaryRender, key: "boundary");
-
-        private static VNode CaughtThenEffectThrows() =>
-            V.Div(
-                "",
-                V.Component(BoundaryRender, key: "boundary"),
-                V.Component(ThrowingEffectRender, key: "effect"));
 
         [Component]
         private static VNode ThrowingRender() => throw new InvalidOperationException("render boom");
@@ -145,17 +148,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnErrorABoundaryCatchesThenAnEffectThatThrowsWithNoBoundary_When_SmokeTested_Then_ItFailsWithTheEffects()
+        public void Given_AnErrorABoundaryCatchesThenASetupTeardownThatThrows_When_SmokeTested_Then_ItFailsWithTheTeardowns()
         {
             // Arrange
+            s_teardownThrows = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: render boom");
-            LogAssert.Expect(LogType.Exception, "InvalidOperationException: effect boom");
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: teardown boom");
 
             // Act
-            var failure = FailureOf(nameof(CaughtThenEffectThrows));
+            var failure = FailureOf(nameof(BoundaryCatches));
 
             // Assert
-            Assert.That(failure, Is.EqualTo("InvalidOperationException: effect boom"));
+            Assert.That(failure, Is.EqualTo("InvalidOperationException: teardown boom"));
         }
 
         [Test]

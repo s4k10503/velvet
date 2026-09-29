@@ -124,10 +124,11 @@ namespace Velvet.Tests
 
             // Assert
             var canvas = Field<VisualElement>("_canvas");
-            var status = Field<Label>("_statusLabel");
+            var status = (string)typeof(VelvetPreviewWindow).GetMethod("DescribeViewport", Private)
+                ?.Invoke(_window, new object[] { null });
             Assert.That(
                 (canvas?.style.width.value.value, canvas?.style.scale.value.value.x,
-                    status?.text.EndsWith("panel ×2", StringComparison.Ordinal)),
+                    status?.EndsWith("panel ×2", StringComparison.Ordinal)),
                 Is.EqualTo(((float?)1280f, (float?)2f, (bool?)true)));
         }
 
