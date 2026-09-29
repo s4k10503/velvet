@@ -3,10 +3,31 @@ using System;
 namespace Velvet
 {
     // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
-    // space-y-* aliases, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
+    // space-y-* family, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
     // and the axis they space along, for StyleGapManipulator. The numeric scale mirrors the
     // --space-* tokens in _tokens.uss (1 unit = 4px), keeping gap-* spacing visually consistent
     // with the padding/margin scale elsewhere in the utility set.
+    // A gap or space utility as StyleGapManipulator applies it: the pixel value, the axis, whether it is a
+    // space-x-* / space-y-* token rather than a gap-* one (see StyleGapManipulator.ResolveEdge), and the
+    // space-x-reverse / space-y-reverse markers.
+    internal readonly struct GapSpec
+    {
+        public readonly float Gap;
+        public readonly GapAxis Axis;
+        public readonly bool Space;
+        public readonly bool XReverse;
+        public readonly bool YReverse;
+
+        public GapSpec(float gap, GapAxis axis, bool space, bool xReverse, bool yReverse)
+        {
+            Gap = gap;
+            Axis = axis;
+            Space = space;
+            XReverse = xReverse;
+            YReverse = yReverse;
+        }
+    }
+
     internal static class StyleGapClass
     {
         // Returns true and the parsed gap / axis when
@@ -14,31 +35,34 @@ namespace Velvet
         // gap-y-* → vertical, plain gap-* → GapAxis.Auto (follows
         // flex-direction).
         public static bool TryParse(string cls, out float gap, out GapAxis axis)
+            => TryParse(cls, out gap, out axis, out _);
+
+        // space is true for the space-x-* / space-y-* family: Tailwind's margin rule rather than CSS gap, so
+        // StyleGapManipulator takes its edge from the reverse marker alone and never switches to the wrap path.
+        public static bool TryParse(string cls, out float gap, out GapAxis axis, out bool space)
         {
             gap = 0f;
             axis = GapAxis.Auto;
+            space = false;
             if (string.IsNullOrEmpty(cls))
             {
                 return false;
             }
 
             string suffix;
-            // space-x-*/space-y-* alias onto the gap axes: Velvet realizes inter-child
-            // spacing as a leading margin on every child but the first (the gap manipulator), which
-            // is exactly what the `space-* > * + *` margin rule produces for a flex container.
-            // (Deviation: takes effect only inside a flex container.) The space-x-reverse /
-            // space-y-reverse markers carry no pixel value of their own, so they decline here the same as
-            // any other unrecognized suffix ("reverse" matches neither the arbitrary-pixel nor the preset
-            // scale parse below) — StyleGapManipulator reads them separately via ExtractReverseMarkers,
-            // since they flip which edge the gap lands on rather than contributing a gap value themselves.
+            // The space-x-reverse / space-y-reverse markers carry no pixel value of their own, so they
+            // decline here the same as any other unrecognized suffix — StyleGapManipulator reads them
+            // separately via ExtractReverseMarkers.
             if (cls.StartsWith("space-x-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Horizontal;
+                space = true;
                 suffix = cls.Substring("space-x-".Length);
             }
             else if (cls.StartsWith("space-y-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Vertical;
+                space = true;
                 suffix = cls.Substring("space-y-".Length);
             }
             else if (cls.StartsWith("gap-x-", StringComparison.Ordinal))
@@ -103,11 +127,7 @@ namespace Velvet
             return false;
         }
 
-        // Scans classNames for the space-x-reverse / space-y-reverse markers. Tailwind's markers are
-        // absolute ("put the margin on the trailing edge") and never consult flex-direction themselves —
-        // StyleGapManipulator is the one that OR's a marker with a detected row-reverse/column-reverse, so
-        // the idiomatic flex-row-reverse space-x-4 space-x-reverse combination still lands trailing rather
-        // than cancelling back to leading.
+        // Scans classNames for the space-x-reverse / space-y-reverse markers.
         public static void ExtractReverseMarkers(string[] classNames, out bool xReverse, out bool yReverse)
         {
             xReverse = false;
@@ -131,10 +151,11 @@ namespace Velvet
 
         // Scans classNames for the last gap utility (later classes win, matching CSS
         // cascade order) and returns it. Returns false when no gap utility is present.
-        public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)
+        public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis, out bool space)
         {
             gap = 0f;
             axis = GapAxis.Auto;
+            space = default;
             if (classNames == null)
             {
                 return false;
@@ -143,10 +164,11 @@ namespace Velvet
             var found = false;
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var g, out var a))
+                if (TryParse(cls, out var g, out var a, out var s))
                 {
                     gap = g;
                     axis = a;
+                    space = s;
                     found = true;
                 }
             }

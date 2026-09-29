@@ -2648,6 +2648,67 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BareGrow_When_Parsed_Then_ResolvesFlexGrow()
+        {
+            // Act — Tailwind's grow-<number>, the bracketless spelling of a whole factor.
+            var ok = StyleArbitraryValueResolver.TryParse("grow-3", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 3f)));
+        }
+
+        [Test]
+        public void Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-2", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 2f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base routes no bare grow factor inline, grow-0 included.
+        // What reddens it is dropping the leading-zero check in TryGetFlexFactorPreset, which claims the
+        // zero the USS class already carries.
+        [Test]
+        public void Given_BareGrowZero_When_TheInlineGateIsAsked_Then_ItIsLeftToTheClassList()
+        {
+            // Act
+            var inline = StyleArbitraryValueResolver.IsInlineResolved("grow-0");
+
+            // Assert
+            Assert.That(inline, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no bare grow factor, a fractional one included.
+        // What reddens it is a parse that accepts a decimal point, where Tailwind's bare value is a whole
+        // number and the fraction takes the bracket form.
+        [Test]
+        public void Given_BareGrowWithAFraction_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-1.5", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_ADivCarryingBareGrow_When_Reconciled_Then_TheElementCarriesTheInlineFactor()
+        {
+            // Arrange — the whole path: the class has no USS rule, so it lands only if the dispatch gate
+            // routes it to the resolver.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "grow-3") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0].style.flexGrow.value, Is.EqualTo(3f));
+        }
+
+        [Test]
         public void Given_BasisArbitraryPixel_When_Parsed_Then_ResolvesFlexBasis()
         {
             // Act

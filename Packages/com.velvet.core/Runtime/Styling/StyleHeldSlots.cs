@@ -54,6 +54,8 @@ namespace Velvet
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);
 
+        public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
+
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)
         {
@@ -129,6 +131,8 @@ namespace Velvet
     internal static class HeldSlotGroups
     {
         public const int SlotCount = (int)HeldSlot.BorderLeftColor + 1;
+
+        public static readonly HeldSlot[] EverySlot = (HeldSlot[])Enum.GetValues(typeof(HeldSlot));
 
         private static readonly StyleLonghand[] s_longhands =
         {

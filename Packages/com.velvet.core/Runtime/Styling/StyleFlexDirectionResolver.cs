@@ -99,8 +99,8 @@ namespace Velvet
                 return FlexDirection.Column;
             }
             // Mirror the .flex=row default — the one place this deliberately disagrees with the raw engine,
-            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "The engine's raw
-            // flex default is a column, not a row").
+            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "Without .flex,
+            // children stack vertically").
             return FlexDirection.Row;
         }
     }

@@ -4,8 +4,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The axis a gap spaces children along. Within an axis, StyleGapManipulator still picks the leading
-    // vs. trailing physical edge (margin-left/-top vs. margin-right/-bottom) from the resolved direction
-    // and any reverse marker — see StyleGapManipulator.ResolveEdge.
+    // vs. trailing physical edge (margin-left/-top vs. margin-right/-bottom) — see
+    // StyleGapManipulator.ResolveEdge.
     internal enum GapAxis
     {
         // Plain gap-*: follow the container's resolved flex-direction.
@@ -22,9 +22,9 @@ namespace Velvet
     // follow flex-direction. Velvet owns the ordered child list, so this manipulator writes the
     // inter-child leading margin (margin-left for a row, margin-top for a column) on every
     // child EXCEPT the first — spacing BETWEEN children only, matching CSS gap: no leading,
-    // trailing, or outer-edge margin. A row-reverse / column-reverse container (or a
-    // space-x-reverse / space-y-reverse marker) moves that same inter-child margin to the axis's
-    // TRAILING physical edge (margin-right / margin-bottom) instead — native CSS gap has no leading/
+    // trailing, or outer-edge margin. A row-reverse / column-reverse container moves that same
+    // inter-child margin to the axis's TRAILING physical edge (margin-right / margin-bottom) instead —
+    // native CSS gap has no leading/
     // trailing distinction at all (it spaces between children regardless of direction), so this is what
     // reproduces that direction-agnostic behavior through a physical-margin polyfill: Yoga (like CSS
     // flexbox) resolves the "leading" flex-margin for a reversed main axis to the physical trailing edge,
@@ -96,29 +96,20 @@ namespace Velvet
     internal sealed class StyleGapManipulator : Manipulator
     {
         private readonly ReconcilerContext _ctx;
-        private float _gap;
-        private GapAxis _axis;
 
-        // The space-x-reverse / space-y-reverse markers (StyleGapClass.ExtractReverseMarkers). Each is an
-        // ABSOLUTE per-axis instruction — "put the margin on the trailing physical edge" — that Tailwind
-        // never conditions on flex-direction, so ResolveEdge OR's a marker with a detected row-reverse /
-        // column-reverse rather than XOR'ing: the idiomatic flex-row-reverse space-x-4 space-x-reverse still
-        // lands trailing instead of cancelling back to leading.
-        // Source asymmetry (by design, not an oversight): these markers are extracted at gap-config time
+        // Source asymmetry (by design, not an oversight): the reverse markers are extracted at gap-config time
         // from the same class array StyleGapClass.TryExtract reads the gap value and axis from, so a
         // variant-prefixed md:space-x-reverse resolves with the rest of the spec — the patcher switches
         // that array to the element's live class list once a variant has toggled any layout gate class onto
         // it, which is what carries the marker across a breakpoint.
         // StyleFlexDirectionResolver, by contrast, reads the live child container's classList
         // unconditionally: unlike the gap spec, the direction can change with no matching gap-config patch.
-        private bool _xReverse;
-        private bool _yReverse;
+        private GapSpec _spec;
 
         // Which margins are currently written, so a later pass (axis flip, mode flip, gap removal,
         // detach) clears exactly what was applied without disturbing other margins. Leading == one
         // inter-child edge (non-wrap); HalfMargin == four-side child margins + container negative margin.
-        // Right/Bottom are the trailing physical edges a row-reverse / column-reverse container (or a
-        // reverse marker) resolves to instead of Left/Top.
+        // Right/Bottom are the trailing physical edges ResolveEdge can choose instead of Left/Top.
         private enum Edge { None, Left, Top, Right, Bottom }
         private enum Mode { None, Leading, HalfMargin }
 
@@ -150,26 +141,24 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
+        // Whether the last IsWrap verdict came from a flex-wrap / flex-nowrap / flex-wrap-reverse class, and
+        // whether one has left since the last GeometryChangedEvent — see IsWrap.
+        private bool _wrapFromMarker;
+        private bool _wrapMarkerLeft;
+
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
-        public StyleGapManipulator(ReconcilerContext ctx, float gap, GapAxis axis, bool xReverse, bool yReverse)
+        public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
         {
             _ctx = ctx;
-            _gap = gap;
-            _axis = axis;
-            _xReverse = xReverse;
-            _yReverse = yReverse;
+            _spec = spec;
         }
 
-        // Swaps the gap value / axis / reverse markers and re-applies, clearing the old edge first if it
-        // changed.
-        public void UpdateGap(float gap, GapAxis axis, bool xReverse, bool yReverse)
+        // Swaps the spec and re-applies, clearing the old edge first if it changed.
+        public void UpdateGap(GapSpec spec)
         {
-            _gap = gap;
-            _axis = axis;
-            _xReverse = xReverse;
-            _yReverse = yReverse;
+            _spec = spec;
             // Force a re-apply: gap/axis/markers changed even when the child set did not, so invalidate the
             // cache.
             _hasSignature = false;
@@ -218,7 +207,11 @@ namespace Velvet
             Apply();
         }
 
-        private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
+        private void OnGeometryChanged(GeometryChangedEvent evt)
+        {
+            _wrapMarkerLeft = false;
+            Apply();
+        }
 
         // The container children are reconciled into (a composite widget's inner box; else self).
         private VisualElement? ChildContainer
@@ -238,7 +231,9 @@ namespace Velvet
                 return;
             }
 
-            var wrap = IsWrap(container);
+            // Tailwind's space-* writes one margin edge per child, which spaces one axis however the container
+            // wraps; only CSS gap spaces the wrapped lines too.
+            var wrap = !_spec.Space && IsWrap(container);
             var signature = ComputeSignature(container, wrap);
             if (_hasSignature && signature == _lastSignature)
             {
@@ -302,7 +297,7 @@ namespace Velvet
                 }
                 else
                 {
-                    StyleArbitraryValueResolver.Hold(child, SlotOf(edge), new StyleLength(_gap));
+                    StyleArbitraryValueResolver.Hold(child, SlotOf(edge), new StyleLength(_spec.Gap));
                 }
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
@@ -326,8 +321,8 @@ namespace Velvet
             _mode = Mode.HalfMargin;
             _margined.Clear();
 
-            var half = new StyleLength(_gap / 2f);
-            var negHalf = new StyleLength(-_gap / 2f);
+            var half = new StyleLength(_spec.Gap / 2f);
+            var negHalf = new StyleLength(-_spec.Gap / 2f);
 
             var count = container.childCount;
             for (var i = 0; i < count; i++)
@@ -475,7 +470,9 @@ namespace Velvet
             unchecked
             {
                 var hash = 17;
-                hash = hash * 31 + _gap.GetHashCode();
+                // MUTANT_SURVIVES(equivalent): the signature is only compared for equality, and subtracting the
+                // gap's hash tells two gaps apart exactly as adding it does.
+                hash = hash * 31 + _spec.Gap.GetHashCode();
                 hash = hash * 31 + (wrap ? 1 : 100 + (int)ResolveEdge(container));
                 var count = container.childCount;
                 hash = hash * 31 + count;
@@ -484,28 +481,31 @@ namespace Velvet
             }
         }
 
-        // Chooses the edge from the axis and the resolved direction. GapAxis.Horizontal / Vertical fix the
-        // AXIS (gap-x-*/gap-y-*/space-x-*/space-y-*); GapAxis.Auto (plain gap-*) follows the resolved axis.
-        // Independently, each axis flips to its trailing edge (Left→Right, Top→Bottom) when EITHER its own
-        // reverse marker is set OR the resolved direction is reversed on that SAME axis — the marker and a
-        // detected row-reverse/column-reverse OR together (both mean "trailing"), never XOR, so
-        // flex-row-reverse space-x-4 space-x-reverse still lands trailing. The flip is per-axis: a
-        // horizontal gap never reacts to column-reverse, and a vertical gap never reacts to row-reverse —
-        // StyleFlexDirectionResolver resolves ONE mutually-exclusive verdict per call, so there is no stale
-        // leftover from a different family to react to.
+        // A space-* spec takes its edge from its own axis's reverse marker and nothing else: Tailwind's
+        // space-x-reverse is what moves that margin, and flex-direction is never consulted. A gap-* spec takes
+        // it from the resolved direction and never from a marker, since CSS gap spaces between children
+        // whatever order they paint in. GapAxis.Horizontal / Vertical fix the axis; GapAxis.Auto (plain gap-*)
+        // follows the resolved one. The flip is per axis: a horizontal gap never reacts to column-reverse, and
+        // a vertical gap never reacts to row-reverse.
         private Edge ResolveEdge(VisualElement container)
         {
+            if (_spec.Space)
+            {
+                return _spec.Axis == GapAxis.Horizontal
+                    ? (_spec.XReverse ? Edge.Right : Edge.Left)
+                    : (_spec.YReverse ? Edge.Bottom : Edge.Top);
+            }
             var direction = StyleFlexDirectionResolver.Resolve(container, !ReferenceEquals(container, target));
-            switch (_axis)
+            switch (_spec.Axis)
             {
                 case GapAxis.Horizontal:
-                    return (_xReverse || direction == FlexDirection.RowReverse) ? Edge.Right : Edge.Left;
+                    return direction == FlexDirection.RowReverse ? Edge.Right : Edge.Left;
                 case GapAxis.Vertical:
-                    return (_yReverse || direction == FlexDirection.ColumnReverse) ? Edge.Bottom : Edge.Top;
+                    return direction == FlexDirection.ColumnReverse ? Edge.Bottom : Edge.Top;
                 default:
                     return direction == FlexDirection.Row || direction == FlexDirection.RowReverse
-                        ? ((_xReverse || direction == FlexDirection.RowReverse) ? Edge.Right : Edge.Left)
-                        : ((_yReverse || direction == FlexDirection.ColumnReverse) ? Edge.Bottom : Edge.Top);
+                        ? (direction == FlexDirection.RowReverse ? Edge.Right : Edge.Left)
+                        : (direction == FlexDirection.ColumnReverse ? Edge.Bottom : Edge.Top);
             }
         }
 
@@ -521,11 +521,37 @@ namespace Velvet
         // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
         // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
         // misread a genuinely wrapping inline-styled container as non-wrapping. That fallback is the
-        // catch-all for wrap set some other way (a custom stylesheet rule, an inline style), and CAN read
-        // one pass stale on a same-rect toggle — but unlike a direction flip, gaining or losing a wrapped
-        // line usually changes the container's measured size, so the GeometryChangedEvent self-corrects it;
-        // see the guide for the residual fixed-size exception.
-        private static bool IsWrap(VisualElement container)
+        // catch-all for wrap set some other way (a custom stylesheet rule, an inline style).
+        // Once a marker leaves the class list the fallback is not taken until the next GeometryChangedEvent:
+        // until a layout pass has run, resolvedStyle can still hold the style pass that saw the marker, and
+        // a container that keeps its size would fire no event to correct a stale "wrap". Until then it
+        // answers the engine's no-wrap.
+        private bool IsWrap(VisualElement container)
+        {
+            var marker = WrapMarker(container);
+            if (marker != null)
+            {
+                _wrapFromMarker = true;
+                return marker.Value;
+            }
+            if (_wrapFromMarker)
+            {
+                _wrapFromMarker = false;
+                _wrapMarkerLeft = true;
+            }
+            if (_wrapMarkerLeft)
+            {
+                return false;
+            }
+            if (container.panel != null)
+            {
+                var wrap = container.resolvedStyle.flexWrap;
+                return wrap == Wrap.Wrap || wrap == Wrap.WrapReverse;
+            }
+            return false;
+        }
+
+        private static bool? WrapMarker(VisualElement container)
         {
             if (container.ClassListContains("flex-wrap-reverse"))
             {
@@ -539,12 +565,7 @@ namespace Velvet
             {
                 return true;
             }
-            if (container.panel != null)
-            {
-                var wrap = container.resolvedStyle.flexWrap;
-                return wrap == Wrap.Wrap || wrap == Wrap.WrapReverse;
-            }
-            return false;
+            return null;
         }
     }
 }

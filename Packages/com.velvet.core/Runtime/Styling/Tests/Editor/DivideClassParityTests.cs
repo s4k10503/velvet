@@ -560,6 +560,34 @@ namespace Velvet.Tests
     internal sealed class DividerEdgeDirectionTests
     {
         [Test]
+        public void Given_ADividedRow_When_TheReconcilerRemovesADividedChild_Then_TheRemovedElementCarriesNoDivider()
+        {
+            // Arrange — the divide twin of the gap case: a plain Div is discarded rather than pooled, and the
+            // reference stands in for user code that kept it.
+            using var scope = new ReconcilerScope();
+            VNode RowOf(params string[] keys)
+            {
+                var children = new VNode[keys.Length];
+                for (var i = 0; i < keys.Length; i++)
+                {
+                    children[i] = V.Div(className: "child", key: keys[i]);
+                }
+                return V.Div(className: "flex flex-row divide-x", children: children);
+            }
+            var tree1 = new VNode[] { RowOf("a", "b", "c") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var removed = scope.Root[0][1];
+            var divided = removed.style.borderLeftWidth.value;
+
+            // Act
+            var tree2 = new VNode[] { RowOf("a", "c") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the width it carried rides along, since an element never divided reads Null too.
+            Assert.That((divided, removed.style.borderLeftWidth.keyword), Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_DivideXReverseRow_When_Reconciled_Then_TheSecondChildCarriesTheTrailingBorder()
         {
             // Arrange — the marker alone, on a container that is NOT reversed: it moves the divider to the

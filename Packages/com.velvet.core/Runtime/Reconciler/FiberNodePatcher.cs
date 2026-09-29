@@ -2095,27 +2095,21 @@ namespace Velvet
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
         {
-            private readonly float _gap;
-            private readonly GapAxis _axis;
-            private readonly bool _xReverse;
-            private readonly bool _yReverse;
+            private readonly GapSpec _spec;
 
-            internal GapOp(float gap, GapAxis axis, bool xReverse, bool yReverse)
+            internal GapOp(GapSpec spec)
             {
-                _gap = gap;
-                _axis = axis;
-                _xReverse = xReverse;
-                _yReverse = yReverse;
+                _spec = spec;
             }
 
             public Dictionary<VisualElement, StyleGapManipulator> Table(ReconcilerContext ctx)
                 => ctx.GapManipulators;
 
             public StyleGapManipulator Create(ReconcilerContext ctx)
-                => new StyleGapManipulator(ctx, _gap, _axis, _xReverse, _yReverse);
+                => new StyleGapManipulator(ctx, _spec);
 
             public void Update(StyleGapManipulator manipulator)
-                => manipulator.UpdateGap(_gap, _axis, _xReverse, _yReverse);
+                => manipulator.UpdateGap(_spec);
         }
 
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
@@ -3229,10 +3223,11 @@ namespace Velvet
                 return;
             }
 
-            var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis);
+            var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis, out var space);
             StyleGapClass.ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
 
-            Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis, xReverse, yReverse));
+            Configure<GapOp, StyleGapManipulator>(element, hasGap,
+                new GapOp(new GapSpec(gap, axis, space, xReverse, yReverse)));
         }
 
         // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color /

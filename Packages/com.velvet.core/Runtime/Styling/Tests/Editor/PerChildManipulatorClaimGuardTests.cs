@@ -90,11 +90,18 @@ namespace Velvet.Tests
                 || (type.IsGenericType && type.GetGenericArguments().Any(argument => argument == typeof(VisualElement)));
 
         /// <summary>A gap manipulator that claims what it writes, built through the constructor that takes
-        /// the context it claims through.</summary>
+        /// the context it claims through. Its other arguments are stand-ins, since only the claim is read.</summary>
         private static StyleGapManipulator ClaimingGap(ReconcilerContext ctx)
-            => (StyleGapManipulator)Activator.CreateInstance(
-                typeof(StyleGapManipulator),
-                new object[] { ctx, 16f, GapAxis.Horizontal, false, false });
+        {
+            var constructor = typeof(StyleGapManipulator).GetConstructors().Single();
+            var arguments = constructor.GetParameters()
+                .Select(parameter => parameter.ParameterType == typeof(ReconcilerContext) ? (object)ctx
+                    : parameter.ParameterType == typeof(float) ? 16f
+                    : parameter.ParameterType == typeof(GapAxis) ? (object)GapAxis.Horizontal
+                    : Activator.CreateInstance(parameter.ParameterType))
+                .ToArray();
+            return (StyleGapManipulator)constructor.Invoke(arguments);
+        }
 
         private static bool Claimed(ReconcilerContext ctx, VisualElement child)
             => ((IDictionary)typeof(ReconcilerContext).GetProperty(BoxOwnersTableName)!.GetValue(ctx)!)
@@ -112,6 +119,8 @@ namespace Velvet.Tests
                         && reference.Name == ReleaseMethodName);
         }
 
+        // GREEN_ON_BASE(characterization): the base already passes this; the branch changed only the
+        // helper that builds a gap manipulator, so that it builds one whatever flags the constructor takes.
         [Test]
         public void Given_EveryContextTrackedManipulatorHoldingChildren_When_ItsBodiesAreRead_Then_EachAsksTheClaimBeforeTurningAValueOff()
         {
@@ -136,6 +145,8 @@ namespace Velvet.Tests
                 + OwnershipTypeName + " against a claim table on ReconcilerContext");
         }
 
+        // GREEN_ON_BASE(characterization): the base already passes this; the branch changed only the
+        // helper that builds a gap manipulator, so that it builds one whatever flags the constructor takes.
         [Test]
         public void Given_AChildTheOwnerReleased_When_TheClaimTableIsRead_Then_TheEntryIsGone()
         {
@@ -160,6 +171,8 @@ namespace Velvet.Tests
             Assert.That((claimed, Claimed(ctx, child)), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already passes this; the branch changed only the
+        // helper that builds a gap manipulator, so that it builds one whatever flags the constructor takes.
         [Test]
         public void Given_EveryPerChildClaimTable_When_TheContextIsBuilt_Then_EachIsEnrolledInThePureElementSideTables()
         {

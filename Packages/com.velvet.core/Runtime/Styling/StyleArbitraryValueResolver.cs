@@ -328,7 +328,41 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return false;
+            return TryGetFlexFactorPreset(cls, out _, out _);
+        }
+
+        // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
+        // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
+        private static bool TryGetFlexFactorPreset(string cls, out ArbitraryProperty property, out float factor)
+        {
+            factor = 0f;
+            int prefixLength;
+            if (cls.StartsWith("grow-", StringComparison.Ordinal))
+            {
+                property = ArbitraryProperty.FlexGrow;
+                prefixLength = "grow-".Length;
+            }
+            else if (cls.StartsWith("shrink-", StringComparison.Ordinal))
+            {
+                property = ArbitraryProperty.FlexShrink;
+                prefixLength = "shrink-".Length;
+            }
+            else
+            {
+                property = default;
+                return false;
+            }
+            var digits = cls.AsSpan(prefixLength);
+            if (digits.Length == 0 || digits[0] == '0')
+            {
+                return false;
+            }
+            if (!int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
+            {
+                return false;
+            }
+            factor = whole;
+            return true;
         }
 
         // True when the suffix span matches one of the preset table's keys. Allocation-free: the Dictionary
@@ -360,6 +394,11 @@ namespace Velvet
             // Sizing fractions (w-1/2, h-2/3, size-1/4) are non-negated and resolve to a percent of the parent.
             if (TryParseSizingFraction(className, out result))
             {
+                return true;
+            }
+            if (TryGetFlexFactorPreset(className, out var factorProperty, out var factor))
+            {
+                result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
                 return true;
             }
             var negate = className[0] == '-';
@@ -1049,6 +1088,28 @@ namespace Velvet
             else
             {
                 StyleHeldSlots.WriteNull(element.style, slot);
+            }
+        }
+
+        // Hands back every slot held on element. For an element the reconciler removes: its claim is dropped
+        // with the rest of its side tables, so the container that holds a slot on it cannot release it later.
+        internal static void HandBackAll(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            var holds = map.Holds;
+            if (holds == null)
+            {
+                return;
+            }
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                if (holds.IsHeld(slot))
+                {
+                    HandBack(element, slot);
+                }
             }
         }
 
