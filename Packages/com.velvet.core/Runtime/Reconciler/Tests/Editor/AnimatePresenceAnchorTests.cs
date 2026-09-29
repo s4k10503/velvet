@@ -581,7 +581,7 @@ namespace Velvet.Tests
             Assert.That((DurationMs("item-b"), float.IsNaN(DurationMs("item-a"))), Is.EqualTo((300f, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base plays no enter on any type flip, this one included.
+        // GREEN_ON_BASE(characterization): the base plays no enter when a Motion naming its own animate type-flips.
         [Test]
         public void Given_AKeyedMotionTheFirstRenderMountedUnderInitialFalse_When_ATypeFlipCreatesItAgain_Then_NoEnterPlays()
         {
