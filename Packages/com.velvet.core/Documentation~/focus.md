@@ -68,15 +68,19 @@ delegating focus to the input beneath it — so a constant would hand one type a
 
 ## Focus-visible styling and state
 
-The `focus-visible:` class variant covers keyboard/gamepad-only focus styling: it lights for
-focus NOT caused by a pointer press on the element (keyboard, gamepad navigation, or
-programmatic focus) and stays dark for click-to-focus, mirroring CSS `:focus-visible`.
+The `focus-visible:` class variant covers keyboard/gamepad-only focus styling, mirroring CSS
+`:focus-visible` with React Aria's input modality kept per panel: after a pointer press anywhere in
+the element's panel it stays dark — for click-to-focus, and for a programmatic `Focus()` that
+follows the press — until a key press or a navigation move in that panel. Keyboard and gamepad
+focus light it, as does a programmatic focus in a panel that has had no pointer press since its last
+key press or navigation move. A Shift, Ctrl or Command key pressed alone, or a Ctrl or Command chord,
+is not a key press here.
 
 `Hooks.UseFocusRing` is the render-state channel for the same distinction — React Aria's
 `useFocusRing` parity: it returns the element's `IsFocused` / `IsFocusVisible` as re-rendering
 component state plus a `Ref` to pass as the element's `refCallback:`. Reach for it when the
 component must render differently (say, a "press A to select" hint), not just restyle; it rides
-the same element-local heuristic as the `focus-visible:` variant.
+the same heuristic as the `focus-visible:` variant.
 
 ## Cross-panel Tab order (`PanelFocusOrder`)
 
@@ -102,5 +106,3 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
 - No orientation/wrap options on `singleTabStop`; spatial navigation handles in-group movement.
-- No global input-modality tracker. The focus-visible heuristic is element-local, so a
-  programmatic focus right after pointer use shows the ring.

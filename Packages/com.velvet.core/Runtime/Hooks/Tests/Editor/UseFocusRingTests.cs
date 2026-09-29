@@ -6,9 +6,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins <c>Hooks.UseFocusRing</c>'s React Aria <c>useFocusRing</c> contract: <c>IsFocused</c> follows
-    /// plain focus from any modality, while <c>IsFocusVisible</c> lights only for focus NOT caused by a
-    /// pointer press on the element — the same element-local heuristic the <c>focus-visible:</c> styling
-    /// variant rides, exercised here through the hook's re-rendering state channel instead of a class.
+    /// plain focus from any modality, while <c>IsFocusVisible</c> stays dark for focus a pointer press on the
+    /// element caused — the same heuristic the <c>focus-visible:</c> styling variant rides, exercised here
+    /// through the hook's re-rendering state channel instead of a class.
     /// </summary>
     internal sealed class UseFocusRingTests
     {

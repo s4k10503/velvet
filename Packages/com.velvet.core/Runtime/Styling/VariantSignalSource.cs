@@ -5,8 +5,7 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The element-local interaction signals a variant manipulator reacts to. FocusVisible is the CSS
-    // :focus-visible distinction (keyboard/programmatic focus, not pointer focus); Checked is the element's
-    // own toggle state.
+    // :focus-visible distinction (PanelInputModality); Checked is the element's own toggle state.
     internal enum VariantSignal
     {
         Hover,
@@ -138,6 +137,8 @@ namespace Velvet
             target.RegisterCallback<PointerCancelEvent>(OnPointerCancel);
             target.RegisterCallback<FocusEvent>(OnFocus);
             target.RegisterCallback<BlurEvent>(OnBlur);
+            target.RegisterCallback<AttachToPanelEvent>(OnAttachToPanel);
+            PanelInputModality.Track(target.panel);
 
             if (registerChecked)
             {
@@ -163,6 +164,9 @@ namespace Velvet
             _target.UnregisterCallback<PointerCancelEvent>(OnPointerCancel);
             _target.UnregisterCallback<FocusEvent>(OnFocus);
             _target.UnregisterCallback<BlurEvent>(OnBlur);
+            // MUTANT_SURVIVES(equivalent, line removed): a stale attach callback only starts tracking a panel,
+            // and only a consumer hooked in that panel reads the tracking, and it starts the tracking itself.
+            _target.UnregisterCallback<AttachToPanelEvent>(OnAttachToPanel);
             if (_registerChecked)
             {
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
@@ -239,12 +243,12 @@ namespace Velvet
             _emit(VariantSignal.FocusVisible, false);
         }
 
+        private void OnAttachToPanel(AttachToPanelEvent evt) => PanelInputModality.Track(evt.destinationPanel);
+
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);
-            // focus-visible lights up only when the focus was NOT driven by a pointer-down on this element
-            // (keyboard navigation or a programmatic Focus()), mirroring CSS :focus-visible.
-            if (!_pointerFocus)
+            if (!_pointerFocus && !PanelInputModality.LastInputWasPointer(_target?.panel))
             {
                 _emit(VariantSignal.FocusVisible, true);
             }

@@ -261,13 +261,11 @@ namespace Velvet
                 return;
             }
 
-            // Containment resolves through the NEAREST contain scope; the innermost scope of any kind
-            // decides SingleTabStop behavior. A scope that is both contain and singleTabStop behaves as
-            // contain (the pre-existing precedence).
+            // A group applies only inside the nearest contain scope: a group around that scope, or a scope
+            // that is both, behaves as contain.
             var containRoot = FindEnclosingContainScopeRoot(focused, ctx, out _);
-            var scopeRoot = FindEnclosingScopeRoot(focused, ctx, out var binding);
-            var singleTabStop = scopeRoot != null && binding is { Settings.SingleTabStop: true }
-                && !ReferenceEquals(scopeRoot, containRoot);
+            var groupRoot = FindEnclosingSingleTabStopRoot(focused, ctx, out _);
+            var singleTabStop = groupRoot != null && (containRoot == null || containRoot.Contains(groupRoot));
 
             // Evaluated in this exact order — each mode is only reached once the earlier ones declined,
             // mirroring their real precedence (SingleTabStop group > Contain wrap > boundary escape >
@@ -281,7 +279,7 @@ namespace Velvet
                 Forward = forward,
                 Ctx = ctx,
             };
-            if (TryHandleSingleTabStopGroupExit(in move, containRoot, scopeRoot, singleTabStop))
+            if (TryHandleSingleTabStopGroupExit(in move, containRoot, groupRoot, singleTabStop))
             {
                 return;
             }
@@ -296,9 +294,8 @@ namespace Velvet
             TryHandleSingleTabStopGroupEntryPrediction(in move);
         }
 
-        // Mode (a): the whole subtree acts as ONE tab stop. Applies only when the innermost scope is
-        // SingleTabStop and is not itself the nearest contain scope. Every reachable outcome inside this
-        // mode is a terminal move outcome (it never falls through to a later mode).
+        // Mode (a): the whole subtree acts as ONE tab stop. Every reachable outcome inside this mode is a
+        // terminal move outcome (it never falls through to a later mode).
         private static bool TryHandleSingleTabStopGroupExit(
             in NavigationMove move, VisualElement? containRoot, VisualElement? scopeRoot, bool singleTabStop)
         {
@@ -404,21 +401,18 @@ namespace Velvet
             var panelRing = new VisualElementFocusRing(move.PanelRoot);
             var entryPredicted =
                 panelRing.GetNextFocusable(focused, ToRingDirection(move.Forward)) as VisualElement;
-            if (entryPredicted != null)
+            if (entryPredicted == null)
             {
-                var enteredRoot = FindEnclosingScopeRoot(entryPredicted, ctx, out var enteredBinding);
-                if (enteredRoot != null && enteredBinding is { Settings.SingleTabStop: true }
-                    && !enteredRoot.Contains(focused))
-                {
-                    var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
-                    if (!ReferenceEquals(landing, entryPredicted))
-                    {
-                        Redirect(move.Evt, move.Panel, landing);
-                        return true;
-                    }
-                    // Landing == predicted: the engine's own move already enters at the group's correct
-                    // stop (a forward move's raw prediction IS the group's ring-first).
-                }
+                return false;
+            }
+            // Focus sitting in a group never reaches this mode, so a group the prediction lands in is entered
+            // from outside. Landing == predicted: the engine's own move already enters at the group's correct
+            // stop (a forward move's raw prediction IS the group's ring-first), or lands outside any group.
+            var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
+            if (!ReferenceEquals(landing, entryPredicted))
+            {
+                Redirect(move.Evt, move.Panel, landing);
+                return true;
             }
             return false;
         }
@@ -430,12 +424,12 @@ namespace Velvet
         // never the group's last member. Landings outside any SingleTabStop scope pass through untouched.
         private static VisualElement ResolveScopeEntryTarget(VisualElement candidate, ReconcilerContext ctx)
         {
-            var root = FindEnclosingScopeRoot(candidate, ctx, out var binding);
-            if (root == null || binding is not { Settings.SingleTabStop: true })
+            var root = FindEnclosingSingleTabStopRoot(candidate, ctx, out var binding);
+            if (root == null)
             {
                 return candidate;
             }
-            var last = binding.LastFocusedMember;
+            var last = binding!.LastFocusedMember;
             if (last != null && last.panel != null && root.Contains(last) && last.canGrabFocus)
             {
                 return last;
@@ -721,18 +715,19 @@ namespace Velvet
                 return;
             }
 
-            var scopeRoot = FindEnclosingScopeRoot(target, ctx, out var binding);
-            if (scopeRoot == null || binding == null)
+            // Every enclosing scope records the landing, not only the innermost: a scope nested inside a group,
+            // a modal or a restoring scope must not hide the landing from the scope around it.
+            var cameFrom = evt.relatedTarget as VisualElement;
+            for (var scopeRoot = target; scopeRoot != null; scopeRoot = scopeRoot.parent)
             {
-                return;
-            }
-            binding.LastFocusedMember = target;
-            // First entry from outside (or from nothing): remember where focus came from, so RestoreFocus
-            // can return it there when the scope unmounts while holding focus.
-            if (!binding.RestoreCaptured)
-            {
-                var cameFrom = evt.relatedTarget as VisualElement;
-                if (cameFrom == null || !scopeRoot.Contains(cameFrom))
+                if (!ctx.FocusScopeBindings.TryGetValue(scopeRoot, out var binding))
+                {
+                    continue;
+                }
+                binding.LastFocusedMember = target;
+                // First entry from outside (or from nothing): remember where focus came from, so RestoreFocus
+                // can return it there when the scope unmounts while holding focus.
+                if (!binding.RestoreCaptured && !scopeRoot.Contains(cameFrom))
                 {
                     binding.RestoreTarget = cameFrom;
                     binding.RestoreCaptured = true;
@@ -783,8 +778,7 @@ namespace Velvet
         private static bool TryHoldInSingleTabStopGroup(
             VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
         {
-            var groupRoot = FindNearestScopeRootWhere(
-                relatedTarget, ctx, static settings => settings.SingleTabStop, out _);
+            var groupRoot = FindEnclosingSingleTabStopRoot(relatedTarget, ctx, out _);
             if (groupRoot == null || groupRoot.Contains(target))
             {
                 return false;
@@ -1028,30 +1022,19 @@ namespace Velvet
             return held != null && (held == root || root.Contains(held));
         }
 
-        // Walks the parent chain from `element` (inclusive) to the first registered scope root. Physical
-        // containment is deliberately the membership definition — robust at event time, across pool reuse,
-        // and against the logical-tree caveats that limit userData-based resolution for bare portal children.
-        private static VisualElement? FindEnclosingScopeRoot(
-            VisualElement element, ReconcilerContext ctx, out FocusScopeBinding? binding)
-        {
-            for (var current = element; current != null; current = current.parent)
-            {
-                if (ctx.FocusScopeBindings.TryGetValue(current, out var found))
-                {
-                    binding = found;
-                    return current;
-                }
-            }
-            binding = null;
-            return null;
-        }
-
-        // Same walk, but resolving the nearest scope whose settings actually CONTAIN — an element inside a
-        // plain or SingleTabStop scope nested in a modal still belongs to the modal's containment.
+        // The nearest scope whose settings CONTAIN — an element inside a plain or SingleTabStop scope nested
+        // in a modal still belongs to the modal's containment.
         private static VisualElement? FindEnclosingContainScopeRoot(
             VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
             => FindNearestScopeRootWhere(element, ctx, static settings => settings.Contain, out binding);
 
+        private static VisualElement? FindEnclosingSingleTabStopRoot(
+            VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
+            => FindNearestScopeRootWhere(element, ctx, static settings => settings.SingleTabStop, out binding);
+
+        // Physical containment is deliberately the membership definition — robust at event time, across pool
+        // reuse, and against the logical-tree caveats that limit userData-based resolution for bare portal
+        // children.
         private static VisualElement? FindNearestScopeRootWhere(
             VisualElement? element, ReconcilerContext ctx, Func<FocusScopeSettings, bool> kind,
             out FocusScopeBinding? binding)

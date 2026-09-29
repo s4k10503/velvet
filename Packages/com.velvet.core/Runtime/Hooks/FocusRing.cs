@@ -6,8 +6,7 @@ namespace Velvet
 {
     /// <summary>
     /// Focus state of the element carrying <see cref="Ref"/>, returned by <c>Hooks.UseFocusRing</c>.
-    /// Rides the same element-local focus-visible heuristic as the <c>focus-visible:</c> styling variant
-    /// (a pointer press on the element suppresses the visible state for the focus it causes), so the two
+    /// Rides the same focus-visible heuristic as the <c>focus-visible:</c> styling variant, so the two
     /// surfaces cannot drift.
     /// </summary>
     public readonly struct FocusRing
@@ -16,8 +15,9 @@ namespace Velvet
         public bool IsFocused { get; }
 
         /// <summary>
-        /// True while the element holds focus NOT caused by a pointer press on it — keyboard, gamepad
-        /// (navigation-event-driven), or programmatic focus.
+        /// True while the element holds focus that did not follow a pointer press in its panel — keyboard,
+        /// gamepad (navigation-event-driven), or a programmatic focus after a key press or navigation move
+        /// or before any input.
         /// </summary>
         public bool IsFocusVisible { get; }
 

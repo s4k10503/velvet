@@ -127,6 +127,84 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode RestoreScopeWithNestedScopeHost()
+        {
+            var (showScope, setShowScope) = Hooks.UseState(true);
+            s_setShowScope = setShowScope;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "opener"),
+                showScope
+                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    {
+                        V.FocusScope(name: "nested", children: new VNode[]
+                        {
+                            V.Button(name: "inner"),
+                        }),
+                    })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_ARestoringScopeFirstEnteredThroughAScopeNestedInIt_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusCameFromRegainsFocus()
+        {
+            // Arrange
+            Mount(RestoreScopeWithNestedScopeHost);
+            var opener = Q("opener");
+            var inner = Q("inner");
+            opener.Focus();
+            inner.Focus();
+            var heldInside = _host.Panel.focusController.focusedElement == inner;
+
+            // Act
+            s_setShowScope.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((heldInside, _host.Panel.focusController.focusedElement), Is.EqualTo((true, (Focusable)opener)));
+        }
+
+        [Component]
+        private static VNode ReenteredRestoreScopeHost()
+        {
+            var (showScope, setShowScope) = Hooks.UseState(true);
+            s_setShowScope = setShowScope;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "opener"),
+                V.Button(name: "other"),
+                showScope
+                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true, children: new VNode[]
+                    {
+                        V.Button(name: "inner"),
+                    })
+                    : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps the first entry's origin.
+        [Test]
+        public void Given_ARestoringScopeReenteredFromAnotherElement_When_ItUnmountsWhileHoldingFocus_Then_TheFirstEntrysOriginRegainsFocus()
+        {
+            // Arrange
+            Mount(ReenteredRestoreScopeHost);
+            var opener = Q("opener");
+            var inner = Q("inner");
+            opener.Focus();
+            inner.Focus();
+            Q("other").Focus();
+            inner.Focus();
+
+            // Act
+            s_setShowScope.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(opener));
+        }
+
+        [Component]
         private static VNode RestoreScopeRootFocusableHost()
         {
             var (showScope, setShowScope) = Hooks.UseState(true);
@@ -414,6 +492,56 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode GroupWithNestedScopeHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "before"),
+            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            {
+                V.FocusScope(name: "nestedFirst", children: new VNode[]
+                {
+                    V.Button(name: "n1"),
+                    V.Button(name: "n2"),
+                }),
+                V.Button(name: "g3"),
+                V.FocusScope(name: "nestedLast", children: new VNode[]
+                {
+                    V.Button(name: "n4"),
+                }),
+            }),
+            V.Button(name: "after"),
+        });
+
+        [Test]
+        public void Given_APlainScopeNestedInASingleTabStopGroup_When_TabDispatchesFromAMemberInsideIt_Then_FocusSkipsPastTheWholeGroup()
+        {
+            // Arrange
+            Mount(GroupWithNestedScopeHost);
+            var n1 = Q("n1");
+            n1.Focus();
+
+            // Act
+            SendMove(n1, NavigationMoveEvent.Direction.Next);
+
+            // Assert — the nested plain scope is still inside the group, so n2, g3 and n4 are skipped.
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("after")));
+        }
+
+        [Test]
+        public void Given_AFreshGroupWhoseLastMemberSitsInANestedScope_When_ShiftTabEntersFromAfterIt_Then_FocusLandsOnTheGroupsFirstMember()
+        {
+            // Arrange
+            Mount(GroupWithNestedScopeHost);
+            var after = Q("after");
+            after.Focus();
+
+            // Act
+            SendMove(after, NavigationMoveEvent.Direction.Previous);
+
+            // Assert — the raw prediction is n4, the group's ring-last, inside the nested scope.
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("n1")));
+        }
+
+        [Component]
         private static VNode GroupInModalHost() => V.Div(children: new VNode[]
         {
             V.FocusScope(name: "modal", contain: true, children: new VNode[]
@@ -444,6 +572,36 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("m1")));
+        }
+
+        [Component]
+        private static VNode ModalInGroupHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+            {
+                V.FocusScope(name: "modal", contain: true, children: new VNode[]
+                {
+                    V.Button(name: "m1"),
+                    V.Button(name: "m2"),
+                }),
+            }),
+            V.Button(name: "outside"),
+        });
+
+        // GREEN_ON_BASE(characterization): the base decides by the innermost scope, which is the modal here.
+        [Test]
+        public void Given_AContainedScopeInsideASingleTabStopGroup_When_TabDispatchesInsideIt_Then_TheContainedScopesRingDecides()
+        {
+            // Arrange
+            Mount(ModalInGroupHost);
+            var m1 = Q("m1");
+            m1.Focus();
+
+            // Act
+            SendMove(m1, NavigationMoveEvent.Direction.Next);
+
+            // Assert — the group around the modal does not turn the modal into one stop.
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("m2")));
         }
 
         [Component]
