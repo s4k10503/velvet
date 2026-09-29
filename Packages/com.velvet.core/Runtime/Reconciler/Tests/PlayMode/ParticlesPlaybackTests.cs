@@ -524,8 +524,9 @@ namespace Velvet.Tests
         public IEnumerator Given_ADenseSystemThatShrinks_When_Drawn_Then_OnlyTheParticlesStillAliveRender()
         {
             // Arrange — 4000 red 4px squares at a 5px pitch, two pixels per unit, filling a 400x250px
-            // block; after they have drawn, all but the first 3000 (the left 300px) are removed. The
-            // buffer the draw reads keeps the removed ones past its live count.
+            // block; after they have drawn, all but the first 3000 (the left 300px) are ended, which the
+            // next simulation step removes. The buffer the draw reads keeps the removed ones past its
+            // live count.
             _effectGo = new GameObject("fx-shrinking");
             var effect = _effectGo.AddComponent<ParticleSystem>();
             var main = effect.main;
@@ -560,9 +561,13 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
             var particles = new ParticleSystem.Particle[4000];
             host.GetParticles(particles);
+            for (var ended = 3000; ended < 4000; ended++)
+            {
+                particles[ended].remainingLifetime = -1f;
+            }
 
             // Act
-            host.SetParticles(particles, 3000);
+            host.SetParticles(particles, 4000);
             yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
 
             // Assert — ReadPixels is bottom-origin, so the block's 250 rows are the texture's top 250.
