@@ -58,6 +58,10 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
+            // Reset here as well as in SetUp, so no later fixture in this assembly mounts through a teardown that
+            // throws or a setup that publishes this fixture's sheets.
+            s_secondTeardownThrows = false;
+            s_publishSheets = false;
             VelvetStyleHints.PreviewStyleSheet = null;
             UnityEngine.Object.DestroyImmediate(s_firstSheet);
             UnityEngine.Object.DestroyImmediate(s_secondSheet);

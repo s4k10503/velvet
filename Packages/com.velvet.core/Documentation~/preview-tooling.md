@@ -48,7 +48,8 @@ Discovery refuses a set holding a duplicate id: `VelvetPreviewRegistry.DiscoverS
 `InvalidOperationException` naming each story whose id an earlier one holds together with that earlier
 one, and the window lists no stories and shows that message in its status line. Stories declared in **test-runner assemblies are
 excluded**, so fixture stories authored for unit tests never leak into the window or the
-capture set.
+capture set. The story list's **Refresh** button discovers the stories again rather than re-listing the
+set found last.
 
 A story carries no environment of its own. A method's explicit `Width`/`Height` always wins
 and is shown at its real footprint; a story with no explicit size fills the canvas (and is the

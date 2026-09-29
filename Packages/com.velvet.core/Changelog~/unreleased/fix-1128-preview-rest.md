@@ -18,5 +18,8 @@
 
 ### Fixed
 
+- The preview window's **Refresh** button discovers the stories again. It re-listed the set discovered first,
+  so a story an assembly loaded since then did not appear.
+
 - The DevTools window keeps its selection on the selected fiber when another entry leaves the registry. It
   kept the selection by position, so removing an entry above it moved the selection to another tree.

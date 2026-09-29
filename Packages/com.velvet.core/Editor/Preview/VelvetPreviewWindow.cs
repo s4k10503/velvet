@@ -207,7 +207,7 @@ namespace Velvet.Editor.Preview
             var sidebar = new VisualElement { style = { minWidth = 180f } };
 
             var toolbar = new Toolbar();
-            var refreshButton = new ToolbarButton(RefreshStories) { text = "Refresh" };
+            var refreshButton = new ToolbarButton(Rediscover) { text = "Refresh" };
             toolbar.Add(refreshButton);
             toolbar.Add(new ToolbarSpacer { style = { flexGrow = 1f } });
             sidebar.Add(toolbar);
@@ -742,6 +742,12 @@ namespace Velvet.Editor.Preview
 
         #region Story lifecycle
         private void RefreshStories() => RefreshStories(VelvetPreviewRegistry.DiscoverStories);
+
+        internal void Rediscover()
+        {
+            VelvetPreviewRegistry.InvalidateDiscovery();
+            RefreshStories();
+        }
 
         internal void RefreshStories(Func<List<VelvetPreviewStory>> discover)
         {

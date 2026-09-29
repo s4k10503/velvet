@@ -23,6 +23,8 @@ namespace Velvet
         public static List<VelvetPreviewStory> DiscoverStories() =>
             s_cachedStories ??= DiscoverStoriesIn(NonTestVelvetAssemblies());
 
+        internal static void InvalidateDiscovery() => s_cachedStories = null;
+
         /// <summary>
         /// Discovers valid stories from <paramref name="assemblies"/>. Invalid discovered signatures are skipped
         /// with a warning; a duplicate id throws, naming every collision.
