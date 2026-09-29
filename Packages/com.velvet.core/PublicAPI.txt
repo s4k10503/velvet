@@ -212,6 +212,7 @@
 [Velvet] field Velvet.StyleVariantKind.Active: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Checked: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Dark: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Disabled: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Focus: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.FocusVisible: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.GroupActive: Velvet.StyleVariantKind

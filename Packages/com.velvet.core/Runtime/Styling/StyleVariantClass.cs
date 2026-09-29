@@ -1,30 +1,27 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 
 namespace Velvet
 {
     /// <summary>
     /// State-variant kinds for utility classes — the <c>hover:</c> / <c>focus:</c> /
-    /// <c>active:</c> prefixes.
+    /// <c>active:</c> / <c>disabled:</c> prefixes.
     /// </summary>
     /// <remarks>
-    /// <c>disabled:</c> is intentionally absent: UI Toolkit has no reliable "enabled changed" event to
-    /// drive a manipulator, so disabled-state styling stays on the USS <c>:disabled</c> pseudo-class
-    /// (the curated <c>disabled-*</c> utilities). Responsive (<c>sm:</c>/<c>md:</c>), <c>dark:</c>, and
-    /// <c>group</c>/<c>peer</c> are tracked separately (they need a breakpoint / theme / structural
-    /// signal source).
+    /// Every site that CLASSIFIES these kinds — which signal source drives one, which layer it occupies — is a
+    /// <see cref="VariantKindTable{T}"/> built from one entry per member, and <c>VariantKindTableTests</c>
+    /// fails for a table missing a member. A set of independent <c>is X or Y</c> predicates cannot report a
+    /// member matching none, and that is what left <c>checked:</c>, the two focus-within relationals and
+    /// <c>peer-checked:</c> unclassified and inert as the inner of a stacked variant.
     /// <para/>
-    /// Every switch that CLASSIFIES these kinds — which signal source drives one, which layer it occupies —
-    /// is written without a discard arm, so adding a member here raises CS8509 at each site that has to learn
-    /// it. A set of independent <c>is X or Y</c> predicates cannot report a member matching none, and that is
-    /// what left <c>checked:</c>, the two focus-within relationals and <c>peer-checked:</c> unclassified and
-    /// inert as the inner of a stacked variant. Those sites suppress CS8524 instead: it asks for an arm
-    /// covering an out-of-range cast, which no named member can supply.
-    /// <para/>
-    /// That signal is load-bearing, so <c>Runtime/csc.rsp</c> compiles CS8509 as an error: a member added
-    /// without an arm at one of these sites fails this assembly's build rather than warning into a log
-    /// nothing gates on. Answering that error with a discard arm would put the silence back, so
-    /// <c>ExhaustiveSwitchSeverityTests</c> holds both halves at once.
+    /// The switches over the smaller enums beside this one are written without a discard arm instead, so
+    /// adding a member raises CS8509 at each site that has to learn it. Those sites suppress CS8524: it asks
+    /// for an arm covering an out-of-range cast, which no named member can supply. That signal is
+    /// load-bearing, so <c>Runtime/csc.rsp</c> compiles CS8509 as an error, and answering that error with a
+    /// discard arm would put the silence back, so <c>ExhaustiveSwitchSeverityTests</c> holds both halves at
+    /// once. This enum cannot take the same form: a switch naming every member costs VEL501 one branching
+    /// decision per member, and it has more members than that cap.
     /// </remarks>
     public enum StyleVariantKind
     {
@@ -57,6 +54,38 @@ namespace Velvet
         PeerFocusWithin,
         PeerActive,
         PeerChecked,
+
+        // Element-local disabled state: the element or an ancestor has enabledSelf off, which is what UI
+        // Toolkit's :disabled pseudo-class matches. Appended rather than grouped with the element-local
+        // states above so the members already published keep their values.
+        Disabled,
+    }
+
+    /// <summary>
+    /// A value for every <see cref="StyleVariantKind"/>, looked up by the kind's value — the form each
+    /// classification of the kinds takes, for the reason the enum's remarks give.
+    /// </summary>
+    internal sealed class VariantKindTable<T>
+    {
+        private static readonly int KindCount = Enum.GetValues(typeof(StyleVariantKind)).Length;
+
+        private readonly T[] _values = new T[KindCount];
+        private readonly bool[] _covered = new bool[KindCount];
+
+        public VariantKindTable(params (StyleVariantKind Kind, T Value)[] entries)
+        {
+            foreach (var (kind, value) in entries)
+            {
+                _values[(int)kind] = value;
+                _covered[(int)kind] = true;
+            }
+        }
+
+        public bool Covers(StyleVariantKind kind) => (uint)kind < (uint)KindCount && _covered[(int)kind];
+
+        /// <summary>Throws for a value naming no kind and for a kind the table was built without.</summary>
+        public T this[StyleVariantKind kind] =>
+            Covers(kind) ? _values[(int)kind] : throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
     }
 
     /// <summary>
@@ -106,6 +135,7 @@ namespace Velvet
             ["peer-focus-within"] = StyleVariantKind.PeerFocusWithin,
             ["peer-active"] = StyleVariantKind.PeerActive,
             ["peer-checked"] = StyleVariantKind.PeerChecked,
+            ["disabled"] = StyleVariantKind.Disabled,
         };
 
         /// <summary>
@@ -215,28 +245,32 @@ namespace Velvet
         /// <summary>
         /// Which source a relational kind reads (a preceding <c>peer</c> sibling when <c>IsPeer</c>, else the
         /// nearest <c>group</c> ancestor) and which of that source's states it reacts to; null for every
-        /// non-relational kind. One switch answers all three questions so they cannot answer differently, and
-        /// it carries no discard arm — see the remarks on <see cref="StyleVariantKind"/>.
+        /// non-relational kind. One table answers all three questions so they cannot answer differently.
         /// </summary>
-#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
-        internal static (bool IsPeer, RelationalState State)? RelationalOf(StyleVariantKind kind) => kind switch
-        {
-            StyleVariantKind.GroupHover => (false, RelationalState.Hover),
-            StyleVariantKind.GroupFocus => (false, RelationalState.Focus),
-            StyleVariantKind.GroupFocusWithin => (false, RelationalState.FocusWithin),
-            StyleVariantKind.GroupActive => (false, RelationalState.Active),
-            StyleVariantKind.PeerHover => (true, RelationalState.Hover),
-            StyleVariantKind.PeerFocus => (true, RelationalState.Focus),
-            StyleVariantKind.PeerFocusWithin => (true, RelationalState.FocusWithin),
-            StyleVariantKind.PeerActive => (true, RelationalState.Active),
-            StyleVariantKind.PeerChecked => (true, RelationalState.Checked),
-            StyleVariantKind.Hover or StyleVariantKind.Focus or StyleVariantKind.FocusVisible
-                or StyleVariantKind.Active or StyleVariantKind.Checked
-                or StyleVariantKind.Sm or StyleVariantKind.Md or StyleVariantKind.Lg
-                or StyleVariantKind.Xl or StyleVariantKind.Xxl
-                or StyleVariantKind.Dark => null,
-        };
-#pragma warning restore CS8524
+        internal static (bool IsPeer, RelationalState State)? RelationalOf(StyleVariantKind kind) => s_relational[kind];
+
+        private static readonly VariantKindTable<(bool IsPeer, RelationalState State)?> s_relational = new(
+            (StyleVariantKind.GroupHover, (false, RelationalState.Hover)),
+            (StyleVariantKind.GroupFocus, (false, RelationalState.Focus)),
+            (StyleVariantKind.GroupFocusWithin, (false, RelationalState.FocusWithin)),
+            (StyleVariantKind.GroupActive, (false, RelationalState.Active)),
+            (StyleVariantKind.PeerHover, (true, RelationalState.Hover)),
+            (StyleVariantKind.PeerFocus, (true, RelationalState.Focus)),
+            (StyleVariantKind.PeerFocusWithin, (true, RelationalState.FocusWithin)),
+            (StyleVariantKind.PeerActive, (true, RelationalState.Active)),
+            (StyleVariantKind.PeerChecked, (true, RelationalState.Checked)),
+            (StyleVariantKind.Hover, null),
+            (StyleVariantKind.Focus, null),
+            (StyleVariantKind.FocusVisible, null),
+            (StyleVariantKind.Active, null),
+            (StyleVariantKind.Checked, null),
+            (StyleVariantKind.Disabled, null),
+            (StyleVariantKind.Sm, null),
+            (StyleVariantKind.Md, null),
+            (StyleVariantKind.Lg, null),
+            (StyleVariantKind.Xl, null),
+            (StyleVariantKind.Xxl, null),
+            (StyleVariantKind.Dark, null));
 
         /// <summary>True for the relational variant kinds (group-* / peer-*), the only ones that accept a name.</summary>
         internal static bool IsRelational(StyleVariantKind kind) => RelationalOf(kind).HasValue;
@@ -254,22 +288,29 @@ namespace Velvet
         /// for a value that names no kind — a cast outside the enum's range is a caller error, and a
         /// silent 0 is how one survives to produce a wrong layout instead of a stack trace.
         /// </summary>
-#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
-        public static float BreakpointPx(StyleVariantKind kind) => kind switch
-        {
-            StyleVariantKind.Sm => 640f,
-            StyleVariantKind.Md => 768f,
-            StyleVariantKind.Lg => 1024f,
-            StyleVariantKind.Xl => 1280f,
-            StyleVariantKind.Xxl => 1536f,
-            StyleVariantKind.Hover or StyleVariantKind.Focus or StyleVariantKind.FocusVisible
-                or StyleVariantKind.Active or StyleVariantKind.Checked or StyleVariantKind.Dark
-                or StyleVariantKind.GroupHover or StyleVariantKind.GroupFocus
-                or StyleVariantKind.GroupFocusWithin or StyleVariantKind.GroupActive
-                or StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus
-                or StyleVariantKind.PeerFocusWithin or StyleVariantKind.PeerActive
-                or StyleVariantKind.PeerChecked => 0f,
-        };
-#pragma warning restore CS8524
+        public static float BreakpointPx(StyleVariantKind kind) => s_breakpointPx[kind];
+
+        private static readonly VariantKindTable<float> s_breakpointPx = new(
+            (StyleVariantKind.Sm, 640f),
+            (StyleVariantKind.Md, 768f),
+            (StyleVariantKind.Lg, 1024f),
+            (StyleVariantKind.Xl, 1280f),
+            (StyleVariantKind.Xxl, 1536f),
+            (StyleVariantKind.Hover, 0f),
+            (StyleVariantKind.Focus, 0f),
+            (StyleVariantKind.FocusVisible, 0f),
+            (StyleVariantKind.Active, 0f),
+            (StyleVariantKind.Checked, 0f),
+            (StyleVariantKind.Disabled, 0f),
+            (StyleVariantKind.Dark, 0f),
+            (StyleVariantKind.GroupHover, 0f),
+            (StyleVariantKind.GroupFocus, 0f),
+            (StyleVariantKind.GroupFocusWithin, 0f),
+            (StyleVariantKind.GroupActive, 0f),
+            (StyleVariantKind.PeerHover, 0f),
+            (StyleVariantKind.PeerFocus, 0f),
+            (StyleVariantKind.PeerFocusWithin, 0f),
+            (StyleVariantKind.PeerActive, 0f),
+            (StyleVariantKind.PeerChecked, 0f));
     }
 }

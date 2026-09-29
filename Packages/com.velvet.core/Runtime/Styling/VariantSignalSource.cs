@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -440,6 +441,151 @@ namespace Velvet
             {
                 _emit(RelationalVariantSignal.Checked, value);
             }
+        }
+    }
+
+    // Reports each edge of the target's :disabled state — the target or an ancestor has enabledSelf off — to
+    // a callback, for the disabled: variant and for a stacked disabled: inner. Level-based: the state is read
+    // at Hook and again at every attach, since the ancestor chain it watches is only known once the target is
+    // in its final place.
+    internal sealed class DisabledVariantSignal
+    {
+        private readonly Action<bool> _emit;
+        private readonly object? _onWrite;
+        private readonly List<VisualElement> _chain = new();
+        private VisualElement? _target; // non-null only while hooked
+        private bool _disabled;
+
+        public DisabledVariantSignal(Action<bool> emit)
+        {
+            _emit = emit;
+            _onWrite = EnabledSelfWrites.CreateCallback(Evaluate);
+        }
+
+        public bool IsHooked => _target != null;
+
+        public void Hook(VisualElement target)
+        {
+            _target = target;
+            _disabled = false;
+            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+            target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
+            HookChain();
+            Evaluate();
+        }
+
+        // Emits nothing: the consumer clears its own applied state when it unhooks.
+        public void Unhook()
+        {
+            if (_target == null)
+            {
+                return;
+            }
+
+            UnhookChain();
+            _target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            _target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
+            _target = null;
+            _disabled = false;
+        }
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            UnhookChain();
+            HookChain();
+            Evaluate();
+        }
+
+        private void OnDetach(DetachFromPanelEvent evt) => UnhookChain();
+
+        // The write that disables the target can land on any ancestor, and is announced on that ancestor only.
+        private void HookChain()
+        {
+            for (var element = _target; element != null; element = element.hierarchy.parent)
+            {
+                EnabledSelfWrites.Register(element, _onWrite);
+                _chain.Add(element);
+            }
+        }
+
+        private void UnhookChain()
+        {
+            foreach (var element in _chain)
+            {
+                EnabledSelfWrites.Unregister(element, _onWrite);
+            }
+            _chain.Clear();
+        }
+
+        // Reads enabledSelf up the chain instead of the target's enabledInHierarchy: outside an event dispatch
+        // UI Toolkit announces an enabledSelf write before it propagates the new state to descendants, so the
+        // target's own flag is still the old one when the announcement arrives. DisabledVariantTests'
+        // Given_AnAncestorWrittenOutsideADispatch case holds that order.
+        private void Evaluate()
+        {
+            if (_target == null)
+            {
+                return;
+            }
+
+            var disabled = false;
+            for (var element = _target; element != null && !disabled; element = element.hierarchy.parent)
+            {
+                disabled = !element.enabledSelf;
+            }
+
+            if (disabled == _disabled)
+            {
+                return;
+            }
+            _disabled = disabled;
+            _emit(disabled);
+        }
+    }
+
+    // UI Toolkit announces an enabledSelf write only through PropertyChangedEvent, an internal event sent to the
+    // written element alone, and announces no change of enabledInHierarchy at all. The type is reached by name;
+    // DisabledVariantTests' Given_AnAncestorWrittenOutsideADispatch case fails where the engine stops sending it.
+    internal static class EnabledSelfWrites
+    {
+        private interface IRegistrar
+        {
+            object Create(Action onWrite);
+            void Register(VisualElement element, object callback);
+            void Unregister(VisualElement element, object callback);
+        }
+
+        private sealed class Registrar<TEvent> : IRegistrar where TEvent : EventBase<TEvent>, new()
+        {
+            public object Create(Action onWrite) => new EventCallback<TEvent>(_ => onWrite());
+
+            public void Register(VisualElement element, object callback)
+                => element.RegisterCallback((EventCallback<TEvent>)callback);
+
+            public void Unregister(VisualElement element, object callback)
+                => element.UnregisterCallback((EventCallback<TEvent>)callback);
+        }
+
+        private static readonly IRegistrar? s_registrar = CreateRegistrar();
+
+        private static IRegistrar? CreateRegistrar()
+        {
+            var eventType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.PropertyChangedEvent");
+            return eventType == null
+                ? null
+                : (IRegistrar)Activator.CreateInstance(typeof(Registrar<>).MakeGenericType(eventType));
+        }
+
+        public static object? CreateCallback(Action onWrite) => s_registrar?.Create(onWrite);
+
+        public static void Register(VisualElement element, object? callback)
+        {
+            if (callback != null) s_registrar?.Register(element, callback);
+        }
+
+        public static void Unregister(VisualElement element, object? callback)
+        {
+            if (callback != null) s_registrar?.Unregister(element, callback);
         }
     }
 }

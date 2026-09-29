@@ -48,7 +48,7 @@ worth knowing, both when several variants name one such utility:
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
@@ -167,7 +167,7 @@ not, each still occupies a layer of its own, so turning one off never disturbs a
 | 5 | Theme — `dark:` |
 | 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
 | 7 | Relational — the `group-*` and `peer-*` states |
-| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
+| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
 | 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
 
 A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
@@ -220,10 +220,6 @@ V.Div(className: "group ...",
 V.Div(className: "group/sidebar ...",
     children: new[] { V.Label(className: "group-hover/sidebar:text-on", text: "Item") });
 ```
-
-> Note — there is no `disabled:` variant. UI Toolkit has no reliable "enabled changed" event
-> to drive a manipulator, so disabled-state styling stays on the USS `:disabled` pseudo-class
-> (the curated `disabled-*` utilities).
 
 ### Stacked variants
 

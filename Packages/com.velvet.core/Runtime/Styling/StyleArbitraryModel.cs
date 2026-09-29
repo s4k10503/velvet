@@ -85,12 +85,14 @@ namespace Velvet
         public const int Focus = 50;
         public const int FocusVisible = 55;
         public const int Active = 60;
+        // disabled: ranks above active on a same-property tie — Tailwind emits it after active.
+        public const int Disabled = 65;
         #endregion
 
         #region Important
         // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (Active, the highest,
-        // is 60) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
+        // its own variant priority, so the whole band sits above every ordinary layer (Disabled, the highest,
+        // is 65) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
         // !w-[20px], the same way dark:w-[10px] beats w-[20px].
         public const int Important = 100;
 
@@ -98,31 +100,30 @@ namespace Velvet
         public static int ImportantOf(int priority) => Important + priority;
         #endregion
 
-#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
-        internal static int ForVariant(StyleVariantKind kind) => kind switch
-        {
-            StyleVariantKind.Hover => Hover,
-            StyleVariantKind.Sm => ResponsiveSm,
-            StyleVariantKind.Md => ResponsiveMd,
-            StyleVariantKind.Lg => ResponsiveLg,
-            StyleVariantKind.Xl => ResponsiveXl,
-            StyleVariantKind.Xxl => Responsive2xl,
-            StyleVariantKind.Dark => Dark,
-            StyleVariantKind.GroupHover => GroupHover,
-            StyleVariantKind.GroupFocus => GroupFocus,
-            StyleVariantKind.GroupFocusWithin => GroupFocusWithin,
-            StyleVariantKind.GroupActive => GroupActive,
-            StyleVariantKind.PeerHover => PeerHover,
-            StyleVariantKind.PeerFocus => PeerFocus,
-            StyleVariantKind.PeerFocusWithin => PeerFocusWithin,
-            StyleVariantKind.PeerActive => PeerActive,
-            StyleVariantKind.PeerChecked => PeerChecked,
-            StyleVariantKind.Focus => Focus,
-            StyleVariantKind.FocusVisible => FocusVisible,
-            StyleVariantKind.Active => Active,
-            StyleVariantKind.Checked => Checked,
-        };
-#pragma warning restore CS8524
+        internal static int ForVariant(StyleVariantKind kind) => s_forVariant[kind];
+
+        private static readonly VariantKindTable<int> s_forVariant = new(
+            (StyleVariantKind.Hover, Hover),
+            (StyleVariantKind.Sm, ResponsiveSm),
+            (StyleVariantKind.Md, ResponsiveMd),
+            (StyleVariantKind.Lg, ResponsiveLg),
+            (StyleVariantKind.Xl, ResponsiveXl),
+            (StyleVariantKind.Xxl, Responsive2xl),
+            (StyleVariantKind.Dark, Dark),
+            (StyleVariantKind.GroupHover, GroupHover),
+            (StyleVariantKind.GroupFocus, GroupFocus),
+            (StyleVariantKind.GroupFocusWithin, GroupFocusWithin),
+            (StyleVariantKind.GroupActive, GroupActive),
+            (StyleVariantKind.PeerHover, PeerHover),
+            (StyleVariantKind.PeerFocus, PeerFocus),
+            (StyleVariantKind.PeerFocusWithin, PeerFocusWithin),
+            (StyleVariantKind.PeerActive, PeerActive),
+            (StyleVariantKind.PeerChecked, PeerChecked),
+            (StyleVariantKind.Focus, Focus),
+            (StyleVariantKind.FocusVisible, FocusVisible),
+            (StyleVariantKind.Active, Active),
+            (StyleVariantKind.Checked, Checked),
+            (StyleVariantKind.Disabled, Disabled));
     }
     // The style property an arbitrary-value utility targets (e.g. w-[120px] → Width,
     // bg-[#fff] → background color, rotate-[45deg] → rotation). Shorthand members fan out to

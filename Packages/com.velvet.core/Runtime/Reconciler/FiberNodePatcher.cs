@@ -2147,7 +2147,7 @@ namespace Velvet
         #region Variant Manipulator
 
         // Configures (creates / updates / removes) the element's StyleVariantManipulator
-        // from the state-variant tokens (hover:/focus:/active:) found in classNames.
+        // from the state-variant tokens (hover:/focus:/active:/disabled:) found in classNames.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
             var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
@@ -2155,13 +2155,15 @@ namespace Velvet
             var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
             var active = ExtractVariant(classNames, StyleVariantKind.Active, out var activeDecl);
             var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
+            var disabled = ExtractVariant(classNames, StyleVariantKind.Disabled, out var disabledDecl);
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
-                || active.Length > 0 || @checked.Length > 0;
+                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0;
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
                 new VariantOp(
-                    new VariantPayloads(hover, focus, focusVisible, active, @checked),
-                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl)));
+                    new VariantPayloads(hover, focus, focusVisible, active, @checked, disabled),
+                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl,
+                        disabledDecl)));
         }
 
         private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)
