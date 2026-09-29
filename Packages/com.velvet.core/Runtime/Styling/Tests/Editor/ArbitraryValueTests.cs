@@ -1196,7 +1196,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_DuplicateSamePropertyClass_When_OneRemoved_Then_SurvivingValueIsPreserved()
         {
-            // Arrange — both h-[10%] and h-[20%] are present (last wins); removing h-[10%] re-applies h-[20%]
+            // Arrange — both h-[10%] and h-[20%] are present (h-[20%] sorts later and wins); removing h-[10%]
+            // re-applies h-[20%]
             using var reconciler = new Reconciler();
             var root = new VisualElement();
             var oldTree = new VNode[] { V.Div("h-[10%] h-[20%]") };
@@ -3267,6 +3268,66 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(el.style.flexGrow.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AWidthBracket_When_ALowerSortingOneIsAppliedAtItsPriority_Then_TheLaterSortingOneKeepsTheWidth()
+        {
+            // Arrange — Tailwind orders w-[1px] before w-[2px], so w-[2px] wins whichever is applied last.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, Parsed("w-[1px]"));
+
+            // Assert
+            Assert.That(el.style.width.value.value, Is.EqualTo(2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the value applied last, which here is also the one
+        // sorting later. What reddens it is dropping the candidate comparison from SortsAfter, which keeps
+        // whichever value a priority held first.
+        [Test]
+        public void Given_AWidthBracket_When_AHigherSortingOneIsAppliedAtItsPriority_Then_ItTakesTheWidth()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, Parsed("w-[1px]"));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+
+            // Assert
+            Assert.That(el.style.width.value.value, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AFlexBracket_When_AFlexNumberIsAppliedAtItsPriority_Then_TheBracketKeepsTheGrow()
+        {
+            // Arrange — Tailwind orders flex-2 before flex-[3].
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, Parsed("flex-[3]"));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, Parsed("flex-2"));
+
+            // Assert
+            Assert.That(el.style.flexGrow.value, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_WidthsBuiltWithoutAClass_When_AppliedBetweenParsedOnes_Then_EachReplacesTheLayer()
+        {
+            // Arrange — a style no class was parsed into carries no candidate to order by.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 3f, LengthUnit.Pixel));
+            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 1f, LengthUnit.Pixel));
+
+            // Assert
+            Assert.That(el.style.width.value.value, Is.EqualTo(1f));
         }
 
         [Test]

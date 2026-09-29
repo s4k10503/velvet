@@ -921,11 +921,22 @@ namespace Velvet
                     layers = new SortedList<int, ArbitraryStyle>();
                     map[style.Property] = layers;
                 }
-                layers[priority] = style;
+                if (!layers.TryGetValue(priority, out var held) || !SortsAfter(held, style))
+                {
+                    layers[priority] = style;
+                }
             }
             ResolveAndApply(element, style.Property, map);
             Reproject(element, map);
         }
+
+        // Two values of one property at one priority keep the one Tailwind emits later (StyleCandidateOrder),
+        // whichever was applied last. A style no class was parsed into carries no candidate and replaces the
+        // layer. The loser is not kept: a class diff that removes the winner re-applies the survivors.
+        private static bool SortsAfter(in ArbitraryStyle held, in ArbitraryStyle incoming)
+            => held.Candidate != null && incoming.Candidate != null
+                // MUTANT_SURVIVES(equivalent): a zero means the same class twice, which parses to the same value.
+                && StyleCandidateOrder.Compare(held.Candidate, incoming.Candidate) > 0;
 
         // Re-runs the class verdict after a layer changed. A new layer can outrank a class that was winning,
         // and a departing one can hand a property back to a class that was suppressed, so the two halves have

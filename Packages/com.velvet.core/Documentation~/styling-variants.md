@@ -137,7 +137,10 @@ rather than a class, and the two mechanisms agree: an inline layer outranked by 
 class stands down so the class shows through, and a class outranked by a higher-priority inline layer
 comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The filter
 family is the exception — filters compose rather than override, so a `filter` class and a
-`blur-[6px]` layer both apply.
+`blur-[6px]` layer both apply. Two inline values of one property under the same variants —
+`w-[2px] w-[1px]`, `hover:flex-[3] hover:flex-2` — resolve as Tailwind orders their names, the later
+one winning whatever the className lists last: `w-[2px]` and `flex-[3]` here. A repeated
+`filter-[name:…]` is the exception: [styling-filters.md](styling-filters.md) gives what it does.
 
 A few things about `origin-[…]` are worth knowing. `origin-[33%_75%]` is `transform-origin: 33% 75%`
 — the underscore standing for a space, as it does in `shadow-[0px_2px_8px_#0004]` and
