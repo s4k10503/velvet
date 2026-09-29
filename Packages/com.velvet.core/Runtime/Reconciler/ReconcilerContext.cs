@@ -385,7 +385,7 @@ namespace Velvet
         // config time; the container's post-children pass (ApplyStructuralVariants) re-derives every rule's
         // match from the live sibling order. Cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, List<(StyleStructuralKind Kind, int N, string[] Payloads,
-            int[] Declarations)>> StructuralVariants { get; } = new();
+            int[] Declarations, int Priority)>> StructuralVariants { get; } = new();
 
         // has-[:checked]: / has-[:focus]: — an element styled by an event-driven descendant condition. The
         // manipulator lives on the element and listens to bubbling descendant events (ChangeEvent<bool> for

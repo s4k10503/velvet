@@ -19,12 +19,6 @@ namespace Velvet
         // one clobber the same slot.
         public const int ChildVariant = 5;
 
-        #region Structural
-        // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. A position in the sibling list
-        // sits just above the base utility and yields to every layer declared after it here.
-        public const int Structural = 10;
-        #endregion
-
         #region Relational
         // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
         // group-active) occupy separate layers — clearing one must not remove the other.
@@ -40,6 +34,12 @@ namespace Velvet
         // The disabled states top the band, as disabled: tops the element-state one.
         public const int GroupDisabled = 36;
         public const int PeerDisabled = 37;
+        #endregion
+
+        #region Structural
+        // first:/last:/only:/odd:/even: — Tailwind registers them right after group/peer and before checked.
+        // The nth-* and arbitrary [&:…]: forms sit further up; StyleStructuralVariantClass.PriorityOf picks.
+        public const int Structural = 38;
         #endregion
 
         #region Element state
@@ -62,6 +62,8 @@ namespace Velvet
         // disabled, and their selectors carry the same specificity as a pseudo-class, so the later one wins.
         public const int Has = 70;
         public const int Attribute = 71;
+        // nth-N: / nth-last-N: — Tailwind registers the functional nth variants right after data.
+        public const int Nth = 72;
         #endregion
 
         #region Supports, Responsive and Theme
@@ -81,10 +83,16 @@ namespace Velvet
         public const int Dark = 85;
         #endregion
 
+        #region Arbitrary selector
+        // [&:nth-child(N)]: and the other [&:…]: structural forms. Tailwind orders every arbitrary variant after
+        // all the registered ones, so this is the highest ordinary layer.
+        public const int ArbitrarySelector = 90;
+        #endregion
+
         #region Important
         // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (Dark, the highest,
-        // is 85) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
+        // its own variant priority, so the whole band sits above every ordinary layer (ArbitrarySelector, the highest,
+        // is 90) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
         // !w-[20px], the same way dark:w-[10px] beats w-[20px].
         public const int Important = 100;
 

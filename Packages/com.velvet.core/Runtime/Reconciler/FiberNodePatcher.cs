@@ -2793,7 +2793,7 @@ namespace Velvet
             }
         }
 
-        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/[&:nth-child(N)]:)
+        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/nth-N:/[&:nth-child(N)]:)
         // in the context side-table, re-deriving them from classNames. Clears any previously-applied
         // structural payloads first (the rule set may have changed). If the element is already parented (a
         // patch / child-only re-render) it is evaluated immediately against its current position; on initial
@@ -2804,13 +2804,13 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Structural, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, rule.Priority, _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)>? rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, int Priority)>? rules = null;
             if (classNames != null)
             {
                 for (var i = 0; i < classNames.Length; i++)
@@ -2828,8 +2828,9 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                                int[] Declarations)>())
-                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i }));
+                                int[] Declarations, int Priority)>())
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i },
+                                StyleStructuralVariantClass.PriorityOf(cls)));
                     }
                 }
             }
@@ -2863,12 +2864,12 @@ namespace Velvet
         // Applies / clears each structural rule's payload for an element at the given sibling position.
         private static void EvaluateStructural(
             ReconcilerContext ctx, VisualElement element, int index, int count,
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)> rules)
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, int Priority)> rules)
         {
             foreach (var rule in rules)
             {
                 var on = StyleStructuralVariantClass.Matches(rule.Kind, rule.N, index, count);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Structural, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, rule.Priority, ctx,
                     declarations: rule.Declarations);
             }
         }

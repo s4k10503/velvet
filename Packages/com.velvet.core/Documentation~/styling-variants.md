@@ -154,22 +154,23 @@ the brackets.
 ### Precedence order
 
 Lowest first. Where members of one row also rank against each other, `<` shows that order; where they
-do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 5 to 8
-keep the order Tailwind emits them in: `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled,
-busy element resolves to 0.75, and `hover:w-[20px] md:w-[10px]` on a hovered element wider than `md` to
-10 px, as they do there.
+do not, each still occupies a layer of its own, so turning one off never disturbs another. Rows 3 to 9
+keep the order Tailwind emits them in, which places every arbitrary `[&:…]:` selector after all the
+named variants: `disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves
+to 0.75, and `hover:w-[20px] md:w-[10px]` on a hovered element wider than `md` to 10 px, as they do there.
 
 | | Layer |
 |---|---|
 | 1 | The base utility |
 | 2 | `[&>*]:` — a rule the container imposes on its children |
-| 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
-| 4 | Relational — the `group-*` and `peer-*` states |
+| 3 | Relational — the `group-*` and `peer-*` states |
+| 4 | Structural — `first:` · `last:` · `only:` · `odd:` · `even:` |
 | 5 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
-| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
+| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` < `nth-N:` / `nth-last-N:` |
 | 7 | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
 | 8 | Theme — `dark:` |
-| 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
+| 9 | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
+| 10 | The important band — rows 1–9 again, one level each, for anything carrying `!` |
 
 A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `dark:`
 layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**

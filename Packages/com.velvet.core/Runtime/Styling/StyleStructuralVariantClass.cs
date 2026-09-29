@@ -5,8 +5,8 @@ namespace Velvet
 {
     /// <summary>
     /// Position among siblings, for the structural variants. Mirrors the CSS child-position pseudo
-    /// classes: <c>first:</c> / <c>last:</c> / <c>only:</c> / <c>odd:</c> / <c>even:</c> and the arbitrary
-    /// selector form <c>[&amp;:nth-child(N)]:</c> / <c>[&amp;:nth-last-child(N)]:</c> (+ the named
+    /// classes: <c>first:</c> / <c>last:</c> / <c>only:</c> / <c>odd:</c> / <c>even:</c>, the functional
+    /// <c>nth-N:</c> / <c>nth-last-N:</c>, and the arbitrary selector form <c>[&amp;:nth-child(N)]:</c> / <c>[&amp;:nth-last-child(N)]:</c> (+ the named
     /// <c>[&amp;:first-child]</c> etc. aliases).
     /// </summary>
     internal enum StyleStructuralKind
@@ -38,6 +38,18 @@ namespace Velvet
     internal static class StyleStructuralVariantClass
     {
         private const string ArbitraryPrefix = "[&:";
+        private const string NthPrefix = "nth-";
+        private const string NthLastPrefix = "nth-last-";
+
+        /// <summary>
+        /// The layer a structural token occupies. Tailwind registers first/last/only/odd/even right after
+        /// group/peer, the nth-* functional variants after data, and orders every arbitrary variant after all
+        /// the registered ones.
+        /// </summary>
+        internal static int PriorityOf(string token) =>
+            token.StartsWith(ArbitraryPrefix, StringComparison.Ordinal) ? StyleLayerPriority.ArbitrarySelector
+            : token.StartsWith(NthPrefix, StringComparison.Ordinal) ? StyleLayerPriority.Nth
+            : StyleLayerPriority.Structural;
 
         /// <summary>True if <paramref name="token"/> is a recognized structural variant token.</summary>
         public static bool IsStructural(string? token) => TryParse(token, out _, out _, out _);
@@ -75,7 +87,12 @@ namespace Velvet
                 case "only": kind = StyleStructuralKind.Only; break;
                 case "odd": kind = StyleStructuralKind.Odd; break;
                 case "even": kind = StyleStructuralKind.Even; break;
-                default: return false;
+                default:
+                    if (!TryParseNamedNth(token.Substring(0, colon), out kind, out n))
+                    {
+                        return false;
+                    }
+                    break;
             }
 
             payload = token.Substring(colon + 1);
@@ -123,6 +140,21 @@ namespace Velvet
 
             payload = null;
             return false;
+        }
+
+        // nth-3 / nth-last-2: the functional forms, whose value is a positive integer.
+        private static bool TryParseNamedNth(string prefix, out StyleStructuralKind kind, out int n)
+        {
+            var last = prefix.StartsWith(NthLastPrefix, StringComparison.Ordinal);
+            kind = last ? StyleStructuralKind.NthLastChild : StyleStructuralKind.NthChild;
+            n = 0;
+            if (!prefix.StartsWith(NthPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var digits = prefix.Substring(last ? NthLastPrefix.Length : NthPrefix.Length);
+            return int.TryParse(digits, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out n) && n >= 1;
         }
 
         // Parses the positive integer N out of "<fn>N)" (e.g. "nth-child(3)" → 3). Only a bare 1-based

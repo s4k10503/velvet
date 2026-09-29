@@ -9,6 +9,9 @@
   on the same terms `disabled:` reads the element, and rank above the other relational states on a tie.
   `StyleVariantKind.GroupDisabled` and `StyleVariantKind.PeerDisabled` are the new members.
 
+- `nth-N:` and `nth-last-N:`, Tailwind's functional forms of `[&:nth-child(N)]:` and `[&:nth-last-child(N)]:`,
+  for a positive integer `N`.
+
 ### Changed
 
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` refuse a `StyleVariantKind` value naming
