@@ -34,7 +34,7 @@ namespace Velvet
         // describes a router that no longer exists.
         private int _navigationSequence;
 
-        // Every router constructed, oldest first, held weakly: a router nobody disposed and nothing else holds
+        // The routers constructed, oldest first, held weakly: a router nobody disposed and nothing else holds
         // stays collectable, as it was when Current named only the newest. The newest is held strongly as
         // well, so Current names it however the caller holds it, as it always has.
         private static readonly List<WeakReference<Router>> s_constructed = new();
@@ -113,7 +113,7 @@ namespace Velvet
         private Submission? _pendingSubmission;
         internal Submission? PendingSubmission => _pendingSubmission?.Refusal == null ? _pendingSubmission : null;
         // React Router's isRevalidationRequired: set when an action starts, cleared by a commit, so a navigation
-        // that takes over from a submission revalidates every loader.
+        // that takes over from a submission whose action has started keeps no loader data.
         private bool _revalidationRequired;
         /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;

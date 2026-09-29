@@ -86,8 +86,8 @@ A navigation runs only the loaders React Router's default `shouldRevalidate` wou
 place in the committed chain, over the same pathname — the layouts above a changed child — keeps its data
 and its loader's token, the pathname compared as the URL spells it. The loader runs again when the search
 changes, when the URL is the one already committed, and where the route holds no settled data yet. Once a
-route action has started, the next navigation to commit — the submission's own, or one that took over from
-it — runs every loader, as React Router's `isRevalidationRequired` has it. Stepping `GoBack` /
+route action has started, no route keeps its data on the next navigation to commit — the submission's own,
+or one that took over from it — as React Router's `isRevalidationRequired` has it. Stepping `GoBack` /
 `GoForward` decides the same way as a push: React Router keeps no loader data per history entry either.
 
 A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
