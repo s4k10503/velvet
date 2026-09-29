@@ -213,9 +213,8 @@ own transition system, so what they can animate is exactly what they can read a 
 of the class strings themselves** — there is no resolved style to sample, since the class swap and
 the plan are built in one synchronous call, off-panel, before any style resolution.
 
-- **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio. UI Toolkit
-  has no animatable `transform` shorthand, so movement is expressed with the three separate
-  transform utilities. Each of these has an identity value (opacity 1, scale 1, translate 0,
+- **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
+  utilities write. Each of these has an identity value (opacity 1, scale 1, translate 0,
   rotate 0deg), so naming it on **one** side of the delta is enough — the silent side falls back
   to identity, matching the usual "declare only what changes" authoring style.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
@@ -323,11 +322,22 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
   layout box (position and/or size) different from the box the SAME id stood at, it
   tweens from the old box to the new one — FLIP: the old box is captured, layout settles at the
-  new one, an inverse inline transform is applied immediately, then it springs back to zero —
+  new one, an inverse inline transform is applied immediately, then its transition carries it back to zero —
   instead of jump-cutting. A move between two parents compares the boxes in panel space, so parents
   placed apart tween across the distance between them; within one parent, the rect relative to it is
-  compared, so a Motion nested in a moving one tweens only its own move inside it. An outer Motion's
-  change of size is not accounted for in an inner one's start.
+  compared, so a Motion nested in a moving one tweens only its own move inside it. A layoutId Motion
+  inside one that grows or shrinks keeps its own size and its offset from its parent's drawn corner on
+  every frame of the outer tween, whether or not it moved itself — Framer's scale correction. One rotated
+  by its own class inside an outer one stretching by different factors on its two axes is not kept
+  exactly: no scale and translate undo a stretch at an angle to the element's axes. A move that
+  lands while a tween is still running starts from where the element is drawn, not from its last layout.
+  A box in a rotated or sheared frame (a rotated element inside a non-uniformly scaled one) starts
+  unrotated over the same centre, at the drawn lengths of its sides.
+- The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
+  the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
+  held before the tween, or whatever something else wrote there while the tween ran, which the tween
+  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
+  its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
   scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
@@ -337,15 +347,20 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
-  also changed variants. Its spring knobs come off the Motion's own `transition:` rather than an
-  active pose's — a rect delta is not a swap into a pose — and fall back to
-  `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
-  Motion declares no `Transition`.
-- **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
-  averages the two axis scale factors rather than distorting the element on two independent axes
-  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y. The scale holds the
-  element's transform origin still (its centre unless an `origin-*` class or style moves it), and the translate
-  places the element so that it starts over the old box.
+  also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
+  rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
+  (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
+  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing` on the curve UI Toolkit eases a
+  USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
+  zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
+  `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
+  `cubic-bezier(0.4, 0, 0.1, 1)`. A transition the scheduler rejects lands the move at once, its warning
+  logged where the move settles rather than on every render.
+- **Each axis scales by its own factor.** A box whose width and height change by different factors
+  starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
+  the stretch as for any change of size. The scale holds the element's transform origin still (its
+  centre unless an `origin-*` class or style moves it), and the translate places the element so that it
+  starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
   `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
@@ -353,8 +368,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 
 ## Looping utilities (`animate-*`)
 
-Five class-driven loops, each infinite, each driven from a panel-root tick rather than from USS —
-UI Toolkit has no `@keyframes`:
+Five class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse` and
+`animate-spin` take Tailwind's durations and timing functions: the pulse reaches half opacity at
+mid-loop with each half eased by `cubic-bezier(0.4, 0, 0.6, 1)`, and the spin turns linearly.
 
 | class | what moves | default loop |
 |---|---|---|
@@ -368,20 +384,21 @@ UI Toolkit has no `@keyframes`:
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
 
-Each mode owns its style slot while it runs, and a static utility writing that slot is shadowed
-rather than blended: the gradient pair owns background position, size and repeat, `animate-hue` owns
-the filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot
+Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
+declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
+filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. A static utility writing that
+slot is shadowed, and so are a `transition-filter` tween and a `Spring` or `Bezier` Motion `rotate`
+channel driving it — the mode's frame is written over each of their writes. A `Spring` or `Bezier`
+Motion `opacity` channel is the exception: it shows over `animate-pulse` for as long as its play drives
+it, and the pulse takes the slot back when the play lets go, as Framer Motion runs opacity on the
+browser's own animation engine, whose animations outrank a CSS animation. Detaching restores the slot
 and the reconciler re-asserts whatever class was under it.
 
-Two combinations to avoid, both because something else writes the same slot every frame:
-
-- a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
-  `rotate`, say. The result is whichever wrote last, not a blend.
-- a native transition covering that slot. Every mode suspends one for the length of its run, the way
-  Motion's own drivers do. The pan modes also set background size and repeat once at attach, before
-  the suspension, so a transition covering either still takes that one write. Note a transition needs
-  no `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
-  covers every slot.
+A native transition covering a mode's slot would animate each of the mode's writes, so every mode
+suspends one for the length of its run, the way Motion's own drivers do. The pan modes also set
+background size and repeat once at attach, before the suspension, so a transition covering either
+still takes that one write. Note a transition needs no `transition-*` utility — a bare `duration-*`
+leaves UI Toolkit's initial `all` standing, which covers every slot.
 
 The suspension is element-wide, so while a suspended mode runs, the element's *other*
 transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
@@ -389,9 +406,9 @@ the mode writes — `animate-pulse transition-colors` keeps its colour fade — 
 as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never
 reaches the class list is invisible to it — the bracket duration `duration-[400ms]` lands as an
 inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
-swap driving the same slot as the mode falls under the first bullet. While such a swap is running the
-slot is the swap's: the suspension is neither taken nor handed back for the swap's length, and the
-swap's own completion puts back whichever of the two the element still needs.
+swap driving the same slot as the mode is shadowed too. While such a swap is running the element's
+inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
+swap's length, and the swap's own completion puts back whichever of the two the element still needs.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 
@@ -407,9 +424,11 @@ A step is exactly one of:
   elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
-  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step needs an
-  explicit `holdSec` -- a spring's settle time is physics-derived, not statically knowable -- an omitted
-  one logs a warning and falls back to a fixed estimate rather than stalling the sequence.
+  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
+  `DelaySec` plus the duration Framer Motion's sequence gives the same spring: a travel of 100,
+  sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
+  at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
+  Framer takes when it cannot read the distance.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances

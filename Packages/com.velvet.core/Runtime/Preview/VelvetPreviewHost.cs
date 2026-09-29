@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -13,7 +14,7 @@ namespace Velvet
         private readonly VisualElement _target;
         private IDisposable? _environment;
         private MountedTree? _mounted;
-        private StyleSheet? _appliedStyleSheet;
+        private readonly List<StyleSheet> _appliedStyleSheets = new();
         private bool _disposed;
 
         /// <summary>The currently mounted story, or <c>null</c> before a successful mount and after failure.</summary>
@@ -44,37 +45,30 @@ namespace Velvet
         public void Mount(VelvetPreviewStory story, object args) => Mount(story, useArgs: true, args: args);
 
         /// <summary>
-        /// Rebuilds the mounted story with new <paramref name="args"/> without restarting its environment or
-        /// replacing its stylesheet. Returns <c>false</c> when no story can be updated. A failed update records
-        /// <see cref="MountError"/> and returns <c>true</c> because the update path was taken.
+        /// Re-renders the mounted story with new <paramref name="args"/> without restarting its environment or
+        /// replacing its stylesheet. The new tree is reconciled against the mounted one, so a component keeping its
+        /// type and position keeps its state. Returns <c>false</c> when no story can be updated. A failed update
+        /// unmounts the story, records <see cref="MountError"/> and returns <c>true</c> because the update path
+        /// was taken.
         /// </summary>
         public bool UpdateArgs(object args)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewHost));
             if (Story == null || _mounted == null) return false;
 
-            var story = Story;
+            MountError = null;
             try
             {
-                _mounted.Dispose();
-                _mounted = null;
-                MountError = null;
-
-                var tree = story.Build(args);
-                if (tree == null)
-                {
-                    MountError = new InvalidOperationException("Story returned a null VNode.");
-                    Story = null;
-                    return true;
-                }
-
-                _mounted = V.Mount(_target, tree);
-                Story = story;
+                var tree = Story.Build(args);
+                if (tree == null) throw new InvalidOperationException("Story returned a null VNode.");
+                _mounted.Render(tree);
             }
             catch (Exception ex)
             {
                 MountError = ex;
                 Story = null;
+                _mounted.Dispose();
+                _mounted = null;
             }
 
             return true;
@@ -91,7 +85,8 @@ namespace Velvet
 
             try
             {
-                _environment = VelvetPreviewRegistry.RunSetupFor(story.Assembly);
+                _environment = VelvetPreviewRegistry.RunSetupsFor(story.Assembly, ApplyStyleHint);
+                // A hint published outside any setup is still this mount's to take, setups or none.
                 ApplyStyleHint();
                 var tree = useArgs ? story.Build(args) : story.Build();
                 if (tree == null)
@@ -120,18 +115,15 @@ namespace Velvet
             VelvetStyleHints.PreviewStyleSheet = null;
             if (sheet == null || _target.styleSheets.Contains(sheet)) return;
             _target.styleSheets.Add(sheet);
-            _appliedStyleSheet = sheet;
+            _appliedStyleSheets.Add(sheet);
         }
 
         private void Unmount()
         {
             _mounted?.Dispose();
             _mounted = null;
-            if (_appliedStyleSheet != null)
-            {
-                _target.styleSheets.Remove(_appliedStyleSheet);
-                _appliedStyleSheet = null;
-            }
+            foreach (var sheet in _appliedStyleSheets) _target.styleSheets.Remove(sheet);
+            _appliedStyleSheets.Clear();
 
             _environment?.Dispose();
             _environment = null;

@@ -15,6 +15,9 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
+The mutation campaign is held here too, by `scripts/pr/campaign.py`'s rule, read off the head's
+workflow runs inside the same pair of head readings.
+
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
 head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
@@ -32,6 +35,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             program_invocations, unexpanded)
 import repository
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import campaign
 
 
 HOOK_TOOLS = {"Bash"}
@@ -61,9 +67,30 @@ def gh_json(cwd, args):
 
 
 def head_sha(cwd, number):
-    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", "headRefOid"])
+    return head_and_labels(cwd, number, fields="headRefOid")[0]
+
+
+def head_and_labels(cwd, number, fields="headRefOid,labels"):
+    """(head, label names), the head None where unread and the names None where unread."""
+    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", fields])
     head = payload.get("headRefOid") if isinstance(payload, dict) else None
-    return head if isinstance(head, str) and head else None
+    if not (isinstance(head, str) and head):
+        return None, None
+    labels = payload.get("labels")
+    if not isinstance(labels, list) or not all(
+            isinstance(label, dict) and isinstance(label.get("name"), str) for label in labels):
+        return head, None
+    return head, frozenset(label["name"] for label in labels)
+
+
+def campaign_runs(cwd, sha):
+    """Every workflow run whose head is `sha`, or None where they could not all be read."""
+    payload = gh_json(cwd, ["api", campaign.runs_path("{owner}/{repo}", sha)])
+    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
+    if not isinstance(runs, list) or payload.get("total_count", len(runs)) > len(runs) or not all(
+            isinstance(run, dict) for run in runs):
+        return None
+    return runs
 
 
 def checks_of(cwd, number):
@@ -98,13 +125,14 @@ def unproven(asked, cwd):
         number = next((token for token in operands if token.isdigit()), None)
         label = "#" + number if number else "the current branch"
 
-        before = head_sha(cwd, number)
+        before, labels = head_and_labels(cwd, number)
         if before is None:
             # gh is unreachable or this is not a pull request; the other guards still apply and this
             # one declines to invent an answer.
             continue
 
         listed = checks_of(cwd, number)
+        runs = campaign_runs(cwd, before)
         after = head_sha(cwd, number)
 
         # Past the first reading a reading that failed is refused, where the arm above lets one
@@ -120,11 +148,16 @@ def unproven(asked, cwd):
             found.append((label, f"the check list for {before[:7]} could not be read"))
         elif not listed:
             found.append((label, f"no check ran for {before[:7]}: a workflow was never triggered for it"))
-        else:
-            unfinished = sorted(entry["name"] for entry in listed
-                                if entry["bucket"] not in TERMINAL_PASS)
-            if unfinished:
-                found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+        elif unfinished := sorted(entry["name"] for entry in listed
+                                  if entry["bucket"] not in TERMINAL_PASS):
+            found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+        elif runs is None:
+            found.append((label, f"the workflow runs of {before[:7]} could not all be read"))
+        elif labels is None:
+            found.append((label, f"its labels could not be read, so whether it owes a "
+                                 f"{campaign.WORKFLOW} run is not known"))
+        elif owed := campaign.reason(labels, campaign.state(runs), before):
+            found.append((label, owed))
     return found
 
 

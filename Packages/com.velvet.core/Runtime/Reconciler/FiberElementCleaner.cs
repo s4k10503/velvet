@@ -132,10 +132,15 @@ namespace Velvet
         }
 
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
-        public void CleanupElement(VisualElement element)
+        public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel);
+
+        // `panel` is the one `element` is leaving, passed separately for a caller that has already detached it.
+        private void CleanupElement(VisualElement element, IPanel? panel)
         {
             // Same wrapper → resources → portal → descendants teardown as the recursive descendant pass.
             CleanupElementCore(element);
+            // After the core, whose restore focus reads the focus this would drop.
+            PanelFocusMemory.Forget(panel, element);
 
             // Wrapper-mounted fibers under this subtree were disposed by the recursive Remove(VE) above, but
             // an inline-mounted fiber nested under a host element anchors on its PARENT FIBER, not a VE: when a
@@ -270,6 +275,7 @@ namespace Velvet
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.
             MotionNativeTransitionGuard.ReleaseAll(element);
+            StyleAnimateDriver.ForgetHolds(element);
         }
 
         // The generateVisualContent-driven paint bindings: shadow/clip/ring/skew/border/divide/overline
@@ -620,7 +626,8 @@ namespace Velvet
                 return;
             }
             var poolable = PoolableOccupantOf(real);
-            CleanupElement(real);
+            // The real element shares its placeholder's panel.
+            CleanupElement(real, element.panel);
             // TakeReal already detached `real` from its layer container; nothing left to remove from the DOM.
             ReturnOccupantToPool(real, poolable);
         }
