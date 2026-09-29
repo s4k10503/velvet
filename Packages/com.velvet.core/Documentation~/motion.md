@@ -345,16 +345,20 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   Motion that mounts under its id in a later batch appears in place.
 - Several Motions may hold one `layoutId` at once. The one that took the id last — by mounting under it
   or by changing to it — leads, and the others are hidden by an inline `visibility: hidden`; a render
-  that moves one of them does not make it the lead. A lead that takes its box from another holder while
-  more than one holds the id crossfades with the others, as Framer's default does: it fades in on
-  circOut over the first half of its move, and each other holder on its panel is drawn over its box,
-  fading out linearly between halfway and 95% of the move, then hidden. When the lead leaves the tree,
-  the holder of those left that took the id last leads in its place. When a holder inside a
-  `V.AnimatePresence` child starts its exit, the latest holder that took the id before it and is not
-  exiting takes the lead, as Framer's relegate hands it on, and a holder whose key comes back mid-exit
-  takes the lead again. A holder that takes the lead in any of these ways tweens from the box of the
-  lead before it, whether or not its own layout changed. A Motion whose `layoutId` becomes null stops
-  holding the id and is shown.
+  that moves one of them does not make it the lead. While a lead moves from a box it took from another
+  holder, each other holder on its panel is drawn over the lead's box. Where more than one holds the id
+  and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
+  it fades in on circOut over the first half of its move while they fade out linearly between halfway
+  and 95% of it. The fade is an opacity filter appended to each element's own inline filters, so it
+  multiplies the opacity the element's classes, variants and drivers give it. A move of the lead's own
+  that interrupts the crossfade holds the opacities it had reached until that move lands. The others are
+  hidden again once the lead lands. When the lead leaves the tree, the holder of those left that took
+  the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts its exit, the
+  latest holder that took the id before it and is not exiting takes the lead, as Framer's relegate hands
+  it on, and the child is removed once both its exit has played and that lead has landed; a holder whose
+  key comes back mid-exit takes the lead again. A holder that takes the lead in any of these ways tweens
+  from the box of the lead before it, whether or not its own layout changed. A Motion whose `layoutId`
+  becomes null stops holding the id and is shown.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a

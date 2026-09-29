@@ -1755,7 +1755,6 @@ namespace Velvet
             {
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
-            MotionLayoutIdDriver.Relegate(ghostAnchor, _ctx);
             var capturedKey = key;
             var capturedState = pass.State;
             var capturedBoundary = pass.BoundaryFiber;
@@ -1818,7 +1817,18 @@ namespace Velvet
                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                 }
             }
-            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, RunExitComplete);
+            // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A
+            // landing after the key came back finds it no longer exiting.
+            var waits = 1;
+            void Settle()
+            {
+                if (--waits == 0) RunExitComplete();
+            }
+            waits += MotionLayoutIdDriver.Relegate(ghostAnchor, _ctx, () =>
+            {
+                if (capturedState.Exiting.Contains(capturedKey)) Settle();
+            });
+            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle);
         }
 
         // Plays one ghost's exits — its anchor's and its descendants' — under one wait that runs
