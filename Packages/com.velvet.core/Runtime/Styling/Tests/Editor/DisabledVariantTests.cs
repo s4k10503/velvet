@@ -76,12 +76,13 @@ namespace Velvet.Tests
             // Arrange
             var (outer, leaf) = Mount("disabled:bg-hot");
             outer.SetEnabled(false);
+            var appliedWhileDisabled = leaf.ClassListContains("bg-hot");
 
             // Act
             outer.SetEnabled(true);
 
             // Assert — the applied half rides along, so a payload that never landed cannot read as removed.
-            Assert.That((outer.enabledSelf, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
+            Assert.That((appliedWhileDisabled, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
         }
 
         [Test]
