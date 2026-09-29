@@ -4145,6 +4145,36 @@ class BuildSystemVerdictTests(unittest.TestCase):
                          (1, True))
 
 
+class SilentBaselineCampaign(StubbedCampaign):
+    """A campaign whose baseline launch writes no result, over an output an earlier campaign left a
+    green baseline in."""
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        (self.project / "out").mkdir()
+        (self.project / "out" / "baseline.xml").write_text(GREEN_RESULTS)
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            Path(log).write_text("")
+            return 0.0, False, 0
+        return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+
+
+class StaleBaselineTests(unittest.TestCase):
+    """A baseline launch that wrote nothing is not read off an earlier campaign's result."""
+
+    def test_Given_AnEarlierGreenBaselineInTheOutput_When_TheBaselineWritesNoResult_Then_TheRunStopsSayingSo(self):
+        # Arrange
+        campaign = SilentBaselineCampaign()
+
+        # Act
+        code = campaign.run_over_diff()
+
+        # Assert
+        self.assertIn("the baseline run wrote no result", str(code))
+
+
 class ParityKilledCampaign(StubbedCampaign):
     """Two mutants on two lines, the first killed and the second surviving, so a decision that took a
     verdict from the wrong mutant or dropped one reads differently from the whole run's."""

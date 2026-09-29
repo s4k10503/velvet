@@ -2324,6 +2324,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
+    if baseline_results.exists():
+        baseline_results.unlink()
     # Derived once: which fixtures redden on the edit rather than on what it does.
     text_readers = text_reading_fixtures(project)
     # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
