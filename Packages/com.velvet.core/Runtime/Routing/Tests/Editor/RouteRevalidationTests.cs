@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A route at the same place in the committed chain, over the same pathname, keeps its data, on a
     /// push and on a Back step alike, and its loader's token stays live.</item>
-    /// <item>Every loader runs when the URL is unchanged, when the search changes, or where the route holds
-    /// no settled data.</item>
+    /// <item>A loader runs again when the URL is unchanged, when the search changes, or where its route
+    /// holds no settled data.</item>
     /// <item>A different route at the same place runs its own loader even over the same pathname.</item>
     /// </list>
     /// </summary>

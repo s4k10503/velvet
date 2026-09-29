@@ -2,9 +2,9 @@
 
 - A navigation runs only the loaders React Router's default `shouldRevalidate` would: a route at the same
   place in the committed chain, over the same pathname, keeps its data and its loader's token, so a
-  parent layout's loader no longer runs again when only its child changes. Every loader still runs when
-  the search changes, when the URL is the one already committed, after a route action, and where a route
-  holds no settled data. Every matched loader used to run on every push, Back and Forward.
+  parent layout's loader no longer runs again when only its child changes. A loader still runs again when
+  the search changes, when the URL is the one already committed, after a route action returns, and where
+  its route holds no settled data. Every matched loader used to run on every push, Back and Forward.
 
 - `NavigationLifecycle` and `RouterStatus` each have a `Submitting` member, reported while a route action
   runs.

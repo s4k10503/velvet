@@ -175,7 +175,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo(
-                "You made a POST request to \"/items\" but did not provide an action for route \"/items\", so there "
+                "You made a POST request to \"/items\" but did not provide an `action` for route \"/items\", so there "
                 + "is no way to handle the request."));
         }
 

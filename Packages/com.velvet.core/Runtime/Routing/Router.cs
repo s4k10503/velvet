@@ -178,9 +178,9 @@ namespace Velvet
         /// Submits <paramref name="formData"/> as React Router's <c>router.navigate(to, { formMethod,
         /// formData })</c> does. A <c>get</c> submission navigates to the action with the form data as its query
         /// string. Any other method calls the action of the route the target path matches — the leaf route
-        /// when its path is empty and the query string holds a bare <c>index</c>, otherwise the deepest route
-        /// with a path — reporting <see cref="RouterStatus.Submitting"/> while it runs, then runs every matched
-        /// loader and commits with the action's result for <c>UseActionData</c>. An action that throws, or a
+        /// when the query string holds a bare <c>index</c>, otherwise the deepest route with a path —
+        /// reporting <see cref="RouterStatus.Submitting"/> while it runs; once it returns, every matched loader
+        /// runs and the navigation commits with the action's result for <c>UseActionData</c>. An action that throws, or a
         /// route with no action, commits the exception as that route's error, and only the loaders above the
         /// route that renders it run.
         /// </summary>
@@ -1092,7 +1092,7 @@ namespace Velvet
             {
                 outcome.Error = new InvalidOperationException(
                     $"You made a {submission.Method} request to \"{RouteQuery.StripQuery(path)}\" but did not provide an "
-                    + $"action for route \"{match.RouteId}\", so there is no way to handle the request.");
+                    + $"`action` for route \"{match.RouteId}\", so there is no way to handle the request.");
                 return outcome;
             }
             var context = new RouteActionContext

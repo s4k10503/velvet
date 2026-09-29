@@ -81,7 +81,7 @@ chain's loaders — a parent layout's and its child's — run concurrently rathe
 A navigation runs only the loaders React Router's default `shouldRevalidate` would. A route at the same
 place in the committed chain, over the same pathname — the layouts above a changed child — keeps its data
 and its loader's token. The loader runs again when the search changes, when the URL is the one already
-committed, after a route action, and where the route holds no settled data yet. Stepping `GoBack` /
+committed, after a route action returns, and where the route holds no settled data yet. Stepping `GoBack` /
 `GoForward` decides the same way as a push: React Router keeps no loader data per history entry either.
 
 A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
@@ -175,8 +175,8 @@ route, with a bare `index` in front of it — as a `<Form>` with no `action` doe
   the deepest route with a path, or the index route when the query string holds a bare `index`. The
   action receives a `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the
   `FormData` as it was handed to the submit function.
-- Every matched loader then runs, and the location commits with the action's result keyed to its route.
-  The next navigation that commits clears it.
+- When the action returns, every matched loader runs, and the location commits with the action's result
+  keyed to its route. The next navigation that commits clears it.
 - An action that throws, and a route with no action, commit the exception as that route's error, rendered
   by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, and
   no action data commits.
