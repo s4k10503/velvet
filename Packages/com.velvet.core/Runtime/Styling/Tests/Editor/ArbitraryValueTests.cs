@@ -2668,8 +2668,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base routes no bare grow factor inline, grow-0 included.
-        // What reddens it is dropping the leading-zero check in TryGetFlexFactorPreset, which claims the
-        // zero the USS class already carries.
+        // What reddens it is dropping the `whole != 0` check in TryGetFlexFactorPreset, which claims the zero
+        // the USS class already carries.
         [Test]
         public void Given_BareGrowZero_When_TheInlineGateIsAsked_Then_ItIsLeftToTheClassList()
         {
@@ -2706,6 +2706,276 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Root[0].style.flexGrow.value, Is.EqualTo(3f));
+        }
+
+        // A Flex result as one string: recognized, grow, shrink, basis and its unit, "auto" for a NaN basis.
+        private static string Flex(bool ok, ArbitraryStyle s)
+            => !ok || s.Property != ArbitraryProperty.Flex
+                ? "unrecognized"
+                : $"{s.Value} {s.Value3} " + (float.IsNaN(s.Value2) ? "auto" : $"{s.Value2}{s.Unit2}");
+
+        [Test]
+        public void Given_BareFlexNumber_When_Parsed_Then_ResolvesTheFlexShorthandOfThatNumber()
+        {
+            // Act — Tailwind's flex-<number> is `flex: <number>`: that grow, a shrink of 1 and a basis of 0%.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-12", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("12 1 0Percent"));
+        }
+
+        [Test]
+        public void Given_BareFlexZero_When_Parsed_Then_ResolvesAGrowOfZero()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-0", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 1 0Percent"));
+        }
+
+        [Test]
+        public void Given_BareFlexFraction_When_Parsed_Then_TheFractionIsThePercentBasis()
+        {
+            // Act — flex-<a>/<b> is `flex: calc(<a>/<b> * 100%)`.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-3/4", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("1 1 75Percent"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no bare flex fraction, a zero denominator included.
+        // What reddens it is dropping the `denominator != 0` check in TryGetFlexPreset.
+        [Test]
+        public void Given_BareFlexFractionOverZero_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-1/0", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no bare flex number, a leading zero included.
+        // What reddens it is dropping the leading-zero check in TryParseWhole.
+        [Test]
+        public void Given_BareFlexWithALeadingZero_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-01", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base routes flex-1 to its USS class, as it does every bare flex.
+        // What reddens it is dropping the `grow != 1` exclusion in TryGetFlexPreset, which claims it inline.
+        [Test]
+        public void Given_FlexOne_When_TheInlineGateIsAsked_Then_ItIsLeftToTheClassList()
+        {
+            // Act
+            var inline = StyleArbitraryValueResolver.IsInlineResolved("flex-1");
+
+            // Assert
+            Assert.That(inline, Is.False);
+        }
+
+        [Test]
+        public void Given_FlexBracketWithThreeComponents_When_Parsed_Then_ResolvesGrowShrinkAndBasis()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_3_10px]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 3 10Pixel"));
+        }
+
+        [Test]
+        public void Given_FlexBracketWithTheBasisFirst_When_Parsed_Then_TheNumbersAfterItAreGrowAndShrink()
+        {
+            // Act — CSS lets the basis come before the grow / shrink pair.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[10px_2_3]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 3 10Pixel"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is a basis
+        // after the grow not setting PairClosed in TakeFlexPart, which lets the shrink follow it.
+        [Test]
+        public void Given_FlexBracketWithTheBasisBetweenGrowAndShrink_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — grow and shrink are one pair in the grammar, so nothing may sit between them.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_10px_3]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_FlexBracketWithGrowAndAZeroShrink_When_Parsed_Then_TheZeroIsTheShrink()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_0]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 0 0Percent"));
+        }
+
+        [Test]
+        public void Given_FlexBracketWithAGrowAndABasis_When_Parsed_Then_TheShrinkIsOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[2_auto]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("2 1 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketWithABasisAlone_When_Parsed_Then_GrowAndShrinkAreOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[50%]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("1 1 50Percent"));
+        }
+
+        [Test]
+        public void Given_FlexBracketNone_When_Parsed_Then_NeitherGrowsNorShrinks()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[none]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 0 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketAuto_When_Parsed_Then_GrowsAndShrinksFromAnAutoBasis()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[auto]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("1 1 auto"));
+        }
+
+        [Test]
+        public void Given_FlexBracketInitial_When_Parsed_Then_ShrinksOnly()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[initial]", out var s);
+
+            // Assert — grow, shrink, then the basis and its unit.
+            Assert.That(Flex(ok, s), Is.EqualTo("0 1 auto"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the `number < 0f` rejection in TakeFlexPart.
+        [Test]
+        public void Given_FlexBracketWithANegativeFactor_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[-1]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the rejection of a number after the shrink in TakeFlexPart.
+        [Test]
+        public void Given_FlexBracketWithThreeNumbers_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[1_1_1]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the `HasBasis` rejection of a second basis in TakeFlexPart.
+        [Test]
+        public void Given_FlexBracketWithTwoBases_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[10px_20px]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is
+        // TakeFlexPart taking a component that is neither a number nor a length as the basis.
+        [Test]
+        public void Given_FlexBracketWithADirectionKeyword_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — Tailwind's flex-[column] writes `flex: column`, which the browser drops.
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[column]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex bracket at all. What reddens it is dropping
+        // the `negate` rejection in TryParseFlexShorthand.
+        [Test]
+        public void Given_NegatedFlexBracket_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("-flex-[2]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_ADivCarryingABareFlexNumber_When_Reconciled_Then_TheElementCarriesTheThreeLonghands()
+        {
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "flex-3") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var style = scope.Root[0].style;
+            Assert.That($"{style.flexGrow.value} {style.flexShrink.value} "
+                + $"{style.flexBasis.value.value}{style.flexBasis.value.unit}", Is.EqualTo("3 1 0Percent"));
+        }
+
+        [Test]
+        public void Given_AFlexAutoBracket_When_AppliedToElement_Then_TheBasisIsAuto()
+        {
+            // Arrange
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("flex-[auto]", out var style);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in style);
+
+            // Assert
+            Assert.That((ok, el.style.flexBasis.keyword), Is.EqualTo((true, StyleKeyword.Auto)));
+        }
+
+        [Test]
+        public void Given_AFlexShorthand_When_Cleared_Then_TheThreeLonghandsRevertToNull()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, ArbitraryStyle.Flex(2f, 3f, 10f, LengthUnit.Pixel));
+            var applied = el.style.flexShrink.value;
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.Flex);
+
+            // Assert — the applied shrink rides along, since a fresh element already reads Null.
+            Assert.That((applied, el.style.flexGrow.keyword, el.style.flexShrink.keyword, el.style.flexBasis.keyword),
+                Is.EqualTo((3f, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]

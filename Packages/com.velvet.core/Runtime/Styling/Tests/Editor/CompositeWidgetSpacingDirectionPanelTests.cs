@@ -68,18 +68,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReversedRowScrollView_When_ADivideSeparatesItsContent_Then_TheBorderSitsOnTheLeadingEdge()
+        public void Given_AReversedRowScrollView_When_ADivideSeparatesItsContent_Then_TheBorderSitsOnTheEndEdge()
         {
             // Arrange / Act
             var scrollView = MountWidget<ScrollView>("flex flex-row-reverse divide-x divide-gray-200");
             var content = scrollView.contentContainer;
-            Assume.That(scrollView.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
-                "Precondition: the panel resolved flex-row-reverse on the ScrollView's own box");
-            Assume.That(content.childCount, Is.EqualTo(3),
-                "Precondition: the divided children reconcile into the content container");
 
-            // Assert — same boundary as the gap case, so a leading border.
-            Assert.That(content[1].style.borderLeftWidth.value, Is.EqualTo(DivideWidth));
+            // Assert — the divider lands on the content children, on the end edge its rule always uses; the
+            // child count rides along, since the children have to have reconciled into the content container.
+            Assert.That((content.childCount, content[1].style.borderRightWidth.value), Is.EqualTo((3, DivideWidth)));
         }
 
         [Test]

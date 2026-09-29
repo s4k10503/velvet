@@ -4,19 +4,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Framework-level divide-* polyfill. The divide-x / divide-y utilities draw a border between adjacent
-    // children (`& > * + *`): a border on every child but the first, horizontal for divide-x, vertical for
-    // divide-y. UI Toolkit (6000.3) has no :first-child / :first-of-type and no `> *` child combinator,
-    // so a USS rule cannot express "border on all children except the first." Velvet owns the ordered
-    // child list, so this manipulator writes the inter-child border on every child EXCEPT the first — a
-    // divider strictly BETWEEN children, never on the container's outer edges.
-    //
-    // Which physical edge of the axis carries that border follows the container's resolved direction (see
-    // ResolveEdge): a row-reverse / column-reverse container paints its children in the opposite order, so
-    // the edge that sits between a given pair is the axis's TRAILING one (border-right / border-bottom).
-    // Picking the edge from the axis alone would draw one rule on the container's outer edge and leave the
-    // boundary between the visually adjacent pair blank. divide-x-reverse / divide-y-reverse ask for that
-    // same trailing edge unconditionally.
+    // Framework-level divide-* polyfill: Tailwind v4's `:where(& > :not(:last-child))` rule, a border on
+    // every child but the last, horizontal for divide-x and vertical for divide-y. UI Toolkit (6000.3) has no
+    // :last-child and no `> *` child combinator, so a USS rule cannot express it; Velvet owns the ordered child
+    // list, so this manipulator writes it. The edge is the end one (border-right / border-bottom), or the start
+    // one under divide-x-reverse / divide-y-reverse — see ResolveEdge.
     //
     // Lifecycle mirrors StyleGapManipulator: the reconciler attaches one per divide container, keeps it
     // in ReconcilerContext.DivideManipulators, and removes it on cleanup / dispose.
@@ -25,7 +17,7 @@ namespace Velvet
     // Re-application has the same three sources as the gap manipulator:
     // the reconciler's post-child-reconcile call (the panel-independent path that also covers EditMode),
     // GeometryChangedEvent (child add / remove / reorder from an unrelated reconcile), and
-    // AttachToPanelEvent (the one path that can answer a direction set outside the class list). A
+    // AttachToPanelEvent. A
     // signature makes a redundant Apply (notably the GeometryChanged feedback its own writes provoke) a
     // no-op.
     //
@@ -35,9 +27,8 @@ namespace Velvet
     // the dashed / dotted stroke on the child's own generateVisualContent — so switching between solid and
     // dashed is layout-identical and only the paint differs.
     //
-    // Child container. Like the gap manipulator it iterates, and resolves its direction from,
-    // FiberNodePatcher.GetChildContainer(target) — a composite widget's inner box; else self. A direction
-    // class on such a widget reverses the widget's own box, not the content the dividers separate.
+    // Child container. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer(target) — a
+    // composite widget's inner box; else self.
     //
     // Limitations: an explicit per-child border on the SAME edge the divider draws on (e.g. border-l on a
     // child of a divide-x row) is OVERWRITTEN — this manipulator owns that edge, exactly as the gap
@@ -52,14 +43,14 @@ namespace Velvet
     // Out-of-flow children (position: absolute) are excluded from the index walk — see
     // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
     // PopLayout-pinned ghost, or an app-authored .absolute child) is not a layout sibling, so it neither
-    // draws a divider nor counts toward which of the remaining children is "first".
+    // draws a divider nor counts toward which of the remaining children is "last".
     internal sealed class StyleDivideManipulator : Manipulator
     {
         private DivideSpec _spec;
         private readonly ReconcilerContext _ctx;
 
-        // Which of the four edges is currently written, so an axis flip OR a same-axis leading↔trailing flip
-        // (a reverse marker appearing, a container becoming reversed) clears the abandoned edge before
+        // Which of the four edges is currently written, so an axis flip OR a same-axis start↔end flip
+        // (a reverse marker appearing or going) clears the abandoned edge before
         // writing the new one. Null until the first application.
         private DivideEdge? _applied;
 
@@ -138,7 +129,7 @@ namespace Velvet
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
         // Writes the inter-child border for the current spec on the edge ResolveEdge picks, on every child
-        // except the first. Clears the abandoned edge first whenever that edge changed. Early-returns when
+        // except the last. Clears the abandoned edge first whenever that edge changed. Early-returns when
         // nothing relevant (spec, edge, child set) changed since the last successful application.
         public void Apply()
         {
@@ -148,7 +139,7 @@ namespace Velvet
                 return;
             }
 
-            var edge = ResolveEdge(container);
+            var edge = ResolveEdge();
             var signature = ComputeSignature(container, edge);
             if (_hasSignature && signature == _lastSignature)
             {
@@ -160,7 +151,7 @@ namespace Velvet
             ResetStaleBordered(container);
 
             // Any of the four edges may be the one abandoned — an axis flip (divide-x ↔ divide-y) or a
-            // same-axis leading↔trailing flip (a reverse marker, or the container's direction changing).
+            // same-axis start↔end flip (a reverse marker appearing or going).
             if (_applied.HasValue && _applied.Value != edge)
             {
                 ClearEdge(container, _applied.Value);
@@ -170,18 +161,18 @@ namespace Velvet
             _bordered.Clear();
 
             var count = container.childCount;
+            var lastIndex = StyleOutOfFlowChild.LastInFlowIndex(container);
             var logicalIndex = 0;
             for (var i = 0; i < count; i++)
             {
                 // An out-of-flow child is not a layout sibling, so it draws no divider and does not
-                // consume the "first child" slot for whichever in-flow child follows it.
+                // take the "last child" slot from the in-flow child before it.
                 if (StyleOutOfFlowChild.IsOutOfFlow(container[i]))
                 {
                     continue;
                 }
                 var child = ClipPathLayoutBox.InnerOf(container[i]);
-                // The first child has no divider (the `> * + *` rule starts at the second child).
-                var isDivider = logicalIndex != 0;
+                var isDivider = logicalIndex != lastIndex;
                 ApplyToChild(child, edge, isDivider);
                 StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);
@@ -206,9 +197,9 @@ namespace Velvet
 
             if (!dashed || !isDivider)
             {
-                // Solid divider, the first child (no divider), or a child whose face a skew / shadow layer owns:
+                // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
-                // a colored child reordered to the first slot).
+                // a colored child reordered to the last slot).
                 DetachDash(child);
                 if (isDivider)
                 {
@@ -220,7 +211,7 @@ namespace Velvet
                 }
                 // Decide the edge's color channel on EVERY pass (like the gap manipulator its margin): hold
                 // the divider color only on a colored divider, else hand it back so a dropped divide-{color}
-                // class (or a colored child reordered to the first slot) leaves no stale inline color.
+                // class (or a colored child reordered to the last slot) leaves no stale inline color.
                 if (isDivider && _spec.HasColor)
                 {
                     StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(_spec.Color));
@@ -255,22 +246,15 @@ namespace Velvet
             }
         }
 
-        // The physical edge of each divided child that carries the border. The axis is fixed by the class
-        // (divide-x / divide-y); within it the divider moves to the TRAILING edge (Left→Right, Top→Bottom)
-        // when EITHER the axis's own reverse marker is set OR the container's resolved direction is reversed
-        // on that SAME axis — the marker and a detected row-reverse / column-reverse OR together (both mean
-        // "trailing"), never XOR, so flex-row-reverse divide-x divide-x-reverse still lands trailing. The
-        // flip is per-axis: a horizontal divide never reacts to column-reverse, and a vertical divide never
-        // reacts to row-reverse — StyleFlexDirectionResolver returns ONE mutually-exclusive verdict per call,
-        // so there is no stale leftover from a different family to react to.
-        private DivideEdge ResolveEdge(VisualElement container)
+        // Tailwind's border-inline-end / border-bottom, or border-inline-start / border-top under the axis's
+        // reverse marker. flex-direction is never read: a reversed container takes the marker, as in Tailwind.
+        private DivideEdge ResolveEdge()
         {
-            var direction = StyleFlexDirectionResolver.Resolve(container, !ReferenceEquals(container, target));
             if (_spec.Axis == DivideAxis.Horizontal)
             {
-                return (_spec.Reverse || direction == FlexDirection.RowReverse) ? DivideEdge.Right : DivideEdge.Left;
+                return _spec.Reverse ? DivideEdge.Left : DivideEdge.Right;
             }
-            return (_spec.Reverse || direction == FlexDirection.ColumnReverse) ? DivideEdge.Bottom : DivideEdge.Top;
+            return _spec.Reverse ? DivideEdge.Top : DivideEdge.Bottom;
         }
 
         // The child's would-be border color for an implicit (no divide-{color}) dashed divider, re-resolved every
@@ -410,7 +394,7 @@ namespace Velvet
         // The claim in ReconcilerContext.ChildDividerOwners decides this, not the tracked list, and every
         // turn-off on a child that has LEFT the container goes through here. The hand-backs that land on
         // CURRENT children do not ask — ClearEdge clears an edge this pass is about to rewrite, and the
-        // first child's own pass hands the no-divider edge back. The dash paint goes with the border:
+        // last child's own pass hands the no-divider edge back. The dash paint goes with the border:
         // it is the same divider drawn a different way, so a container that may not reset one may not
         // detach the other.
         private void ReleaseBordered(VisualElement child)
@@ -449,8 +433,8 @@ namespace Velvet
         // Order-sensitive hash of the inputs that change the applied borders: width, color, edge, line style,
         // and the current child identity sequence. Apply() early-returns when this matches the last
         // application. The edge term must distinguish all FOUR edges, not just the axis: Left→Right and
-        // Top→Bottom are same-axis flips (a reverse marker, or the container's direction changing, with the
-        // spec otherwise untouched), and a signature collision there would skip the re-apply that moves the
+        // Top→Bottom are same-axis flips (a reverse marker appearing or going, with the spec otherwise
+        // untouched), and a signature collision there would skip the re-apply that moves the
         // border to the new edge.
         private int ComputeSignature(VisualElement container, DivideEdge edge)
         {

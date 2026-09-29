@@ -365,8 +365,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis, out bool space)",
-          "neuter": "gap = 0f; axis = default; space = false; return false;"
+          "anchor": "public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)",
+          "neuter": "gap = 0f; axis = default; return false;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",

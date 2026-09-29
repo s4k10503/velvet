@@ -34,8 +34,8 @@ Two family-specific facts survive that:
   `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so a literal
   `"flex-col flex-row"` lays out as a row. Write one, or mark the winner important —
   `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
-  direction: Tailwind's `flex-[…]` is the `flex` shorthand, so its `flex-[column]` writes a declaration
-  the browser drops, and Velvet's changes nothing either.
+  direction: `flex-[…]` is the `flex` shorthand in both (see "Proportional splits" below), so
+  `flex-[column]` is a value the shorthand rejects and changes nothing.
 - **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
   displaces them — it holds only part of what they write — and takes the direction from them by
   declaration order instead, both being declared before all four.
@@ -67,10 +67,11 @@ The numeric scale (`gap-0-5`, `gap-1`, `gap-1-5`, `gap-2`, … mapping to the `-
 1 unit = 4px) is Tailwind's; the classes are recognized in C#, not by USS selectors — see
 `Runtime/Styling/StyleGapManipulator.cs` and `Runtime/Styling/StyleGapClass.cs`.
 
-Tailwind's `space-x-*` / `space-y-*` take the same scale and the same manipulator, but they follow
-Tailwind's margin rule rather than CSS `gap`: the margin does not follow the container's direction, and a
-wrapping container takes it too rather than the wrap strategy below. Velvet writes it on one edge of
-every child but the first.
+Tailwind's `space-x-*` / `space-y-*` (and their negative forms, `-space-x-4`) take the same scale and the
+same manipulator, but they are Tailwind v4's margin rule rather than CSS `gap`: `margin-right`
+(`margin-inline-end`) / `margin-bottom` (`margin-block-end`) on every child **except the last**, whatever
+the container's direction, and on a wrapping container too rather than the wrap strategy below. A gap and
+a space on one element both apply, as they do in Tailwind: on an edge both write, the two add up.
 
 ### Reversed containers (`flex-row-reverse` / `flex-col-reverse`) and `space-*-reverse`
 
@@ -80,27 +81,24 @@ physical edge (`margin-right` / `margin-bottom`) instead of the leading one (`ma
 never reacts to `flex-col-reverse`, and a `gap-y-*` never reacts to `flex-row-reverse`. A gap never
 reads a `space-*-reverse` marker.
 
-A `space-*` margin never reads the direction. It stays on the leading edge until its own axis's
-marker moves it: on a reversed row Tailwind writes `flex-row-reverse space-x-4 space-x-reverse`, and so
-does Velvet.
+A `space-*` margin never reads the direction. It stays on the end edge until its own axis's marker moves
+it to the start edge (`margin-left` / `margin-top`): on a reversed row Tailwind writes
+`flex-row-reverse space-x-4 space-x-reverse`, and so does Velvet.
 
-### `divide-x-*` / `divide-y-*` follow the same rule
+### `divide-x-*` / `divide-y-*` follow the space rule
 
-`divide-x-*` / `divide-y-*` draw a **border** between adjacent children — Tailwind's `> * + *`
-divider — and UI Toolkit has no `:first-child` and no `> *` child combinator either, so Velvet
-realizes them through the same kind of per-container manipulator (`StyleDivideManipulator`): the
-border goes on every child **except the first**, never on the container's outer edges.
-
-Which physical edge carries that border moves to the trailing one on a reversed container, per axis,
-as a gap's margin does in "Reversed containers" above, and from the same direction source.
-`divide-x-reverse` / `divide-y-reverse` move it there as well, and a marker and a reversed direction on
-the same axis combine with OR. The axis is always fixed by the class (`divide-x` is horizontal,
-`divide-y` is vertical — there is no direction-following `Auto` form that a plain `gap-*` has).
+`divide-x-*` / `divide-y-*` draw a **border** between adjacent children — Tailwind v4's
+`:where(& > :not(:last-child))` divider — and UI Toolkit has no `:last-child` and no `> *` child
+combinator either, so Velvet realizes them through the same kind of per-container manipulator
+(`StyleDivideManipulator`): the border goes on every child **except the last**, on the end edge, as a
+`space-*` margin does. `divide-x-reverse` / `divide-y-reverse` move it to the start edge, and nothing
+else does: the container's direction is never read. The axis is always fixed by the class (`divide-x`
+is horizontal, `divide-y` is vertical).
 
 | Utility | Axis | Effect |
 |---|---|---|
-| `divide-x-*` | always horizontal | `border-left` between columns, or `border-right` on a `flex-row-reverse` container / with `divide-x-reverse` |
-| `divide-y-*` | always vertical | `border-top` between rows, or `border-bottom` on a `flex-col-reverse` container / with `divide-y-reverse` |
+| `divide-x-*` | always horizontal | `border-right` (`border-inline-end`), or `border-left` with `divide-x-reverse` |
+| `divide-y-*` | always vertical | `border-bottom`, or `border-top` with `divide-y-reverse` |
 
 A lone `divide-x-reverse` does nothing on its own — like `divide-{color}`, it needs a `divide-x` /
 `divide-y` to give it a width to move. Because a divider is a real border, the edge it lands on also
@@ -116,12 +114,12 @@ table in [styling-variants.md](styling-variants.md).
 
 ### How re-spacing stays correct
 
-Everything below is written for `gap-*`, but the divider manipulator resolves its direction the same
-way and re-applies on the same three events, so it holds for `divide-*` too.
+Everything below is written for `gap-*`. The divider manipulator re-applies on the same three events,
+though it has no direction to resolve.
 
-The spacing depends on the child set and on the resolved direction — which every axis needs, not
-just plain `gap-*`'s axis choice, since a `gap-x-*` / `gap-y-*` has a reversed-edge flip too. Both
-can change outside the manipulator's own events, so it is re-applied from three sources:
+The spacing depends on the child set and, for a gap, on the resolved direction — which every gap axis
+needs, not just plain `gap-*`'s axis choice, since a `gap-x-*` / `gap-y-*` has a reversed-edge flip too.
+Both can change outside the manipulator's own events, so it is re-applied from three sources:
 
 1. **Reconcile.** The reconciler calls the manipulator right after it reconciles the container's
    children, so an add / remove / reorder during a reconcile pass immediately re-spaces. This is also
@@ -144,15 +142,15 @@ the row it is in. `grid-cols-*` shares that answer with `gap-*` — both write a
 the grid its width as well; `divide-*` keeps its own for the border edge it owns.
 
 A child the reconciler *removes* gives back every margin, width and divider edge a gap, grid or divide
-container wrote on it while its cleanup runs, so an element your own code kept a reference to carries none of them when it is
-re-parented.
+container wrote on it, and every `[&>*]:` payload its container applied, while its cleanup runs, so an
+element your own code kept a reference to carries none of them when it is re-parented.
 
 **What a container stops spacing goes back to the child's own layers, not to nothing.** Gap, grid and
 divide write their value straight onto the child, while an arbitrary value — the child's own `ml-[2px]`
 or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a container spaces a
 child its value holds, even when such a layer changes afterwards; where it stops — the gap is dropped,
-the child leaves, an edge is abandoned, or the child is the first of a gap or divide row and takes no gap
-or divider — the slot is given back and the child shows what its layers say there. A grid holds its
+the child leaves, an edge is abandoned, or the child is the first of a gap row or the last of a space or
+divide row and takes nothing there — the slot is given back and the child shows what its layers say there. A grid holds its
 first column's and first row's zero margins rather than giving them back. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its
 first child `2px` and the rest the gap, and every child `2px` once `gap-x-4` goes; and a child moving
 between a `[&>*]:` row and a `gap-*`, `grid-cols-*` or `divide-*` row keeps what the row it is in gave
@@ -206,7 +204,8 @@ family the CURRENT verdict is, not a stale answer cached from the row family tha
 present.
 
 `grid` is excluded from this scan: a `grid`, literal or from a variant such as `md:grid`, routes the
-element's gap through the separate grid manipulator instead — see "`flex-wrap` and `grid`" below.
+element's gap and space through the separate grid manipulator instead — see "`flex-wrap` and `grid`"
+below.
 
 Classes are consulted before `resolvedStyle`, even on a panel: the direction classes are USS-only
 rules with no equivalent C# inline `flex-direction` write, so `resolvedStyle.flexDirection` only
@@ -221,7 +220,10 @@ it. `resolvedStyle` is read only as the fallback for the case no class can cover
 set that other way with *none* of the five direction/display classes present on the element at all.
 That fallback case still needs a live panel (`AttachToPanelEvent` above) and still cannot
 self-correct on a same-rect toggle with no intervening reconcile pass, since nothing would tell the
-manipulator to look again. With no direction class AND no panel to resolve against (EditMode,
+manipulator to look again. Once every direction/display class leaves the element, the verdict until the
+next `GeometryChangedEvent` is the inline `flex-direction`, or the engine's column when none is set,
+rather than a `resolvedStyle` that can still hold the removed class — the same rule the wrap verdict
+below follows. With no direction class AND no panel to resolve against (EditMode,
 pre-attach), the default is **row** — the one place this deliberately disagrees with the raw engine,
 whose own unstyled default is column (see "Without `.flex`, children stack vertically" above).
 
@@ -252,10 +254,11 @@ class implies a default" tier: `flex` / `flex-row(-reverse)` / `flex-col(-revers
 would misread a genuinely wrapping inline-styled container.
 
 Removing a wrap class needs no `flex-nowrap` to take its place: until the next
-`GeometryChangedEvent`, a container whose marker has just gone answers the engine's no-wrap rather than
-a `resolvedStyle.flexWrap` that can still hold the removed class, so a fixed-size container stops
-writing its own negative margin on the patch that drops `flex-wrap`. After that event the fallback
-reads `resolvedStyle` again, which is how a wrap set some other way comes back.
+`GeometryChangedEvent`, a container whose marker has just gone answers from its inline `flex-wrap`, or
+no-wrap when none is set, rather than a `resolvedStyle.flexWrap` that can still hold the removed class,
+so a fixed-size container stops writing its own negative margin on the patch that drops `flex-wrap`.
+After that event the fallback reads `resolvedStyle` again, which is how a wrap a stylesheet rule sets
+comes back.
 
 A corollary on a **composite widget**: a `flex-wrap` class wraps the widget, never its content, so the
 half-margin path is **unreachable from class strings** there. It is still reachable by anything setting
@@ -268,7 +271,9 @@ whose built-in USS wraps. Nest a plain container inside the widget for a wrappin
 direction or wrap verdict for it. The suppression is decided once per patch, from the same class
 source the two manipulators are configured from, and handed to the gap configuration as a verdict —
 which is also what orders the handoff, since whichever of the two is departing has to release the
-child margins it wrote before the arriving one writes its own.
+child margins it wrote before the arriving one writes its own. A `space-*` on a grid is still the space
+rule rather than a column gap: the grid writes it on its children beside the gap, and a horizontal one
+comes out of the child's column width, as a CSS grid item stretched to its cell gives up its margins.
 
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.
@@ -302,7 +307,7 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
 
-## Proportional splits: `grow-N` / `shrink-N`
+## Proportional splits: `grow-N` / `shrink-N` and `flex-N`
 
 `grow` / `shrink` set a factor of 1, `grow-0` / `shrink-0` a factor of 0, and `grow-<N>` / `shrink-<N>`
 any other whole number, as Tailwind's bare values do: a sidebar carrying `grow` beside a content pane
@@ -312,6 +317,12 @@ carrying `grow-3` divides the leftover space one to three. The bracket form take
 The value is a plain number. `grow-1.5`, `grow-02`, `grow-[50%]`, `grow-[2rem]` and `-grow-[2]` are not
 recognized — a factor has no unit and no sign, the bare form is a whole number spelled as Tailwind
 spells it, and the percent form especially would otherwise read as a factor of fifty.
+
+The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow N, shrink 1, basis 0%),
+`flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
+`flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_auto]`. A
+value the CSS shorthand rejects, such as `flex-[column]`, is not recognized. `flex-1`, `flex-auto`,
+`flex-initial` and `flex-none` are the USS classes they always were.
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.

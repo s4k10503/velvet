@@ -229,6 +229,12 @@ namespace Velvet
             DetachManipulator(element, _ctx.RelationalVariantManipulators);
             // has-[:checked]: / has-[:focus]: own an event manipulator (descendant-event-driven); detach it.
             DetachManipulator(element, _ctx.HasVariantManipulators);
+            // Must run before ClearElementSideTables: that drops the claim, after which the [&>*]: container
+            // that applied the payloads can no longer release them from this element.
+            if (_ctx.ChildVariantOwners.TryGetValue(element, out var variantOwner))
+            {
+                ((StyleChildVariantManipulator)variantOwner).ReleasePayloads(element);
+            }
             // The pure side-tables (structural / has-[.class]: / data-/aria- rules + their attribute store /
             // supports- / Motion applied-classes) carry no manipulator and no disposable resource — their
             // applied payloads die with the element — so dropping the element's entry is the whole teardown.

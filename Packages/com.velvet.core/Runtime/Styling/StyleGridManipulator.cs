@@ -4,18 +4,21 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // A resolved grid spec: the column count plus the row / column gaps the grid owns.
+    // A resolved grid spec: the column count, the row / column gaps the grid owns, and the space-x-* /
+    // space-y-* margins.
     internal readonly struct GridSpec
     {
         public readonly int Columns;
         public readonly float ColumnGap;
         public readonly float RowGap;
+        public readonly SpaceSpec Space;
 
-        public GridSpec(int columns, float columnGap, float rowGap)
+        public GridSpec(int columns, float columnGap, float rowGap, SpaceSpec space)
         {
             Columns = columns;
             ColumnGap = columnGap;
             RowGap = rowGap;
+            Space = space;
         }
     }
 
@@ -33,9 +36,11 @@ namespace Velvet
     // floating-point division never overflows the row and forces a spurious wrap.
     //
     // The grid OWNS its children's width + all four margins (like the gap manipulator owns its margin edge),
-    // so a grid container routes its gap-* through this manipulator and StyleGapManipulator is suppressed when
-    // grid-cols-* is present — a single owner avoids a double-write race. A per-child width / margin utility on
-    // a grid child is overwritten: the column owns the box.
+    // so a grid container routes its gap-* and space-* through this manipulator and StyleGapManipulator is
+    // suppressed when grid-cols-* is present — a single owner avoids a double-write race. A per-child width /
+    // margin utility on a grid child is overwritten: the column owns the box. A space-* margin is Tailwind's
+    // `> :not(:last-child)` rule, as StyleGapManipulator writes it; a horizontal one comes out of the child's
+    // width, the way a CSS grid item stretched to its cell gives up its margins, so the row still fits N.
     //
     // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per grid
     // container, keeps it in ReconcilerContext.GridManipulators, and removes it on cleanup / dispose.
@@ -132,6 +137,7 @@ namespace Velvet
                 ? Mathf.Max(0f, (width - (n - 1) * _spec.ColumnGap) / n - WrapSafetyPx)
                 : 0f;
 
+            var lastIndex = StyleOutOfFlowChild.LastInFlowIndex(container);
             var count = container.childCount;
             var logicalIndex = 0;
             for (var i = 0; i < count; i++)
@@ -145,22 +151,43 @@ namespace Velvet
                 }
                 var col = logicalIndex % n;
                 var row = logicalIndex / n;
+                var spaced = logicalIndex != lastIndex;
+                var spaceX = spaced ? _spec.Space.X : 0f;
+                var spaceY = spaced ? _spec.Space.Y : 0f;
+                var left = col == 0 ? 0f : _spec.ColumnGap;
+                var top = row == 0 ? 0f : _spec.RowGap;
+                var right = 0f;
+                var bottom = 0f;
+                if (_spec.Space.XReverse)
+                {
+                    left += spaceX;
+                }
+                else
+                {
+                    right += spaceX;
+                }
+                if (_spec.Space.YReverse)
+                {
+                    top += spaceY;
+                }
+                else
+                {
+                    bottom += spaceY;
+                }
                 // The column owns the box: width + all four margins. Width is deferred — handed back — until a
                 // real row width resolves on panel.
                 if (hasWidth)
                 {
-                    StyleArbitraryValueResolver.Hold(child, HeldSlot.Width, new StyleLength(colWidth));
+                    StyleArbitraryValueResolver.Hold(child, HeldSlot.Width, new StyleLength(colWidth - spaceX));
                 }
                 else
                 {
                     StyleArbitraryValueResolver.HandBack(child, HeldSlot.Width);
                 }
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft,
-                    new StyleLength(col == 0 ? 0f : _spec.ColumnGap));
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop,
-                    new StyleLength(row == 0 ? 0f : _spec.RowGap));
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginRight, new StyleLength(0f));
-                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginBottom, new StyleLength(0f));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginLeft, new StyleLength(left));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginTop, new StyleLength(top));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginRight, new StyleLength(right));
+                StyleArbitraryValueResolver.Hold(child, HeldSlot.MarginBottom, new StyleLength(bottom));
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _sized.Add(child);
                 logicalIndex++;

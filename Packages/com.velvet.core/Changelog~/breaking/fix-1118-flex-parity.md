@@ -1,13 +1,23 @@
 ### Changed
 
-- `space-x-*` / `space-y-*` follow Tailwind's margin rule rather than CSS `gap`. The margin no longer moves
-  to the trailing edge on a `flex-row-reverse` / `flex-col-reverse` container on its own: it stays on the
-  leading edge until `space-x-reverse` / `space-y-reverse` moves it, so a reversed row that relied on
-  `space-x-4` alone adds `space-x-reverse`, as it would with Tailwind. A wrapping container no longer puts
-  `space-*` through the half-margin strategy `gap-*` uses: every in-flow child but the first takes the whole
-  margin on one edge, and the container's own margin is left alone.
+- `space-x-*` / `space-y-*` follow Tailwind v4's margin rule rather than CSS `gap`: `margin-right` /
+  `margin-bottom` on every in-flow child except the last, moved to `margin-left` / `margin-top` by
+  `space-x-reverse` / `space-y-reverse`, whatever the container's direction and whether or not it wraps.
+  They used to put `margin-left` / `margin-top` on every child except the first, move to the trailing
+  edge on their own in a reversed container, and switch to the half-margin strategy under `flex-wrap`. A
+  reversed row that relied on `space-x-4` alone adds `space-x-reverse`, as it would with Tailwind.
+
+- `divide-x-*` / `divide-y-*` follow Tailwind v4's divider rule: `border-right` / `border-bottom` on every
+  in-flow child except the last, moved to `border-left` / `border-top` by `divide-x-reverse` /
+  `divide-y-reverse`. They used to rule the left / top edge of every child except the first and move to
+  the trailing edge on their own in a reversed container.
 
 - A `gap-*`, `gap-x-*` or `gap-y-*` no longer reads a `space-x-reverse` / `space-y-reverse` marker, since
   CSS `gap` has none. `flex flex-col gap-4 space-y-reverse` spaced its children on `margin-bottom`; it
   spaces them on `margin-top`, as `flex flex-col gap-4` does. A reversed container still moves a gap to the
   trailing edge.
+
+- A `gap-*` and a `space-*` on one element both apply, as in Tailwind, adding up on an edge both write;
+  the later of the two used to replace the other. On a `grid` container, `space-x-*` is a margin on the
+  children taken out of their column width rather than the grid's column gap, and `space-y-*` a margin
+  rather than its row gap.

@@ -75,5 +75,21 @@ namespace Velvet
                 return hash;
             }
         }
+
+        // The logical index of container's last in-flow child, -1 when there is none — the child the
+        // manipulators following Tailwind's `> :not(:last-child)` exempt.
+        internal static int LastInFlowIndex(VisualElement container)
+        {
+            var last = -1;
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                if (!IsOutOfFlow(container[i]))
+                {
+                    last++;
+                }
+            }
+            return last;
+        }
     }
 }

@@ -2,68 +2,80 @@ using System;
 
 namespace Velvet
 {
-    // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
-    // space-y-* family, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
-    // and the axis they space along, for StyleGapManipulator. The numeric scale mirrors the
-    // --space-* tokens in _tokens.uss (1 unit = 4px), keeping gap-* spacing visually consistent
-    // with the padding/margin scale elsewhere in the utility set.
-    // A gap or space utility as StyleGapManipulator applies it: the pixel value, the axis, whether it is a
-    // space-x-* / space-y-* token rather than a gap-* one (see StyleGapManipulator.ResolveEdge), and the
-    // space-x-reverse / space-y-reverse markers.
-    internal readonly struct GapSpec
+    // The space-x-* / space-y-* margins (0 when absent) and the space-x-reverse / space-y-reverse markers.
+    internal readonly struct SpaceSpec
     {
-        public readonly float Gap;
-        public readonly GapAxis Axis;
-        public readonly bool Space;
+        public readonly float X;
+        public readonly float Y;
         public readonly bool XReverse;
         public readonly bool YReverse;
 
-        public GapSpec(float gap, GapAxis axis, bool space, bool xReverse, bool yReverse)
+        public SpaceSpec(float x, float y, bool xReverse, bool yReverse)
         {
-            Gap = gap;
-            Axis = axis;
-            Space = space;
+            X = x;
+            Y = y;
             XReverse = xReverse;
             YReverse = yReverse;
         }
     }
 
+    // What StyleGapManipulator applies to one container: the gap (a gap-* token; HasGap false when there is
+    // none) and the space margins. The two are independent, as they are in Tailwind, where the gap is the
+    // container's own property and the space a margin on its children.
+    internal readonly struct GapSpec
+    {
+        public readonly bool HasGap;
+        public readonly float Gap;
+        public readonly GapAxis Axis;
+        public readonly SpaceSpec Space;
+
+        public GapSpec(bool hasGap, float gap, GapAxis axis, SpaceSpec space)
+        {
+            HasGap = hasGap;
+            Gap = gap;
+            Axis = axis;
+            Space = space;
+        }
+
+        // Whether this spec writes anything: a space-x-0 / space-y-0 writes no margin.
+        public bool IsActive => HasGap || Space.X != 0f || Space.Y != 0f;
+    }
+
+    // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
+    // space-y-* family, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
+    // and the axis they space along, for StyleGapManipulator. The numeric scale mirrors the
+    // --space-* tokens in _tokens.uss (1 unit = 4px), keeping gap-* spacing visually consistent
+    // with the padding/margin scale elsewhere in the utility set.
     internal static class StyleGapClass
     {
         // Returns true and the parsed gap / axis when
-        // cls is a recognized gap utility. gap-x-* → horizontal,
-        // gap-y-* → vertical, plain gap-* → GapAxis.Auto (follows
-        // flex-direction).
+        // cls is a recognized gap or space utility. gap-x-* / space-x-* → horizontal,
+        // gap-y-* / space-y-* → vertical, plain gap-* → GapAxis.Auto (follows
+        // flex-direction). -space-x-* / -space-y-* are negative, as in Tailwind; a gap has no negative form.
         public static bool TryParse(string cls, out float gap, out GapAxis axis)
-            => TryParse(cls, out gap, out axis, out _);
-
-        // space is true for the space-x-* / space-y-* family: Tailwind's margin rule rather than CSS gap, so
-        // StyleGapManipulator takes its edge from the reverse marker alone and never switches to the wrap path.
-        public static bool TryParse(string cls, out float gap, out GapAxis axis, out bool space)
         {
             gap = 0f;
             axis = GapAxis.Auto;
-            space = false;
             if (string.IsNullOrEmpty(cls))
             {
                 return false;
             }
 
+            var negate = cls.StartsWith("-space-", StringComparison.Ordinal);
+            var body = negate ? cls.Substring(1) : cls;
             string suffix;
             // The space-x-reverse / space-y-reverse markers carry no pixel value of their own, so they
             // decline here the same as any other unrecognized suffix — StyleGapManipulator reads them
             // separately via ExtractReverseMarkers.
-            if (cls.StartsWith("space-x-", StringComparison.Ordinal))
+            if (body.StartsWith("space-x-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Horizontal;
-                space = true;
-                suffix = cls.Substring("space-x-".Length);
+                suffix = body.Substring("space-x-".Length);
             }
-            else if (cls.StartsWith("space-y-", StringComparison.Ordinal))
+            else if (body.StartsWith("space-y-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Vertical;
-                space = true;
-                suffix = cls.Substring("space-y-".Length);
+                suffix = body.Substring("space-y-".Length);
             }
             else if (cls.StartsWith("gap-x-", StringComparison.Ordinal))
             {
@@ -89,14 +101,18 @@ namespace Velvet
             // inter-child margin, so a percentage value is rejected (only px / unitless is meaningful).
             // TryParseArbitraryPixels already verifies the bracket shape itself, so a non-bracket suffix falls
             // straight through to the preset scale below without needing its own duplicate guard here.
-            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap))
-            {
-                return true;
-            }
-
             // The numeric scale is the shared --space-* preset table (1 unit = 4px), so gap-* resolves the same
             // values as mt-* / p-*; single-sourced in StyleArbitraryValueResolver to avoid a divergent copy.
-            return StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out gap);
+            if (!StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap)
+                && !StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out gap))
+            {
+                return false;
+            }
+            if (negate)
+            {
+                gap = -gap;
+            }
+            return true;
         }
 
         // Single-token half of HasGapClass: true when cls belongs to the gap / space family the gap
@@ -104,9 +120,13 @@ namespace Velvet
         // scan below and the variant-payload gate (StyleVariantPayload) resolve the family through here.
         public static bool IsGapToken(string cls)
             => !string.IsNullOrEmpty(cls)
-                && (cls.StartsWith("gap-", StringComparison.Ordinal)
-                    || cls.StartsWith("space-x-", StringComparison.Ordinal)
-                    || cls.StartsWith("space-y-", StringComparison.Ordinal));
+                && (cls.StartsWith("gap-", StringComparison.Ordinal) || IsSpaceToken(cls));
+
+        // True for the space-x-* / space-y-* family, negative forms and reverse markers included.
+        public static bool IsSpaceToken(string cls)
+            => cls.StartsWith("space-x-", StringComparison.Ordinal)
+                || cls.StartsWith("space-y-", StringComparison.Ordinal)
+                || cls.StartsWith("-space-", StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class begins with the gap- prefix. No dictionary
         // lookup and no substring allocation — used to skip the full TryExtract scan on the
@@ -149,13 +169,13 @@ namespace Velvet
             }
         }
 
-        // Scans classNames for the last gap utility (later classes win, matching CSS
-        // cascade order) and returns it. Returns false when no gap utility is present.
-        public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis, out bool space)
+        // Scans classNames for the last gap-* utility (later classes win, matching CSS
+        // cascade order) and returns it. Returns false when no gap utility is present; a space-* token is
+        // not a gap.
+        public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)
         {
             gap = 0f;
             axis = GapAxis.Auto;
-            space = default;
             if (classNames == null)
             {
                 return false;
@@ -164,15 +184,59 @@ namespace Velvet
             var found = false;
             foreach (var cls in classNames)
             {
-                if (TryParse(cls, out var g, out var a, out var s))
+                if (IsSpaceToken(cls))
+                {
+                    continue;
+                }
+                if (TryParse(cls, out var g, out var a))
                 {
                     gap = g;
                     axis = a;
-                    space = s;
                     found = true;
                 }
             }
             return found;
+        }
+
+        // The last space-x-* and the last space-y-* value in classNames, each 0 when absent.
+        public static void ExtractSpace(string[] classNames, out float spaceX, out float spaceY)
+        {
+            spaceX = 0f;
+            spaceY = 0f;
+            foreach (var cls in classNames)
+            {
+                if (!IsSpaceToken(cls))
+                {
+                    continue;
+                }
+                if (!TryParse(cls, out var value, out var axis))
+                {
+                    continue;
+                }
+                if (axis == GapAxis.Horizontal)
+                {
+                    spaceX = value;
+                }
+                else
+                {
+                    spaceY = value;
+                }
+            }
+        }
+
+        // The space margins and markers in classNames.
+        public static SpaceSpec ExtractSpaceSpec(string[] classNames)
+        {
+            ExtractSpace(classNames, out var spaceX, out var spaceY);
+            ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
+            return new SpaceSpec(spaceX, spaceY, xReverse, yReverse);
+        }
+
+        // The whole spec StyleGapManipulator runs on.
+        public static GapSpec Extract(string[] classNames)
+        {
+            var hasGap = TryExtract(classNames, out var gap, out var axis);
+            return new GapSpec(hasGap, gap, axis, ExtractSpaceSpec(classNames));
         }
     }
 }

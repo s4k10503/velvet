@@ -31,12 +31,11 @@ namespace Velvet.Tests
     /// RUNTIME axis flip: an Auto-axis gap resolves its edge from the direction class marker — the class list
     /// is consulted before <c>resolvedStyle</c> even on a panel, see <see cref="StyleFlexDirectionResolver"/>
     /// — so a re-render that swaps <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new
-    /// edge AND clear the edge it abandoned. Also specifies the <c>space-x-*</c> / <c>space-y-*</c> alias onto
-    /// the same gap machinery (<c>space-*</c> is CSS's own inter-child-margin selector, <c>&gt; * + *</c>, which
-    /// UITK has no equivalent for) — the alias maps onto <see cref="GapAxis"/> and the <c>--space-*</c> scale
-    /// exactly like <c>gap-x-*</c> / <c>gap-y-*</c>, and the cheap <see cref="StyleGapClass.HasGapClass"/> gate
-    /// must recognize it too, or it never reaches the manipulator — plus the <c>gap-x-[…]</c> / <c>gap-[…]</c>
-    /// JIT arbitrary-value form.
+    /// edge AND clear the edge it abandoned. Also specifies <c>space-x-*</c> / <c>space-y-*</c> on the same
+    /// manipulator — Tailwind v4's <c>:where(&amp; &gt; :not(:last-child))</c> margin, which UITK has no
+    /// selector for — on <see cref="GapAxis"/> and the <c>--space-*</c> scale like <c>gap-x-*</c> /
+    /// <c>gap-y-*</c>, with the cheap <see cref="StyleGapClass.HasGapClass"/> gate recognizing it too, or it
+    /// never reaches the manipulator — plus the <c>gap-x-[…]</c> / <c>gap-[…]</c> JIT arbitrary-value form.
     /// </summary>
     /// <remarks>
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
@@ -760,13 +759,12 @@ namespace Velvet.Tests
             Assert.AreEqual(StyleKeyword.Null, _root.Q<Label>("b").style.marginLeft.keyword);
         }
 
-        // --- space-x-*/space-y-* alias onto the gap machinery, plus the gap-x-[...] arbitrary-value form ---
+        // --- space-x-*/space-y-* on the gap manipulator, plus the gap-x-[...] arbitrary-value form ---
         //
-        // space-* is an inter-child margin (> * + *); UITK has no such selector, and StyleGapManipulator already
-        // writes exactly that leading margin on every child but the first, so space-x-N maps to
-        // GapAxis.Horizontal + the same --space-* scale and space-y-N to GapAxis.Vertical. The cheap
-        // StyleGapClass.HasGapClass gate (the patcher's early-out) must also recognize the alias or it never
-        // reaches the manipulator.
+        // space-* is Tailwind v4's `:where(& > :not(:last-child))` margin; UITK has no such selector, so
+        // StyleGapManipulator writes it. space-x-N maps to GapAxis.Horizontal + the same --space-* scale and
+        // space-y-N to GapAxis.Vertical. The cheap StyleGapClass.HasGapClass gate (the patcher's early-out)
+        // must also recognize the family or it never reaches the manipulator.
 
         [Test]
         public void Given_SpaceX4Class_When_Parsed_Then_MapsToHorizontalGapAxis()
@@ -811,18 +809,64 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexRowSpaceX4_When_Reconciled_Then_LeadingMarginBetweenChildren()
+        public void Given_AChildVariantRow_When_TheReconcilerRemovesAChild_Then_TheRemovedElementCarriesNoPayload()
         {
-            // Arrange — mirrors the gap-x-4 parity test: the alias must drive the manipulator end-to-end.
+            // Arrange — the [&>*]: twin of the gap case: a plain Div is discarded rather than pooled, and the
+            // reference stands in for user code that kept it.
+            using var scope = new ReconcilerScope();
+            VNode RowOf(params string[] keys)
+            {
+                var children = new VNode[keys.Length];
+                for (var i = 0; i < keys.Length; i++)
+                {
+                    children[i] = V.Div(className: "child", key: keys[i]);
+                }
+                return V.Div(className: "flex flex-row [&>*]:ml-[2px]", children: children);
+            }
+            var tree1 = new VNode[] { RowOf("a", "b", "c") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var removed = Container(scope.Root)[1];
+            var fromPayload = removed.style.marginLeft.value.value;
+
+            // Act
+            var tree2 = new VNode[] { RowOf("a", "c") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the payload it carried rides along, since an element that never took one reads Null too.
+            Assert.That((fromPayload, removed.style.marginLeft.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AGapRowWithAnInlineDirection_When_EveryDirectionClassIsRemoved_Then_TheInlineDirectionIsRead()
+        {
+            // Arrange — flex-direction set outside the class list, which the classes outranked until they left.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexDirection = FlexDirection.RowReverse;
+
+            // Act
+            var tree2 = new VNode[] { Row("gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — a reversed row puts the gap on the trailing edge.
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexRowSpaceX4_When_Reconciled_Then_TheFirstChildCarriesTheEndMargin()
+        {
+            // Arrange — Tailwind v4's `:where(& > :not(:last-child))` margin-inline-end: every child but the last.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row space-x-4", 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var container = scope.Root[0];
+            var container = Container(scope.Root);
 
-            // Assert — 2nd child carries the gap; the first has no leading margin.
-            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -832,14 +876,14 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row space-x-4", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4), "Precondition: gap applied");
+            var spaced = scope.Root[0][0].style.marginRight.value.value;
 
             // Act — patch the same container without the space class.
             var tree2 = new VNode[] { Row("flex flex-row", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the manipulator's leading margin is cleared (no ghost via the shared gap path).
-            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(0f));
+            // Assert — the margin before the patch rides along, since a child never spaced reads Null too.
+            Assert.That((spaced, scope.Root[0][0].style.marginRight.keyword), Is.EqualTo((Space4, StyleKeyword.Null)));
         }
 
         [Test]
@@ -891,10 +935,10 @@ namespace Velvet.Tests
         // reverse class markers directly, matching the on-panel resolvedStyle.flexDirection reads exactly). ---
 
         [Test]
-        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_SecondChildCarriesTheTrailingMargin()
+        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_TheFirstChildCarriesTheStartMargin()
         {
-            // Arrange — space-x-4 space-x-reverse on a (non-reversed) row: the marker alone, with no
-            // row-reverse container, still moves the gap to the trailing physical edge (margin-right).
+            // Arrange — space-x-reverse moves Tailwind's margin to margin-inline-start (margin-left), still on every child
+            // but the last.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
 
@@ -903,14 +947,13 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
-        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_ThirdChildCarriesTheTrailingMargin()
+        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_TheLastChildCarriesNoMargin()
         {
-            // Arrange — same container; the LAST child (not just the second) also carries the trailing
-            // margin, matching the ordinary leading-margin contract (every child but the first).
+            // Arrange — the last child takes no space margin on either horizontal edge.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
 
@@ -919,28 +962,27 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[2].style.marginRight.value.value, Is.EqualTo(Space4));
+            Assert.That((container[2].style.marginLeft.keyword, container[2].style.marginRight.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
-        public void Given_ALeadingMarginRow_When_SpaceXReverseIsAddedByPatch_Then_TheStaleLeadingMarginIsCleared()
+        public void Given_AnEndMarginRow_When_SpaceXReverseIsAddedByPatch_Then_TheStaleEndMarginIsCleared()
         {
-            // Arrange — first reconcile establishes the LEADING (margin-left) edge with no reverse marker.
+            // Arrange — first reconcile establishes the END (margin-right) edge with no reverse marker.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row space-x-4", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var container = Container(scope.Root);
-            Assume.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4),
-                "Precondition: the leading (margin-left) edge is established before the marker is added");
+            var spaced = container[1].style.marginRight.value.value;
 
-            // Act — patch in space-x-reverse: the edge flips from Left to Right, so the manipulator must
-            // clear the now-abandoned leading margin, not just add the new trailing one.
+            // Act — patch in space-x-reverse: the edge flips from Right to Left, so the manipulator must
+            // clear the now-abandoned end margin, not just add the new start one.
             var tree2 = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the stale margin-left is cleared (this is the missing-clear case: ApplyLeading's
-            // "_applied != edge" check must cover ALL four edges, not just Left vs Top).
-            Assert.That(container[1].style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the margin before the patch rides along, since a child never spaced reads Null too.
+            Assert.That((spaced, container[1].style.marginRight.keyword), Is.EqualTo((Space4, StyleKeyword.Null)));
         }
 
         [Test]
@@ -980,10 +1022,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexRowReverseWithSpaceXReverse_When_Reconciled_Then_StillResolvesTheTrailingEdge()
+        public void Given_FlexRowReverseWithSpaceXReverse_When_Reconciled_Then_TheFirstChildCarriesTheStartMargin()
         {
-            // Arrange — the idiom Tailwind documents for a reversed row: space-x-reverse is what moves the
-            // margin to the trailing edge there.
+            // Arrange — the idiom Tailwind documents for a reversed row: space-x-reverse moves the margin to margin-left.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse space-x-4 space-x-reverse", 3) };
 
@@ -992,7 +1033,7 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -1046,10 +1087,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexColSpaceYReverse_When_Reconciled_Then_TheSecondChildCarriesTheTrailingVerticalMargin()
+        public void Given_FlexColSpaceYReverse_When_Reconciled_Then_TheFirstChildCarriesTheTopMargin()
         {
-            // Arrange — space-y-reverse end to end (only the extractor was covered elsewhere): the vertical
-            // twin of space-x-reverse, moving the gap emulation's margin to margin-bottom.
+            // Arrange — the vertical twin of space-x-reverse: margin-block-start (margin-top) on every child but the last.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-col space-y-4 space-y-reverse", 3) };
 
@@ -1058,7 +1098,7 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginBottom.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginTop.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -1090,10 +1130,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexRowReverseSpaceX4_When_Reconciled_Then_TheSecondChildCarriesTheLeadingMargin()
+        public void Given_FlexRowReverseSpaceX4_When_Reconciled_Then_TheFirstChildCarriesTheEndMargin()
         {
-            // Arrange — Tailwind's space-x is a margin rule that never reads flex-direction: without
-            // space-x-reverse, a reversed row keeps the margin on the leading (margin-left) edge.
+            // Arrange — Tailwind's space-x never reads flex-direction: without space-x-reverse, a reversed row keeps
+            // margin-right on every child but the last.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse space-x-4", 3) };
 
@@ -1102,13 +1142,13 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
-        public void Given_FlexColReverseSpaceY4_When_Reconciled_Then_TheSecondChildCarriesTheLeadingMargin()
+        public void Given_FlexColReverseSpaceY4_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin()
         {
-            // Arrange — the vertical twin: without space-y-reverse, a reversed column keeps margin-top.
+            // Arrange — the vertical twin: without space-y-reverse, a reversed column keeps margin-bottom.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-col-reverse space-y-4", 3) };
 
@@ -1117,7 +1157,7 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginBottom.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -1152,10 +1192,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FlexWrapSpaceX4_When_Reconciled_Then_TheSecondChildCarriesTheWholeLeadingMargin()
+        public void Given_FlexWrapSpaceX4_When_Reconciled_Then_TheFirstChildCarriesTheWholeEndMargin()
         {
-            // Arrange — Tailwind's space-x writes one margin edge per child whether or not the row wraps, so
-            // the half-margin path CSS gap takes under flex-wrap is not space-x's.
+            // Arrange — Tailwind's space-x writes one margin edge per child whether or not the row wraps, so the
+            // half-margin path CSS gap takes under flex-wrap is not space-x's.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row flex-wrap space-x-4", 3) };
 
@@ -1164,28 +1204,142 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
-        public void Given_ATrailingMarginRow_When_SpaceXReverseIsRemovedByPatch_Then_TheStaleTrailingMarginIsCleared()
+        public void Given_AGapXAndASpaceXOnOneRow_When_Reconciled_Then_BothApply()
         {
-            // Arrange — the mirror image of the earlier Left→Right clear test: establish the TRAILING
-            // (margin-right) edge first, then patch the marker away so the edge flips back to leading.
+            // Arrange — Tailwind composes the two: the gap between the children and the space margin on them.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row gap-x-4 space-x-2", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That((container[1].style.marginLeft.value.value, container[1].style.marginRight.value.value),
+                Is.EqualTo((Space4, Space2)));
+        }
+
+        [Test]
+        public void Given_AGapXAndASpaceXOnOneEdge_When_Reconciled_Then_TheMarginsAdd()
+        {
+            // Arrange — on a reversed row the gap moves to margin-right, the edge the space margin already has, and the
+            // two add up the way a gap and a margin add up in the browser.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse gap-x-4 space-x-2", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4 + Space2));
+        }
+
+        [Test]
+        public void Given_ANegativeSpaceX_When_Reconciled_Then_TheEndMarginIsNegative()
+        {
+            // Arrange — Tailwind's -space-x-4.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row -space-x-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(-Space4));
+        }
+
+        [Test]
+        public void Given_ASpaceYWithoutASpaceX_When_Reconciled_Then_TheEndMarginIsBottom()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row space-y-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[0].style.marginBottom.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ASpaceXRowWhoseChildrenCarryALeftMargin_When_Reconciled_Then_TheirOwnMarginIsKept()
+        {
+            // Arrange — space-x writes margin-inline-end only; the start edge stays the child's own.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row space-x-4", children: new VNode[]
+                {
+                    V.Div(className: "ml-[5px]"),
+                    V.Div(className: "ml-[5px]"),
+                    V.Div(className: "ml-[5px]"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(5f));
+        }
+
+        [Test]
+        public void Given_AGridWithASpaceX_When_Reconciled_Then_TheSpaceIsAMarginRatherThanAColumnGap()
+        {
+            // Arrange — Tailwind's space-x on a grid is still its margin rule; the grid's column gap is gap-x's.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("grid grid-cols-2 space-x-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert — child 1 opens the second column, so a column gap would sit on its left.
+            Assert.That((container[1].style.marginLeft.value.value, container[0].style.marginRight.value.value),
+                Is.EqualTo((0f, Space4)));
+        }
+
+        [Test]
+        public void Given_AGridWithASpaceY_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("grid grid-cols-2 space-y-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[0].style.marginBottom.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_AStartMarginRow_When_SpaceXReverseIsRemovedByPatch_Then_TheStaleStartMarginIsCleared()
+        {
+            // Arrange — the mirror image of the earlier Right→Left clear test: establish the START
+            // (margin-left) edge first, then patch the marker away so the edge flips back to the end.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var container = Container(scope.Root);
-            Assume.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4),
-                "Precondition: the trailing (margin-right) edge is established before the marker is removed");
+            var spaced = container[1].style.marginLeft.value.value;
 
-            // Act — patch away space-x-reverse: the edge flips from Right back to Left, so the manipulator
-            // must clear the now-abandoned trailing margin, not just add the new leading one.
+            // Act
             var tree2 = new VNode[] { Row("flex flex-row space-x-4", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the stale margin-right is cleared.
-            Assert.That(container[1].style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the margin before the patch rides along, since a child never spaced reads Null too.
+            Assert.That((spaced, container[1].style.marginLeft.keyword), Is.EqualTo((Space4, StyleKeyword.Null)));
         }
 
         [Test]
@@ -1626,6 +1780,30 @@ namespace Velvet.Tests
             Assert.That((wrapped, row.style.marginLeft.keyword), Is.EqualTo((-8f, StyleKeyword.Null)));
         }
 
+        [Test]
+        public void Given_AFixedSizeGapRow_When_EveryDirectionClassIsRemoved_Then_TheGapMovesToTheColumnEdgeWithNoSynthesizedEvent()
+        {
+            // Arrange — with neither flex nor a direction utility left, the container lays out in the engine's
+            // column; a fixed size keeps its rect, so no geometry event follows the style pass that says so.
+            using var store = new ClassNameStore("flex flex-row gap-4 w-[150px] h-[60px]");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            var spaced = b.style.marginLeft.value.value;
+
+            // Act — drop every direction/display class; no synthesized event.
+            store.Set("gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the row's gap before the change rides along, since a child never spaced reads 0 too.
+            Assert.That((spaced, b.style.marginTop.value.value), Is.EqualTo((16f, 16f)));
+        }
+
         [Component]
         private static VNode InlineWrapClassRow()
         {
@@ -1639,13 +1817,13 @@ namespace Velvet.Tests
                 });
         }
 
-        // GREEN_ON_BASE(characterization): the base reads the inline wrap through resolvedStyle at once.
-        // What reddens it is dropping the reset of the marker-left flag in OnGeometryChanged, which holds
-        // the no-wrap answer after resolvedStyle has caught up.
+        // GREEN_ON_BASE(characterization): the base reads the inline wrap through resolvedStyle at once. What
+        // reddens it is IsWrap's class-left window answering without the inline flex-wrap, which drops the row
+        // to the leading path until the next geometry event.
         [Test]
-        public void Given_AnInlineWrapBesideAFlexWrapClass_When_TheClassIsRemoved_Then_TheInlineWrapIsReadAgain()
+        public void Given_AnInlineWrapBesideAFlexWrapClass_When_TheClassIsRemoved_Then_TheInlineWrapStillHolds()
         {
-            // Arrange — the inline style still wraps once the class goes, so the gap must end on the wrap path.
+            // Arrange — the inline style still wraps once the class goes, so the gap must stay on the wrap path.
             using var store = new ClassNameStore("flex flex-row flex-wrap gap-4");
             s_classNameStore = store;
             using var mounted = V.Mount(Root, V.Component(InlineWrapClassRow, key: "row"));
@@ -1655,12 +1833,9 @@ namespace Velvet.Tests
             var b = Root.Q<Label>("b");
             var wrapped = b.style.marginTop.value.value;
 
-            // Act
+            // Act — the patch alone, before any panel pass could correct it.
             store.Set("flex flex-row gap-4");
             scheduler.DrainImmediateForTest();
-            Tick();
-            Tick();
-            Tick();
 
             // Assert — the half-margin before and after: the leading path writes no margin-top on a row.
             Assert.That((wrapped, b.style.marginTop.value.value), Is.EqualTo((8f, 8f)));

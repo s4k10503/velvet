@@ -700,7 +700,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Color}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -3200,10 +3200,10 @@ namespace Velvet
             return classes.ToArray();
         }
 
-        // Configures the element's StyleGapManipulator from the gap-* / gap-x-* / gap-y-* token in
-        // classNames and (re-)applies it so the inter-child margins reflect the current child set. Call
-        // this AFTER the container's children have been reconciled so the manipulator sees the final
-        // child list. gridSuppressed is the caller's grid-class verdict: a grid container routes its gap
+        // Configures the element's StyleGapManipulator from the gap-* and space-* tokens in classNames and
+        // (re-)applies it so the inter-child margins reflect the current child set. Call this AFTER the
+        // container's children have been reconciled so the manipulator sees the final child list.
+        // gridSuppressed is the caller's grid-class verdict: a grid container routes its gap and space
         // through StyleGridManipulator (the grid owns the children's widths AND their margins, so the two
         // must never both write the margin edges), and the caller already needs that verdict to order the
         // two calls.
@@ -3223,11 +3223,9 @@ namespace Velvet
                 return;
             }
 
-            var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis, out var space);
-            StyleGapClass.ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
+            var spec = StyleGapClass.Extract(classNames);
 
-            Configure<GapOp, StyleGapManipulator>(element, hasGap,
-                new GapOp(new GapSpec(gap, axis, space, xReverse, yReverse)));
+            Configure<GapOp, StyleGapManipulator>(element, spec.IsActive, new GapOp(spec));
         }
 
         // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color /
@@ -3263,9 +3261,10 @@ namespace Velvet
 
             var hasGrid = StyleGridClass.TryExtract(classNames, out var columns);
             StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
+            var space = StyleGapClass.ExtractSpaceSpec(classNames);
 
             Configure<GridOp, StyleGridManipulator>(element, hasGrid,
-                new GridOp(new GridSpec(columns, columnGap, rowGap)));
+                new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
         }
 
         // Carries no per-element spec to diff, unlike Gap/Grid/Divide — the manipulator re-derives
