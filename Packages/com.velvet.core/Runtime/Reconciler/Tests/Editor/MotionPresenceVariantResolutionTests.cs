@@ -235,6 +235,32 @@ namespace Velvet.Tests
             });
         }
 
+        // s_recolorWithStart's poses with a spring on the exit pose alone, so the exit completes inside the flush that
+        // starts it while the enter takes the Motion's tween.
+        private static readonly Dictionary<string, MotionVariant> s_springExitTweenEnter = new()
+        {
+            ["hidden"] = new MotionVariant("pose-exit", new StyleTransitionConfig { Type = TransitionType.Spring }),
+            ["start"] = "pose-start",
+            ["visible"] = "pose-rest",
+        };
+
+        [Component]
+        private static VNode CompletedExitThenTweenEnterHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_springExitTweenEnter, initial: "start", animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
         [Component]
         private static VNode CompletedExitWithInitialHost()
         {
@@ -562,6 +588,29 @@ namespace Velvet.Tests
             Assert.AreEqual((true, false, true),
                 (parked, item.ClassListContains("pose-exit"), item.ClassListContains("pose-rest")),
                 "The re-entry replaces the exit pose before replaying the enter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base replays the enter on the element a completed exit left attached.
+        [Test]
+        public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheSameElementReplaysItsEnter()
+        {
+            // Arrange — the spring exit completes inside this flush and leaves the drop render pending.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedExitThenTweenEnterHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+            var before = _root.Q<VisualElement>("item-a");
+            var parked = Parked(mounted, before);
+
+            // Act — re-add the key inside the completed-exit window.
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the element the exit parked is kept, and its tween enter has stripped it to the initial pose.
+            var item = _root.Q<VisualElement>("item-a");
+            Assert.That((parked, ReferenceEquals(item, before), item.ClassListContains("pose-start")),
+                Is.EqualTo((true, true, true)));
         }
 
         [Test]
