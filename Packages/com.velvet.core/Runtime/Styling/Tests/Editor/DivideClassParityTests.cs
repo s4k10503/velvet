@@ -780,10 +780,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AColoredEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheEdgeItLeftKeepsTheColor()
+        public void Given_AColoredEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_EveryEdgeKeepsTheColor()
         {
             // Arrange — a divide-{color} colors every edge of a divided child, as Tailwind's border-color does,
-            // so handing the abandoned edge back must not take its color with the width.
+            // so handing the abandoned edge's width back must leave its color, and the flip must not strip the
+            // edges the divider never sat on.
             ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
@@ -794,7 +795,10 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(gray200));
+            var style = scope.Root[0][1].style;
+            Assert.That((style.borderTopColor.value, style.borderRightColor.value, style.borderBottomColor.value,
+                    style.borderLeftColor.value),
+                Is.EqualTo((gray200, gray200, gray200, gray200)));
         }
 
         [Test]

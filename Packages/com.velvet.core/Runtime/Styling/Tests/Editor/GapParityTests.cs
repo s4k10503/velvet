@@ -1,4 +1,5 @@
 using System.Collections;
+using System.IO;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -1753,6 +1754,8 @@ namespace Velvet.Tests
     {
         private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
+        private const string UserSheetPath = "Assets/VelvetGapWrapsByRule.uss";
+
         private readonly record struct DirectionState(bool Reversed);
 
         private sealed class DirectionStore : Store<DirectionState>
@@ -1798,6 +1801,7 @@ namespace Velvet.Tests
         {
             _sim?.Dispose();
             _sim = null;
+            AssetDatabase.DeleteAsset(UserSheetPath);
         }
 
         private VisualElement Root => _sim.rootVisualElement;
@@ -2088,10 +2092,9 @@ namespace Velvet.Tests
         {
             // Arrange — the rule wraps the row too, so dropping the class marker must end back on the wrap path
             // once resolvedStyle has caught up.
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/WrapsByStylesheetRule.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the test stylesheet loads");
-            Root.styleSheets.Add(sheet);
+            File.WriteAllText(UserSheetPath, ".test-wraps-by-rule { flex-wrap: wrap; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
             using var store = new ClassNameStore("flex flex-row flex-wrap test-wraps-by-rule gap-4 w-[150px] h-[60px]");
             s_classNameStore = store;
             using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
