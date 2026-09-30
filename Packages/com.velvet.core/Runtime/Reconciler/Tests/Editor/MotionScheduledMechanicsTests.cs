@@ -70,7 +70,6 @@ namespace Velvet.Tests
             s_store = null;
             s_bTransition = null;
             s_sharedClasses = null;
-            (s_bFadesIn, s_cMounted, s_cTransition) = (false, false, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
@@ -2382,11 +2381,6 @@ namespace Velvet.Tests
         private static StyleTransitionConfig s_bTransition;
         private static string s_sharedClasses;
         private static int s_sharedRenders;
-        // "b" fades in on its own variants as it mounts, and "c" stands 600px right under "card" on s_cTransition
-        // while s_cMounted.
-        private static bool s_bFadesIn;
-        private static bool s_cMounted;
-        private static StyleTransitionConfig s_cTransition;
 
         [Component]
         private static VNode SharedLiveIdRender()
@@ -2402,14 +2396,7 @@ namespace Velvet.Tests
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
-                    variants: s_bFadesIn ? s_fade : null, initial: s_bFadesIn ? "hidden" : null,
-                    animate: s_bFadesIn ? "visible" : null,
                     className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses}"));
-            }
-            if (s_cMounted)
-            {
-                children.Add(V.Motion(key: "c", name: "c", layoutId: "card", transition: s_cTransition,
-                    className: "absolute left-[600px] top-[0px] w-[100px] h-[100px]"));
             }
             return V.Div(children: children.ToArray());
         }
@@ -2441,21 +2428,6 @@ namespace Velvet.Tests
             Tick();
         }
 
-        // How far "b" is through its tween from "a", read off where it is drawn: the tween is linear over 300px.
-        private float BProgress() => 1f + TranslateX(Root.Q<VisualElement>("b")) / 300f;
-
-        // The opacity a layoutId crossfade multiplies an element's own by, which it writes as an opacity filter;
-        // 1 where it writes none.
-        private static float FadeOf(VisualElement element)
-        {
-            var filters = element.style.filter.value;
-            if (element.style.filter.keyword == StyleKeyword.Null || filters == null) return 1f;
-            foreach (var function in filters)
-            {
-                if (function.type == FilterFunctionType.Opacity) return function.GetParameter(0).floatValue;
-            }
-            return 1f;
-        }
 
         [Test]
         public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderItAndItsTweenEnds_Then_TheFirstIsHidden()
@@ -2468,86 +2440,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderIt_Then_ItIsDrawnWhereTheOtherIsDrawn()
-        {
-            // Arrange
-            using var mounted = MountBOverA();
-
-            // Act — "b" some 50px on from "a".
-            for (var i = 0; i < 10; i++) Tick();
-
-            // Assert
-            var b = DrawnBox(Root.Q<VisualElement>("b"));
-            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatJoinedAnId_When_AQuarterOfItsTweenHasPassed_Then_ItIsFadedInOnCircOut()
-        {
-            // Arrange
-            using var mounted = MountBOverA();
-
-            // Act
-            for (var i = 0; i < 15; i++) Tick();
-
-            // Assert — Framer's easeCrossfadeIn: circOut over the first half of the move.
-            var progress = BProgress();
-            var expected = Mathf.Sin(Mathf.Acos(1f - progress / 0.5f));
-            Assert.That(FadeOf(Root.Q<VisualElement>("b")), Is.EqualTo(expected).Within(0.02f));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatJoinedAnId_When_ThreeQuartersOfItsTweenHavePassed_Then_TheOneBehindItIsFadingOut()
-        {
-            // Arrange
-            using var mounted = MountBOverA();
-
-            // Act
-            for (var i = 0; i < 45; i++) Tick();
-
-            // Assert — Framer's easeCrossfadeOut: linear from halfway to 95% of the move.
-            var progress = BProgress();
-            var expected = 1f - (progress - 0.5f) / 0.45f;
-            Assert.That(FadeOf(Root.Q<VisualElement>("a")), Is.EqualTo(expected).Within(0.02f));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatJoinedAnId_When_ItsTweenEnds_Then_ItsOpacityIsHandedBack()
-        {
-            // Arrange
-            using var mounted = MountBOverA();
-            var b = Root.Q<VisualElement>("b");
-            var fading = b.style.filter.keyword != StyleKeyword.Null;
-
-            // Act
-            AdvancePast(1f);
-
-            // Assert
-            Assert.That((fading, b.style.filter.keyword), Is.EqualTo((true, StyleKeyword.Null)));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionJoiningAnId_When_ItIsPatchedAgainBeforeItsFirstLayout_Then_ItStillCrossfades()
-        {
-            // Arrange
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
-            using var mounted = MountAAlone();
-            s_bMounted = true;
-            s_setStep.Invoke(++s_sharedRenders);
-            mounted.FlushStateForTest();
-
-            // Act — a second render before any layout, then "b" some 50px on.
-            s_setStep.Invoke(++s_sharedRenders);
-            mounted.FlushStateForTest();
-            for (var i = 0; i < 11; i++) Tick();
-
-            // Assert — "a" drawn where "b" is, fading behind it.
-            var b = DrawnBox(Root.Q<VisualElement>("b"));
-            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -2722,25 +2614,6 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        // GREEN_ON_BASE(characterization): the base tweens a Motion that mounts as the only holder of the id a removed one held, and writes no opacity.
-        // A holder alone under its id must not crossfade.
-        [Test]
-        public void Given_ALayoutIdMotionRemovedAsAnotherMountsUnderItsId_When_TheOtherTweens_Then_ItDoesNotFade()
-        {
-            // Arrange
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
-            using var mounted = MountAAlone();
-
-            // Act
-            (s_aMounted, s_bMounted) = (false, true);
-            RenderShared(mounted);
-
-            // Assert — back over "a", at its own opacity.
-            var b = Root.Q<VisualElement>("b");
-            Assert.That((TranslateX(b) < -250f, b.style.filter.keyword), Is.EqualTo((true, StyleKeyword.Null)));
-        }
-
         [Test]
         public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadMovesOnItsOwn_Then_TheOtherStaysHidden()
         {
@@ -2754,22 +2627,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionBehindANewLead_When_TheCrossfadeEnds_Then_ItsOpacityIsHandedBack()
-        {
-            // Arrange
-            using var mounted = MountBOverA();
-            for (var i = 0; i < 5; i++) Tick();
-            var a = Root.Q<VisualElement>("a");
-            var fading = a.style.filter.keyword != StyleKeyword.Null;
-
-            // Act
-            AdvancePast(1f);
-
-            // Assert
-            Assert.That((fading, a.style.filter.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -2792,7 +2649,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionCrossfadingOverAnother_When_ItLeavesMidCrossfade_Then_TheOtherTweensFromWhereItWasDrawn()
+        public void Given_ALayoutIdLeadMidTween_When_ItLeaves_Then_TheOtherTweensFromWhereItWasDrawn()
         {
             // Arrange — "b" some 150px on from "a".
             using var mounted = MountBOverA();
@@ -2823,119 +2680,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
-        }
-
-        [Test]
-        public void Given_ALeadSupersededMidCrossfade_When_ANewLeadOnAOneFrameTweenLands_Then_BothBehindItAreHidden()
-        {
-            // Arrange — "a" tweening a move of its own when "b" takes the id over, and "c" on a one-millisecond tween
-            // taking it from "b" five frames later.
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
-            s_cTransition = new StyleTransitionConfig { DurationSec = 0.001f, Easing = EasingMode.Linear };
-            using var mounted = MountAAlone();
-            s_aLeft = 100;
-            RenderShared(mounted);
-            s_bMounted = true;
-            RenderShared(mounted);
-            for (var i = 0; i < 5; i++) Tick();
-
-            // Act
-            s_cMounted = true;
-            RenderShared(mounted);
-            for (var i = 0; i < 3; i++) Tick();
-
-            // Assert
-            Assert.That((Root.Q<VisualElement>("a").resolvedStyle.visibility, Root.Q<VisualElement>("b").resolvedStyle.visibility),
-                Is.EqualTo((Visibility.Hidden, Visibility.Hidden)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base never overrides a Motion's own opacity as it takes an id.
-        // A crossfade must multiply the Motion's own fade in rather than take its opacity over.
-        [Test]
-        public void Given_AMotionFadingInOnItsOwnVariantsAsItJoinsAnId_When_ItsFadeIsUnderWay_Then_ItsOwnOpacityRuns()
-        {
-            // Arrange — the bundled sheet, so its variants' opacity classes resolve.
-            VelvetStyleUtilities.AttachTo(Root);
-            s_bFadesIn = true;
-            using var mounted = MountBOverA();
-
-            // Act — a sixth of the way through its one-second fade in.
-            for (var i = 0; i < 10; i++) Tick();
-
-            // Assert — its own opacity, not the crossfade's circOut of about three quarters.
-            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.opacity, Is.LessThan(0.5f));
-        }
-
-        [Test]
-        public void Given_ALeadCrossfading_When_AMoveOfItsOwnInterruptsIt_Then_TheCrossfadeHoldsWhereItWas()
-        {
-            // Arrange — "b" about a third of the way through its crossfade.
-            using var mounted = MountBOverA();
-            for (var i = 0; i < 18; i++) Tick();
-            var reached = FadeOf(Root.Q<VisualElement>("b"));
-
-            // Act
-            s_bLeft = 400;
-            RenderShared(mounted);
-            for (var i = 0; i < 5; i++) Tick();
-
-            // Assert — "b" still at the part-way opacity the crossfade reached, and "a" still drawn behind it.
-            var b = FadeOf(Root.Q<VisualElement>("b"));
-            Assert.That((reached < 0.95f, Mathf.Abs(b - reached) < 0.06f, Root.Q<VisualElement>("a").resolvedStyle.visibility),
-                Is.EqualTo((true, true, Visibility.Visible)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base leaves a Motion's own inline filter alone as it takes an id.
-        // A crossfade must hand back the filter the Motion held.
-        [Test]
-        public void Given_AGrayscaleMotionThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItHoldsItsOwnFilterAgain()
-        {
-            // Arrange
-            s_sharedClasses = "grayscale";
-            using var mounted = MountBOverA();
-
-            // Act
-            AdvancePast(1f);
-
-            // Assert
-            var b = Root.Q<VisualElement>("b");
-            Assert.That((b.style.filter.keyword, FadeOf(b)), Is.EqualTo((StyleKeyword.Undefined, 1f)));
-        }
-
-        // A card holding "card" with a title inside it holding "title"; from step 1, a second card 300px right with
-        // its own title, under the same two ids.
-        [Component]
-        private static VNode NestedTitlesRender()
-        {
-            var (step, setStep) = Hooks.UseState(0);
-            s_setStep = setStep;
-            VNode Card(string name, int left) => V.Motion(key: name, name: name, layoutId: "card", transition: s_slowTween,
-                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]",
-                children: new VNode[]
-                {
-                    V.Motion(key: "title", name: name + "-title", layoutId: "title", transition: s_slowTween,
-                        className: "left-[10px] top-[10px] w-[50px] h-[20px]"),
-                });
-            return V.Div(children: step == 0 ? new[] { Card("a", 0) } : new[] { Card("a", 0), Card("b", 300) });
-        }
-
-        [Test]
-        public void Given_TwoCardsWithTitlesSharingIds_When_TheSecondCrossfadesOverTheFirst_Then_ItsTitleDoesNotFadeAgain()
-        {
-            // Arrange
-            using var mounted = V.Mount(Root, V.Component(NestedTitlesRender, key: "root"));
-            Tick();
-
-            // Act
-            s_setStep.Invoke(1);
-            mounted.FlushStateForTest();
-            for (var i = 0; i < 11; i++) Tick();
-
-            // Assert — the card fading in, its title under it at its own opacity, as Framer's crossfade skips a node
-            // below one crossfading.
-            Assert.That((FadeOf(Root.Q<VisualElement>("b")) < 1f, FadeOf(Root.Q<VisualElement>("b-title"))),
-                Is.EqualTo((true, 1f)));
         }
 
         // Set before each render of CardModalRender: whether the modal is open, and the card's transition when not
@@ -3162,20 +2906,22 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        // GREEN_ON_BASE(characterization): the base never hides a Motion that holds a layoutId.
+        // A title inside the relegated modal must hand its own id back with the modal's.
         [Test]
-        public void Given_ACardAndAModalWithTitlesSharingIds_When_TheModalStartsItsExit_Then_TheCardsTitleDoesNotFadeAgain()
+        public void Given_ACardAndAModalWithTitlesSharingIds_When_TheModalStartsItsExit_Then_TheCardsTitleIsShown()
         {
             // Arrange / Act
             using var mounted = CloseTheNestedModalFor(10);
 
-            // Assert — the card fading in, its title drawn under it at its own opacity.
-            var title = Root.Q<VisualElement>("card-title");
-            Assert.That((FadeOf(Root.Q<VisualElement>("card")) < 1f, FadeOf(title), title.resolvedStyle.visibility),
-                Is.EqualTo((true, 1f, Visibility.Visible)));
+            // Assert — the title takes its id's lead back with the card, as the modal's title leaves.
+            Assert.That(Root.Q<VisualElement>("card-title").resolvedStyle.visibility, Is.EqualTo(Visibility.Visible));
         }
 
+        // GREEN_ON_BASE(characterization): the base never hides a Motion that holds a layoutId.
+        // A title inside a modal coming back must take its own id back with the modal's.
         [Test]
-        public void Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleDoesNotFadeAgain()
+        public void Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleIsShownAgain()
         {
             // Arrange
             using var mounted = CloseTheNestedModalFor(1);
@@ -3185,10 +2931,8 @@ namespace Velvet.Tests
             RenderShared(mounted);
             for (var i = 0; i < 10; i++) Tick();
 
-            // Assert — the modal fading in again, its title drawn under it at its own opacity.
-            var title = Root.Q<VisualElement>("modal-title");
-            Assert.That((FadeOf(Root.Q<VisualElement>("modal")) < 1f, FadeOf(title), title.resolvedStyle.visibility),
-                Is.EqualTo((true, 1f, Visibility.Visible)));
+            // Assert — the title takes its id's lead back with the modal.
+            Assert.That(Root.Q<VisualElement>("modal-title").resolvedStyle.visibility, Is.EqualTo(Visibility.Visible));
         }
 
         [Test]

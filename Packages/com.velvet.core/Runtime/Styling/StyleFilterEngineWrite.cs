@@ -127,7 +127,7 @@ namespace Velvet
         // Clears before writing: with no transition, clearing the inline filter cancels a filter transition still
         // running, which writing a list does not, and the next animated write would start from that transition's
         // value instead (FilterTransitionPanelTests' mid-transition contrast case).
-        internal static void WriteSuspended(VisualElement element, List<FilterFunction>? list)
+        private static void WriteSuspended(VisualElement element, List<FilterFunction>? list)
         {
             var restore = CornerRadiusFit.DetachedCopy(element.style.transitionProperty);
             element.style.transitionProperty = s_noTransition;
