@@ -957,9 +957,11 @@ labelled one's head. `scripts/pr/automerge.py` then reads the head's
 runs of `.github/workflows/mutation.yml` — the campaign is a run of that file, and a check of another
 workflow bearing a campaign job's name is not one. Where there is none, or the newest was cancelled,
 it dispatches one onto the head's branch once `Test` has passed there — the passing run hands the pull
-request off itself, and a pull request event reads the head's newest `pull_request` run of `Test` —
-since a campaign over a head whose suites then fail measured a change that cannot merge. Until then it
-dispatches nothing, and cancels a campaign still running on an older head of the branch. Where
+request off itself unless a newer `pull_request` run of `Test` on the head has started since, and a
+pull request event reads the head's newest such run, which passes only once it has concluded `success`
+or its `Required checks (Unity)` job has — since a campaign over a head whose suites then fail
+measured a change that cannot merge. Until then it dispatches nothing, and cancels a campaign still
+open on an older head of the branch. Where
 the newest is still running it leaves it to finish; and otherwise a hand-off from a pull request event
 dispatches the merge run, while one from a passing `Test` run leaves the merge to that run's own merge
 job. A failed campaign is a verdict about its head, which a push
@@ -993,7 +995,10 @@ it, when a campaign on its head passes, when a hand-off finds the campaign alrea
 dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull
 requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
 what clears a red base, and when a release
-dispatch of `UPM` passes, which is what clears an unpublished release. A refusal cleared by anything
+dispatch of `UPM` passes, which is what clears an unpublished release. Each of those but a passing
+`pull_request` run of `Test`, whose own hand-off has it, dispatches the campaign rather than asking
+settle where a labelled head has none and the hand-off's reading of `Test` passes there, so the
+campaign does not rest on the two hand-offs' events alone. A refusal cleared by anything
 else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
 for a manual dispatch.
 
@@ -1011,7 +1016,8 @@ carried would go unseen until some later push. The `upm` split would wait for th
 the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
 Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
-holds it as it holds anyone: it lists no bypass actor.
+holds it as it holds anyone: it lists no bypass actor. A campaign those jobs dispatch goes out with
+the workflow's own token instead, granted Actions write, since this one only reads them.
 
 ### Enabling Unity tests (free Personal license)
 

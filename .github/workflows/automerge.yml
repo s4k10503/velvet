@@ -81,6 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: write
       contents: read
     # One merge run per pull request at a time, since each required workflow completing starts one.
     # Job-level rather than workflow-level: a run waiting in the group is cancelled when another joins
@@ -95,8 +96,10 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
+      # automerge.py's DISPATCH_TOKEN says why this job carries a second token.
       - env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+          DISPATCH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
           AFTER_RUN: ${{ inputs.after_run }}
         run: python3 scripts/pr/automerge.py --number "$NUMBER" --after-run "$AFTER_RUN"
@@ -114,6 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: write
       contents: read
     concurrency:
       group: automerge-sweep
@@ -127,4 +131,5 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+          DISPATCH_TOKEN: ${{ github.token }}
         run: python3 scripts/pr/automerge.py

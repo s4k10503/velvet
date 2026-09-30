@@ -11,6 +11,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import tempfile
 import unittest
@@ -65,10 +66,10 @@ def handed(number=7, action="labeled"):
 
 
 def passing_test(head=TESTED, numbers=(7,), conclusion="success", event="pull_request",
-                path=".github/workflows/test.yml"):
-    """The workflow_run event of a Test run completing, which the hand-off job runs on."""
+                path=".github/workflows/test.yml", attempt=1):
+    """The workflow_run event of Test run 21 completing, which the hand-off job runs on."""
     run = completed_run(event=event, conclusion=conclusion, numbers=numbers, head=head)
-    return completed(dict(run, path=path))
+    return completed(dict(run, path=path, id=21, run_number=5, run_attempt=attempt))
 
 
 HAND_OFF = ["--hand-off"]
@@ -82,10 +83,12 @@ class Invocation:
     """
 
     def __init__(self, pulls, event=None, argv=(), token="a-token", merge_code=0, reading_fails=False,
-                 runs=(), gh_fails=False, jobs=None, branch_runs=(), base_workflows=("automerge.yml",)):
+                 runs=(), gh_fails=False, jobs=None, branch_runs=(), base_workflows=("automerge.yml",),
+                 dispatch_token="a-dispatch-token"):
         self.pulls = pulls
         self.calls = []
         self.dispatched = []
+        self.tokens = []
         self.printed = io.StringIO()
         self.read = []
         with tempfile.TemporaryDirectory(prefix="automerge-") as directory:
@@ -113,6 +116,7 @@ class Invocation:
 
             def gh(*arguments):
                 self.dispatched.append(arguments)
+                self.tokens.append(os.environ.get("GH_TOKEN"))
                 if gh_fails:
                     raise RuntimeError("gh workflow run failed: HTTP 422")
                 return ""
@@ -130,6 +134,8 @@ class Invocation:
                                                       lambda *_: dict(jobs or {}), create=True))
                 stack.enter_context(contextlib.redirect_stdout(self.printed))
                 environ = {"GH_TOKEN": token, "GITHUB_RUN_ID": "99"} if token else {}
+                if token and dispatch_token:
+                    environ["DISPATCH_TOKEN"] = dispatch_token
                 try:
                     self.code = automerge.main(arguments, environ)
                 except SystemExit as refused:
@@ -377,6 +383,8 @@ class MergeInvocationTests(unittest.TestCase):
 
 
 class SweepTests(unittest.TestCase):
+    # GREEN_ON_BASE(characterization): the base reads and merges these same pull requests too. Only
+    # the pull request readings are compared, since each labelled one is now also asked for a campaign.
     def test_Given_ABasePushThatPassed_When_Run_Then_EachLabelledOpenPullRequestIsReadAndMerged(self):
         # Arrange — the pull requests' heads are the run's own, so no head comparison can decline one.
         pulls = {3: pull(number=3, head=NEWER), 4: pull(number=4, head=NEWER, labels=()),
@@ -387,7 +395,7 @@ class SweepTests(unittest.TestCase):
 
         # Assert — the unlabelled one is not even read, which is the listing's filter rather than
         # settle_one's.
-        self.assertEqual((ran.merged, ran.read[1:]),
+        self.assertEqual((ran.merged, [path for path in ran.read[1:] if "/pulls/" in path]),
                          ([3, 5], ["repos/owner/name/pulls/3", "repos/owner/name/pulls/5"]))
 
     def test_Given_ABasePush_When_Run_Then_APullRequestIsNotHeldToTheBasesHead(self):
@@ -592,17 +600,51 @@ class HandOffTests(unittest.TestCase):
         self.assertEqual(ran.dispatched, [CAMPAIGN_DISPATCH])
 
     def test_Given_APushedHeadTestHasNotPassed_When_HandedOff_Then_OnlyTheOlderHeadsOpenCampaignIsCancelled(self):
-        # Arrange — one open on an older head, one on this head, and one on an older head that ended.
+        # Arrange — two open on an older head, one running and one queued for runners, one open on
+        # this head, and one on an older head that ended.
         branch_runs = [{"id": 40, "head_sha": NEWER, "status": "in_progress"},
                        {"id": 41, "head_sha": TESTED, "status": "queued"},
-                       {"id": 42, "head_sha": NEWER, "status": "completed"}]
+                       {"id": 42, "head_sha": NEWER, "status": "completed"},
+                       {"id": 43, "head_sha": NEWER, "status": "queued"}]
 
         # Act
         ran = Invocation({7: pull()}, event=handed(action="synchronize"),
                          runs=[run_of_test(None, status="in_progress")], branch_runs=branch_runs)
 
         # Assert
-        self.assertEqual(ran.dispatched, [("run", "cancel", "40", "--repo", "owner/name")])
+        self.assertEqual(ran.dispatched, [("run", "cancel", "40", "--repo", "owner/name"),
+                                          ("run", "cancel", "43", "--repo", "owner/name")])
+
+
+    def test_Given_ANewerPassingRunOfAnotherWorkflowBesideAFailedTest_When_HandedOff_Then_NoCampaignIsDispatched(self):
+        # Arrange — Source generators' pull_request run is newer by run number and passed.
+        runs = [run_of_test("failure"),
+                {"id": 23, "run_number": 9, "path": ".github/workflows/generators.yml",
+                 "event": "pull_request", "status": "completed", "conclusion": "success"}]
+
+        # Act
+        ran = Invocation({7: pull()}, event=handed(), runs=runs)
+
+        # Assert
+        self.assertEqual(ran.dispatched, [])
+
+    def test_Given_ALabelledHeadWhoseTestRunWasCancelled_When_HandedOff_Then_NoCampaignIsDispatched(self):
+        # Act
+        ran = Invocation({7: pull()}, event=handed(), runs=[run_of_test("cancelled")])
+
+        # Assert
+        self.assertEqual(ran.dispatched, [])
+
+    def test_Given_AnOpenTestRunWhoseAggregateIsNotListedYet_When_HandedOff_Then_NoCampaignIsDispatched(self):
+        # Arrange — every job listed so far passed; the aggregate that needs them has not been listed.
+        jobs = {21: [{"name": "Unity tests (EditMode)", "status": "completed", "conclusion": "success"}]}
+
+        # Act
+        ran = Invocation({7: pull()}, event=handed(), runs=[run_of_test(None, status="in_progress")],
+                         jobs=jobs)
+
+        # Assert
+        self.assertEqual(ran.dispatched, [])
 
 
 class PassingTestHandOffTests(unittest.TestCase):
@@ -698,6 +740,26 @@ class PassingTestHandOffTests(unittest.TestCase):
         self.assertEqual((ran.code, ran.read, ran.dispatched, "Nothing to hand off" in ran.printed),
                          (0, [], [], True))
 
+    def test_Given_ANewerTestRunOnTheHeadThatFailed_When_AnOlderOnePasses_Then_NothingIsDispatched(self):
+        # Arrange — run 22 is newer than the run 21 the event hands over.
+        runs = [run_of_test("failure", number=6, run_id=22)]
+
+        # Act
+        ran = Invocation({7: pull()}, event=passing_test(), argv=HAND_OFF, runs=runs)
+
+        # Assert — the reason rides along for the reason the running case gives.
+        self.assertEqual((ran.dispatched, "a newer run of" in ran.printed), ([], True))
+
+    def test_Given_TheHeadsRunsStillShowTheEventsOwnRunOpen_When_ItPasses_Then_OneIsDispatched(self):
+        # Arrange — the same run and attempt as the event's, read before its completion landed.
+        runs = [dict(run_of_test(None, status="in_progress"), run_attempt=2)]
+
+        # Act
+        ran = Invocation({7: pull()}, event=passing_test(attempt=2), argv=HAND_OFF, runs=runs)
+
+        # Assert
+        self.assertEqual(ran.dispatched, [CAMPAIGN_DISPATCH])
+
     def test_Given_TheHandOffJob_When_Read_Then_ItRunsOnAPassingRunOfTheWorkflowTheCampaignWaitsFor(self):
         # Arrange
         text = (WORKFLOWS / "automerge.yml").read_text(encoding="utf-8")
@@ -711,6 +773,122 @@ class PassingTestHandOffTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(read, ([automerge.settle.campaign.AFTER], True, True))
+
+    def test_Given_TheMergeAndSweepJobs_When_Read_Then_EachHandsTheScriptATokenThatDispatches(self):
+        # Arrange
+        text = (WORKFLOWS / "automerge.yml").read_text(encoding="utf-8")
+        blocks = [text.partition("\n  merge:\n")[2].partition("\n  sweep:\n")[0],
+                  text.partition("\n  sweep:\n")[2]]
+
+        # Act
+        read = [("      actions: write" in block,
+                 f"{automerge.DISPATCH_TOKEN}: ${{{{ github.token }}}}" in block) for block in blocks]
+
+        # Assert
+        self.assertEqual(read, [(True, True), (True, True)])
+
+    def test_Given_TheWorkflowTheCampaignWaitsFor_When_Read_Then_ItsAggregateAlwaysRunsOverEveryOtherJob(self):
+        # Arrange
+        text = (WORKFLOWS / Path(automerge.settle.campaign.AFTER).name).read_text(encoding="utf-8")
+        body = text.partition("\njobs:\n")[2]
+        jobs = re.findall(r"^  ([a-z][a-z0-9-]*):\s*$", body, re.MULTILINE)
+        blocks = dict(zip(jobs, re.split(r"^  [a-z][a-z0-9-]*:\s*$", body, flags=re.MULTILINE)[1:]))
+        named = [job for job in jobs if f"    name: {automerge.settle.campaign.AGGREGATE}\n" in blocks[job]]
+        block = blocks[named[0]] if len(named) == 1 else ""
+        needs = re.search(r"^    needs: \[(.*)\]$", block, re.MULTILINE)
+
+        # Act
+        unneeded = sorted(set(jobs) - set(named) - set(re.findall(r"[a-z][a-z0-9-]*",
+                                                                 needs.group(1) if needs else "")))
+
+        # Assert
+        self.assertEqual((len(named), "    if: always()" in block, unneeded), (1, True, []))
+
+
+def queued_test_that_passed():
+    """A Test run on the head GitHub still calls queued, and its latest attempt's jobs, all passed."""
+    return ([run_of_test(None, status="queued")],
+            {21: [{"name": "Required checks (Unity)", "status": "completed", "conclusion": "success"}]})
+
+
+GENERATORS_PASSED = completed(completed_run(name="Source generators"))
+
+
+class CampaignRecoveryTests(unittest.TestCase):
+    """What the merge job and the sweep do for a labelled head with no campaign."""
+
+    def test_Given_ALabelledHeadWhoseTestPassedWithNoCampaign_When_AnotherRunPasses_Then_TheCampaignIsDispatched(self):
+        # Arrange — Test is left queued, so no completed event of its own ever handed the head off.
+        runs, jobs = queued_test_that_passed()
+
+        # Act
+        ran = Invocation({7: pull()}, event=GENERATORS_PASSED, runs=runs, jobs=jobs)
+
+        # Assert — with the workflow's token, and settle is not asked about a head it would refuse.
+        self.assertEqual((ran.dispatched, ran.tokens, ran.merged),
+                         ([CAMPAIGN_DISPATCH], ["a-dispatch-token"], []))
+
+    def test_Given_ALabelledHeadWhoseTestPassedWithNoCampaign_When_TheBaseIsSwept_Then_TheCampaignIsDispatched(self):
+        # Act
+        ran = Invocation({7: pull()}, event=completed(base_push()), runs=[run_of_test()])
+
+        # Assert
+        self.assertEqual(ran.dispatched, [CAMPAIGN_DISPATCH])
+
+    def test_Given_ALabelledHeadWhoseTestPassedWithNoCampaign_When_DispatchedByNumber_Then_TheCampaignIsDispatched(self):
+        # Act
+        ran = Invocation({7: pull()}, argv=["--number", "7", "--after-run", ""],
+                         runs=[run_of_test()])
+
+        # Assert
+        self.assertEqual(ran.dispatched, [CAMPAIGN_DISPATCH])
+
+    # GREEN_ON_BASE(characterization): the base asks settle about this head and dispatches nothing.
+    # The hand-off job of the same run dispatches the campaign, so the merge job must not as well.
+    def test_Given_TheMergeJobOfAPassingTestRun_When_Run_Then_ItLeavesTheCampaignToTheHandOff(self):
+        # Act
+        ran = Invocation({7: pull()}, event=passing_test(), runs=[run_of_test()])
+
+        # Assert
+        self.assertEqual((ran.dispatched, ran.merged), ([], [7]))
+
+    # GREEN_ON_BASE(characterization): the base asks settle about this head and dispatches nothing.
+    # What the case pins is that a head whose Test failed gets no campaign from the merge job.
+    def test_Given_ALabelledHeadWhoseTestFailed_When_AnotherRunPasses_Then_SettleIsAsked(self):
+        # Act
+        ran = Invocation({7: pull()}, event=GENERATORS_PASSED, runs=[run_of_test("failure")])
+
+        # Assert
+        self.assertEqual((ran.dispatched, ran.merged), ([], [7]))
+
+    # GREEN_ON_BASE(characterization): the base asks settle about this head and dispatches nothing.
+    # What the case pins is that a campaign still running on the head is not dispatched over.
+    def test_Given_ACampaignRunningOnAHeadWhoseTestPassed_When_AnotherRunPasses_Then_SettleIsAsked(self):
+        # Act
+        ran = Invocation({7: pull()}, event=GENERATORS_PASSED, runs=campaign(None, status="in_progress"))
+
+        # Assert
+        self.assertEqual((ran.dispatched, ran.merged), ([], [7]))
+
+    # GREEN_ON_BASE(characterization): the base asks settle about this head and dispatches nothing.
+    # What the case pins is that a base holding no automerge.yml gets no campaign from the merge job.
+    def test_Given_ABaseWithoutTheAutomergeWorkflow_When_AnotherRunPasses_Then_SettleIsAsked(self):
+        # Act
+        ran = Invocation({7: pull()}, event=GENERATORS_PASSED, runs=[run_of_test()],
+                         base_workflows=("test.yml", "upm.yml"))
+
+        # Assert
+        self.assertEqual((ran.dispatched, ran.merged), ([], [7]))
+
+    # GREEN_ON_BASE(characterization): the base asks settle about this head and dispatches nothing.
+    # What the case pins is that the merge job's own token, which may not write Actions, dispatches none.
+    def test_Given_NoDispatchToken_When_AnotherRunPasses_Then_SettleIsAsked(self):
+        # Act
+        ran = Invocation({7: pull()}, event=GENERATORS_PASSED, runs=[run_of_test()],
+                         dispatch_token="")
+
+        # Assert
+        self.assertEqual((ran.dispatched, ran.merged), ([], [7]))
 
 
 class CampaignWorkflowTests(unittest.TestCase):
