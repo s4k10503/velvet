@@ -82,6 +82,9 @@ namespace Velvet
             // Corners whose inline slot holds a value this did not write, as of the current refresh.
             public readonly bool[] Foreign = new bool[CornerCount];
 
+            // A layoutId projection writes the slots, and nothing is refitted until it hands them back.
+            public bool Held;
+
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
@@ -110,6 +113,30 @@ namespace Velvet
             }
             Assign(state.Inline, corners, null);
             RefreshDeclared(element, state);
+        }
+
+        // Stops refitting while a layoutId projection writes the element's radius slots (LayoutIdLook.WriteRadii), whose
+        // values would otherwise read as foreign and end the fit for good.
+        public static void Hold(VisualElement element)
+        {
+            if (s_states.TryGetValue(element, out var state)) state.Held = true;
+        }
+
+        // Resumes once the projection has written back what the slots held before it, which the fit reads as its own.
+        public static void Unhold(VisualElement element)
+        {
+            if (!s_states.TryGetValue(element, out var state)) return;
+            state.Held = false;
+            RefreshDeclared(element, state);
+        }
+
+        // The radius the fit gives a corner it tracks, in pixels along the box's width, as it would write it now; NaN
+        // for a corner it does not track.
+        internal static float Fitted(VisualElement element, int corner)
+        {
+            if (!s_states.TryGetValue(element, out var state) || Declared(state, corner) == null) return float.NaN;
+            var layout = element.layout;
+            return RadiusOf(element, state, corner, layout.width, layout.height).x * FactorFor(element, state);
         }
 
         // Drops what the fit tracks, for an element on its way to the pool; its callbacks find nothing after
@@ -224,7 +251,7 @@ namespace Velvet
             }
         }
 
-        private static StyleLength InlineCorner(IStyle style, int corner) => corner switch
+        internal static StyleLength InlineCorner(IStyle style, int corner) => corner switch
         {
             0 => style.borderTopLeftRadius,
             1 => style.borderTopRightRadius,
@@ -234,6 +261,7 @@ namespace Velvet
 
         private static void Refresh(VisualElement element, State state, bool suspendTransitions)
         {
+            if (state.Held) return;
             FindForeignValues(element, state);
             // A corner nothing tracked declares any longer gives back what this wrote first, so the value read
             // for it below is the cascade's own rather than ours.

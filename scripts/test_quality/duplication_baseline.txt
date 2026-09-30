@@ -121,7 +121,6 @@
 7ee9cc3ec4a8	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
 7eea6a28beb5	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 7f250eb16a37	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-7f4d520303ed	Runtime/Styling/MotionOpacity.cs,Runtime/Styling/VelvetStyleUtilities.cs
 804a1a765abb	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 830b4a5b18ea	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 845c505f58f9	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleShadowClass.cs

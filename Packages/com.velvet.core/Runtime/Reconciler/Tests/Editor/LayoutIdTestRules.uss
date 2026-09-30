@@ -3,3 +3,11 @@
     transition-duration: 1s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-round {
+    border-radius: 10px;
+}
+
+.layout-id-test-rounder {
+    border-radius: 20px;
+}

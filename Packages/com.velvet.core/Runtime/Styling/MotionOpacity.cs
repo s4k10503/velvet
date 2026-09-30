@@ -1,7 +1,4 @@
 #nullable enable
-using System;
-using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -33,7 +30,7 @@ namespace Velvet
     //
     // An own opacity the element's classes give it — a static opacity-*, or a change of class a transition carries,
     // as a variant swap or a transition-opacity class does — is read off the cascade
-    // (Cascade) while a crossfade holds the slot, and its transition is run here, the engine's being suspended for
+    // (StyleCascade) while a crossfade holds the slot, and its transition is run here, the engine's being suspended for
     // the crossfade through MotionNativeTransitionGuard as for the per-frame drivers. A transition still running as
     // the crossfade ends runs on here until it lands, and only then is the slot handed back.
     internal static class MotionOpacity
@@ -60,7 +57,7 @@ namespace Velvet
             // Steps the element's own opacity once the crossfade has ended, until it lands.
             public IVisualElementScheduledItem? Tail;
             // What the element's rules give its opacity beneath the inline values, NaN where that cannot be read, and
-            // the transition it runs opacity by, as last read (Cascade.Read).
+            // the transition it runs opacity by, as last read (ReadCascade).
             public float CascadeOpacity = float.NaN;
             public float CascadeDurationSec;
             public float CascadeDelaySec;
@@ -99,7 +96,7 @@ namespace Velvet
                 return;
             }
             drawing.OwnInline = own;
-            Cascade.Read(element, drawing);
+            ReadCascade(element, drawing);
             Carry(element, drawing, 0f);
             Apply(element, drawing);
         }
@@ -191,7 +188,7 @@ namespace Velvet
             if (element.style.opacity != drawing.Written) drawing.OwnInline = element.style.opacity;
             // The timing is read out of a held list before the suspension takes opacity out of it.
             HoldTiming(element, drawing);
-            Cascade.Read(element, drawing);
+            ReadCascade(element, drawing);
             var intercepted = drawing.CascadeDurationSec > 0f
                 || (MotionNativeTransitionGuard.DeclaredSlots(element) & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None;
             MotionNativeTransitionGuard.SyncSuspension(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
@@ -239,8 +236,12 @@ namespace Velvet
             }
         }
 
+        private static void ReadCascade(VisualElement element, Drawing drawing) =>
+            (drawing.CascadeOpacity, drawing.CascadeDurationSec, drawing.CascadeDelaySec, drawing.CascadeEasing) =
+                StyleCascade.Opacity(element);
+
         // Carries the element's own opacity towards what it is given now, starting over from where it stands whenever
-        // that changes, on the timing a held list gave opacity or else the one UI Toolkit runs it by (Cascade.Read).
+        // that changes, on the timing a held list gave opacity or else the one UI Toolkit runs it by (ReadCascade).
         private static void Carry(VisualElement element, Drawing drawing, float dtSec)
         {
             var target = OwnTarget(drawing);
@@ -261,66 +262,6 @@ namespace Velvet
             drawing.ElapsedSec += dtSec;
             var t = Mathf.Clamp01((drawing.ElapsedSec - drawing.DelaySec + MinDurationSec) / Mathf.Max(drawing.DurationSec, MinDurationSec));
             drawing.Value = Mathf.LerpUnclamped(drawing.From, drawing.Target, UssEasing.Evaluate(drawing.Easing, t));
-        }
-
-        // The style an element's classes cascade to, which UI Toolkit caches under the element's matchingRulesHash
-        // (StyleCache), internal to it and so read by reflection. Where that cannot be read, the classes' value stays
-        // the one the crossfade started from. Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_
-        // Then_ItsOwnIsCarriedOnThatTransition fails when the read stops giving the cascaded value.
-        private static class Cascade
-        {
-            private static readonly FieldInfo? s_style =
-                typeof(VisualElement).GetField("m_Style", BindingFlags.NonPublic | BindingFlags.Instance);
-            private static readonly Type? s_type = s_style?.FieldType;
-            private static readonly FieldInfo? s_hash = s_type?.GetField("matchingRulesHash");
-            private static readonly MethodInfo? s_tryGet = s_type == null ? null
-                : typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache")?.GetMethod("TryGetValue",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null,
-                    new[] { typeof(long), s_type.MakeByRefType() }, null);
-            private static readonly PropertyInfo? s_opacity = s_type?.GetProperty("opacity");
-            private static readonly PropertyInfo? s_property = s_type?.GetProperty("transitionProperty");
-            private static readonly PropertyInfo? s_duration = s_type?.GetProperty("transitionDuration");
-            private static readonly PropertyInfo? s_delay = s_type?.GetProperty("transitionDelay");
-            private static readonly PropertyInfo? s_curve = s_type?.GetProperty("transitionTimingFunction");
-            private static readonly bool s_readable = Array.TrueForAll(
-                new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
-
-            private static readonly object?[] s_args = new object?[2];
-
-            // Takes the element's cascaded opacity and the transition it runs opacity by into the drawing: the rules'
-            // transition-property with the inline duration, delay and curve lists wherever the element holds them, as
-            // UI Toolkit combines the two; the inline transition-property is the suspension's. NaN and no transition
-            // where the cached style cannot be read.
-            public static void Read(VisualElement element, Drawing drawing)
-            {
-                (drawing.CascadeOpacity, drawing.CascadeDurationSec, drawing.CascadeDelaySec, drawing.CascadeEasing) =
-                    (float.NaN, 0f, 0f, EasingMode.Ease);
-                if (Style(element) is not { } style) return;
-                drawing.CascadeOpacity = (float)s_opacity!.GetValue(style);
-                var inline = element.style;
-                var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
-                    inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,
-                    inline.transitionDelay.keyword == StyleKeyword.Undefined ? inline.transitionDelay.value : s_delay!.GetValue(style) as List<TimeValue>,
-                    inline.transitionTimingFunction.keyword == StyleKeyword.Undefined
-                        ? inline.transitionTimingFunction.value
-                        : s_curve!.GetValue(style) as List<EasingFunction>);
-                if (!StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out var easing))
-                {
-                    return;
-                }
-                (drawing.CascadeDurationSec, drawing.CascadeDelaySec, drawing.CascadeEasing) = (durationMs / 1000f, delayMs / 1000f, easing);
-            }
-
-            private static object? Style(VisualElement element)
-            {
-                // MUTANT_SURVIVES(equivalent): on the editor this package declares, every member resolves and this returns nothing.
-                // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
-                // fails where one does not.
-                if (!s_readable) return null;
-                s_args[0] = s_hash!.GetValue(s_style!.GetValue(element));
-                s_args[1] = null;
-                return s_tryGet!.Invoke(null, s_args) is true ? s_args[1] : null;
-            }
         }
     }
 }

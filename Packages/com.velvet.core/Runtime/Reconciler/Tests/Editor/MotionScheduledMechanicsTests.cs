@@ -75,6 +75,7 @@ namespace Velvet.Tests
             (s_aClasses, s_bClasses) = (null, null);
             (s_aPose, s_aTransition) = (null, null);
             (s_aField, s_looseField) = (false, false);
+            s_resizeFrom = 100;
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             s_cardTransition = null;
             (s_cardMounted, s_m1Open, s_m2Open) = (false, false, false);
@@ -878,14 +879,16 @@ namespace Velvet.Tests
         }
 
         private static string s_resizeOrigin;
+        private static int s_resizeFrom;
 
-        // Step 1 doubles the box in place, its top-left corner fixed; s_resizeOrigin is its transform origin.
+        // At step 0 the box is s_resizeFrom pixels square, and from step 1 two hundred, in place, its top-left corner
+        // fixed; s_resizeOrigin holds its transform origin, or any other classes.
         [Component]
         private static VNode ResizingBoxRender()
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            var size = step == 0 ? 100 : 200;
+            var size = step == 0 ? s_resizeFrom : 200;
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
@@ -3152,6 +3155,341 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALayoutIdMotionJoiningARotatedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRotateIsMixingFromTheHolders()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(40f * (1f - BProgress())).Within(1f));
+        }
+
+        [Test]
+        public void Given_ARotatedHolderBehindALeadMovingFromIt_When_TheCrossfadeIsUnderWay_Then_ItIsDrawnAtTheLeadsRotate()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var lead = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(Root.Q<VisualElement>("a").style.rotate.value.angle.ToDegrees(), Is.EqualTo(lead).Within(0.3f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders()
+        {
+            // Arrange
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var radius = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(radius, Is.EqualTo(20f * (1f - BProgress())).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotion_When_ItDoublesInPlace_Then_ItsRadiusIsDividedByTheScaleItStartsAt()
+        {
+            // Arrange / Act — drawn at half its new size as its tween starts.
+            var element = ResizeBoxWithOrigin("rounded-[10px]");
+
+            // Assert — twice its own ten pixels, which the half scale draws at ten.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedHolderBehindALeadMovingFromIt_When_TheCrossfadeIsUnderWay_Then_ItIsDrawnAtTheLeadsRadius()
+        {
+            // Arrange
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var lead = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(Root.Q<VisualElement>("a").style.borderTopLeftRadius.value.value, Is.EqualTo(lead).Within(0.1f));
+        }
+
+        [Test]
+        public void Given_AStylesheetRotatedMotionJoiningAnUnrotatedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRotateIsMixingToItsOwn()
+        {
+            // Arrange — the bundled sheet, so rotate-45 resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(45f * BProgress()).Within(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion.
+        // A mix between two holders at the same rotate must leave the slot alone.
+        [Test]
+        public void Given_TwoUnrotatedHolders_When_TheSecondTweensFromTheFirst_Then_ItsRotateIsLeftAlone()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("b").style.rotate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion.
+        // A move at its own size, from its own box, must leave a rounded class's radius to the stylesheet.
+        [Test]
+        public void Given_AStylesheetRoundedLayoutIdMotion_When_ItMovesAtItsOwnSize_Then_ItsRadiusIsLeftAlone()
+        {
+            // Arrange — the bundled sheet, so rounded-lg resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bTransition, s_sharedClasses, s_aClasses) = (s_slowTween, "", "rounded-lg");
+            using var mounted = MountAAlone();
+
+            // Act
+            s_aLeft = 200;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.borderTopLeftRadius.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion, so a value written there stays.
+        // A rotate mix must take a value written over it as the Motion's own and hand that back.
+        [Test]
+        public void Given_ALayoutIdMotionMixingItsRotate_When_SomethingElseWritesItsRotateMidTween_Then_TheSlotKeepsThatValueAfterwards()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act
+            var b = Root.Q<VisualElement>("b");
+            b.style.rotate = new Rotate(new Angle(10f, AngleUnit.Degree));
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(b.style.rotate.value.angle.ToDegrees(), Is.EqualTo(10f).Within(0.01f));
+        }
+
+        // Mounts "a" alone on the bundled sheet, swaps it to its hidden pose on a one-second tween, so that the swap's
+        // list is in its transition-property slot, and mounts "b" over it with the given classes, five frames on.
+        private MountedTree MountBOverASwappingA(string bClasses)
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aPose, s_bClasses) = (300, s_slowTween, "", "visible", bClasses);
+            var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            return mounted;
+        }
+
+        // Whether the element's inline transition-property is a list naming none of the given properties, nor all.
+        private static bool HoldsAListWithout(VisualElement element, params string[] properties)
+        {
+            var names = element.style.transitionProperty.value;
+            return names != null && !names.Exists(n => n == new StylePropertyName("all")
+                || Array.Exists(properties, p => n == new StylePropertyName(p)));
+        }
+
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARotatedLead_When_ItIsDrawnAtTheLeadsRotate_Then_TheSwapsListCarriesNoRotate()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rotate-[40deg]");
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("a"), "rotate"), Is.True);
+        }
+
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARoundedLead_When_ItIsDrawnAtTheLeadsRadius_Then_TheSwapsListCarriesNoRadius()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rounded-[20px]");
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("a"), "border-top-left-radius"), Is.True);
+        }
+
+        [Test]
+        public void Given_ALeadJoiningARoundedHolderOnASpring_When_ItOvershootsItsBox_Then_ItsRadiusNeverGoesBelowZero()
+        {
+            // Arrange
+            (s_aClasses, s_bTransition) = ("rounded-[20px]", s_layoutSpring);
+            using var mounted = MountBOverA();
+            var b = Root.Q<VisualElement>("b");
+
+            // Act — the move's whole length, overshoot included.
+            var least = float.PositiveInfinity;
+            var overshot = false;
+            for (var i = 0; i < 90; i++)
+            {
+                Tick();
+                least = Mathf.Min(least, b.style.borderTopLeftRadius.value.value);
+                overshot |= TranslateX(b) > 1f;
+            }
+
+            // Assert — the spring carries "b" past its box, where the mix runs past its own radius of none.
+            Assert.That(overshot ? least : float.NaN, Is.GreaterThanOrEqualTo(0f));
+        }
+
+        // Steps the resizing box to step 1, where it doubles, with s_resizeOrigin as its classes, and plays the frames.
+        private MountedTree ResizeBoxFor(string classes, int frames)
+        {
+            s_resizeOrigin = classes;
+            var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < frames; i++) Tick();
+            return mounted;
+        }
+
+        // Renders the resizing box again at its doubled size with the given classes, and plays a frame.
+        private void RestyleResizedBox(MountedTree mounted, string classes)
+        {
+            s_resizeOrigin = classes;
+            s_setStep.Invoke(++s_sharedRenders + 1);
+            mounted.FlushStateForTest();
+            Tick();
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so CornerRadiusFit keeps fitting it.
+        // The radius correction must hand the slots back to the fit, which then fits the radius the element takes later.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionResizedWhileItsClassesChange_When_ItTakesAnotherRadiusAfterLanding_Then_ItIsDrawnAtThatRadius()
+        {
+            // Arrange — doubling in place, an arbitrary background swapped in mid-move, and then landed.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 5);
+            RestyleResizedBox(mounted, "rounded-[10px] bg-[#ff0000]");
+            AdvancePast(2f);
+
+            // Act
+            RestyleResizedBox(mounted, "rounded-[30px] bg-[#ff0000]");
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").resolvedStyle.borderTopLeftRadius, Is.EqualTo(30f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItsRadiusClassChangesMidMove_Then_ItIsDrawnAtTheNewRadius()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+
+            // Act
+            RestyleResizedBox(mounted, "rounded-[20px]");
+
+            // Assert — twenty pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var element = Root.Q<VisualElement>("shared");
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion.
+        // A radius correction must leave a Motion with no radius alone.
+        [Test]
+        public void Given_AnUnroundedLayoutIdMotion_When_ItDoublesInPlace_Then_ItsRadiusIsLeftAlone()
+        {
+            // Arrange / Act
+            using var mounted = ResizeBoxFor("", 3);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a layoutId Motion's radius to CornerRadiusFit, which fits a new one as it is declared.
+        // A radius declared while the correction writes the slots must be fitted once it hands them back.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItsRadiusClassChangesMidMove_Then_ItLandsAtTheNewRadius()
+        {
+            // Arrange — a few frames into doubling on a spring, when the class changes.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            RestyleResizedBox(mounted, "rounded-[20px]");
+
+            // Act
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("shared").resolvedStyle.borderTopLeftRadius, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRoundedByAStylesheetDoublingInPlace_When_ItsClassChangesToALargerRadiusMidMove_Then_ItIsDrawnAtTheNewRadius()
+        {
+            // Arrange — rules of the test's own, and a few frames into doubling on a spring.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            using var mounted = ResizeBoxFor("layout-id-test-round", 3);
+
+            // Act — and a frame more, the first pass reading the rules as the render left them.
+            RestyleResizedBox(mounted, "layout-id-test-rounder");
+            Tick();
+
+            // Assert — twenty pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var element = Root.Q<VisualElement>("shared");
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so a corner written there stays.
+        // A radius correction must take a value written over one corner as that corner's own alone.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_SomethingElseWritesOneCornerMidMove_Then_TheOthersGoBackToTheirOwn()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act
+            element.style.borderTopLeftRadius = 5f;
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That((element.style.borderTopLeftRadius.value.value, element.style.borderTopRightRadius.value.value),
+                Is.EqualTo((5f, 10f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so it never divides one.
+        // A box drawn with no extent must be drawn with no radius rather than an infinite one.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionGrowingFromNothing_When_ItsTweenStarts_Then_ItsRadiusIsFinite()
+        {
+            // Arrange / Act — from a box of no size.
+            s_resizeFrom = 0;
+            using var mounted = ResizeBoxFor("rounded-[10px]", 1);
+
+            // Assert
+            Assert.That(float.IsFinite(Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value.value), Is.True);
+        }
+
+        [Test]
         public void Given_AMemberBehindANewLead_When_ItTakesAnOpacityTransitionMidCrossfade_Then_ItIsDrawnAtTheOpacityWritten()
         {
             // Arrange — the bundled sheet; "a" some way behind "b" before it takes a one-second opacity transition.
@@ -3279,7 +3617,7 @@ namespace Velvet.Tests
         {
             // Arrange — a stylesheet of the test's own giving "a" a one-second opacity transition through a class no
             // bundled utility names.
-            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
             s_aClasses = "layout-id-test-fade";
             using var mounted = MountBOverA();
 
@@ -3293,8 +3631,8 @@ namespace Velvet.Tests
             Assert.That((written < 0.9f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
         }
 
-        private const string OpacityTransitionSheetPath =
-            "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdOpacityTransition.uss";
+        // Rules of the test's own, under class names no bundled utility has.
+        private const string TestRulesPath = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
 
         [Test]
         public void Given_AnOpacityTransitioningMotionBehindANewLead_When_ItFadesOut_Then_ItIsDrawnAtTheOpacityWritten()

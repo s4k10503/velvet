@@ -1,0 +1,79 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The style an element's rules cascade to beneath its inline values, which UI Toolkit caches under the element's
+    // matchingRulesHash (StyleCache), internal to it and so read by reflection. Where that cannot be read, a reader
+    // keeps the value it started from. Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_
+    // Then_ItsOwnIsCarriedOnThatTransition fails when the read stops giving the cascaded value.
+    internal static class StyleCascade
+    {
+        private static readonly FieldInfo? s_style =
+            typeof(VisualElement).GetField("m_Style", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly Type? s_type = s_style?.FieldType;
+        private static readonly FieldInfo? s_hash = s_type?.GetField("matchingRulesHash");
+        private static readonly MethodInfo? s_tryGet = s_type == null ? null
+            : typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache")?.GetMethod("TryGetValue",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null,
+                new[] { typeof(long), s_type.MakeByRefType() }, null);
+        private static readonly PropertyInfo? s_opacity = s_type?.GetProperty("opacity");
+        private static readonly PropertyInfo? s_property = s_type?.GetProperty("transitionProperty");
+        private static readonly PropertyInfo? s_duration = s_type?.GetProperty("transitionDuration");
+        private static readonly PropertyInfo? s_delay = s_type?.GetProperty("transitionDelay");
+        private static readonly PropertyInfo? s_curve = s_type?.GetProperty("transitionTimingFunction");
+        private static readonly PropertyInfo?[] s_radii =
+        {
+            s_type?.GetProperty("borderTopLeftRadius"), s_type?.GetProperty("borderTopRightRadius"),
+            s_type?.GetProperty("borderBottomRightRadius"), s_type?.GetProperty("borderBottomLeftRadius"),
+        };
+        private static readonly bool s_readable = Array.TrueForAll(
+            new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve, s_radii[0], s_radii[1],
+                s_radii[2], s_radii[3] }, m => m != null);
+
+        private static readonly object?[] s_args = new object?[2];
+
+        // The element's cascaded opacity and the transition it runs opacity by: the rules' transition-property with
+        // the inline duration, delay and curve lists wherever the element holds them, as UI Toolkit combines the
+        // two, the inline transition-property being a suspension's (MotionOpacity). NaN and no transition where the
+        // cached style cannot be read.
+        public static (float Opacity, float DurationSec, float DelaySec, EasingMode Easing) Opacity(VisualElement element)
+        {
+            if (Style(element) is not { } style) return (float.NaN, 0f, 0f, EasingMode.Ease);
+            var opacity = (float)s_opacity!.GetValue(style);
+            var inline = element.style;
+            var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
+                inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,
+                inline.transitionDelay.keyword == StyleKeyword.Undefined ? inline.transitionDelay.value : s_delay!.GetValue(style) as List<TimeValue>,
+                inline.transitionTimingFunction.keyword == StyleKeyword.Undefined
+                    ? inline.transitionTimingFunction.value
+                    : s_curve!.GetValue(style) as List<EasingFunction>);
+            return StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out var easing)
+                ? (opacity, durationMs / 1000f, delayMs / 1000f, easing)
+                : (opacity, 0f, 0f, EasingMode.Ease);
+        }
+
+        // A corner's radius in pixels, in LayoutIdLook's corner order; NaN where the cached style cannot be read or gives
+        // it in another unit.
+        public static float Radius(VisualElement element, int corner)
+        {
+            if (Style(element) is not { } style) return float.NaN;
+            var length = (Length)s_radii[corner]!.GetValue(style);
+            return length.unit == LengthUnit.Pixel ? length.value : float.NaN;
+        }
+
+        private static object? Style(VisualElement element)
+        {
+            // MUTANT_SURVIVES(equivalent): on the editor this package declares, every member resolves and this returns nothing.
+            // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
+            // fails where one does not.
+            if (!s_readable) return null;
+            s_args[0] = s_hash!.GetValue(s_style!.GetValue(element));
+            s_args[1] = null;
+            return s_tryGet!.Invoke(null, s_args) is true ? s_args[1] : null;
+        }
+    }
+}

@@ -298,6 +298,7 @@ namespace Velvet
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx));
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
+            WriteLook(element, projection, ctx);
             return projection.Scale;
         }
 
@@ -346,6 +347,30 @@ namespace Velvet
                 projection.WritesOpacity = false;
                 MotionOpacity.End(element);
             }
+        }
+
+        // Draws the element at the rotate and radii its id's lead mixes in from the box it took, and a member behind
+        // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
+        private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
+        {
+            LayoutIdLook.Adopt(element, projection);
+            var rotate = float.NaN;
+            Vector4? radii = null;
+            if (projection.Leader != null)
+            {
+                var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                radii = LayoutIdLook.RadiiOf(projection.Leader, leading);
+            }
+            else if (projection is { Shared: true, Moving: true, FromLook: { } from })
+            {
+                var progress = CrossfadeProgress(projection);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection), progress);
+                // Clamped at zero, as mixValues clamps a mixed radius: a curve that overshoots its end mixes past it.
+                radii = Vector4.Max(Vector4.LerpUnclamped(from.Radii, LayoutIdLook.OwnRadii(element, projection), progress), Vector4.zero);
+            }
+            LayoutIdLook.WriteRotate(element, projection, rotate);
+            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its crossfade holds
@@ -531,6 +556,7 @@ namespace Velvet
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             WriteOpacity(element, projection, null);
             LayoutIdPicking.Restore(projection);
+            LayoutIdLook.Restore(element, projection);
             MotionNativeTransitionGuard.Release(element, projection);
         }
 
@@ -976,6 +1002,19 @@ namespace Velvet
 
         // What the holder this lead took its box from looked like, while it moves from that box.
         public LayoutIdLook? FromLook;
+
+        public bool WritesRotate;
+        public StyleRotate OwnInlineRotate;
+        public float OwnRotate;
+        public float DrawnRotate;
+        public StyleRotate WrittenRotate;
+
+        public bool WritesRadii;
+        public StyleLength[] OwnInlineRadii = System.Array.Empty<StyleLength>();
+        // The radii the element was drawn with as the projection first wrote them.
+        public Vector4 StartRadii;
+        public Vector4 DrawnRadii;
+        public Vector4 WrittenRadii;
 
         // Each element of a member's subtree whose picking it turned off while drawn over the lead, with its own mode.
         public Dictionary<VisualElement, PickingMode>? Picking;
