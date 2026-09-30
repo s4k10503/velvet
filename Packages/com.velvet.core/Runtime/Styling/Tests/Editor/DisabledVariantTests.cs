@@ -54,8 +54,10 @@ namespace Velvet.Tests
         }
 
         // The callbacks for UI Toolkit's internal enabledSelf announcement on element's bubble list, read by
-        // reflection: its registry and the event type are both internal. Counting only these keeps a callback
-        // something else registers or drops on the host out of the reading.
+        // reflection: its registry and the event type are both internal. Counting only these matters because
+        // the host also carries one pending scheduled item's attach/detach pair for every render, which the
+        // EditMode panel scheduler never runs to release: measured, the host's bubble list grew by one such
+        // pair at each of the three renders here and kept them after the payload was dropped.
         private static int AnnouncementCallbackCount(VisualElement element)
         {
             var registry = typeof(CallbackEventHandler)
