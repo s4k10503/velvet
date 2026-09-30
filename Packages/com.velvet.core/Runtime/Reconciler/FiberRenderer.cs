@@ -433,7 +433,7 @@ namespace Velvet
         {
             var catchesHere = fiber.IsErrorBoundary && !deferReconcile;
             var passContext = fiber.Reconciler?.Context;
-            var abortEndsHere = catchesHere && passContext is { SharedReconcileDepth: > 0, IsAborted: false };
+            var abortEndsHere = catchesHere && InsideAnUnabortedPass(passContext);
             BoundaryCaughtSignal? caught = null;
             fiber.CatchesInTheWalk = catchesHere;
             try
@@ -451,6 +451,9 @@ namespace Velvet
             if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (abortEndsHere && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
+
+        private static bool InsideAnUnabortedPass(ReconcilerContext? context)
+            => context is { SharedReconcileDepth: > 0, IsAborted: false };
 
         internal static void RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
