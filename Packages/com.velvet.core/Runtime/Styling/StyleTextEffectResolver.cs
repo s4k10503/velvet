@@ -32,6 +32,10 @@ namespace Velvet
     // side-table sweep — see the Overline remarks below ApplyToElement and the table's own comment on
     // ReconcilerContext.
     //
+    // text-wrap / text-nowrap / text-balance / text-pretty drive the same per-leaf inline write, of the
+    // white-space that pairs their wrap mode with the inherited collapse (see ResolveEffective), for the
+    // same reason and under the same ownership as PreLine's below.
+    //
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
     // whose EFFECTIVE (cascade-resolved) axis is PreLine — the same call, off the same resolved value, that
@@ -45,7 +49,7 @@ namespace Velvet
     // untouched — no separate "does this leaf opt itself out" check is needed, ResolveEffective already IS
     // that check, and the write and the collapsed string always agree for the same leaf by construction.
     //
-    // The write's clear-when-not-PreLine (ApplyToElement) is OWNERSHIP-gated via TextWhitespaceOwned, not
+    // The write's clear-when-nothing-is-written (ApplyToElement) is OWNERSHIP-gated via TextWhitespaceOwned, not
     // unconditional: it clears style.whiteSpace back to StyleKeyword.Null only when this element is
     // CURRENTLY marked owned there (and then drops the mark); any other leaf — one this resolver never
     // wrote to at all — is left completely untouched. Ownership gating is required because a consumer's
@@ -117,6 +121,7 @@ namespace Velvet
         {
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
+            LeadingLengthProbe.Sync(ctx, element, own.Leading?.Unit == LeadingUnit.EmLength);
             if (own.IsEmpty)
             {
                 ctx.TextEffects.Remove(element);
@@ -155,16 +160,16 @@ namespace Velvet
         {
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
             {
-                var (transform, decoration, whitespace, leading) = ResolveEffective(ctx, te);
+                var (transform, decoration, whitespace, leading, write) = ResolveEffective(ctx, te);
                 te.text = StyleTextEffectClass.Apply(raw, transform, decoration, whitespace, leading);
-                // Per-leaf inline pre-wrap write, off the SAME resolved value that just drove the string
+                // Per-leaf inline white-space write, off the SAME resolved values that just drove the string
                 // collapse above, so the two can never disagree for this leaf. Ownership-gated (see the type
-                // comment / TextWhitespaceOwned): PreLine writes-and-marks; a non-PreLine resolve clears ONLY
+                // comment / TextWhitespaceOwned): a write marks; a resolve that writes nothing clears ONLY
                 // when this element is currently marked, so a leaf this resolver never wrote to — including
                 // one a consumer's refCallback wrote style.whiteSpace on directly — is never touched either way.
-                if (whitespace == WhitespaceCollapseKind.PreLine)
+                if (write != null)
                 {
-                    te.style.whiteSpace = WhiteSpace.PreWrap;
+                    te.style.whiteSpace = write.Value;
                     ctx.TextWhitespaceOwned[te] = true;
                 }
                 else if (ctx.TextWhitespaceOwned.Remove(te))
@@ -233,15 +238,25 @@ namespace Velvet
         // wins and stops the walk for THAT axis — it is a real resolved value, not "no token" — so it blocks
         // a farther ancestor's non-None value from reaching this element; Leading has no such explicit-reset
         // value (see LeadingUnit), so its walk only ever stops on a real leading-* token or the tree's root.
-        // Feeds BOTH the string rewrite and, for Whitespace, the inline pre-wrap style write in
-        // ApplyToElement — one resolve, N writes off the same value, so they can never disagree.
-        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading) ResolveEffective(
+        // Feeds BOTH the string rewrite and the inline white-space write in ApplyToElement — one resolve,
+        // N writes off the same values, so they can never disagree.
+        //
+        // write is the inline white-space this leaf gets, or null to leave its own cascade alone. CSS splits
+        // white-space into a collapse and a wrap mode; UI Toolkit holds one value for both, so where
+        // text-wrap / text-nowrap / text-balance / text-pretty set the mode nearer the text than any
+        // white-space class does, the value written pairs that mode with the collapse inherited from above
+        // it. A white-space class on the same element as one of the four decides on its own.
+        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading, WhiteSpace? write) ResolveEffective(
             ReconcilerContext ctx, VisualElement element)
         {
             TextTransformKind? transform = null;
             TextDecorationKind? decoration = null;
             WhitespaceCollapseKind? whitespace = null;
             LeadingValue? leading = null;
+            VisualElement? leadingOwner = null;
+            bool? wraps = null;
+            var modeDecided = false;
+            WhiteSpace? collapseClass = null;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (!ctx.TextEffects.TryGetValue(e, out var eff))
@@ -251,13 +266,59 @@ namespace Velvet
                 transform ??= eff.Transform;
                 decoration ??= eff.Decoration;
                 whitespace ??= eff.Whitespace;
-                leading ??= eff.Leading;
-                if (transform != null && decoration != null && whitespace != null && leading != null)
+                collapseClass ??= eff.WhiteSpaceClass;
+                if (leading == null)
                 {
-                    break;
+                    leading = eff.Leading;
+                    leadingOwner = e;
+                }
+                if (!modeDecided)
+                {
+                    wraps = eff.Whitespace == null ? eff.Wraps : null;
+                    modeDecided = eff.Whitespace != null || eff.Wraps != null;
                 }
             }
-            return (transform, decoration, whitespace, leading);
+            if (leading?.Unit == LeadingUnit.EmLength)
+            {
+                leading = ResolveEmLength(ctx, leading.Value, leadingOwner!);
+            }
+            var preserves = whitespace == WhitespaceCollapseKind.PreLine
+                || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
+            WhiteSpace? write = null;
+            if (wraps != null)
+            {
+                write = wraps.Value
+                    ? preserves ? WhiteSpace.PreWrap : WhiteSpace.Normal
+                    : preserves ? WhiteSpace.Pre : WhiteSpace.NoWrap;
+            }
+            else if (whitespace == WhitespaceCollapseKind.PreLine)
+            {
+                write = WhiteSpace.PreWrap;
+            }
+            return (transform, decoration, whitespace, leading, write);
+        }
+
+        // CSS computes an em or percentage line-height to a length on the element that declares it, from
+        // that element's computed font size. LeadingLengthProbe reads that size once UI Toolkit has resolved
+        // it; until then the em is left to the text's own size.
+        private static LeadingValue ResolveEmLength(ReconcilerContext ctx, LeadingValue leading, VisualElement owner)
+        {
+            if (!ctx.LeadingLengthProbes.TryGetValue(owner, out var probe))
+            {
+                return leading;
+            }
+            if (float.IsNaN(probe.FontSize))
+            {
+                return leading;
+            }
+            return new LeadingValue(LeadingUnit.Pixel, leading.Value * probe.FontSize);
+        }
+
+        // Re-resolves the element and every text under it, for LeadingLengthProbe.
+        internal static void Reapply(ReconcilerContext ctx, VisualElement element)
+        {
+            ApplyToElement(ctx, element);
+            ApplyToDescendants(ctx, element);
         }
     }
 }

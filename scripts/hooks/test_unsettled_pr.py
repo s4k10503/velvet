@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the zero-checks reading in scripts/pr/diagnostics/unsettled_pr.py.
+"""Unit tests for what scripts/pr/diagnostics/unsettled_pr.py says about an unsettled pull request.
 
 No pull request in this repository is entitled to zero checks: both required workflows subscribe to
 `pull_request` without a path filter, so a head with none is a run that did not start. The guard used
@@ -128,6 +128,109 @@ class PendingBehindAWatcher(unittest.TestCase):
 
         # Act / Assert
         self.assertIn("still pending", said or "")
+
+
+PASSING = json.dumps([{"name": "Required checks (Unity)", "bucket": "pass"}])
+NO_RUNS = json.dumps({"total_count": 0, "workflow_runs": []})
+TEST_PENDING = json.dumps({"total_count": 1, "workflow_runs": [
+    {"id": 36512896182, "name": "Test", "workflow_id": 1, "run_number": 70, "status": "pending"}]})
+TEST_PENDING_EXIT = "Test (pending, run 36512896182: `gh run cancel 36512896182` if it is stuck)"
+NO_JOBS = json.dumps({"total_count": 0, "jobs": []})
+REQUIRING_UNITY = json.dumps([{"type": "required_status_checks", "parameters": {
+    "required_status_checks": [{"context": "Required checks (Unity)"}]}}])
+REQUIRING_BOTH = json.dumps([{"type": "required_status_checks", "parameters": {
+    "required_status_checks": [{"context": "Required checks (Unity)"},
+                               {"context": "Required checks (generators)"}]}}])
+
+
+class OwedChecks(unittest.TestCase):
+    """A head whose check list is not yet everything it will carry, named for what it is owed."""
+
+    def judge_with(self, checks, state, runs=NO_RUNS, rules=REQUIRING_UNITY, jobs=NO_JOBS):
+        """`judge` with gh answering the check list, the merge state, the runs, their jobs and the
+        rules."""
+        def stub(args):
+            if args[0] == "api" and "/jobs?" in args[1]:
+                return jobs, "", 0
+            if args[0] == "api" and "/actions/runs?" in args[1]:
+                return runs, "", 0
+            if args[0] == "api" and "/rules/branches/main?" in args[1]:
+                return rules, "", 0
+            if "headRefOid,baseRefName" in args:
+                return json.dumps({"headRefOid": "a" * 40, "baseRefName": "main"}), "", 0
+            if "checks" in args:
+                return checks, "", 0
+            if "statusCheckRollup" in args:
+                return json.dumps({"statusCheckRollup": json.loads(checks)}), "", 0
+            return state, "", 0
+
+        with mock.patch.object(unsettled_pr, "gh", stub):
+            return unsettled_pr.judge("1")
+
+    def test_Given_EveryCheckPassedAndARunNotStarted_When_Judged_Then_TheRunIsNamed(self):
+        # Arrange — the merge state GitHub gives a head whose required check has not reported.
+        said = self.judge_with(PASSING, "BLOCKED", runs=TEST_PENDING)
+
+        # Act / Assert
+        self.assertIn(f"workflow runs not finished: {TEST_PENDING_EXIT}", said or "")
+
+    def test_Given_EveryCheckPassedAndARequiredOneNeverReported_When_Judged_Then_ItIsNamed(self):
+        # Act
+        said = self.judge_with(PASSING, "BLOCKED", rules=REQUIRING_BOTH)
+
+        # Assert
+        self.assertIn("required by main and not reported: Required checks (generators)", said or "")
+
+    def test_Given_NoCheckYetAndARunPending_When_Judged_Then_TheRunIsNamed(self):
+        # Arrange — CLEAN, so the state is not one that explains an absent list and the head blocks.
+        said = self.judge_with("[]", "CLEAN", runs=TEST_PENDING)
+
+        # Act / Assert
+        self.assertIn(f"workflow runs not finished: {TEST_PENDING_EXIT}", said or "")
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run GitHub left queued changes nothing.
+    # What it pins is that the jobs end it here too: `if not (jobs.get(run.get("id"))` spelled
+    # `if not (False` reddens it.
+    def test_Given_ARunLeftQueuedWhoseJobsAllCompleted_When_Judged_Then_ItStillSaysMergeIt(self):
+        # Arrange
+        stuck = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 31128456870, "name": "Source generators", "run_attempt": 1, "status": "queued"}]})
+        jobs = json.dumps({"total_count": 1, "jobs": [
+            {"name": "Source generators (dotnet)", "status": "completed", "conclusion": "success"}]})
+
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs=stuck, jobs=jobs)
+
+        # Assert
+        self.assertIn("every check passed and it is unmerged", said or "")
+
+    def test_Given_TheNewestRunOfAWorkflowFailedWithNoCheck_When_Judged_Then_ItIsNamed(self):
+        # Arrange
+        failed = json.dumps({"total_count": 1, "workflow_runs": [
+            {"id": 7, "name": "Test", "status": "completed", "conclusion": "startup_failure"}]})
+
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs=failed)
+
+        # Assert
+        self.assertIn("workflow runs failed: Test (startup_failure, run 7)", said or "")
+
+    # GREEN_ON_BASE(characterization): a green, clean, unmerged head blocks with "merge it" on the base.
+    # What it pins is that nothing owed leaves that advice alone: `if still.waiting or still.failing or
+    # still.absent or True:` reddens it.
+    def test_Given_NothingOwed_When_Judged_Then_ItStillSaysMergeIt(self):
+        # Act
+        said = self.judge_with(PASSING, "CLEAN")
+
+        # Assert
+        self.assertIn("every check passed and it is unmerged", said or "")
+
+    def test_Given_ARunsReadingThatFails_When_Judged_Then_ItBlocksNamingTheGuardsBlindness(self):
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs="")
+
+        # Assert
+        self.assertIn("what its head is still owed could not be read", said or "")
 
 
 if __name__ == "__main__":

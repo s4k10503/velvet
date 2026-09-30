@@ -2165,6 +2165,8 @@ namespace Velvet
                 // this hit-side staging a discarded attempt's miss would otherwise be the last thing staged.)
                 slot.NextDeps = slot.LastDeps;
                 slot.NextCachedResult = slot.CachedResult;
+                // A hit drops what the body built ahead of its gate, which the cached tree's retirement never reaches.
+                VNodePool.DisownJournaledRentals();
                 cached = slot.CachedResult;
                 return true;
             }

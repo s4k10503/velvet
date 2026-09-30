@@ -391,6 +391,8 @@ namespace Velvet
 
         void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
 
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
+
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
             // The controller stores the slot's top-level element, which for a shadow-*/clip-path-*
@@ -563,8 +565,12 @@ namespace Velvet
                 binding.DisposeImage();
             }
             _ctx.ClipPathBindings.Clear();
-            // Ring overlays are plain native-border elements (no GPU resource), so just drop the entries; the
-            // wrappers leave with their subtrees at disposal.
+            // A ring binding owns a band in its element's parent and a per-frame tick on the element: detach so
+            // a still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var (element, binding) in _ctx.RingBindings)
+            {
+                RingOverlay.Detach(element, binding);
+            }
             _ctx.RingBindings.Clear();
             // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
             // a still-mounted element released at root disposal carries no Velvet residue.
@@ -592,6 +598,10 @@ namespace Velvet
                 TextOverlineSilhouette.Detach(element, binding);
             }
             _ctx.TextOverlineBindings.Clear();
+            foreach (var (element, probe) in new List<KeyValuePair<VisualElement, LeadingLengthProbe>>(_ctx.LeadingLengthProbes))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, probe);
+            }
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).
