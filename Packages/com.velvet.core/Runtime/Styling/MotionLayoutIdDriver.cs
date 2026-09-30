@@ -41,6 +41,7 @@ namespace Velvet
         private static readonly List<VisualElement> s_ended = new();
         // The owner of the transition suspension a member holds while another leads its id.
         private static readonly object s_followOwner = new();
+        private static readonly StyleLonghandSet s_visibility = StyleLonghandSet.Of(StyleLonghand.Visibility);
 
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
@@ -172,6 +173,13 @@ namespace Velvet
             if (pending.ReadOffItself && !IsMoving(element, ctx) && TryReadBox(element, pending.PatchedLayout, ctx, out var redrawn))
             {
                 fromBox = redrawn;
+            }
+            // One still moving that the patch left where it was carries on: the wait can settle on a layout event the
+            // patch did not cause, as a sibling's teardown gives it
+            // (Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneBehindTheLeadLeaves_Then_TheLeadsTweenCarriesOn).
+            else if (pending.ReadOffItself && layout == pending.PatchedLayout)
+            {
+                return;
             }
 
             var parentScale = AncestorScale(parent, ctx);
@@ -560,6 +568,13 @@ namespace Velvet
                 if (element.panel != null && IsFiniteRect(element.layout))
                 {
                     Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]) { Resumes = true }, ctx);
+                    // Its patch earlier in this render may have moved it, and the layout that shows the move comes after
+                    // the next frame's pass
+                    // (Given_TwoLiveLayoutIdMotionsAtOneBox_When_TheLeadLeavesAndTheOtherMovesInOneRender_Then_TheOtherTweens).
+                    if (!ctx.LayoutIdPendingSettles.ContainsKey(element))
+                    {
+                        Wait(element, new LayoutIdPendingSettle(null, element.layout, ctx.LayoutIdTimings[element]), ctx);
+                    }
                 }
             }
             SyncFollows(layoutId, ctx);
@@ -601,6 +616,9 @@ namespace Velvet
         private static void Unfollow(VisualElement element, ReconcilerContext ctx)
         {
             if (!ctx.LayoutIdFollows.Remove(element, out var visibility)) return;
+            // Taken out of a list a variant swap wrote since Follow, whose `all` would carry the write below
+            // (Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleIsShownAgain).
+            MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_visibility);
             element.style.visibility = visibility;
             MotionNativeTransitionGuard.Release(element, s_followOwner);
         }
