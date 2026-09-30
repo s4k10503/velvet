@@ -1,0 +1,824 @@
+using System;
+using System.Linq;
+using System.Reflection;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies how much of a pass an error boundary's catch of a render error replaces when the boundary
+    /// renders inside another component's pass: the boundary's own output, and nothing else.
+    /// <list type="bullet">
+    /// <item>A sibling on either side of the boundary renders beside the fallback on mount, whether the two
+    /// sit in an element or in a fragment, and its passive effect runs.</item>
+    /// <item>On an update, a sibling behind the boundary renders what that update gave it.</item>
+    /// <item>A component the failed output mounted never runs its effect. One it had already mounted is
+    /// cleaned up once, in the commit, after the rest of the pass has rendered.</item>
+    /// <item>A boundary with no fallback passes the error on, and the boundary above replaces its own whole
+    /// output with its fallback.</item>
+    /// <item>The fallback never takes over an element the failed output held, so nothing that output wrote
+    /// to it stays, while a sibling's element is kept. The failed output's pooled nodes go back to the pool,
+    /// and a boundary catches again on a later update.</item>
+    /// <item>Where the fallback's own content throws, it renders once, and the content's error goes to the
+    /// boundary above whether that boundary catches in the walk or aborts its own render. The original error
+    /// goes on after it where no boundary above caught the content's — to a boundary that declined the
+    /// content's error, with the component stack starting at the component that threw, or to the log.</item>
+    /// <item>What the failed output left behind goes with it: an AnimatePresence it rendered keeps no child
+    /// of it, an enter it completed without playing reports no completion, and a Portal target keeps none of
+    /// the rows it inserted.</item>
+    /// <item>An element callback's error below a boundary leaves no effect set up under that element.</item>
+    /// </list>
+    /// </summary>
+    [TestFixture]
+    internal sealed class BoundaryCatchScopeTests
+    {
+        private static bool s_throws;
+        private static int s_siblingEffects;
+        private static int s_innerEffects;
+        private static int s_innerCleanups;
+        private static Action<int> s_setTick;
+
+        private VisualElement _root;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_throws = false;
+            s_siblingEffects = 0;
+            s_innerEffects = 0;
+            s_innerCleanups = 0;
+            s_setTick = null;
+            s_brokenFallbackRenders = 0;
+            s_setOwnerTick = null;
+            s_enterCompletions = 0;
+            s_outerSaw = null;
+            s_caughtStacks.Clear();
+            s_target = new VisualElement { name = "target" };
+            s_callbackSetups = 0;
+            s_callbackCleanups = 0;
+        }
+
+        private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
+
+        #region A sibling of the boundary
+
+        [Test]
+        public void Given_ASiblingAheadOfABoundaryInAnElement_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingAheadInElementRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sibling,fallback"));
+        }
+
+        [Test]
+        public void Given_ASiblingBehindABoundaryInAnElement_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingBehindInElementRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback,sibling"));
+        }
+
+        [Test]
+        public void Given_ASiblingAheadOfABoundaryInAFragment_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingAheadInFragmentRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("sibling,fallback"));
+        }
+
+        [Test]
+        public void Given_ASiblingWithAPassiveEffectAheadOfABoundary_When_TheBoundaryCatchesOnMount_Then_TheEffectRunsOnce()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(SiblingAheadInElementRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_siblingEffects, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ASiblingBehindABoundaryTakingItsParentsState_When_TheBoundaryCatchesInTheParentsUpdate_Then_TheSiblingRendersTheUpdate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UpdatingHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback,sibling:1"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowerRender()
+        {
+            if (s_throws) throw new InvalidOperationException("Boundary catch scope throw");
+            return V.Label(text: "child");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode BoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SiblingRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_siblingEffects++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "sibling");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SiblingAheadInElementRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(SiblingRender, key: "sibling"),
+                V.Component(BoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SiblingBehindInElementRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(BoundaryRender, key: "boundary"),
+                V.Component(SiblingRender, key: "sibling"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SiblingAheadInFragmentRender()
+            => V.Fragment(new VNode[]
+            {
+                V.Component(SiblingRender, key: "sibling"),
+                V.Component(BoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode TickedSiblingRender(int tick) => V.Label(text: "sibling:" + tick);
+
+        [Component(Compiler = false)]
+        private static VNode UpdatingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(BoundaryRender, key: "boundary"),
+                V.Component(TickedSiblingRender, tick, key: "sibling"),
+            });
+        }
+
+        #endregion
+
+        #region What the failed output leaves
+
+        // GREEN_ON_BASE(characterization): the merge base sweeps this component in the fallback's own reconcile.
+        // The case pins that the catch taken inside the walk disposes a component the failed output mounted.
+        [Test]
+        public void Given_AComponentMountedAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatches_Then_ItsEffectNeverRuns()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(InnerHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_innerEffects, Is.EqualTo(1 - 1));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base sweeps this component in the fallback's own reconcile.
+        // The case pins that the catch taken inside the walk hands an already mounted one to the pass's sweep.
+        [Test]
+        public void Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ItsCleanupRunsOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(InnerHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_innerCleanups, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base stops the pass before the observer renders again.
+        // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does.
+        [Test]
+        public void Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ARenderLaterInThePassSeesNoCleanup()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(InnerHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback,cleanups:0"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWithoutAFallbackInsideAnother_When_ItsChildThrowsOnMount_Then_TheOuterFallbackReplacesTheOutersWholeOutput()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(NestedHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("outer-fallback"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InnerRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_innerEffects++;
+                return () => s_innerCleanups++;
+            }, Array.Empty<object>());
+            return V.Label(text: "inner");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InnerBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(InnerRender, key: "inner"),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CleanupObserverRender(int tick) => V.Label(text: "cleanups:" + s_innerCleanups);
+
+        [Component(Compiler = false)]
+        private static VNode InnerHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(InnerBoundaryRender, key: "boundary"),
+                V.Component(CleanupObserverRender, tick, key: "observer"),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode BoundaryWithoutFallbackRender() => V.Component(ThrowerRender, key: "thrower");
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OuterBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(BoundaryWithoutFallbackRender, key: "inner"),
+                V.Label(text: "outer-sibling"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode NestedHostRender() => V.Div(children: new VNode[] { V.Component(OuterBoundaryRender, key: "outer") });
+
+        #endregion
+        #region The fallback and what it replaces
+
+        // GREEN_ON_BASE(characterization): the merge base diffs the fallback against the failed output's rows.
+        // The catch taken in the walk builds the fallback afresh instead, and that it writes the row's name is what this pins.
+        [Test]
+        public void Given_AFailedOutputThatPatchedItsRow_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowCarriesOnlyItsOwnProps()
+        {
+            // Arrange — the failed output renames the row the fallback also names "row", then throws
+            using var mounted = V.Mount(_root, V.Component(RowHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                _root.Query<Label>().ToList().Where(label => label.text == "fallback").Select(label => label.name)
+                    .FirstOrDefault(),
+                Is.EqualTo("row"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base stops the pass short of this sibling and leaves it alone.
+        // The catch taken in the walk patches it in place, and that its element is kept is what this pins.
+        [Test]
+        public void Given_ASiblingBehindABoundary_When_TheBoundaryCatchesOnAnUpdate_Then_TheSiblingKeepsItsElement()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UpdatingHostRender, key: "host"), CaughtErrors.Unlogged);
+            var siblingBefore = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "sibling:0");
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                ReferenceEquals(_root.Query<Label>().ToList().FirstOrDefault(label => label.text.StartsWith("sibling")),
+                    siblingBefore) && siblingBefore != null,
+                Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base retires the failed tree in the fallback's own reconcile.
+        // The catch taken in the walk retires it there instead, which this pins.
+        [Test]
+        public void Given_AFailedOutputHoldingPooledNodes_When_TheBoundaryCatchesOnAnUpdateAndTheMountIsDisposed_Then_ThePoolCountsNothingRentedOut()
+        {
+            // Arrange
+            var before = Rented();
+            var mounted = V.Mount(_root, V.Component(PooledHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            var after = Rented();
+            Assert.That(
+                (after.Props - before.Props, after.EventArrays - before.EventArrays, after.NodeArrays - before.NodeArrays),
+                Is.EqualTo((0, 0, 0)));
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheNextUpdateThrowsAgain_Then_ItShowsItsFallbackAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UpdatingHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback,sibling:2"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RowBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Fragment(new VNode[] { V.Label(name: "row", text: "fallback") }));
+            return V.Fragment(new VNode[]
+            {
+                V.Label(name: tick == 0 ? "row" : "failed", text: "t" + tick),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(RowBoundaryRender, tick, key: "boundary") });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode PooledBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { }))),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PooledHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(PooledBoundaryRender, tick, key: "boundary") });
+        }
+
+        // Read by reflection for the reason MemoCacheCollisionTests reads the same sets.
+        private static (int Props, int EventArrays, int NodeArrays) Rented()
+        {
+            int Count(string field)
+            {
+                var set = typeof(VNodePool).GetField(field, BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+                return (int)set.GetType().GetProperty("Count").GetValue(set);
+            }
+            return (Count("s_ownedProps"), Count("s_ownedSingleEventArrays"), Count("s_ownedNodeArrays"));
+        }
+
+        #endregion
+
+        #region A fallback whose own content throws
+
+        private static int s_brokenFallbackRenders;
+        private static Action<int> s_setOwnerTick;
+
+        [Test]
+        public void Given_AFallbackWhoseContentThrowsInsideABoundaryCatchingInTheWalk_When_ItsChildThrowsOnMount_Then_TheOuterFallbackShowsAndTheContentRendersOnce()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(BrokenNestedHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert — the render count is folded in, since a fallback attempted twice shows the outer one too
+            Assert.That((Texts(), s_brokenFallbackRenders), Is.EqualTo(("outer-fallback", 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base takes both errors on the aborting path to the same end.
+        // The catch taken in the walk leaves the original error with the boundary the aborting path disposed, which this pins.
+        [Test]
+        public void Given_AFallbackWhoseContentThrowsUnderABoundaryRenderingItself_When_TheInnerChildThrows_Then_TheOwnersFallbackShowsWithNothingLogged()
+        {
+            // Arrange — the owner is the boundary whose own update is the pass, so it catches on the aborting path
+            using var mounted = V.Mount(_root, V.Component(OwnerBoundaryRender, key: "owner"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnerTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — an uncaught error logged on the way fails the case as well
+            Assert.That(Texts(), Is.EqualTo("owner-fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base logs both errors on the aborting path.
+        // The catch taken in the walk passes the original error on after the fallback's own, which this pins.
+        [Test]
+        public void Given_AFallbackWhoseContentThrowsWithNoBoundaryAbove_When_ItsChildThrowsOnMount_Then_TheOriginalErrorIsLoggedToo()
+        {
+            // Arrange
+            s_throws = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Boundary catch scope throw");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(BrokenAloneHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Component(Compiler = false)]
+        private static VNode BrokenFallbackContentRender()
+        {
+            s_brokenFallbackRenders++;
+            if (s_throws) throw new InvalidOperationException("Broken fallback content");
+            return V.Label(text: "broken-content");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode BrokenFallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Component(BrokenFallbackContentRender, key: "content"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OuterOfBrokenRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(BrokenFallbackBoundaryRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode BrokenNestedHostRender() => V.Div(children: new VNode[] { V.Component(OuterOfBrokenRender, key: "outer") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnerBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnerTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "owner-fallback"));
+            return V.Fragment(new VNode[] { V.Label(text: "owner:" + tick), V.Component(BrokenFallbackBoundaryRender, key: "inner") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode BrokenAloneHostRender()
+            => V.Div(children: new VNode[] { V.Component(BrokenFallbackBoundaryRender, key: "boundary") });
+
+        #endregion
+        #region What the failed output leaves behind
+
+        private static int s_enterCompletions;
+        private static VisualElement s_target;
+
+        private static readonly System.Collections.Generic.Dictionary<string, MotionVariant> s_fade = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = "opacity-0",
+        };
+
+        [Test]
+        public void Given_APresenceWhoseChildOnlyAFailedOutputRendered_When_TheBoundarysParentRendersAnotherChild_Then_NoGhostOfTheFirstAppears()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(GhostHostRender, key: "host"), CaughtErrors.Unlogged);
+            var caught = Texts();
+            s_throws = false;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the caught reading is folded in, since a boundary that never caught records nothing. Only
+            // the first child is read: what else the host holds after the parent's render is where Velvet, which
+            // renders a boundary's children again on that render, and React, which keeps the fallback until the
+            // boundary's own state resets, part.
+            Assert.That(
+                caught + "|" + _root.Q("host").Children().Any(child => child.name == "item-a"),
+                Is.EqualTo("fallback|False"));
+        }
+
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(EnterHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert — the fallback is read with the count, since a mount that rendered nothing completes nothing
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base completes this enter inside the walk of a render that commits.
+        // The completion now waits for the end of the pass, and that it still runs there is what this pins.
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInAnOutputThatCommits_When_ItMounts_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_throws = false;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(EnterHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(s_enterCompletions, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APortalWhoseChildrenGrowAheadOfAThrow_When_TheBoundaryCatchesOnAnUpdate_Then_TheTargetKeepsNothing()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "host"), CaughtErrors.Unlogged);
+            var before = string.Join(",", s_target.Children().Select(child => child.name));
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(before + "|" + string.Join(",", s_target.Children().Select(child => child.name)) + "|" + Texts(),
+                Is.EqualTo("x||fallback"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode GhostBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            var key = tick == 0 ? "a" : "b";
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    V.Motion(name: "item-" + key, key: key, variants: s_fade, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                }),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode GhostHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(name: "host", children: new VNode[] { V.Component(GhostBoundaryRender, tick, key: "boundary") });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode EnterBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                {
+                    V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_enterCompletions++),
+                }),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode EnterHostRender() => V.Div(children: new VNode[] { V.Component(EnterBoundaryRender, key: "boundary") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode PortalBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            var children = tick == 0
+                ? new VNode[] { V.Label(name: "x", text: "x") }
+                : new VNode[]
+                {
+                    V.Label(name: "x", text: "x"),
+                    V.Label(name: "y", text: "y"),
+                    V.Div(name: "body", children: new VNode[] { V.Component(ThrowerRender, key: "thrower") }),
+                };
+            return V.Portal(s_target, children);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PortalHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(name: "host", children: new VNode[] { V.Component(PortalBoundaryRender, tick, key: "boundary") });
+        }
+
+        #endregion
+
+        #region Where the original error goes after the fallback's own
+
+        private static string s_outerSaw;
+        private static readonly System.Collections.Generic.List<string> s_caughtStacks = new();
+
+        [Test]
+        public void Given_AFallbackWhoseContentThrowsUnderABoundaryCatchingInTheWalk_When_TheChildThrows_Then_TheOuterBoundaryReceivesTheContentsError()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(RecordingHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts() + "|" + s_outerSaw, Is.EqualTo("outer-fallback|Broken fallback content"));
+        }
+
+        [Test]
+        public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_TheOriginalErrorGoesOn_Then_ItCatchesThatInTheWalk()
+        {
+            // Arrange
+            s_throws = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(DecliningHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("declined-fallback,sibling"));
+        }
+
+        [Test]
+        public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_ItReportsTheOriginalError_Then_TheComponentStackStartsAtTheComponentThatThrew()
+        {
+            // Arrange
+            s_throws = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Broken fallback content");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(DecliningHostRender, key: "host"),
+                new MountOptions((_, info) => s_caughtStacks.Add(info.ComponentStack)));
+
+            // Assert
+            Assert.That(string.Join("|", s_caughtStacks.Select(stack => stack.Split('\n')[0])),
+                Is.EqualTo("    at BoundaryCatchScopeTests.ThrowerRender"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RecordingOuterRender()
+        {
+            Hooks.UseFallback(ex =>
+            {
+                s_outerSaw = ex.Message;
+                return V.Label(text: "outer-fallback");
+            });
+            return V.Component(BrokenFallbackBoundaryRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RecordingHostRender() => V.Div(children: new VNode[] { V.Component(RecordingOuterRender, key: "outer") });
+
+        // Declines the fallback content's error, by giving no fallback for it, and catches the original one.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DecliningOuterRender()
+        {
+            Hooks.UseFallback(ex => ex.Message == "Broken fallback content" ? null : V.Label(text: "declined-fallback"));
+            return V.Component(BrokenFallbackBoundaryRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DecliningHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(DecliningOuterRender, key: "outer"),
+                V.Label(text: "sibling"),
+            });
+
+        #endregion
+
+        #region An element callback's error below a boundary
+
+        private static int s_callbackSetups;
+        private static int s_callbackCleanups;
+
+        // GREEN_ON_BASE(characterization): the merge base takes an element callback's error on the aborting path.
+        // It disposes what the element built, which a catch taken in the walk for that error would leave set up.
+        [Test]
+        public void Given_AnElementCallbackErrorBelowABoundary_When_TheBoundaryCatchesOnMount_Then_NoEffectUnderTheElementIsLeftSetUp()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CallbackHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_callbackSetups - s_callbackCleanups, Is.EqualTo(0));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode EffectUnderTheElementRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_callbackSetups++;
+                return () => s_callbackCleanups++;
+            }, Array.Empty<object>());
+            return V.Label(text: "under");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CallbackThrowingRender()
+            => V.ScrollView(onCreated: _ => throw new InvalidOperationException("Element callback throw"),
+                children: new VNode[] { V.Component(EffectUnderTheElementRender, key: "under") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode CallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(CallbackThrowingRender, key: "callback");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
+
+        #endregion
+    }
+}

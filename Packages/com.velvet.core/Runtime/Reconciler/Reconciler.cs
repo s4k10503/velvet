@@ -272,6 +272,7 @@ namespace Velvet
                 // Which pass ends last is not this one's to know, so the call is unconditional and
                 // DrainRefAttaches asks each entry's own pass instead.
                 _ctx.DrainRefAttaches();
+                _ctx.RunPendingEnterCompletions();
             }
         }
 

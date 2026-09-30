@@ -955,7 +955,8 @@ namespace Velvet
                     component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
-                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
+                else ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
@@ -978,6 +979,119 @@ namespace Velvet
             }
         }
 
+        // A render error below the boundary is caught here, as ExpandSuspenseInline catches a suspend, so the
+        // walk goes on to the boundary's siblings. What the failed output committed is taken back, and the
+        // fibers it added leave the walk: an old one is left to the orphan cleanups and the sweep, and a new
+        // one, which neither reaches, is disposed here. The fallback is then expanded in the same rows, and the
+        // catch is reported once it has rendered.
+        private void ExpandBoundaryInline(
+            InlineWalk walk,
+            ComponentFiber boundary,
+            ComponentNode component,
+            WalkPosition position,
+            int nodeIndex,
+            int preCount)
+        {
+            var commit = walk.Commit!;
+            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            var fibersBefore = _ctx.BufferPool.RentFiberSet();
+            fibersBefore.UnionWith(walk.NewFibers);
+            try
+            {
+                BoundaryCaughtSignal? caught = null;
+                boundary.CatchesInTheWalk = true;
+                try
+                {
+                    ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
+                }
+                catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, boundary))
+                {
+                    caught = signal;
+                }
+                finally
+                {
+                    boundary.CatchesInTheWalk = false;
+                }
+                if (caught == null) return;
+
+                RollbackCommitTo(commit, preCount, fibersBefore, walk.NewFibers);
+                _ctx.PendingEnterCompletions.RemoveRange(
+                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
+                DropFibersTheFailedOutputAdded(walk, fibersBefore);
+                ForgetOldRowsOf(commit, boundary);
+                // What the failed output recorded against the boundary itself, for an AnimatePresence or a
+                // Suspense it rendered directly; its descendants' records go with the fibers dropped above.
+                _ctx.PrunePresenceBoundaryState(boundary);
+                _ctx.PruneSuspenseBoundaryState(boundary);
+                boundary.IsShowingFallback = true;
+                boundary.FallbackContentFailed = false;
+                try
+                {
+                    ExpandFiberTree(walk, boundary, caught.FallbackTree, component, position, nodeIndex);
+                }
+                finally
+                {
+                    boundary.IsShowingFallback = false;
+                }
+                // An ancestor boundary that caught the fallback's own error on the aborting path has replaced this
+                // one, and the original error goes no further, as PropagateException stops at a disposed boundary.
+                if (boundary.IsDisposed) return;
+                // Published only once the fallback has expanded: a catch on the aborting path during that
+                // expansion reconciles this boundary's rows from the tree they still hold, the failed one. The
+                // fallback is committed before the failed tree retires, as FiberErrorBoundary.TryShowFallback
+                // orders it.
+                var failedTree = boundary.PreviousTree;
+                boundary.PreviousTree = caught.FallbackTree;
+                FiberTreeReturn.ReturnRetiredTree(failedTree, boundary);
+                if (boundary.FallbackContentFailed)
+                {
+                    // The fallback's own error went to the boundaries above and none caught it in this walk;
+                    // the original error goes after it.
+                    ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
+                    return;
+                }
+                FiberErrorBoundary.QueueReport(_ctx, boundary, caught.Error, caught.Info);
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent): a set not handed back is never read again, and the next rent
+                // makes a new one.
+                _ctx.BufferPool.ReturnFiberSet(fibersBefore);
+            }
+        }
+
+        // React unmounts a boundary's children before it renders the fallback, so no old row of the boundary is
+        // matched by a fallback row: each goes in the removal pass, and one the failed output patched in place
+        // leaves with what that patch wrote.
+        private static void ForgetOldRowsOf(GeneralCommitState commit, ComponentFiber boundary)
+        {
+            for (var i = 0; i < commit.OldOwners.Count; i++)
+            {
+                for (var owner = commit.OldOwners[i]; owner != null; owner = owner.Parent)
+                {
+                    if (!ReferenceEquals(owner, boundary)) continue;
+                    commit.OldKeyMap.Remove(commit.OldKeys[i]);
+                    break;
+                }
+            }
+        }
+
+        private void DropFibersTheFailedOutputAdded(InlineWalk walk, HashSet<ComponentFiber> fibersBefore)
+        {
+            List<ComponentFiber>? added = null;
+            foreach (var fiber in walk.NewFibers)
+            {
+                if (!fibersBefore.Contains(fiber)) (added ??= new List<ComponentFiber>()).Add(fiber);
+            }
+            if (added == null) return;
+            var old = new HashSet<ComponentFiber>(walk.OldFibers);
+            foreach (var fiber in added)
+            {
+                walk.NewFibers.Remove(fiber);
+                if (!old.Contains(fiber)) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
+            }
+        }
+
         // FiberKeying.ComponentChild restarts SlotPath here, so the descendants' slotKeys are scoped to
         // THIS fiber's body output. Otherwise the same descendant would compute different slotKeys when the
         // enclosing fiber re-renders independently (setState) vs when its outer parent re-renders. A
@@ -997,18 +1111,27 @@ namespace Velvet
             ComponentNode component,
             WalkPosition position,
             int nodeIndex)
+            => ExpandFiberTree(walk, fiber, fiber.PreviousTree, component, position, nodeIndex);
+
+        private void ExpandFiberTree(
+            InlineWalk walk,
+            ComponentFiber fiber,
+            VNode?[]? tree,
+            ComponentNode component,
+            WalkPosition position,
+            int nodeIndex)
         {
-            if (fiber.PreviousTree == null || fiber.PreviousTree.Length == 0) return;
+            if (tree == null || tree.Length == 0) return;
 
             _ctx.FiberStack.Push(fiber);
             // Moved with the FiberStack push, for the same reason: what this descent stamps onto its children
             // belongs to THIS fiber's output, not the outer caller's.
             var enclosingFiberTree = _ctx.CurrentFiberTree;
-            _ctx.CurrentFiberTree = fiber.PreviousTree;
+            _ctx.CurrentFiberTree = tree;
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
-                ExpandInlineRecursive(walk, fiber.PreviousTree, componentPosition);
+                ExpandInlineRecursive(walk, tree, componentPosition);
             }
             finally
             {
@@ -2213,16 +2336,27 @@ namespace Velvet
                 }
                 else
                 {
-                    InvokeEnterComplete(motion, pass.BoundaryFiber);
+                    CompleteEnterAfterThePass(motion, pass.BoundaryFiber);
                 }
             }
+        }
+
+        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
+        // boundary catching later in that walk can take it back with the rest of the failed output
+        // (ExpandBoundaryInline). A VirtualList renders its rows outside any pass as it scrolls, and there it
+        // completes at once, since no pass end would reach it.
+        private void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundaryFiber)
+        {
+            if (motion?.OnEnterComplete == null) return;
+            if (_ctx.SharedReconcileDepth == 0) InvokeEnterComplete(motion, boundaryFiber);
+            else _ctx.PendingEnterCompletions.Add((motion, boundaryFiber));
         }
 
         // The enter paths that fire the callback in-pass rather than handing it to
         // StyleAnimationScheduler share this so the containment is written once, and it is the same
         // containment RunExitComplete gives the other half of the pair: the emission this sits inside has
         // bookkeeping still to do, and a user callback must not be what stops it.
-        private static void InvokeEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
+        internal static void InvokeEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
         {
             try
             {
@@ -2280,7 +2414,7 @@ namespace Velvet
             else if (isVariantMotion)
             {
                 // Variant Motion without `initial`: rest at variants[animate], no enter anim.
-                InvokeEnterComplete(motion, boundaryFiber);
+                CompleteEnterAfterThePass(motion, boundaryFiber);
             }
             else
             {

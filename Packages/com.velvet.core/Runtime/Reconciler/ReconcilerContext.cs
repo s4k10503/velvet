@@ -1079,6 +1079,19 @@ namespace Velvet
         // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
         public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
 
+        // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
+        // ended — see GeneralPathReconciler.CompleteEnterAfterThePass.
+        internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
+
+        internal void RunPendingEnterCompletions()
+        {
+            if (PendingEnterCompletions.Count == 0) return;
+            // Copied out first: a callback can start a pass whose own end reaches this list.
+            var completions = PendingEnterCompletions.ToArray();
+            PendingEnterCompletions.Clear();
+            foreach (var (motion, boundary) in completions) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+        }
+
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
         // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
         // NextCaughtErrorSequence at the catch.

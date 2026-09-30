@@ -60,6 +60,10 @@ namespace Velvet.Tests
     /// set up, and a component it mounted there not left mounted.</item>
     /// <item>An error boundary above the list that catches a row's render during a range update ends the
     /// rendering of rows there, and leaves none of the rows that update built mounted.</item>
+    /// <item>A row that is itself an error boundary, mounting in its host's pass, catches its child's render
+    /// there without stopping the rest of that pass.</item>
+    /// <item>An enter with nothing to play in a row rendered outside a pass completes before the range update
+    /// returns.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -1652,6 +1656,99 @@ namespace Velvet.Tests
                 "[" + thrown + "] thrown, child rendered " + s_rowRenders.Count(id => id == "child")
                     + " time(s), live: " + LiveRows(),
                 Is.EqualTo("[constructor refused] thrown, child rendered 1 time(s), live: none"));
+        }
+
+        #endregion
+
+        #region A row that is an error boundary
+
+        private static Action<int> s_rowBoundaryHostSetTick;
+        private static string s_throwingRowId;
+        private static int s_rowEnterCompletions;
+
+        [Test]
+        public void Given_ARowThatIsAnErrorBoundary_When_ItCatchesItsChildsRenderInItsHostsPass_Then_TheRestOfThatPassCommits()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the row mounts through a mount of its own, inside the host's pass.
+            s_throwingRowId = "fresh";
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RowBoundaryListHostRender, key: "host"), CaughtErrors.Unlogged);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 200f);
+
+            // Act
+            s_rowBoundaryHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the row's fallback is read beside the label, since a row that never caught leaves the
+            // pass to commit as well.
+            Assert.That(
+                $"{root.Q<Label>("tick")?.text} | {root.Query<Label>().ToList().Any(label => label.text == "row-fallback")}",
+                Is.EqualTo("t1 | True"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base completes this enter inside the walk of the row.
+        // An enter now completes with the pass that rendered it, and a row rendered outside one is what this pins.
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInARow_When_ARangeIsRenderedOutsideAPass_Then_ItsCompletionHasRunWhenTheUpdateReturns()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no row until the range
+            // update below.
+            s_rowEnterCompletions = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(children: new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                    {
+                        V.Motion(key: item, transition: StyleTransition.Fade, onEnterComplete: () => s_rowEnterCompletions++),
+                    }),
+                }),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_rowEnterCompletions, Is.EqualTo(1));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowThrowerRender(string id)
+        {
+            if (id == s_throwingRowId) throw new InvalidOperationException("row child refused " + id);
+            return V.Label(text: id);
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RowBoundaryRender(string id)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "row-fallback"));
+            return V.Component(RowThrowerRender, id, key: "row");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowBoundaryListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_rowBoundaryHostSetTick = setTick;
+            var items = tick == 0 ? CreateItems(1) : new[] { new TestItem { Id = "fresh", Name = "Fresh" } };
+            return V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: items,
+                    keySelector: item => item.Id,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(RowBoundaryRender, item.Id),
+                    overscan: 0),
+                V.Label(name: "tick", text: "t" + tick),
+            });
         }
 
         #endregion
