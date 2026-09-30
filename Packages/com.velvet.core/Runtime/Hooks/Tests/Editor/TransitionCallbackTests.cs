@@ -247,9 +247,6 @@ namespace Velvet.Tests
                 "The action's callback returned first, so the outer callback's error is the outcome rendered");
         }
 
-        // GREEN_ON_BASE(characterization): the base rethrew the first error to the caller and rendered nothing.
-        // What this pins is that a later call that succeeds replaces an error not yet rendered, as React's later
-        // isPending update does.
         [Test]
         public void Given_ACallbackThatThrowsThenOneThatSucceeds_When_TheTransitionLaneRenders_Then_NoErrorIsThrown()
         {
@@ -306,7 +303,7 @@ namespace Velvet.Tests
             s_hostStart.Invoke(async () =>
             {
                 await gate.Task;
-                throw new OperationCanceledException("cancelled by the unmount");
+                throw new InvalidOperationException("after the unmount");
             });
             mounted.Dispose();
 
