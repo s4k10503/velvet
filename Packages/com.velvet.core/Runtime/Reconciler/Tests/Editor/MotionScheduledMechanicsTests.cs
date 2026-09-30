@@ -2832,8 +2832,6 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("modal"), Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base completes no exit of a presence it unmounted.
-        // A modal waiting for the card must let the next frame run once the tree is gone.
         [Test]
         public void Given_AModalWaitingForTheCardToLand_When_TheTreeIsUnmounted_Then_TheNextFramesCompleteNoExit()
         {
