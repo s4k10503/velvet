@@ -146,12 +146,13 @@ namespace Velvet.Tests
 
         private static int s_enterCompletions;
 
-        // A presence child that follows its parent's label and fades in on the classic preset.
+        // A presence child that follows its parent's labels, entering from the inherited initial pose on the Fade
+        // preset's timing.
         [Component]
         private static VNode FadingFollower()
         {
             var label = Hooks.UseStore(s_labelStore, s => s.Label);
-            return V.Motion(name: "parent", animate: label, children: new VNode[]
+            return V.Motion(name: "parent", initial: "hidden", animate: label, children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", children: new VNode[]
                 {
@@ -501,9 +502,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
-        // So a presence child's classic fade-in still completes when its inherited label changes before it swaps.
+        // So a presence child's inherited enter still completes when its inherited label changes before it swaps.
         [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
+        public void Given_APresenceChildsInheritedEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
         {
             // Arrange
             s_enterCompletions = 0;
@@ -520,48 +521,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_enterCompletions, Is.EqualTo(1));
-        }
-
-        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
-        // So a presence child's classic fade-in keeps its transition when its inherited label changes before it swaps.
-        [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheFadeKeepsItsTransition()
-        {
-            // Arrange
-            using var labels = new LabelStore();
-            labels.Set("visible");
-            s_labelStore = labels;
-            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-
-            // Act
-            labels.Set("half");
-            scheduler.DrainImmediateForTest();
-
-            // Assert
-            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
-        }
-
-        // GREEN_ON_BASE(characterization): the base's zero-duration swaps never wrote a classic enter's transition list.
-        // So a presence child's classic fade-in keeps its preset's when two inherited label changes land before it swaps.
-        [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TwoZeroDurationPosesFollow_Then_ItsTransitionPropertyIsLeftToItsPreset()
-        {
-            // Arrange
-            using var labels = new LabelStore();
-            labels.Set("visible");
-            s_labelStore = labels;
-            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            labels.Set("half");
-            scheduler.DrainImmediateForTest();
-
-            // Act
-            labels.Set("tagged");
-            scheduler.DrainImmediateForTest();
-
-            // Assert
-            Assert.That(Root.Q<VisualElement>("item").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending mount enter to complete.
