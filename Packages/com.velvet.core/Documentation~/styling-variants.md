@@ -20,8 +20,9 @@ the class channels that are not variants at all.
 A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
 behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
 literal `gap-4` alone — and so is declaring it behind two variants of different precedence
-(`dark:gap-4 md:gap-4`). What still shares a slot is the same token behind two payloads of the **same**
-precedence. Declaring the base value once and letting
+(`dark:gap-4 md:gap-4`), or behind two rules of one variant family (`nth-1:gap-4 nth-2:gap-4`). What
+still shares a slot is the same token written twice behind the same variant. Declaring the base value once
+and letting
 the variant override it (`gap-4 md:gap-8`) remains the idiomatic form.
 
 The utilities from [Payloads Velvet realises itself](#payloads-velvet-realises-itself) are ranked by
@@ -30,9 +31,7 @@ records only *whether* a class is present and these are read out of it as a fami
 worth knowing, both when several variants name one such utility:
 
 - *Same token, no literal base* — `"dark:gap-4 md:gap-4"`, `"dark:shadow-lg has-[.sel]:shadow-lg"`.
-  One of the two turning off leaves the other driving, so the spacing and the shadow stay. Two
-  payloads of the **same** precedence still share one slot, per the paragraph above, so there the
-  first to turn off takes the utility with it.
+  One of the two turning off leaves the other driving, so the spacing and the shadow stay.
 - *Same family, different values* — `"bg-white md:shadow-sm dark:shadow-lg"` resolves by the
   precedence table, not by the order the two signals fired. `dark:` outranks `md:`, so both lit paint
   `shadow-lg` whichever way the window got there. Where the precedence table cannot separate them —
@@ -109,9 +108,8 @@ come off, and go back on the moment they stop losing.
 
 Four consequences worth knowing:
 
-- **Same-priority classes still tie by declaration order.** Two base utilities on one property, or two
-  payloads of the same variant family, are ranked by nothing, so the stylesheet decides. Marking one
-  important (below) breaks the tie.
+- **Two base utilities on one property still tie by declaration order.** They are ranked by nothing, so
+  the stylesheet decides. Marking one important (below) breaks the tie.
 - **A payload only displaces a class whose properties it wholly covers.** A base utility writing
   something the payload does not keeps its place, and the two then settle their shared properties by
   declaration order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
@@ -155,8 +153,10 @@ is 20 px wide; an attribute selector carries a pseudo-class's and is emitted aft
 
 Lowest first, each row in the order `<` shows. Two variant rules of one rank — `nth-1:` beside `nth-2:`,
 two `data-[…]:` rules — keep their payloads apart, so turning one off leaves the other's standing. While
-both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in:
-first by their variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
+both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in.
+Two arbitrary values follow that order on every property they share; where a class is one of the two, the
+outranked one gives way only if the other writes every property it writes, as the second consequence
+above describes. The order is first by their variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
 `group-hover/card:`, `[&:first-child]:` before `[&:nth-child(1)]:`), then by the first property they
 differ on in Tailwind's property order (`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate
 itself, digits read as numbers (`hover:w-[10px]` before `hover:w-[20px]`).

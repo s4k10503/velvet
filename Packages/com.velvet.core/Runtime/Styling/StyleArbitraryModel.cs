@@ -13,8 +13,8 @@ namespace Velvet
     // compares the ranks: an important flag, then the rule's specificity, then the set of variants it carries
     // compared highest bit first — compile.ts's sort. Each bit is a variant family's place in Tailwind's variant
     // order among the ones Velvet supports; only the relative order of the bits matters to that comparison.
-    // The lowest bits are left clear here for the rule's place among its element's rules (WithRule), which
-    // every layer's key carries. StyleLayerOrderTests pins the order.
+    // The lowest bits are left clear here for the rule's place among its element's rules (WithRule), which a
+    // variant payload's key carries; a base layer's does not. StyleLayerOrderTests pins the order.
     internal static class StyleLayerPriority
     {
         // The rule's place among its element's rules, in a layer's key (see WithRule).
@@ -79,6 +79,9 @@ namespace Velvet
         #endregion
 
         public static long AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
+
+        // The variant bit set a rank carries, without its specificity or important flag.
+        public static long VariantSetOf(long rank) => rank & SetMask;
 
         // A stacked variant (dark:hover:, hover:focus:) is one rule carrying every part: the selectors its parts
         // add sum, and its variant set is the union of theirs.

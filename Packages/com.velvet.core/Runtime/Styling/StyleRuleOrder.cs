@@ -13,8 +13,8 @@ namespace Velvet
     internal static class StyleRuleOrder
     {
         // Tailwind v4's property-order.ts (tailwindcss@fa81d697), kept to the properties a UI Toolkit longhand
-        // maps to, in that file's order. Tailwind leaves a property it does not list out of the sort, and so
-        // does PropertySortOf.
+        // maps to, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it
+        // does not list out of the sort, and so does PropertySortOf.
         private static readonly string[] s_tailwindPropertyOrder =
         {
             "visibility", "position", "top", "right", "bottom", "left", "margin-top", "margin-right",
@@ -26,7 +26,7 @@ namespace Velvet
             "border-bottom-width", "border-left-width", "border-top-color", "border-right-color",
             "border-bottom-color", "border-left-color", "background-color", "background-image", "background-size",
             "background-position", "background-repeat", "padding-top", "padding-right", "padding-bottom",
-            "padding-left", "text-align", "font-family", "font-size", "letter-spacing", "text-overflow",
+            "padding-left", "text-align", "font-family", "font-size", "line-height", "letter-spacing", "text-overflow",
             "white-space", "color", "opacity", "filter", "transition-property", "transition-delay",
             "transition-duration", "transition-timing-function",
         };
@@ -43,6 +43,12 @@ namespace Velvet
         private static readonly StyleLonghand[] s_longhands = (StyleLonghand[])Enum.GetValues(typeof(StyleLonghand));
 
         private static readonly int[] s_tailwindIndex = BuildTailwindIndex();
+
+        // A named text size (text-lg) emits line-height beside font-size in Tailwind, and its USS rule writes
+        // font-size alone, UI Toolkit having no line-height; the sort adds it back for them.
+        private static readonly int s_lineHeightIndex = Array.IndexOf(s_tailwindPropertyOrder, "line-height");
+
+        private const string NamedTextSizePrefix = "text-";
 
         private static int[] BuildTailwindIndex()
         {
@@ -194,8 +200,21 @@ namespace Velvet
             {
                 var values = new List<(long Rank, string Value)>();
                 var leaf = PeelVariants(token, values);
-                // Highest family first, the order a bit set is compared in.
-                values.Sort((a, z) => z.Rank.CompareTo(a.Rank));
+                // Highest variant first, the order a bit set is compared in: by family bit, and within one family by
+                // value, a greater value being a variant Tailwind registers later. A variant written twice is one
+                // bit.
+                values.Sort((a, z) =>
+                {
+                    var byFamily = StyleLayerPriority.VariantSetOf(z.Rank).CompareTo(StyleLayerPriority.VariantSetOf(a.Rank));
+                    return byFamily != 0 ? byFamily : string.CompareOrdinal(z.Value, a.Value);
+                });
+                for (var i = values.Count - 1; i > 0; i--)
+                {
+                    if (values[i] == values[i - 1])
+                    {
+                        values.RemoveAt(i);
+                    }
+                }
                 var (properties, count) = PropertySortOf(leaf);
                 return new SortKey(values, properties, count, token);
             }
@@ -221,7 +240,8 @@ namespace Velvet
                 var length = Math.Min(a.Count, z.Count);
                 for (var i = 0; i < length; i++)
                 {
-                    var byRank = z[i].Rank.CompareTo(a[i].Rank);
+                    var byRank = StyleLayerPriority.VariantSetOf(a[i].Rank)
+                        .CompareTo(StyleLayerPriority.VariantSetOf(z[i].Rank));
                     if (byRank != 0)
                     {
                         return byRank;
@@ -305,12 +325,26 @@ namespace Velvet
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
-            var set = StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParse(core, out var style)
-                    ? StyleArbitraryLonghands.Of(style.Property)
-                    : StyleUtilityProperties.TryGet(core, out var rule) ? rule.Properties : StyleLonghandSet.Empty;
+            var inline = false;
+            StyleLonghandSet set;
+            if (StyleArbitraryValueResolver.IsInlineResolved(core)
+                && StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                inline = true;
+                set = StyleArbitraryLonghands.Of(style.Property);
+            }
+            else
+            {
+                set = StyleUtilityProperties.TryGet(core, out var rule) ? rule.Properties : StyleLonghandSet.Empty;
+            }
             var order = new List<int>();
             var count = 0;
+            if (!inline && set.Contains(StyleLonghand.FontSize)
+                && core.StartsWith(NamedTextSizePrefix, StringComparison.Ordinal))
+            {
+                order.Add(s_lineHeightIndex);
+                count++;
+            }
             for (var i = 0; i < s_longhands.Length; i++)
             {
                 if (!set.Contains(s_longhands[i]))

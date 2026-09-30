@@ -65,6 +65,16 @@ namespace Velvet
         // take it from there.
         public void SeedInner(bool on) => _innerOn = on;
 
+        // Takes the rule's current place. Only while the leaf is not applied, so no layer is left under the old
+        // key.
+        public void Redeclare(int declaration)
+        {
+            if (!_applied)
+            {
+                _declarations[0] = declaration;
+            }
+        }
+
         // Called by the owning manipulator each time its own gate flips.
         public void SetOuterGate(bool on)
         {

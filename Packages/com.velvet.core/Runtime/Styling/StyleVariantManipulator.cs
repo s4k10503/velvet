@@ -3,8 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The className position of every state payload, grouped so the five arrays travel together rather than
-    // as five more parameters on each of the two entry points that carry them.
+    // The rule place of every state payload: its place among the element's rules in the order Tailwind emits
+    // them (StyleRuleOrder), which every payload's layer key carries. Grouped so the arrays travel together
+    // rather than as more parameters on each of the two entry points that carry them. The other families'
+    // declaration arrays hold the same place.
     internal readonly struct VariantDeclarations
     {
         public static readonly VariantDeclarations None = new(
@@ -92,9 +94,8 @@ namespace Velvet
         private string[] _active;
         private string[] _checked;
         private string[] _disabled;
-        // Each payload's position in the className, kept per state alongside the payloads themselves so a
-        // payload can be ranked against one a DIFFERENT owner applied at the same rank. Identified by reference,
-        // like PriorityFor.
+        // Each payload's rule place (see VariantDeclarations), kept per state alongside the payloads themselves.
+        // Identified by reference, like PriorityFor.
         private int[] _hoverDeclarations;
         private int[] _focusDeclarations;
         private int[] _focusVisibleDeclarations;
@@ -273,8 +274,8 @@ namespace Velvet
             => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this,
                 DeclarationsFor(payloads));
 
-        // The className positions belonging to the state whose payload array this is, paired the same way
-        // PriorityFor pairs the layer.
+        // The rule places belonging to the state whose payload array this is, paired the same way PriorityFor
+        // pairs the layer.
         private int[] DeclarationsFor(string[] payloads) =>
             ReferenceEquals(payloads, _disabled) ? _disabledDeclarations
             : ReferenceEquals(payloads, _checked) ? _checkedDeclarations

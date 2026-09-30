@@ -150,12 +150,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoAttributeRulesOfTheShadowFamily_When_TheSameStateIsReachedByEitherRuleOrder_Then_TheSameShadowPaints()
         {
-            // Arrange — both rules layer at the SAME priority (every data- rule does), so the
-            // precedence table cannot separate them and the className's own declaration order is what
-            // decides, exactly as source order decides a tie between two equal-specificity CSS rules. The
-            // later-declared shadow-sm is what both orders owe.
+            // Arrange — both rules sit on the data- rank, so their values decide, as Tailwind emits them:
+            // "busy=true" sorts before "state=open", so shadow-lg is what both orders owe.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
 
             // Act — the two attributes set one at a time, in both orders.
             var stateThenBusy = BlurAfterBothAttributesSet(stateFirst: true);
@@ -168,9 +166,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_OneValueClaimedByTwoAttributeRules_When_TheLastOfThemIsWrittenLast_Then_ThatValuePaints()
         {
-            // Arrange — three rules of one family at one priority. shadow-lg is claimed twice, and the LAST
-            // rule in the className is one of its two, so source order owes it the win; ranking the token at
-            // its opening rule instead would hand the element to the shadow-sm written between them.
+            // Arrange — three rules of one family at one rank. shadow-lg is claimed twice, and x=1 sorts after
+            // both a=1 and b=1, so Tailwind emits one of its rules last; ranking the token at its other rule
+            // instead would hand the element to the shadow-sm between them.
             using var oracleScope = new ReconcilerScope();
             var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
@@ -231,12 +229,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEventDrivenHasRuleBesideAClassHasRule_When_BothAreLit_Then_TheLaterWrittenOneWins()
+        public void Given_AnEventDrivenHasRuleBesideAClassHasRule_When_BothAreLit_Then_TheOneTailwindEmitsLaterWins()
         {
-            // Arrange — the has- layer is reached by two different suppliers: has-[:checked]: rides the
-            // event-driven manipulator, has-[.class]: is a side table. Both land at the same priority, so
-            // only the className can separate them, and gap-8 is written later. A checked Toggle and an
-            // .error child light both at once.
+            // Arrange — the has- rank is reached by two different suppliers: has-[:checked]: rides the
+            // event-driven manipulator, has-[.class]: is a side table. Their arguments decide: ".error" sorts
+            // before ":checked", so gap-4 wins though gap-8 is written later. A checked Toggle and an .error
+            // child light both at once.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
             {
@@ -253,24 +251,24 @@ namespace Velvet.Tests
             // scan runs against the placed subtree.
             scope.Reconciler.Context.HasVariantManipulators[row].Rescan();
 
-            // Assert — --space-8 == 32px, so the later-written gap-8 is what spaces the row.
-            Assert.That(row[1].style.marginLeft.value.value, Is.EqualTo(Space8));
+            // Assert — --space-4 == 16px.
+            Assert.That(row[1].style.marginLeft.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
         public void Given_ATiedPairBesideARuleThatNeverApplies_When_BothOfThePairAreLit_Then_TheDeadRuleDoesNotRank()
         {
             // Arrange — first:hover: is on the structural config's own skip list, so it registers nothing and
-            // can never apply a payload to anything. It still spells shadow-lg after a colon, which is all a
-            // scan of the className would see, and it is written last. Only the two data- rules are real, and
-            // between them source order gives shadow-sm the win.
+            // can never apply a payload to anything. It still spells shadow-sm after a colon, which is all a
+            // scan of the className would see, and it would outrank both data- rules if it ranked. Only the two
+            // data- rules are real, and between them b=1 sorts later, so shadow-lg wins.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
             var lit = new Dictionary<string, string> { ["b"] = "1", ["a"] = "1" };
             var tree = new VNode[]
             {
-                V.Div(className: "bg-[#FFFFFF] data-[b=1]:shadow-lg data-[a=1]:shadow-sm first:hover:shadow-lg",
+                V.Div(className: "bg-[#FFFFFF] data-[b=1]:shadow-lg data-[a=1]:shadow-sm first:hover:shadow-sm",
                     name: "card", data: lit),
             };
 
@@ -282,9 +280,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoTiedRulesResolved_When_TheClassNameSwapsTheirOrder_Then_TheOtherValuePaints()
+        public void Given_TwoTiedRulesResolved_When_TheClassNameSwapsTheirValues_Then_TheOtherValuePaints()
         {
-            // Arrange — both rules lit and tied at the attribute layer, so the later-written shadow-lg paints.
+            // Arrange — both rules lit on the data- rank, where b=1 sorts later, so shadow-lg paints.
             using var oracleScope = new ReconcilerScope();
             var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
             using var scope = new ReconcilerScope();
@@ -295,17 +293,17 @@ namespace Velvet.Tests
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
 
-            // Act — only the writing order changes; both rules stay lit and neither payload moves layer.
-            // What carries the new order is the attribute config pass clearing and re-applying both payloads
-            // on a class change, each with its fresh position. A family that stopped cycling would keep the
-            // old ranking with nothing else to catch it, which is the invariant this case pins.
+            // Act — the two rules trade payloads; both stay lit and neither moves rank. What carries the change is
+            // the attribute config pass clearing and re-applying both payloads on a class change, each with its
+            // fresh place. A family that stopped cycling would keep the old payloads with nothing else to catch
+            // it, which is the invariant this case pins.
             var second = new VNode[]
             {
-                V.Div(className: "bg-[#FFFFFF] data-[b=1]:shadow-lg data-[a=1]:shadow-sm", name: "card", data: lit),
+                V.Div(className: "bg-[#FFFFFF] data-[b=1]:shadow-sm data-[a=1]:shadow-lg", name: "card", data: lit),
             };
             scope.Reconciler.Reconcile(scope.Root, first, second);
 
-            // Assert — the tie follows the new source order, so shadow-sm now wins.
+            // Assert — b=1 still sorts later and now carries shadow-sm, though shadow-lg is written last.
             Assert.That(BlurOf(scope, scope.Root.Q<VisualElement>("card")), Is.EqualTo(expected));
         }
 

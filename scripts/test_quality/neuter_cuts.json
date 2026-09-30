@@ -549,8 +549,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out string[] payloads)",
-          "neuter": "payloads = Array.Empty<string>(); return false;"
+          "anchor": "public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)",
+          "neuter": "payloads = Array.Empty<string>(); declarations = Array.Empty<int>(); return false;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",

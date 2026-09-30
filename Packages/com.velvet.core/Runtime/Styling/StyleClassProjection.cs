@@ -221,7 +221,9 @@ namespace Velvet
                 return found;
             }
 
-            // Ties WITHIN the band are deliberately left alone: source order decides them, as it always has.
+            // Ties WITHIN the band are deliberately left alone. A band is one rule's key, so only a token written
+            // twice behind one variant, payloads carrying no rule place, or two base classes reach one; the
+            // stylesheet decides them.
             private void JudgeBand(long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)

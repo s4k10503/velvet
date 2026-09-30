@@ -26,7 +26,7 @@ namespace Velvet
         // turning it off falls back to whatever is still active.
         //
         // declarations gives each payload, by position, its rule's place among the element's rules
-        // (StyleRuleOrder), which every layer's key carries, so two payloads at ONE rank order the way Tailwind
+        // (StyleRuleOrder), which the payload's layer key carries, so two payloads at ONE rank order the way Tailwind
         // emits the two rules (see StyleLayerPriority.WithRule). It rides
         // in from the caller rather than being read back out of the class array, because the array cannot say
         // whether a rule is LIT: a `lg:shadow-lg` below the breakpoint, a `peer-checked:` with no peer, a
@@ -120,7 +120,7 @@ namespace Velvet
             VisualElement target, string core, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
-            // Every layer is keyed by the rule as well as its rank, so a rule turning off clears its own value and
+            // A variant payload's layer is keyed by the rule as well as its rank, so a rule turning off clears its own value and
             // not that of another rule on the same rank (nth-1: beside nth-2:), and two that hold at once order by
             // the place StyleRuleOrder gave the rule's declaration.
             var key = StyleLayerPriority.WithRule(effectivePriority, declaration);

@@ -2059,20 +2059,22 @@ namespace Velvet
         private readonly struct ChildVariantOp : IManipulatorOp<StyleChildVariantManipulator>
         {
             private readonly string[] _payloads;
+            private readonly int[] _declarations;
 
-            internal ChildVariantOp(string[] payloads)
+            internal ChildVariantOp(string[] payloads, int[] declarations)
             {
                 _payloads = payloads;
+                _declarations = declarations;
             }
 
             public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.ChildVariantManipulators;
 
             public StyleChildVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleChildVariantManipulator(ctx, _payloads);
+                => new StyleChildVariantManipulator(ctx, _payloads, _declarations);
 
             public void Update(StyleChildVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_payloads);
+                => manipulator.UpdatePayloads(_payloads, _declarations);
         }
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
@@ -2266,8 +2268,8 @@ namespace Velvet
                 return null;
             }
 
-            // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState, and the className
-            // position of each of those payloads in the parallel list beside it.
+            // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState, and the rule place (see
+            // VariantDeclarations) of each of those payloads in the parallel list beside it.
             Dictionary<(bool IsPeer, string Name), List<string>[]>? map = null;
             Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
@@ -2938,10 +2940,10 @@ namespace Velvet
 
             // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
             // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
-            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads);
+            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations);
 
             Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
-                new ChildVariantOp(payloads));
+                new ChildVariantOp(payloads, declarations));
         }
 
         // Configures the four manipulators whose existence is gated purely on a layout utility class being

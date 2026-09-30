@@ -121,6 +121,108 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRadiiSharingACorner_When_Hovered_Then_TheFirstPropertyTheyDifferOnDecides()
+        {
+            // Arrange — rounded-t writes top-left and top-right, rounded-r top-right and bottom-right: the first
+            // corner they differ on is top-right against bottom-right, which Tailwind's property order puts
+            // rounded-t first, so rounded-r wins the shared corner. The candidate alone would put rounded-r first.
+            var leaf = MountLeaf("w-[100px] h-[100px] hover:rounded-r-[8px] hover:rounded-t-[4px]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            ForcePanelUpdate(leaf.panel);
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopRightRadius, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_TwoDataKeysEndingInNumbers_When_BothHold_Then_TheirValuesCompareAsText()
+        {
+            // Arrange / Act — Tailwind compares the values as strings, so "a10" sorts before "a9"; the candidate
+            // alone would read the digits as numbers and put a9 first.
+            var leaf = MountLeaf("data-[a9]:w-[20px] data-[a10]:w-[10px]",
+                new Dictionary<string, string> { ["a9"] = "", ["a10"] = "" });
+
+            // Assert
+            Assert.That(leaf.style.width.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_TwoHasClassArgumentsEndingInNumbers_When_BothHold_Then_TheirArgumentsCompareAsText()
+        {
+            // Arrange / Act — ".row10" sorts before ".row9" as text.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "leaf", className: "has-[.row9]:w-[20px] has-[.row10]:w-[10px]", children: new VNode?[]
+                {
+                    V.Div(className: "row9 row10"),
+                }));
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("leaf").style.width.value.value,
+                Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_TwoStacksOfNamedGroupAndPeer_When_AllHold_Then_TheirPeerNamesDecideFirst()
+        {
+            // Arrange — the peer variants rank above the group ones, so the peer names are compared first:
+            // "z" after "y" puts the first rule later, whatever the group names say.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "groupB", className: "group/b", children: new VNode?[]
+                {
+                    V.Div(name: "groupA", className: "group/a", children: new VNode?[]
+                    {
+                        V.Div(name: "peerZ", className: "peer/z"),
+                        V.Div(name: "peerY", className: "peer/y"),
+                        V.Div(name: "leaf",
+                            className: "group-hover/a:peer-hover/z:w-[10px] group-hover/b:peer-hover/y:w-[20px]"),
+                    }),
+                }));
+            var root = _window.rootVisualElement;
+
+            // Act — the groups open the outer gates first, then the peers light the inners.
+            foreach (var name in new[] { "groupA", "groupB", "peerZ", "peerY" })
+            {
+                using var over = PointerOverEvent.GetPooled();
+                root.Q<VisualElement>(name).SimulateEvent(over);
+            }
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.width.value.value, Is.EqualTo(10f));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base the inline font size shared the class's layer, and inline
+        // style beat the class; the case pins that ordering by what Tailwind emits keeps that answer.
+        [Test]
+        public void Given_ANamedTextSizeAndAnArbitraryOne_When_Hovered_Then_TheArbitraryOneWins()
+        {
+            // Arrange — Tailwind's text-lg emits font-size and line-height, so it sorts before text-[20px].
+            var leaf = MountLeaf("hover:text-[20px] hover:text-lg");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That(leaf.style.fontSize.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
+        public void Given_TwoChildVariantWidths_When_TheChildIsMounted_Then_TheCandidateOrderDecides()
+        {
+            // Arrange / Act — [&>*]:w-[10px] sorts before [&>*]:w-[20px], so the 20 px rule is emitted later.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "[&>*]:w-[20px] [&>*]:w-[10px]", children: new VNode?[]
+                {
+                    V.Div(name: "child"),
+                }));
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.width.value.value,
+                Is.EqualTo(20f));
+        }
+
+        [Test]
         public void Given_ANamedAndAnUnnamedGroupHover_When_BothGroupsAreHovered_Then_TheNamedOneWins()
         {
             // Arrange — a group's name sorts after no name.
@@ -140,26 +242,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.width.value.value, Is.EqualTo(10f));
-        }
-
-        [Test]
-        public void Given_TwoCandidatesDifferingInANumber_When_Compared_Then_TheNumbersCompareAsNumbers()
-        {
-            // Act
-            var order = StyleRuleOrder.NaturalCompare("w-[9px]", "w-[10px]");
-
-            // Assert
-            Assert.That(order < 0, Is.True);
-        }
-
-        [Test]
-        public void Given_ACandidateAndItsExtension_When_Compared_Then_TheShorterComesFirst()
-        {
-            // Act
-            var order = StyleRuleOrder.NaturalCompare("bg-red-500", "bg-red-500/70");
-
-            // Assert
-            Assert.That(order < 0, Is.True);
         }
     }
 }

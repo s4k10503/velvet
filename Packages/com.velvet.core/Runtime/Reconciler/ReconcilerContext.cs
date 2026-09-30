@@ -552,6 +552,12 @@ namespace Velvet
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
+                else
+                {
+                    // A retained manipulator was built at an earlier render, and the rule's place moves with the
+                    // element's other rules; it takes the current one while its gate is still closed.
+                    m.Redeclare(declaration);
+                }
                 m.SetOuterGate(true);
             }
             else if (StackedVariantManipulators.TryGetValue(key, out var m))
@@ -605,8 +611,8 @@ namespace Velvet
 
         // Records / drops one variant-applied gate token for target at the priority its payload was applied
         // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
-        // list rank and expire together — plus, for the rules that carry one, the className position that
-        // settles a tie inside that priority. Returns true when the composed order actually changed, so the
+        // list rank and expire together — plus, for the rules that carry one, the rule place (see
+        // VariantDeclarations) that settles a tie inside that priority. Returns true when the composed order actually changed, so the
         // caller signals a re-derive exactly once per real change: a manipulator may re-assert an
         // already-applied payload, and an off-toggle for a payload that was never on is a no-op, either of
         // which would drift a count.

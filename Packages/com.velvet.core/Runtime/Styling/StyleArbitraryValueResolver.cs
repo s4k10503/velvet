@@ -1063,8 +1063,8 @@ namespace Velvet
             return TryLayeredWinner(map, slot, out var winner) ? winner : null;
         }
 
-        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's className
-        // position — and on an equal key the narrower property, the later one in WritersOf.
+        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's place — and on
+        // an equal key the narrower property, the later one in WritersOf.
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
             winner = default;
@@ -1248,8 +1248,50 @@ namespace Velvet
             {
                 ClearInline(element, property);
             }
-            map.Holds?.Reassert(element.style, HeldSlotGroups.SlotsOf(property));
+            var rewritten = ReapplyOverlapping(element, property, map);
+            map.Holds?.Reassert(element.style, HeldSlotGroups.SlotsOf(property) | rewritten);
         }
+
+        // A shorthand and a longhand of one family (m-[4px] beside mt-[8px]) keep separate layer lists, and the
+        // one written just now has overwritten whatever it shares with the other. Every other property sharing a
+        // longhand whose winning layer outranks this one's writes again, lowest first, so each shared longhand
+        // ends on its highest-keyed writer; one this property no longer writes at all gets its value back too.
+        // Returns the held slots those writes touched, which the caller reasserts with its own.
+        private static int ReapplyOverlapping(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            var written = StyleArbitraryLonghands.Of(property);
+            var floor = TopKeyOf(map, property);
+            List<(long Key, ArbitraryStyle Style)>? above = null;
+            foreach (var pair in map)
+            {
+                if (pair.Key == property || !StyleArbitraryLonghands.Of(pair.Key).Overlaps(written)
+                    || !TryWinningLayer(map, pair.Key, out var style))
+                {
+                    continue;
+                }
+                var key = TopKeyOf(map, pair.Key);
+                if (key > floor)
+                {
+                    (above ??= new List<(long, ArbitraryStyle)>()).Add((key, style));
+                }
+            }
+            if (above == null)
+            {
+                return 0;
+            }
+            above.Sort((a, z) => a.Key.CompareTo(z.Key));
+            var slots = 0;
+            foreach (var (_, style) in above)
+            {
+                ApplyInline(element, style);
+                slots |= HeldSlotGroups.SlotsOf(style.Property);
+            }
+            return slots;
+        }
+
+        // The key of property's winning layer, or the lowest key when it has none to write.
+        private static long TopKeyOf(LayerMap map, ArbitraryProperty property)
+            => TryWinningLayer(map, property, out _) ? map[property].Keys[map[property].Count - 1] : long.MinValue;
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
         {
