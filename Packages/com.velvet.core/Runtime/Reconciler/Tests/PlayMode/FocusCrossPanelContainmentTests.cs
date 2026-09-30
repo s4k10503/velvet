@@ -465,6 +465,9 @@ namespace Velvet.Tests
             m1.Blur();
             inner.Focus();
             var innerHeld = inner.panel.focusController.focusedElement == inner;
+            // The pull-back m1's blur scheduled runs here, while focus is still in the portal, so what the move
+            // below lands on is left to the Tab alone.
+            yield return null;
             var outer = HostElement("outer");
             var landingsOutside = CountLandings(outer);
 
@@ -580,6 +583,8 @@ namespace Velvet.Tests
             m1.Blur();
             p1.Focus();
             var p1Held = p1.panel.focusController.focusedElement == p1;
+            // For the reason the layer case whose Tab lands on another portal gives.
+            yield return null;
             var landingsOutside = CountLandings(plain);
 
             // Act — the other panel holds only these two, so a move either way lands on its own element.
@@ -618,7 +623,7 @@ namespace Velvet.Tests
             m1.Blur();
             w1.Focus();
             var w1Held = w1.panel.focusController.focusedElement == w1;
-            // As in the layer case above.
+            // For the reason the layer case whose focus moves to the main panel gives.
             yield return null;
             var outside = Main("outside");
             var landingsOutside = CountLandings(outside);
