@@ -2933,6 +2933,50 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadCrossfadingInWithAnArbitraryTransitionDuration_When_AClassTakesItsOpacityToZero_Then_ItsOwnIsCarriedLinearlyOverThatDuration()
+        {
+            // Arrange — the bundled sheet; "b" transitions its opacity linearly over a second given by an arbitrary value.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-opacity duration-[1000ms] ease-linear";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — about a sixth of a second after "b" takes opacity-0.
+            s_bClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — its own opacity about a sixth of the way down that second, as UI Toolkit runs it, under the
+            // crossfade's circOut: not on the transition-property list the suspension writes, whose curve is Ease.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(own, Is.InRange(0.78f, 0.92f));
+        }
+
+        [Test]
+        public void Given_AMemberHalfWayThroughItsOwnFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave()
+        {
+            // Arrange — the bundled sheet; "a" about half way through a linear second down to opacity-0 as "b" takes the
+            // id and starts drawing it.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aClasses = "transition-opacity duration-1000 ease-linear";
+            using var mounted = MountAAlone();
+            s_aClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Act — some 0.45 s on, before "a" starts fading out behind "b".
+            for (var i = 0; i < 27; i++) Tick();
+
+            // Assert — almost at nothing, where a fade begun a second earlier ends, rather than half way down another
+            // whole second begun as "b" took the id.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.InRange(0f, 0.12f));
+        }
+
+        [Test]
         public void Given_AMotionBehindANewLead_When_ItsVariantSwapsToHiddenOnADelayedTransition_Then_ItsOwnIsCarriedOnThatTransition()
         {
             // Arrange — "a" visible on its variants, and "b" a little under halfway through taking the id from it.
@@ -3179,36 +3223,46 @@ namespace Velvet.Tests
                 Is.EqualTo((true, own)));
         }
 
-        // "a" holds "pool" at half opacity; step 1 replaces it with "b", 300px right under the same id, which the pool
-        // gives a's element. Both are Labels, a pooled type.
+        private static TabStore s_holders;
+
+        // Two sibling components on one store, the first holding "a" under "pool" at half opacity while it is selected
+        // and the second "b" 300px right under the same id. Both are Labels, a pooled type: the first leaves in the
+        // flush before the second mounts, so the pool gives b a's element.
         [Component]
-        private static VNode PooledHolderRender()
+        private static VNode FirstHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 0
+            ? new VNode[]
+            {
+                V.Motion(key: "a", name: "a", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px] opacity-50"),
+            }
+            : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode SecondHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 1
+            ? new VNode[]
+            {
+                V.Motion(key: "b", name: "b", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
+                    className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"),
+            }
+            : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode PooledHolderRender() => V.Div(children: new VNode[]
         {
-            var (step, setStep) = Hooks.UseState(0);
-            s_setStep = setStep;
-            return V.Div(children: step == 0
-                ? new VNode[]
-                {
-                    V.Motion(key: "a", name: "a", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
-                        className: "absolute left-[0px] top-[0px] w-[100px] h-[100px] opacity-50"),
-                }
-                : new VNode[]
-                {
-                    V.Motion(key: "b", name: "b", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
-                        className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"),
-                });
-        }
+            V.Component(FirstHolderRender, key: "first"),
+            V.Component(SecondHolderRender, key: "second"),
+        });
 
         [Test]
         public void Given_AHalfOpaqueHolderWhoseElementThePoolGivesTheNextHolder_When_AQuarterOfTheTweenHasPassed_Then_TheNextIsMixingFromItsOpacity()
         {
             // Arrange — the bundled sheet, so opacity-50 resolves.
             VelvetStyleUtilities.AttachTo(Root);
+            s_holders = new TabStore(0);
             using var mounted = V.Mount(Root, V.Component(PooledHolderRender, key: "root"));
             Tick();
             var original = Root.Q<VisualElement>("a");
-            s_setStep.Invoke(1);
-            mounted.FlushStateForTest();
+            s_holders.Select(1);
             Tick();
 
             // Act

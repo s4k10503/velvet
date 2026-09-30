@@ -191,6 +191,9 @@ namespace Velvet
             for (var i = properties.Count - 1; i >= 0; i--)
             {
                 var name = properties[i].ToString();
+                // A name UI Toolkit does not know, `none` among them, reads back as null, which a null shorthand would
+                // otherwise match.
+                if (name == null) continue;
                 if (name != property && name != shorthand && name != "all")
                 {
                     continue;

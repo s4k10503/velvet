@@ -45,7 +45,7 @@ namespace Velvet
         // The owner of the transition suspension a member holds while another leads its id.
         private static readonly object s_followOwner = new();
         private static readonly StyleLonghandSet s_visibility = StyleLonghandSet.Of(StyleLonghand.Visibility);
-        // The panel no member is on, for SyncFollows while nothing crossfades.
+        // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
 
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
@@ -87,7 +87,7 @@ namespace Velvet
             }
             ctx.ElementToLayoutId[element] = layoutId;
             ctx.LayoutIdRegistry[layoutId] = (element, oldBox);
-            // The lead this one took over from is hidden until this one's tween, crossfading, draws it again.
+            // The lead this one took over from is hidden until this one's tween draws it again.
             if (joins) SyncFollows(layoutId, ctx);
 
             // A second patch before a layout settles the first replaces its wait rather than adding one.
@@ -228,7 +228,7 @@ namespace Velvet
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
-            var projection = new LayoutIdProjection(host, ctx.ElementToLayoutId.GetValueOrDefault(element), translate, scale,
+            var projection = new LayoutIdProjection(host, translate, scale,
                 translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate,
                 scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value)
             {
@@ -296,7 +296,7 @@ namespace Velvet
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
             projection.Scale = delta.Scale;
             Write(element, projection, delta.Translate);
-            WriteOpacity(element, projection, Fade(projection, ctx));
+            WriteOpacity(element, projection, Fade(element, projection, ctx));
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
             return projection.Scale;
         }
@@ -309,31 +309,29 @@ namespace Velvet
         // Framer's crossfade and its only-member mix (mix-values.ts): the lead fades in over the first half of its move,
         // on circOut, and the members behind it are drawn at the previous lead's opacity fading out between halfway
         // and 95% of the way, linearly; a lead alone under its id mixes from its previous holder's opacity to its own.
-        private static LayoutIdFade? Fade(LayoutIdProjection projection, ReconcilerContext ctx)
+        private static LayoutIdFade? Fade(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
-            if (projection.Leader != null) return Behind(ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader), ctx);
+            var layoutId = ctx.ElementToLayoutId.GetValueOrDefault(element);
+            if (projection.Leader != null) return Behind(ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader), layoutId, ctx);
             // MUTANT_SURVIVES(equivalent): Crossfade is set only with a tween, and the frame its tween lands in clears it
             // before its pass, so a pass never finds it set on a lead not moving.
             if (projection.Crossfade && projection.Moving) return new LayoutIdFade(0f, CrossfadeIn(CrossfadeProgress(projection)), 1f);
-            if (projection is not { Shared: true, Moving: true } || !Alone(projection, ctx)) return null;
-            return projection.FromLook is { } look
-                ? new LayoutIdFade(PreviousOpacity(look, projection.LayoutId, ctx), CrossfadeProgress(projection), 1f)
-                : null;
+            if (projection is not { Shared: true, Moving: true, FromLook: { } look }) return null;
+            if (layoutId == null || ctx.LayoutIdMembers.GetValueOrDefault(layoutId)?.Count != 1) return null;
+            return new LayoutIdFade(PreviousOpacity(look, layoutId, ctx), CrossfadeProgress(projection), 1f);
         }
 
-        private static LayoutIdFade? Behind(LayoutIdProjection? leading, ReconcilerContext ctx)
+        private static LayoutIdFade? Behind(LayoutIdProjection? leading, string? layoutId, ReconcilerContext ctx)
         {
             if (!IsCrossfading(leading)) return null;
             return leading!.FromLook is { } look
-                ? new LayoutIdFade(PreviousOpacity(look, leading.LayoutId, ctx), 0f, 1f - CrossfadeOut(CrossfadeProgress(leading)))
+                ? new LayoutIdFade(PreviousOpacity(look, layoutId, ctx), 0f, 1f - CrossfadeOut(CrossfadeProgress(leading)))
                 : null;
         }
 
-        private static bool Alone(LayoutIdProjection projection, ReconcilerContext ctx) =>
-            ctx.LayoutIdMembers.GetValueOrDefault(projection.LayoutId!)?.Count == 1;
-
+        // A Motion whose id a render has just taken away is still drawn by the pass that render runs, with none.
         private static float PreviousOpacity(LayoutIdLook look, string? layoutId, ReconcilerContext ctx) =>
-            ctx.ElementToLayoutId.GetValueOrDefault(look.Source) == layoutId ? MotionOpacity.Own(look.Source) : look.Opacity;
+            layoutId != null && ctx.ElementToLayoutId.GetValueOrDefault(look.Source) == layoutId ? MotionOpacity.Own(look.Source) : look.Opacity;
 
         // The slot is left alone until the projection first draws a fade, and handed back when it stops.
         private static void WriteOpacity(VisualElement element, LayoutIdProjection projection, LayoutIdFade? fade)
@@ -933,11 +931,10 @@ namespace Velvet
 
     internal sealed class LayoutIdProjection
     {
-        public LayoutIdProjection(VisualElement host, string? layoutId, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
+        public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
             Vector3 ownTranslate, Vector3 ownScale)
         {
             Host = host;
-            LayoutId = layoutId;
             OwnInlineTranslate = ownInlineTranslate;
             OwnInlineScale = ownInlineScale;
             OwnTranslate = ownTranslate;
@@ -946,8 +943,6 @@ namespace Velvet
 
         // The panel whose frame steps and ends this projection.
         public readonly VisualElement Host;
-        // The id its element held when the projection was made.
-        public readonly string? LayoutId;
 
         // The natural box where the progress starts, relative to the parent's drawn corner in undistorted units.
         public Rect From;
