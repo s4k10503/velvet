@@ -866,8 +866,6 @@ namespace Velvet.Tests
             Assert.That(FilterTweenRuns(box), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the engine animates a blur changed outside a zero-duration pose, as on the base.
-        // The landing rewrites the swapped tween's `all` without leaving filter or background-size out of it.
         [Test]
         public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABlurChange_Then_TheBlurIsLeftToTheEngine()
         {
