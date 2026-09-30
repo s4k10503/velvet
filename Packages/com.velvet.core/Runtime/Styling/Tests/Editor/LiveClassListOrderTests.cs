@@ -56,6 +56,9 @@ namespace Velvet.Tests
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string OwnSlotReader =
+            "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
+            + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
 
         // Marks the case that measures one reader's verdict. The roster reads these off the methods carrying
         // [Test] rather than off a list of its own, and the case beside it reads the marked method's IL, so
@@ -563,6 +566,26 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
+        }
+
+        // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
+        // overwrites: the arrangement ending on w-32 then answers false.
+        [Test]
+        [ReaderVerdict(OwnSlotReader)]
+        public void Given_AMarginTokenBesideAWidthToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheOwnSlotVerdictIsTheSameBothWays()
+        {
+            // Arrange — w-32 writes no margin, so a reading that took the last class rather than any of them
+            // answers differently depending on which arrived second.
+            var added = Carrying("mr-2", "w-32");
+            var reversed = Carrying("w-32", "mr-2");
+
+            // Act
+            var fromAdded = StyleArbitraryValueResolver.DeclaresOwn(added, HeldSlot.MarginRight);
+            var fromReversed = StyleArbitraryValueResolver.DeclaresOwn(reversed, HeldSlot.MarginRight);
+
+            // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
+                "a space margin or a divider gives way to the child's own class wherever it sits in the list");
         }
 
         // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.

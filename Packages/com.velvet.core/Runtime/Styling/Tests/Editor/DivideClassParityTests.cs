@@ -321,7 +321,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADivideXRowWhoseChildCarriesARightBorderClass_When_Reconciled_Then_TheClassWidthWins()
         {
-            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-0
+            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-2
             // wins on its edge; the first child, which declares none, still takes the divider.
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
@@ -329,7 +329,7 @@ namespace Velvet.Tests
                 V.Div(className: "flex flex-row divide-x", children: new VNode[]
                 {
                     V.Div(className: "child"),
-                    V.Div(className: "child border-r-0"),
+                    V.Div(className: "child border-r-2"),
                     V.Div(className: "child"),
                 }),
             };
@@ -780,24 +780,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AColoredEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheStaleEndColorIsCleared()
+        public void Given_AColoredEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheEdgeItLeftKeepsTheColor()
         {
-            // Arrange — a divider owns a width AND a color channel on its edge, so an edge flip has to
-            // release both; a stale inline border color would keep tinting the abandoned edge the moment
-            // anything else gives it a width.
+            // Arrange — a divide-{color} colors every edge of a divided child, as Tailwind's border-color does,
+            // so handing the abandoned edge back must not take its color with the width.
             ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var color = scope.Root[0][1].style.borderRightColor.value;
 
             // Act
             var tree2 = new VNode[] { Row("flex flex-row divide-x divide-x-reverse divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the color before the patch rides along, since an edge never written reads Null too.
-            Assert.That((color, scope.Root[0][1].style.borderRightColor.keyword),
-                Is.EqualTo((gray200, StyleKeyword.Null)));
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(gray200));
         }
 
         [Test]
