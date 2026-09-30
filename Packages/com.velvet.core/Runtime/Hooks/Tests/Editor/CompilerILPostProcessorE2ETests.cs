@@ -18,7 +18,9 @@ namespace Velvet.Tests
     /// section, props prepended to the deps array, a captured <c>UseContext</c> value, a captured
     /// <c>UseMemo</c> value, a safe void effect hook alongside a value hook, and the stable references from
     /// <c>UseRef</c> / <c>UseService</c> are all analyzable shapes. The cache gate is injected after the whole
-    /// hook section, so no hook call is skipped on a cache hit.</item>
+    /// hook section, so no hook call is skipped on a cache hit. A hook nested in an argument list is analyzable
+    /// too, and its gate pops the operands evaluated ahead of the hook before returning a cached VNode. Each hook
+    /// value keys the cache on its own, even where Roslyn stores two hooks' results into one local.</item>
     /// <item>A props-only body — parameters and no hook — is woven too, keyed on its parameters alone with the
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
     /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
@@ -406,6 +408,120 @@ namespace Velvet.Tests
             }
         }
 
+        private sealed class CountStore : Store<int>
+        {
+            public CountStore(int initial) : base(initial) { }
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static readonly CountStore s_countStore = new(4);
+
+        // `className` is pushed for V.Label before the hook's argument is evaluated, so the gate after the hook
+        // lands with that operand on the stack.
+        [Component]
+        public static VNode ExpressionBodiedNestedHookComponent()
+            => V.Label(text: Hooks.UseStore(s_countStore, value => value).ToString());
+
+        [Component]
+        public static VNode BlockBodiedNestedHookComponent()
+        {
+            return V.Label(text: Hooks.UseStore(s_countStore, value => value + 1).ToString());
+        }
+
+        [Component]
+        public static VNode ChildArgumentHookComponent()
+            => V.Div(className: "row", children: new VNode[]
+            {
+                V.Label(text: Hooks.UseStore(s_countStore, value => value + 2).ToString()),
+            });
+
+        public sealed record OffsetProps(int Offset);
+
+        [Component]
+        public static VNode CapturingSelectorHookComponent(OffsetProps p)
+            => V.Label(text: Hooks.UseStore(s_countStore, value => value + p.Offset).ToString());
+
+        private static readonly string s_rowClass = " row ";
+
+        [Component]
+        public static VNode CatchAheadOfNestedHookComponent()
+        {
+            string className;
+            try
+            {
+                className = s_rowClass.Trim();
+            }
+            catch (System.NullReferenceException)
+            {
+                className = "fallback";
+            }
+            return V.Label(className: className, text: Hooks.UseStore(s_countStore, value => value + 5).ToString());
+        }
+
+        public sealed class ClassHolder
+        {
+            public string Name { get; init; } = "";
+        }
+
+        [Component]
+        public static VNode InitSetterAheadOfNestedHookComponent()
+            => V.Label(className: new ClassHolder { Name = "row" }.Name,
+                text: Hooks.UseStore(s_countStore, value => value + 6).ToString());
+
+        private static readonly bool s_wide = true;
+
+        [Component]
+        public static VNode ConditionalAheadOfNestedHookComponent()
+            => V.Label(className: "row",
+                text: (s_wide ? "wide " : "narrow ") + Hooks.UseStore(s_countStore, value => value + 7).ToString());
+
+        private sealed class SettableStore : Store<int>
+        {
+            public SettableStore(int initial) : base(initial) { }
+            public void Set(int value) => SetState(_ => value);
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private static SettableStore s_firstStore = null!;
+        private static SettableStore s_secondStore = null!;
+
+        [Component]
+        public static VNode TwoNestedHooksComponent()
+            => V.Label(text: Hooks.UseStore(s_firstStore, value => value).ToString() + "/"
+                + Hooks.UseStore(s_secondStore, value => value).ToString());
+
+        [Component]
+        public static VNode TwoHookStatementsComponent()
+        {
+            var first = Hooks.UseStore(s_firstStore, value => value).ToString();
+            var second = Hooks.UseStore(s_secondStore, value => value).ToString();
+            return V.Label(text: first + "/" + second);
+        }
+
+        private static System.Action<int> s_rowParentSetTick = null!;
+        private static int s_rowBuilds;
+
+        private static string CountRowBuild()
+        {
+            s_rowBuilds++;
+            return "value";
+        }
+
+        // The list ahead of the hook rents a node array, and its button a props bag and an event array; a memo
+        // hit drops all three with the gate's pops.
+        [Component]
+        public static VNode SiblingAheadOfNestedHookComponent()
+            => V.Div("row", V.Div(children: V.List(new[] { "add" }, id => id, id => V.Button(text: id, onClick: () => { }))),
+                V.Label(text: Hooks.UseStore(s_countStore, value => value).ToString(), name: CountRowBuild()));
+
+        [Component]
+        public static VNode SiblingRowParent()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_rowParentSetTick = setTick;
+            return V.Component(SiblingAheadOfNestedHookComponent, key: "row");
+        }
+
         #region Woven shapes (gate + commit injected)
 
         [Test]
@@ -533,6 +649,18 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(DelegateInvokeComponent))), Is.True,
                 "A delegate's Invoke is virtual on a sealed type — not an open dispatch — so invoking a"
                 + " user-declared delegate does not bail the component");
+        }
+
+        [Test]
+        public void Given_HookNestedInArgumentList_When_Woven_Then_HitPathPopsTheOperandUnderTheGate()
+        {
+            // Act
+            var pops = HitPathPops(LoadMethod(nameof(ExpressionBodiedNestedHookComponent)));
+
+            // Assert
+            Assert.That(pops, Is.EqualTo(1),
+                "The body stays memoized, and its hit path pops V.Label's className before returning the cached"
+                + " VNode");
         }
 
         #endregion
@@ -825,6 +953,143 @@ namespace Velvet.Tests
                 "A bailed interface-dispatch component still renders normally");
         }
 
+        [Test]
+        public void Given_HookNestedInExpressionBodiedArgumentList_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ExpressionBodiedNestedHookComponent, key: "expr-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("4"),
+                "A hook nested in V.Label's argument list leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_HookNestedInBlockBodiedReturn_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(BlockBodiedNestedHookComponent, key: "block-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("5"),
+                "A hook nested in a return statement's argument list leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_HookNestedInChildArgumentList_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ChildArgumentHookComponent, key: "child-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("6"),
+                "A hook nested in a child's argument list leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_HookWithCapturingSelectorNestedInArgumentList_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root,
+                V.Component(CapturingSelectorHookComponent, new OffsetProps(3), key: "capturing-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("7"),
+                "A nested hook whose selector closes over a prop leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_CatchAheadOfNestedHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CatchAheadOfNestedHookComponent, key: "catch-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9"),
+                "A try/catch ahead of a nested hook leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_InitSetterAheadOfNestedHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(InitSetterAheadOfNestedHookComponent, key: "init-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("10"),
+                "An init accessor called ahead of a nested hook leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_ConditionalAheadOfNestedHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ConditionalAheadOfNestedHookComponent, key: "conditional-nested"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("wide 11"),
+                "A conditional operand evaluated ahead of a nested hook leaves a woven body the runtime accepts");
+        }
+
+        [Test]
+        public void Given_TwoNestedHooks_When_OnlyTheFirstStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            using var second = new SettableStore(2);
+            s_firstStore = first;
+            s_secondStore = second;
+            using var mounted = V.Mount(_root, V.Component(TwoNestedHooksComponent, key: "two-nested"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9/2"),
+                "Each nested hook keys the memo on its own value");
+        }
+
+        [Test]
+        public void Given_TwoHookStatements_When_OnlyTheFirstStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            using var second = new SettableStore(2);
+            s_firstStore = first;
+            s_secondStore = second;
+            using var mounted = V.Mount(_root, V.Component(TwoHookStatementsComponent, key: "two-statements"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9/2"),
+                "Each hook statement keys the memo on its own value");
+        }
+
+        [Test]
+        public void Given_SiblingBuiltAheadOfNestedHook_When_ParentReRendersWithEqualDeps_Then_NoRentedPropsAreLeftBehind()
+        {
+            // Arrange
+            s_rowBuilds = 0;
+            using var mounted = V.Mount(_root, V.Component(SiblingRowParent, key: "row-parent"));
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
+
+            // Act
+            s_rowParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert — one build means the second render hit the memo, which is the render that drops the sibling.
+            var after = VNodePoolTestAccess.RentedOutCountsForTest();
+            Assert.That(
+                (s_rowBuilds, after.Props - before.Props, after.EventArrays - before.EventArrays,
+                    after.NodeArrays - before.NodeArrays),
+                Is.EqualTo((1, 0, 0, 0)),
+                "A memo hit leaves nothing the sibling rented ahead of the gate in the pool's rented sets");
+        }
+
         #endregion
 
         #region Helpers
@@ -842,6 +1107,18 @@ namespace Velvet.Tests
             var fixtureType = assembly.MainModule.GetType(typeof(CompilerILPostProcessorE2ETests).FullName);
             Assume.That(fixtureType, Is.Not.Null, "Precondition: the fixture type is in the assembly");
             return fixtureType.Methods.Single(m => m.Name == name);
+        }
+
+        // The run of `pop` between the branch on TryGetMemoizedVNode's result and the cached VNode's load, or -1
+        // for a body without the gate.
+        private static int HitPathPops(MethodDefinition method)
+        {
+            var gate = IndexOfHookCall(method, nameof(Hooks.TryGetMemoizedVNode));
+            if (gate < 0) return -1;
+            var instructions = method.Body.Instructions;
+            var pops = 0;
+            while (instructions[gate + 2 + pops].OpCode == OpCodes.Pop) pops++;
+            return pops;
         }
 
         private static bool InjectsHookCall(MethodDefinition method, string hookMethodName) =>

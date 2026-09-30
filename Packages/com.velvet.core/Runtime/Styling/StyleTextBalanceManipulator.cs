@@ -3,9 +3,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Approximates CSS `text-wrap: balance` on a TextElement carrying `text-balance`. UI Toolkit's text
-    // engine exposes no line-break hook, so rather than moving line breaks inside a fixed box this narrows
-    // the box: a bounded binary search over TextElement.MeasureTextSize — the same method the engine's own
+    // Approximates CSS `text-wrap: balance` on a TextElement carrying `text-balance`, and the
+    // short-last-line avoidance of `text-wrap: pretty` on one carrying `text-pretty` (FindPrettyWidth).
+    // UI Toolkit's text engine exposes no line-break hook, so rather than moving line breaks inside a
+    // fixed box this narrows the box. For balance that is a bounded binary search over
+    // TextElement.MeasureTextSize — the same method the engine's own
     // measure pass calls — for the narrowest inline `width` whose measured height still matches the height
     // a normal layout takes at the available width. Font metrics are constant across candidates, so
     // comparing heights stands in for comparing line counts. Resizing the box at all is a deviation from
@@ -43,9 +45,6 @@ namespace Velvet
     // element's own frame — so text that fits the parent but wraps inside either still balances. A nowrap element reaches the same verdict through the same
     // comparison, since MeasureTextSize honors the element's own resolved white-space.
     //
-    // Prerequisite: Velvet's Label ships no base white-space rule, so its engine default is nowrap and
-    // `text-balance` alone is a silent no-op — it needs `text-wrap` / `whitespace-normal` alongside.
-    //
     // Re-derives on attach, on its own and its PARENT's GeometryChangedEvent, and on ChangeEvent<string>
     // (a text swap that keeps the same box size raises no geometry event). The parent subscription is what
     // catches an ancestor WIDENING: the written width pins the target's own rect, so nothing fires on the
@@ -73,8 +72,20 @@ namespace Velvet
         // so the released box can be far wider than the value itself.
         private const float MinBalanceableWidthPx = 1f;
 
+        // text-pretty acts only on a last word narrower than this fraction of the line, Chromium's
+        // kShortLineDenominator in ScoreLineBreaker's ShouldOptimize.
+        private const float ShortLineDenominator = 3f;
+
+        // How far text-pretty's width backs off the pixel grid; see FindPrettyWidth.
+        private const float PixelGridMarginPx = 1f;
+
+        // The characters text-pretty breaks words at.
+        private static readonly char[] BreakChars = { ' ', '\t', '\n', '\r' };
+
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
         private readonly ReconcilerContext _ctx;
+
+        private TextWrapStyle _style;
 
         private int _lastSignature;
         private bool _hasSignature;
@@ -82,7 +93,11 @@ namespace Velvet
         // Tracked so the callback can be unregistered from the exact element it was registered on.
         private VisualElement? _subscribedParent;
 
-        internal StyleTextBalanceManipulator(ReconcilerContext ctx) => _ctx = ctx;
+        internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
+        {
+            _ctx = ctx;
+            _style = style;
+        }
 
         protected override void RegisterCallbacksOnTarget()
         {
@@ -101,8 +116,9 @@ namespace Velvet
         }
 
         // Forces a full re-derive, mirroring StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap.
-        public void Refresh()
+        public void Refresh(TextWrapStyle style)
         {
+            _style = style;
             _hasSignature = false;
             Apply();
         }
@@ -189,7 +205,7 @@ namespace Velvet
 
             var text = textElement.text ?? string.Empty;
             var fontSize = textElement.resolvedStyle.fontSize;
-            var signature = ComputeSignature(content, frame, text, fontSize);
+            var signature = ComputeSignature(content, frame, text, fontSize, textElement.resolvedStyle.whiteSpace);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -258,8 +274,17 @@ namespace Velvet
             }
 
             var minWidth = Mathf.Max(1f, content * MinWidthFraction);
-            var narrowest = FindNarrowestWidth(textElement, text, minWidth, content, naturalHeight);
-            textElement.style.width = new StyleLength(narrowest + frame);
+            var narrowest = _style == TextWrapStyle.Pretty
+                ? FindPrettyWidth(textElement, text, minWidth, content, naturalHeight)
+                : FindNarrowestWidth(textElement, text, minWidth, content, naturalHeight);
+            if (narrowest == null)
+            {
+                ReleaseWidth(textElement);
+            }
+            else
+            {
+                textElement.style.width = new StyleLength(narrowest.Value + frame);
+            }
 
             _lastSignature = signature;
             _hasSignature = true;
@@ -267,7 +292,7 @@ namespace Velvet
 
         // hi is feasible by construction — its own measured height IS naturalHeight — so it is a safe
         // fallback when the loop's precision never beats it.
-        private static float FindNarrowestWidth(
+        private static float? FindNarrowestWidth(
             TextElement textElement, string text, float lo, float hi, float naturalHeight)
         {
             var best = hi;
@@ -289,6 +314,68 @@ namespace Velvet
             }
             return best;
         }
+
+        // text-pretty's short-last-line avoidance, on Chromium's trigger: the last line holds a single word
+        // (no break opportunity) and is narrower than a third of the line. Chromium then re-breaks the last
+        // lines with a penalty on leaving that word alone; this narrows the box instead, to about the widest
+        // width at which the text before the last word fills every line, so a word moves down to join it,
+        // and keeps that width only if the whole text still takes the same number of lines. Null leaves the
+        // box to its cascade. A word here is a run between spaces, tabs or line breaks.
+        private static float? FindPrettyWidth(
+            TextElement textElement, string text, float lo, float hi, float naturalHeight)
+        {
+            var end = text.TrimEnd(BreakChars).Length;
+            if (end == 0)
+            {
+                return null;
+            }
+            var start = text.LastIndexOfAny(BreakChars, end - 1) + 1;
+            if (start == 0)
+            {
+                return null;
+            }
+            var lastWord = textElement.MeasureTextSize(
+                text.Substring(start, end - start), float.NaN, VisualElement.MeasureMode.Undefined,
+                float.NaN, VisualElement.MeasureMode.Undefined).x;
+            // MUTANT_SURVIVES(equivalent, boundary): the two differ only for a last word measuring a third of
+            // the line to the last bit, where Chromium's rule does not optimize either.
+            if (lastWord >= hi / ShortLineDenominator)
+            {
+                return null;
+            }
+            var head = text.Substring(0, start);
+            // MUTANT_SURVIVES(equivalent, boundary): heights measured here are whole lines apart, far wider
+            // than the epsilon, so none sits on it.
+            if (MeasureHeight(textElement, head, hi) >= naturalHeight - HeightEpsilonPx)
+            {
+                return null;
+            }
+            // The widest whole point at which the head no longer fits its lines, so a word of it moves down
+            // beside the last one. Whole points because layout rounds the written width to the panel's
+            // pixel grid: a 126.5 write read back as 127 on a runner with one pixel per point.
+            var width = Mathf.Floor(hi);
+            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
+            while (MeasureHeight(textElement, head, width) < naturalHeight - HeightEpsilonPx)
+            {
+                width--;
+                // MUTANT_SURVIVES(unreachable, boundary): the head needs its extra line once the box is
+                // narrower than its last line, which the last-word check leaves wider than two thirds of the
+                // line less a space, far above the floor at a tenth of it.
+                if (width < lo)
+                {
+                    return null;
+                }
+            }
+            // One point further for the same rounding, kept only if the whole text still takes its lines.
+            width -= PixelGridMarginPx;
+            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
+            return MeasureHeight(textElement, text, width) <= naturalHeight + HeightEpsilonPx ? width : null;
+        }
+
+        private static float MeasureHeight(TextElement textElement, string text, float width) =>
+            textElement.MeasureTextSize(
+                text, width, VisualElement.MeasureMode.Exactly,
+                float.NaN, VisualElement.MeasureMode.Undefined).y;
 
         private static void ClearWidth(TextElement textElement)
         {
@@ -354,7 +441,10 @@ namespace Velvet
         // changes the signature. The full text rather than its length, which would miss a same-length swap.
         // The frame is its own term rather than folded into the content width: a padding change that a
         // container width change cancels out leaves the same content width and a different value to write.
-        private static int ComputeSignature(float content, float frame, string text, float fontSize)
+        // The white-space is a term because a variant can switch the wrap mode without moving anything else
+        // here: the text-effect pass writes it after this manipulator's own re-derive, and the geometry
+        // change the new wrapping causes would otherwise meet an unchanged signature.
+        private static int ComputeSignature(float content, float frame, string text, float fontSize, WhiteSpace whiteSpace)
         {
             unchecked
             {
@@ -363,6 +453,8 @@ namespace Velvet
                 hash = hash * 31 + Mathf.RoundToInt(frame);
                 hash = hash * 31 + text.GetHashCode();
                 hash = hash * 31 + fontSize.GetHashCode();
+                // MUTANT_SURVIVES(equivalent): subtracting the term tells two white-spaces apart as adding does.
+                hash = hash * 31 + (int)whiteSpace;
                 return hash;
             }
         }

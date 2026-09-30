@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace Velvet.TestUtilities
 {
     /// <summary>
-    /// Drains and measures <c>VNodePool</c>'s process-wide recyclable-element pools. Every member goes
+    /// Drains and measures <c>VNodePool</c>'s process-wide recyclable-element pools, and reads its rented-out
+    /// sets and its rental journal. Every member goes
     /// through reflection because production types carry no test-only members, and because the pool type is
     /// a private nested one that no signature here could name even if they did.
     /// <para>
@@ -21,6 +23,10 @@ namespace Velvet.TestUtilities
         private const string TogglePoolFieldName = "s_togglePool";
         private const string SliderPoolFieldName = "s_sliderPool";
         private const string TextFieldPoolFieldName = "s_textFieldPool";
+        private const string OwnedPropsFieldName = "s_ownedProps";
+        private const string OwnedEventArraysFieldName = "s_ownedSingleEventArrays";
+        private const string OwnedNodeArraysFieldName = "s_ownedNodeArrays";
+        private const string RentalJournalFieldName = "s_rentalJournal";
         private const string ClearMethodName = "Clear";
         private const string CountPropertyName = "Count";
 
@@ -47,6 +53,20 @@ namespace Velvet.TestUtilities
 
         // Bypasses: nothing — it reads a static pool's depth.
         public static int TextFieldPoolCountForTest => Count(TextFieldPoolFieldName);
+
+        // Bypasses: nothing — it reads how many props bags, single-event arrays and node arrays are rented out.
+        public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
+            => (Count(OwnedPropsFieldName), Count(OwnedEventArraysFieldName), Count(OwnedNodeArraysFieldName));
+
+        // Bypasses: nothing — it reads whether the pool counts a props bag as rented out.
+        public static bool IsRentedOutForTest(FiberElementProps props)
+            => ((HashSet<FiberElementProps>)Pool(OwnedPropsFieldName)).Contains(props);
+
+        // Bypasses: nothing — it reads how many rentals the journal holds.
+        public static int RentalJournalCountForTest => Count(RentalJournalFieldName);
+
+        // Bypasses: nothing — it reads the capacity the journal's backing array keeps.
+        public static int RentalJournalCapacityForTest => ((List<object>)Pool(RentalJournalFieldName)).Capacity;
 
         private static void Clear(string fieldName)
         {

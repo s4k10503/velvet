@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class HomePage
     {
         private partial global::Velvet.VNode Build(dynamic model)
-            => global::Velvet.V.Memoized(() => Build_Impl(model), new object?[] { model });
+            => global::Velvet.V.Memoized(() => Build_Impl(model), new object?[] { model, this });
     }
 }

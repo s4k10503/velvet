@@ -28,7 +28,7 @@ namespace Velvet.SourceGenerators
     [Generator(LanguageNames.CSharp)]
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
-        private const string ImplSuffix = "_Impl";
+        private const string ImplSuffix = MemoizeImplSignature.Suffix;
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -315,7 +315,7 @@ namespace Velvet.SourceGenerators
                     .Append(EscapeKeyword(method.Name)).Append(typeArguments)
                     .Append('(')
                     .Append(string.Join(", ", method.Parameters.Select(p =>
-                        $"{ParameterModifier(method, p)}{p.Type.ToDisplayString(FullyQualifiedFormat)} {EscapeKeyword(p.Name)}")))
+                        $"{ParameterModifier(method, p)}{RenderType(p.Type)} {EscapeKeyword(p.Name)}")))
                     .Append(')')
                     .ToString(),
             };
@@ -351,10 +351,16 @@ namespace Velvet.SourceGenerators
             // The dependency array is always built here rather than left to overload resolution: with one
             // array-typed argument, V.Memoized's params object?[] would take that array as the whole list,
             // compared element by element, or a null one as no list at all. A method's type arguments are
-            // part of the key, since the same position can call it with different ones.
+            // part of the key, since the same position can call it with different ones, and so is an instance
+            // member's receiver, since it can be called there on different instances — unless the _Impl it calls
+            // is static and so cannot read it.
             var keys = method.Parameters.Where(p => !p.IsParams).Select(p => arguments[p.Ordinal])
                 .Concat(method.TypeParameters.Select(tp => $"typeof({EscapeKeyword(tp.Name)})"))
                 .ToList();
+            if (!method.IsStatic && !CallsStaticImpl(method))
+            {
+                keys.Add("this");
+            }
             string deps;
             var paramsParameter = method.Parameters.FirstOrDefault(p => p.IsParams);
             if (paramsParameter is not null)
@@ -373,9 +379,11 @@ namespace Velvet.SourceGenerators
             }
             else
             {
-                // arity 0: there are no parameters to key on, and the whole point of the attribute is that the
-                // result is computed once. Omitting the argument would instead ask V.Memoized for no dependency
-                // array at all, which rebuilds every render; the empty array is what says "no dependencies".
+                // Nothing to key on: no parameter, no type parameter, and a static _Impl. Omitting
+                // the argument would instead ask V.Memoized for no dependency array at all, which rebuilds every
+                // render; the empty array is what says "no dependencies". An instance arity-0 method builds its
+                // one-element array per call, as every non-empty list is built; a cached array would need a field
+                // on the user's type, which an interface cannot declare.
                 deps = keys.Count == 0
                     ? "global::System.Array.Empty<object>()"
                     : $"new object?[] {{ {string.Join(", ", keys)} }}";
@@ -475,7 +483,7 @@ namespace Velvet.SourceGenerators
                     constraints.Add("notnull");
                 }
 
-                constraints.AddRange(typeParameter.ConstraintTypes.Select(t => t.ToDisplayString(FullyQualifiedFormat)));
+                constraints.AddRange(typeParameter.ConstraintTypes.Select(RenderType));
 
                 if (typeParameter.HasConstructorConstraint)
                 {
@@ -490,8 +498,28 @@ namespace Velvet.SourceGenerators
             return clauses.ToImmutable();
         }
 
+        // The display format escapes reserved keywords only, so a contextual one naming a type, a type parameter
+        // or a namespace is escaped here. A keyword part is the keyword itself (`global`, `dynamic`) and stays.
+        private static string RenderType(ITypeSymbol type) =>
+            string.Concat(type.ToDisplayParts(FullyQualifiedFormat).Select(part =>
+                part.Kind == SymbolDisplayPartKind.Keyword ? part.ToString() : EscapeKeyword(part.ToString())));
+
+        private static bool CallsStaticImpl(IMethodSymbol method)
+        {
+            var impls = new List<IMethodSymbol>();
+            for (var type = method.ContainingType; type is not null; type = type.BaseType)
+            {
+                impls.AddRange(type.GetMembers(method.Name + ImplSuffix).OfType<IMethodSymbol>()
+                    .Where(impl => MemoizeImplSignature.Matches(method, impl)));
+            }
+            return impls.All(impl => impl.IsStatic);
+        }
+
         private static string EscapeKeyword(string identifier) =>
-            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None ? identifier : "@" + identifier;
+            SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None &&
+            SyntaxFacts.GetContextualKeywordKind(identifier) == SyntaxKind.None
+                ? identifier
+                : "@" + identifier;
 
         private static string RenderAccessibility(Accessibility accessibility) => accessibility switch
         {
