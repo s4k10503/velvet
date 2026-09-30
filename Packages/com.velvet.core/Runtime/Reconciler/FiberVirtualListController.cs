@@ -577,6 +577,9 @@ namespace Velvet
             var maxOffset = Math.Max(0, Math.Min(total - viewport, start));
             var minOffset = Math.Max(0, start - viewport + size);
             // An item taller than the viewport is in view while the viewport lies within it.
+            // MUTANT_SURVIVES(equivalent, boundary): where size equals the viewport, minOffset is start give or
+            // take one double rounding of start - viewport + size, so both arms ask whether current is start,
+            // and the target either one picks differs from current by less than the float the scroller stores.
             var inView = size > viewport
                 ? current >= start && current <= minOffset
                 : current >= minOffset && current <= start;
