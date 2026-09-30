@@ -8,9 +8,10 @@ namespace Velvet
     // The render-error / Error Boundary path — the "throw" phase. When a Render() or Reconcile
     // throws, OnRenderError walks up the fiber tree (via ComponentBoundarySearch) to the nearest
     // [Component(IsErrorBoundary = true)] ancestor; TryCatch renders that boundary's UseFallback UI in
-    // place of the throwing subtree. A render error below a boundary whose output the walk is expanding is
-    // taken in by that expansion (GeneralPathReconciler.ExpandBoundaryInline); otherwise TryCatch reconciles
-    // the fallback over the boundary's rows and aborts the in-flight reconcile. The fiber-stack and VNode-pool
+    // place of the throwing subtree. A render error below a boundary whose output the walk is expanding, or
+    // whose own render is reconciling its output, is taken in there (GeneralPathReconciler.ExpandBoundaryInline,
+    // FiberRenderer.ReconcileRenderedTree); otherwise TryCatch reconciles the fallback over the boundary's rows
+    // and aborts the in-flight reconcile. The fiber-stack and VNode-pool
     // plumbing it relies on stays on FiberRenderer (the render core) and is called back into here.
     internal static class FiberErrorBoundary
     {
@@ -61,7 +62,13 @@ namespace Velvet
             if (fiber.Reconciler == null) return false;
             var fallback = RenderFallback(fiber, throwingFiber, originalException, out info);
             if (fallback == null) return false;
-            var fallbackTree = new[] { fallback };
+            return ShowFallbackTree(fiber, new[] { fallback });
+        }
+
+        // Reconciles fallbackTree over the boundary's own rows and commits it as the boundary's tree; false where
+        // the fallback's own content failed or an ancestor's fallback replaced the boundary meanwhile.
+        private static bool ShowFallbackTree(ComponentFiber fiber, VNode?[] fallbackTree)
+        {
             try
             {
                 FiberCommitWork.ReconcileOwnRows(
@@ -106,6 +113,28 @@ namespace Velvet
             // exception this attempt was responding to was never actually shown anything — report failure
             // so the caller keeps propagating instead of falsely claiming success.
             return !fiber.FallbackContentFailed;
+        }
+
+        // A render error below a boundary whose own render is the pass, caught once that render's reconcile has
+        // unwound (FiberRenderer.ReconcileRenderedTree), as GeneralPathReconciler.ExpandBoundaryInline catches one
+        // in a walk: the fallback then replaces the rows the boundary's committed tree holds, and the catch is
+        // reported once it has rendered. Where the fallback's own content failed, the original error goes on.
+        internal static void ShowCaughtFallback(ComponentFiber fiber, BoundaryCaughtSignal caught)
+        {
+            fiber.IsShowingFallback = true;
+            fiber.FallbackContentFailed = false;
+            bool shown;
+            try
+            {
+                shown = ShowFallbackTree(fiber, caught.FallbackTree);
+            }
+            finally
+            {
+                fiber.IsShowingFallback = false;
+            }
+            if (fiber.IsDisposed) return;
+            if (shown) RecordCatch(fiber.Reconciler!.Context, fiber, caught.Error, caught.Info);
+            else ComponentBoundarySearch.PropagateException(fiber, caught.Thrower, caught.Error, isRenderError: true);
         }
 
         private static VNode? TryInvokeFactory(ComponentFiber fiber, Exception originalException, ErrorInfo info)
@@ -181,9 +210,9 @@ namespace Velvet
             return false;
         }
 
-        // Leaves the fallback to the expansion of the boundary's output that is on the stack, which takes back
-        // what the failed children committed, expands the fallback in their place and reports the catch once
-        // the fallback has rendered; the rest of the pass goes on. Returns false only where no fallback was
+        // Leaves the fallback to the frame expanding or reconciling the boundary's output that is on the stack,
+        // which takes back what the failed children committed, renders the fallback in their place and reports the
+        // catch once the fallback has rendered; the rest of the pass goes on. Returns false only where no fallback was
         // produced, so propagation continues.
         private static bool CatchInTheWalk(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
@@ -207,10 +236,16 @@ namespace Velvet
         internal static VNode?[] OutputOf(ComponentFiber fiber, VNode?[] bodyOutput)
         {
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
-            FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber);
             var fallback = TryInvokeFactory(fiber, error, info);
-            if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
-            return new[] { fallback };
+            if (fallback == null)
+            {
+                FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber);
+                ExceptionDispatchInfo.Capture(error).Throw();
+            }
+            // Retired beside the fallback, which the factory may have built from nodes the body returned too.
+            var fallbackTree = new[] { fallback };
+            FiberTreeReturn.ReturnRetiredTreeBeside(bodyOutput, fiber, fallbackTree);
+            return fallbackTree;
         }
 
         // A throw out of the handler would escape the commit delivering the report.
@@ -227,8 +262,7 @@ namespace Velvet
         }
     }
 
-    // Unwinds from FiberErrorBoundary.TryCatch to the GeneralPathReconciler.ExpandBoundaryInline frame of the
-    // boundary it names.
+    // Unwinds from FiberErrorBoundary.TryCatch to the frame of the boundary it names that set CatchesInTheWalk.
     internal sealed class BoundaryCaughtSignal : Exception
     {
         internal BoundaryCaughtSignal(

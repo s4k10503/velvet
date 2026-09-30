@@ -14,8 +14,12 @@ namespace Velvet
             var depth = Hooks.UseContext(RouterContext.Depth);
             var errors = Hooks.UseContext(RouterContext.Errors);
             var router = Hooks.UseContext(RouterContext.Router);
+            // Beneath an errorElement a route's boundary shows for an error thrown below it, an Outlet renders
+            // nothing, as React Router renders that errorElement with no outlet.
+            var renderError = Hooks.UseContext(RouteErrorBoundary.RenderError);
 
-            if (!TryResolveMatch(location, depth, errors, out var routeElement, out var routeDepth, out var match))
+            if (renderError != null
+                || !TryResolveMatch(location, depth, errors, out var routeElement, out var routeDepth, out var match))
             {
                 FiberOutletScope.ReleaseRenderingOutletScope();
                 return V.Fragment(Array.Empty<VNode>());
@@ -34,8 +38,9 @@ namespace Velvet
                 });
         }
 
-        // One key and one place for every route this Outlet renders, as React Router's boundary has, so a
-        // navigation between routes resets it rather than remounting it — RouteErrorBoundary owns the reset.
+        // One key and one place for every route this Outlet wraps, as React Router's boundary has, so a
+        // navigation between two such routes resets it rather than remounting it — RouteErrorBoundary owns the
+        // reset.
         //
         // What renders for an error the route's element throws while rendering is its own errorElement, and at the
         // root the default one, as React Router wraps a route with either in its RenderErrorBoundary — around

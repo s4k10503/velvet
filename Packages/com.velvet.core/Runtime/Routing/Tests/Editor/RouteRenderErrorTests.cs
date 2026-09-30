@@ -19,6 +19,7 @@ namespace Velvet.Tests
     /// chain the root renders the default one, which shows the error's message.</item>
     /// <item>Navigating away from the errored route renders the route navigated to, and navigating back renders
     /// the errored route afresh; a render at the same location keeps the errorElement.</item>
+    /// <item>An Outlet inside an errorElement shown for such an error renders nothing.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -103,6 +104,7 @@ namespace Velvet.Tests
             s_throws = true;
             var router = SiblingRoutes("/a");
             using var mounted = V.Mount(_root, V.RouterProvider(router), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
             var errored = HasLabel("a-error:a-boom");
 
             // Act
@@ -120,6 +122,7 @@ namespace Velvet.Tests
             s_throws = true;
             var router = SiblingRoutes("/a");
             using var mounted = V.Mount(_root, V.RouterProvider(router), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
             var errored = HasLabel("a-error:a-boom");
             s_throws = false;
             router.NavigateSync("/b");
@@ -131,6 +134,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((errored, HasLabel("a"), HasLabel("a-error:a-boom")), Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_AnErrorElementHoldingAnOutlet_When_ItShowsAChildRoutesRenderError_Then_TheOutletRendersNothing()
+        {
+            // Arrange — the child throws on every render, so an Outlet that rendered it again would throw past the
+            // errorElement and out of the router, which logs
+            s_throws = true;
+            var router = new Router(V.Routes(
+                V.Route(
+                    path: "parent",
+                    element: V.Component(ParentLayoutRender, key: "parent"),
+                    errorElement: V.Component(ParentErrorShellRender, key: "parent-error"),
+                    children: new[] { V.Route(path: "child", element: V.Component(ThrowingRender, key: "child")) })));
+            router.NavigateSync("/parent/child");
+
+            // Act
+            using var mounted = V.Mount(_root, V.RouterProvider(router), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That((HasLabel("parent-error-shell"), HasLabel("a")), Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -189,6 +213,10 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode ParentLayoutRender()
             => V.Div(children: new VNode[] { V.Label(text: "parent-layout"), V.Outlet() });
+
+        [Component(Compiler = false)]
+        private static VNode ParentErrorShellRender()
+            => V.Div(children: new VNode[] { V.Label(text: "parent-error-shell"), V.Outlet() });
 
         [Component(Compiler = false)]
         private static VNode ParentErrorRender() => V.Label(text: "parent-error:" + Hooks.UseRouteError()?.Message);

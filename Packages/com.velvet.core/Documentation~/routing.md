@@ -101,11 +101,13 @@ one in place of its `element`, the layout routes below it included, as React Rou
 element does: a heading, the exception's message and its stack trace. In the editor and in a
 development build it also logs the exception.
 
-An error a route's `element`, or a route below it, throws while rendering goes to the same place, as React
-Router's `RenderErrorBoundary` sends it: the nearest route at or above it that carries an `errorElement`
-renders it in place of its `element`, and the root renders the default one where none does.
-`Hooks.UseRouteError` returns that error there. The error stays until the location changes: navigating
-away renders the route navigated to, and navigating back renders the errored route again.
+An error thrown below a route's `element` — while rendering, from an effect or its cleanup, or from an
+element's ref or creation callback — goes to the same place, as React Router's `RenderErrorBoundary` sends
+it: the nearest route at or above it that carries an `errorElement` renders it in place of its `element`,
+and the root renders the default one where none does. `Hooks.UseRouteError` returns that error there, and
+a `V.Outlet` inside that `errorElement` renders nothing. The error stays until the router publishes a new
+location: a navigation, which renders the route navigated to, or the errored route again on the way back;
+or a `Suspend` loader of the current location settling, which renders the route again in place.
 
 ### Deferred data
 

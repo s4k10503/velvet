@@ -108,6 +108,25 @@ namespace Velvet
             }
         }
 
+        // As ReturnRetiredTree, for a tree retired while another rendered beside it is about to be committed: what
+        // the two share is spared as the committed tree's nodes are once committed.
+        internal static void ReturnRetiredTreeBeside(VNode?[]? retired, ComponentFiber? owner, VNode?[] committing)
+        {
+            if (retired == null || retired.Length == 0) return;
+
+            var live = AcquireLiveMarks();
+            try
+            {
+                MarkOwnerRoots(owner, live);
+                WalkTree(committing, live, WalkMode.Mark);
+                SweepTree(retired, live);
+            }
+            finally
+            {
+                ReleaseLiveMarks(live);
+            }
+        }
+
         // Takes what of tree is still rented out of VNodePool's rented sets without recycling it, for a tree let
         // go of while it may still be in use: no later return recycles it.
         internal static void Release(VNode?[] tree)

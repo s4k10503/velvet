@@ -748,12 +748,15 @@ namespace Velvet
         /// </summary>
         internal bool IsShowingFallback { get; set; }
 
-        // Set while the walk expanding this boundary's output is on the stack to catch a render error below
-        // it: GeneralPathReconciler.ExpandBoundaryInline sets it and FiberErrorBoundary.TryCatch reads it.
+        // Set while a frame that expands or reconciles this boundary's output is on the stack to catch a render
+        // error below it: GeneralPathReconciler.ExpandBoundaryInline and FiberRenderer.ReconcileRenderedTree set
+        // it, and FiberErrorBoundary.TryCatch reads it.
         internal bool CatchesInTheWalk { get; set; }
 
-        // What this boundary caught, set where the catch succeeds and never cleared: React's boundary keeps its
-        // error state until it remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it.
+        // What this boundary caught, set where the catch succeeds: React's boundary keeps its error state until it
+        // remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it. Cleared by RouteErrorBoundary on
+        // a new location, as React Router's boundary resets there, and by a Suspense expansion whose primary
+        // suspends, which discards the render that caught.
         internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
 
         /// <summary>

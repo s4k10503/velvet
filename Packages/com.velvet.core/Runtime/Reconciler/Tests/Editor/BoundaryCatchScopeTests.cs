@@ -16,7 +16,7 @@ namespace Velvet.Tests
     /// <item>A sibling on either side of the boundary renders beside the fallback on mount, whether the two
     /// sit in an element or in a fragment, and its passive effect runs.</item>
     /// <item>On an update, a sibling behind the boundary renders what that update gave it.</item>
-    /// <item>A component the failed output mounted never runs its effect. One it had already mounted is
+    /// <item>A component the failed output mounted never runs its effect, the boundary's own update included. One it had already mounted is
     /// cleaned up once, in the commit, after the rest of the pass has rendered.</item>
     /// <item>A boundary with no fallback passes the error on, and the boundary above replaces its own whole
     /// output with its fallback.</item>
@@ -219,6 +219,42 @@ namespace Velvet.Tests
             Assert.That(s_innerEffects, Is.EqualTo(1 - 1));
         }
 
+        [Test]
+        public void Given_AComponentMountingAheadOfTheThrowInTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsEffectNeverRuns()
+        {
+            // Arrange — the boundary's own state brings the component in, so the render that fails is the
+            // boundary's own
+            using var mounted = V.Mount(_root, V.Component(OwnUpdateHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_throws = true;
+
+            // Act
+            s_setOwnBoundaryTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback is read with the count, since a boundary that never caught runs the effect rightly
+            Assert.That(Texts() + ", effects " + s_innerEffects, Is.EqualTo("fallback, effects 0"));
+        }
+
+        private static Action<int> s_setOwnBoundaryTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnUpdateBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnBoundaryTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                tick > 0 ? V.Component(InnerRender, key: "inner") : null,
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwnUpdateHostRender() => V.Div(children: new VNode[] { V.Component(OwnUpdateBoundaryRender, key: "boundary") });
+
         // GREEN_ON_BASE(characterization): the merge base sweeps this component in the fallback's own reconcile.
         // The case pins that the catch taken inside the walk hands an already mounted one to the pass's sweep.
         [Test]
@@ -392,11 +428,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates()
         {
-            // Arrange
+            // Arrange — the child no longer throws, so a boundary that rendered it again would show it
             using var mounted = V.Mount(_root, V.Component(UpdatingHostRender, key: "host"), CaughtErrors.Unlogged);
             s_throws = true;
             s_setTick.Invoke(1);
             mounted.FlushStateForTest();
+            s_throws = false;
 
             // Act
             s_setTick.Invoke(2);

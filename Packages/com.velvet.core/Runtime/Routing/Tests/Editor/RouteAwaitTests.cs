@@ -19,9 +19,10 @@ namespace Velvet.Tests
     /// <item>A failed task, or a throw while rendering the value, renders the errorElement, beneath which
     /// <c>UseAsyncError</c> reads the exception; without an errorElement a failed task propagates to the
     /// nearest error boundary.</item>
-    /// <item>After a throw while rendering the value, the errorElement stays for a deferred handed to the same
-    /// <c>V.Await</c> afterwards, as React Router's AwaitErrorBoundary keeps it until it remounts; an Await
-    /// remounted after a failed task renders the new deferred's value.</item>
+    /// <item>After a throw while rendering the value, the errorElement stays, with that throw, for a deferred
+    /// handed to the same <c>V.Await</c> afterwards — pending, failed, or failed and then resolved — as React
+    /// Router's AwaitErrorBoundary keeps it until it remounts; an Await remounted after a failed task renders
+    /// the new deferred's value.</item>
     /// <item>Element children read the value through <c>UseAsyncValue</c>.</item>
     /// <item>A loader returning a deferred value commits its navigation before the value arrives.</item>
     /// </list>
@@ -283,6 +284,66 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((HasLabel(_root, "await-error"), s_asyncError?.Message), Is.EqualTo((true, "render-boom")));
+        }
+
+        [Test]
+        public void Given_AnAwaitThatCaughtAThrowRenderingItsValue_When_ItIsHandedAPendingDeferred_Then_ItKeepsItsErrorElementWithoutSuspending()
+        {
+            // Arrange
+            using var mounted = CatchARenderThrow();
+            s_deferred = new Deferred<string>(new VelvetTaskCompletionSource<string>().Task);
+
+            // Act
+            s_setAwaitTick!.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((HasLabel(_root, "await-error"), HasLabel(_root, "loading")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnAwaitThatCaughtAThrowRenderingItsValue_When_ItIsHandedADeferredThatFails_Then_UseAsyncErrorStillReadsTheThrow()
+        {
+            // Arrange
+            using var mounted = CatchARenderThrow();
+            s_deferred = new Deferred<string>(VelvetTask.FromException<string>(new InvalidOperationException("deferred-boom")));
+
+            // Act
+            s_setAwaitTick!.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((HasLabel(_root, "await-error"), s_asyncError?.Message), Is.EqualTo((true, "render-boom")));
+        }
+
+        [Test]
+        public void Given_AnAwaitThatCaughtAThrowRenderingItsValueAndWasHandedAFailedDeferred_When_ItIsHandedOneThatResolves_Then_ItKeepsItsErrorElement()
+        {
+            // Arrange
+            using var mounted = CatchARenderThrow();
+            s_deferred = new Deferred<string>(VelvetTask.FromException<string>(new InvalidOperationException("deferred-boom")));
+            s_setAwaitTick!.Invoke(1);
+            mounted.FlushStateForTest();
+            s_deferred = new Deferred<string>(VelvetTask.FromResult("ready"));
+
+            // Act
+            s_setAwaitTick!.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((HasLabel(_root, "await-error"), HasLabel(_root, "value-ready"), s_asyncError?.Message),
+                Is.EqualTo((true, false, "render-boom")));
+        }
+
+        // Mounts an Await whose render function throws on its first value, and leaves it rendering values again.
+        private MountedTree CatchARenderThrow()
+        {
+            s_deferred = new Deferred<string>(VelvetTask.FromResult("first"));
+            s_render = _ => throw new InvalidOperationException("render-boom");
+            s_errorElement = V.Component(AsyncErrorReader, key: "error");
+            var mounted = V.Mount(_root, V.Component(KeyedAwaitHost, key: "host"), CaughtErrors.Unlogged);
+            s_render = value => V.Label(text: "value-" + value);
+            return mounted;
         }
 
         [Test]

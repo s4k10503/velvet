@@ -785,8 +785,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns the error the route at the current Outlet depth failed with — the error its element, or a
-        /// route below it, threw while rendering, or else its loader's — or null when the route did not error.
+        /// Returns the error the route at the current Outlet depth failed with — an error thrown below its
+        /// element, while rendering, from an effect or from an element callback, or else its loader's — or null
+        /// when the route did not error.
         /// </summary>
         public static Exception? UseRouteError()
         {

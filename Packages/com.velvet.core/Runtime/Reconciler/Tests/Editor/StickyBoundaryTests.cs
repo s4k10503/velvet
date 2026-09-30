@@ -13,8 +13,11 @@ namespace Velvet.Tests
     /// <item>A later render of it — its parent's, with nothing throwing any more — renders the fallback
     /// again, handed the error it caught and the props of that render, and not its children.</item>
     /// <item>Given a new key, it remounts and renders its children.</item>
-    /// <item>An error its fallback's content throws on such a render goes to the boundary above, whether its
-    /// parent's render or its own update renders it.</item>
+    /// <item>An error its fallback's content throws on such a render is caught by it once, as React's boundary
+    /// catches it, so a fallback rendered for that error shows; one that throws again goes to the boundary
+    /// above, whether its parent's render or its own update renders it.</item>
+    /// <item>A catch in a Suspense primary that then suspends is discarded with that render: the boundary
+    /// reports nothing for it and renders its children on the retry.</item>
     /// <item>A factory that gives no fallback on such a render passes the error to the boundary above, as it does
     /// at the catch.</item>
     /// <item>With the StrictMode double render on, rendering its fallback again reports no impure render.</item>
@@ -45,6 +48,7 @@ namespace Velvet.Tests
             s_setOwnTick = null;
             s_innerFactoryRuns = 0;
             s_noFallback = false;
+            s_pending = null;
             FiberStrictMode.Enabled = false;
         }
 
@@ -105,9 +109,9 @@ namespace Velvet.Tests
             s_setTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the inner factory's runs are read with it: one that caught the content's error again runs
-            // it a second time before the boundary above takes it
-            Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 1"));
+            // Assert — the inner factory's runs are read with it: as React's boundary does, it catches the content's
+            // error once, rendering its fallback again for it, and only the retry's throw goes above
+            Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 2"));
         }
 
         [Test]
@@ -124,9 +128,61 @@ namespace Velvet.Tests
             s_setOwnTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the inner factory's runs are read with it: one that caught the content's error again runs
-            // it a second time before the boundary above takes it
-            Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 1"));
+            // Assert — the inner factory's runs are read with it: as React's boundary does, it catches the content's
+            // error once, rendering its fallback again for it, and only the retry's throw goes above
+            Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 2"));
+        }
+
+        [Test]
+        public void Given_ABoundaryShowingItsFallback_When_ItsFallbacksContentThrowsAndTheFallbackForThatErrorRenders_Then_TheBoundaryKeepsThatFallback()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(RecoveringHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = false;
+            s_fallbackContentThrows = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("content-error-fallback"));
+        }
+
+        [Test]
+        public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRenderAndTheResourceResolves_Then_ItRendersItsChildren()
+        {
+            // Arrange — the boundary is memoized, so the retry reaches it only as a render it was asked for
+            s_throws = true;
+            s_pending = new VelvetTaskCompletionSource<string>();
+            using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = false;
+
+            // Act
+            s_pending.TrySetResult("value");
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
+        }
+
+        [Test]
+        public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRender_Then_NothingIsReported()
+        {
+            // Arrange
+            s_throws = true;
+            s_pending = new VelvetTaskCompletionSource<string>();
+            var reports = 0;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"),
+                new MountOptions((_, _) => reports++));
+            mounted.FlushEffectsForTest();
+
+            // Assert — the Suspense fallback is read with it, since a primary that never suspended reports its catch
+            Assert.That(Texts() + ", reports " + reports, Is.EqualTo("loading, reports 0"));
         }
 
         [Test]
@@ -292,6 +348,46 @@ namespace Velvet.Tests
             s_setTick = setTick;
             return V.Div(children: new VNode[] { V.Component(DecliningOuterRender, tick, key: "outer") });
         }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RecoveringBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(ex => ex.Message == "Fallback content throw"
+                ? V.Label(text: "content-error-fallback")
+                : V.Component(FallbackContentRender, key: "content"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RecoveringHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(RecoveringBoundaryRender, tick, key: "boundary") });
+        }
+
+        private static VelvetTaskCompletionSource<string> s_pending;
+
+        [Component(Compiler = false, Memoize = true, IsErrorBoundary = true)]
+        private static VNode SuspendedBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PendingReaderRender() => V.Label(text: "loaded:" + Hooks.Use(_ => s_pending.Task, resourceKey: 0));
+
+        [Component(Compiler = false)]
+        private static VNode SuspenseHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), new VNode[]
+                {
+                    V.Component(SuspendedBoundaryRender, key: "boundary"),
+                    V.Component(PendingReaderRender, key: "reader"),
+                }),
+            });
 
         [Component(Compiler = false)]
         private static VNode OuterHostRender()

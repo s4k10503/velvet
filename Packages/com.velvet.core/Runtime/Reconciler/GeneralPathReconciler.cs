@@ -182,12 +182,15 @@ namespace Velvet
                 {
                     ExpandInlineRecursive(walk, newChildren, FiberKeying.WalkRoot);
                 }
-                catch
+                catch (Exception exception)
                 {
                     // Nothing this walk created is placed before FinalizeGeneralCommit, so a throw out of it — a
                     // failure, or a suspend no Suspense span of this walk caught — leaves those elements to no
                     // caller: they go the way a suspended span's do.
                     RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    // A boundary above discards everything this walk rendered, so the components it mounted go
+                    // too, where a suspended span keeps them for the retry.
+                    if (exception is BoundaryCaughtSignal) DisposeFibersMountedBy(oldFibers, newFibers);
                     throw;
                 }
                 finally
@@ -992,13 +995,6 @@ namespace Velvet
             int nodeIndex,
             int preCount)
         {
-            if (boundary.CaughtError != null)
-            {
-                // Its output is its fallback (FiberErrorBoundary.OutputOf), whose own errors go to the
-                // boundaries above, as they do while the fallback first expands.
-                ExpandFallbackOutput(walk, boundary, component, position, nodeIndex);
-                return;
-            }
             var commit = walk.Commit!;
             var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
             var fibersBefore = _ctx.BufferPool.RentFiberSet();
@@ -1067,20 +1063,6 @@ namespace Velvet
             }
         }
 
-        private void ExpandFallbackOutput(
-            InlineWalk walk, ComponentFiber boundary, ComponentNode component, WalkPosition position, int nodeIndex)
-        {
-            boundary.IsShowingFallback = true;
-            try
-            {
-                ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
-            }
-            finally
-            {
-                boundary.IsShowingFallback = false;
-            }
-        }
-
         // React unmounts a boundary's children before it renders the fallback, so no old row of the boundary is
         // matched by a fallback row: each goes in the removal pass, and one the failed output patched in place
         // leaves with what that patch wrote.
@@ -1095,6 +1077,18 @@ namespace Velvet
                     break;
                 }
             }
+        }
+
+        private void DisposeFibersMountedBy(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            var old = new HashSet<ComponentFiber>(oldFibers);
+            List<ComponentFiber>? mounted = null;
+            foreach (var fiber in newFibers)
+            {
+                if (!old.Contains(fiber)) (mounted ??= new List<ComponentFiber>()).Add(fiber);
+            }
+            if (mounted == null) return;
+            foreach (var fiber in mounted) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
         }
 
         private void DropFibersTheFailedOutputAdded(InlineWalk walk, HashSet<ComponentFiber> fibersBefore)
@@ -1295,6 +1289,7 @@ namespace Velvet
                 // Suspense's own primary children (the fibers newly added during its expansion).
                 var fibersBefore = _ctx.BufferPool.RentFiberSet();
                 fibersBefore.UnionWith(newFibers);
+                var reportsBefore = _ctx.PendingCaughtErrorReports.Count;
                 try
                 {
                     if (suspense.Children is { Length: > 0 })
@@ -1333,6 +1328,7 @@ namespace Velvet
                     // exclusion in RollbackCommitTo.
                     if (suspended)
                     {
+                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers);
                         if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
@@ -1354,6 +1350,24 @@ namespace Velvet
             else if (ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition))
             {
                 _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            }
+        }
+
+        // A catch a boundary in the primary took is discarded with the render the primary suspends in, as React
+        // discards a capture with the render that suspended: the boundary reports nothing for it and renders its
+        // children again rather than the fallback it would otherwise keep (FiberErrorBoundary.OutputOf).
+        private void ForgetCatchesOfTheDiscardedPrimary(
+            int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers)
+        {
+            var reports = _ctx.PendingCaughtErrorReports;
+            for (var i = reports.Count - 1; i >= reportsBefore; i--)
+            {
+                var boundary = reports[i].Boundary;
+                if (fibersBefore.Contains(boundary) || !newFibers.Contains(boundary)) continue;
+                boundary.CaughtError = null;
+                reports.RemoveAt(i);
+                // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
+                FiberWorkLoop.RequestRenderFromHook(boundary);
             }
         }
 
