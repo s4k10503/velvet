@@ -13,7 +13,7 @@ V.Particles(coinBurst, className: "absolute inset-0", playOn: PlayTrigger.Mount)
 Hand `V.Particles` a ParticleSystem (typically a prefab reference); the framework owns the
 rest:
 
-- On mount, the effect is **cloned into a hidden host** (its renderer disabled, culling opted
+- On mount, the effect is **cloned into a hidden host** (its renderers disabled, culling opted
   out so the invisible simulation never pauses, activated even when the source prefab is kept
   inactive — only the simulation is consumed; the source system is never touched or played).
 - `playOn: PlayTrigger.Mount` (default) starts the clone on mount; `PlayTrigger.Manual`
@@ -27,10 +27,10 @@ rest:
 - `pixelsPerUnit` maps simulation world units to element pixels, centered on the element
   (`100` by default; must be positive — the factory throws otherwise).
 
-Particles draw at the element's center in **local simulation space** (world up = element up).
-A world-space source warns on mount and is read as local. Quads are tinted with each
-particle's current color and rotated by its 2D rotation; the texture comes from the effect's
-renderer material.
+Particles draw at the element's center in the root system's **local space** (up = element up).
+Every simulation space draws: a world- or custom-space system's positions are taken into that
+space first. Quads are tinted with each particle's current color and rotated by its 2D
+rotation; the texture comes from the system's renderer material.
 
 ## What this path does and does not do
 
@@ -38,9 +38,12 @@ This is the **lightweight** path, matching Unity's own guidance that the Built-i
 System is the right tool for UI-scale effects:
 
 - ✅ Emission, lifetime, velocity, size/color/rotation over lifetime, bursts, gravity —
-  everything the simulation computes.
-- ❌ Renderer-module features: trails, mesh particles, texture-sheet animation, sub-emitter
-  rendering, stretched billboards. One texture per system; up to 2048 particles drawn.
+  everything the simulation computes — for every particle alive.
+- ✅ Child systems, sub-emitters among them: every active system under the effect draws with
+  its own renderer's texture, and a system whose renderer is disabled or set to render mode
+  `None` draws nothing, as in the scene.
+- ❌ Renderer-module features: trails, mesh particles, texture-sheet animation, stretched
+  billboards. One texture per system.
 
 The simulation runs anywhere the element does — including **outside Play Mode**: on
 editor-hosted panels (preview tooling) the repaint tick steps the hidden host itself, so
@@ -48,9 +51,8 @@ effects play live without entering Play Mode.
 
 ## What about VFX Graph?
 
-VFX Graph is GPU-resident — there is no supported per-particle CPU readback, so the
-quad-transfer path cannot consume it. **Its supported path in Velvet is composition with
-[`V.SceneView`](scene-view.md)**: put the effect on a dedicated layer, point a culling-masked
+`V.Particles` takes a Built-in Particle System. **A VFX Graph effect is drawn by composition
+with [`V.SceneView`](scene-view.md)**: put the effect on a dedicated layer, point a culling-masked
 camera at it, and mount `V.SceneView(effectCamera)`. That renders anything (VFX Graph,
 trails, meshes, sheets) at the cost of a camera + RenderTexture per view.
 
@@ -58,7 +60,7 @@ trails, meshes, sheets) at the cost of a camera + RenderTexture per view.
 |---|---|---|
 | Systems | Built-in ParticleSystem | anything a camera can see (VFX Graph included) |
 | Cost | quads in the element itself | camera + RenderTexture + layer isolation |
-| Pipeline | independent of the render pipeline | renders through URP |
+| Pipeline | independent of the render pipeline | renders through the active pipeline |
 | Renderer features | simulation only | all of them |
 
 ## UseFrame

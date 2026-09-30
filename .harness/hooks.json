@@ -91,7 +91,7 @@
       "Bash"
     ],
     "script": "refuse/merge_unproven_head.py",
-    "timeout": 25.0
+    "timeout": 45.0
   },
   {
     "event": "PreToolUse",

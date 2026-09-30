@@ -68,6 +68,10 @@ namespace Velvet
             }
         }
 
+        // Whether element's className declares cls while the projection keeps it off the live class list.
+        internal static bool SuppressesDeclared(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
+
         // Called by StyleArbitraryValueResolver, because an inline layer both outranks the classes below it
         // and can itself be outranked by a class above it.
         internal static void OnInlineLayersChanged(VisualElement element, Model model) => model.Recompute(element);
@@ -324,6 +328,12 @@ namespace Velvet
             }
 
             private bool Holds(string cls) => FirstIndexOf(cls) >= 0;
+
+            // A payload's class is not the className's own, so only a base entry counts, important or not.
+            public bool SuppressesDeclared(string cls)
+                => _suppressed?.Contains(cls) == true
+                    && (IndexOf(cls, StyleLayerPriority.Base) >= 0
+                        || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
 
             private int FirstIndexOf(string cls)
             {

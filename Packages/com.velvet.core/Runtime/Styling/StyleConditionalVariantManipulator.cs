@@ -60,6 +60,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             VelvetTheme.DarkModeChanged += OnDarkChanged;
+            StyleResponsiveScope.ScopesChanged += OnScopesChanged;
 
             if (target.panel != null)
             {
@@ -74,6 +75,7 @@ namespace Velvet
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             VelvetTheme.DarkModeChanged -= OnDarkChanged;
+            StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
             _widthSource.Unhook();
         }
 
@@ -90,6 +92,12 @@ namespace Velvet
         }
 
         private void OnDarkChanged() => EvaluateDark();
+
+        private void OnScopesChanged()
+        {
+            StyleResponsiveScope.Rebind(target, _widthSource);
+            EvaluateResponsive();
+        }
 
         private void Evaluate()
         {

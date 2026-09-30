@@ -614,6 +614,137 @@ namespace Velvet.Tests
             Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
         }
 
+        // Draws nothing but its red clear color, so a render into the texture reads red.
+        private Camera CreateRedCamera()
+        {
+            var cam = CreateCamera("cam");
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.red;
+            cam.cullingMask = 0;
+            return cam;
+        }
+
+        private static void Fill(RenderTexture texture, Color color)
+        {
+            var previous = RenderTexture.active;
+            RenderTexture.active = texture;
+            GL.Clear(true, true, color);
+            RenderTexture.active = previous;
+        }
+
+        private static bool IsRed(RenderTexture texture) =>
+            RenderTexturePixelReader.IsRedPixel(RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, 1, 1))[0]);
+
+        [Test]
+        public void Given_AnEnabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraRendersIntoTheTexture()
+        {
+            // Arrange — the texture starts blue, so only a render of the red-clearing camera turns it red.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            var cam = CreateRedCamera();
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            Fill(cam.targetTexture, Color.blue);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(IsRed(cam.targetTexture), Is.True);
+        }
+
+        [Test]
+        public void Given_AResizedSceneViewOutsidePlayMode_When_TheTickFiresOnce_Then_TheCameraRendersOnce()
+        {
+            // Arrange — the resize re-derives the texture and re-syncs the tick, which must leave one
+            // tick running rather than a second beside the first.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            s_camera = CreateRedCamera();
+            MountAndLayout(V.Component(ResizingHost, key: "root"));
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+            var renders = 0;
+            void Count(UnityEngine.Rendering.ScriptableRenderContext _, Camera rendered)
+            {
+                if (rendered == s_camera) renders++;
+            }
+            UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering += Count;
+
+            // Act
+            try
+            {
+                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            }
+            finally
+            {
+                UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering -= Count;
+            }
+
+            // Assert
+            Assert.That(renders, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): an editor panel's live SceneView repaints on each tick, as it did.
+        [Test]
+        public void Given_ALiveSceneViewOnAnEditorPanel_When_TheTickFires_Then_TheElementRepaints()
+        {
+            // Arrange — an editor panel regenerates only what is marked dirty, and nothing but the tick
+            // marks this element once its texture is in place.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]", name: "sv"));
+            var element = _host.Root.Q<VisualElement>("sv");
+            var repaints = 0;
+            element.generateVisualContent += _ => repaints++;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            repaints = 0;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(repaints, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the tick leaves a disabled camera's texture holding what it held before.
+        [Test]
+        public void Given_ADisabledCameraOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRender()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            var cam = CreateRedCamera();
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            cam.enabled = false;
+            Fill(cam.targetTexture, Color.blue);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(IsRed(cam.targetTexture), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a texture user code gave the camera is never rendered into by the tick.
+        [Test]
+        public void Given_AUserReassignedTargetOutsidePlayMode_When_TheTickFires_Then_TheCameraDoesNotRenderIntoIt()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            var cam = CreateRedCamera();
+            MountAndLayout(V.SceneView(cam, className: "w-[64px] h-[64px]"));
+            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            var userTexture = new RenderTexture(64, 64, 24);
+            _spawned.Add(userTexture);
+            cam.targetTexture = userTexture;
+            Fill(userTexture, Color.blue);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(IsRed(userTexture), Is.False);
+        }
+
         [Test]
         public void Given_ADirectlyConstructedSettings_When_TheScaleIsInvalid_Then_ItThrows()
         {

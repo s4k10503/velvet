@@ -49,7 +49,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSkewChildTranslateManipulator.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSlotRecipe.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleStackedVariantManipulator.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3

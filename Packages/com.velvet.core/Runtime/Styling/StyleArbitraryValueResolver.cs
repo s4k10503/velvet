@@ -1467,7 +1467,7 @@ namespace Velvet
                     return;
                 case ArbitraryProperty.TransformOrigin:
                     element.style.transformOrigin = new TransformOrigin(
-                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2));
+                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
                     return;
                 case ArbitraryProperty.AspectRatio:
                 {

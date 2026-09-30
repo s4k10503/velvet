@@ -126,7 +126,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_unproven_head.py",
-            "timeout": 25,
+            "timeout": 45,
             "type": "command"
           }
         ],
