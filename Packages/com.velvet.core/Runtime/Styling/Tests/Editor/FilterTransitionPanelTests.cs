@@ -933,6 +933,22 @@ namespace Velvet.Tests
             Assert.That(binding.Target![0].GetParameter(0).floatValue, Is.EqualTo(6f));
         }
 
+        // GREEN_ON_BASE(characterization): a filter added at the end mid-tween redirects the tween to it, as on the base.
+        [Test]
+        public void Given_ARunningTween_When_AFilterIsAddedAtTheEnd_Then_ItHeadsForTheLongerList()
+        {
+            // Arrange — a tween toward blur 12.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+
+            // Act — the same blur with a contrast after it.
+            ApplyContrast(element, 1.5f);
+
+            // Assert
+            Assert.That(binding.Target?.Count, Is.EqualTo(2));
+        }
+
         // GREEN_ON_BASE(characterization): a running custom tween stops where its argument count changes, as on the base.
         [Test]
         public void Given_ARunningCustomTween_When_ItsArgumentCountChanges_Then_TheTweenStops()
