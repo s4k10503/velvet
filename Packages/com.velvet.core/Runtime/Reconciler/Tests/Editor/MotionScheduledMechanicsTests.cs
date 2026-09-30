@@ -73,7 +73,7 @@ namespace Velvet.Tests
             s_sharedClasses = null;
             (s_cMounted, s_cTransition) = (false, null);
             (s_aClasses, s_bClasses) = (null, null);
-            (s_aPose, s_aTransition, s_bPose) = (null, null, null);
+            (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
             (s_aField, s_looseField) = (false, false);
             s_resizeFrom = 100;
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
@@ -2398,8 +2398,9 @@ namespace Velvet.Tests
         // The pose "a" takes of s_fade, none while null, on s_aTransition in place of s_slowTween while set.
         private static string s_aPose;
         private static StyleTransitionConfig s_aTransition;
-        // The pose "b" takes of s_fade, none while null.
+        // The pose "b" takes of s_bVariants, or of s_fade while those are null; none while null.
         private static string s_bPose;
+        private static Dictionary<string, MotionVariant> s_bVariants;
         // A TextField "field" inside "a", and one "loose" outside every holder.
         private static bool s_aField;
         private static bool s_looseField;
@@ -2422,7 +2423,7 @@ namespace Velvet.Tests
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
-                    variants: s_bPose != null ? s_fade : null, animate: s_bPose,
+                    variants: s_bPose != null ? s_bVariants ?? s_fade : null, animate: s_bPose,
                     className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses} {s_bClasses}"));
             }
             if (s_cMounted)
@@ -3467,6 +3468,28 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(HoldsAListWithout(Root.Q<VisualElement>("b"), "rotate"), Is.True);
+        }
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_ItsPoseTweensItsRotateMidMove_Then_ItMixesTowardsThePosesRotateAsItTweens()
+        {
+            // Arrange — "b" level at its first pose, some way from "a" at twenty degrees, both on a linear second.
+            s_aClasses = "rotate-[20deg]";
+            s_bVariants = new Dictionary<string, MotionVariant> { ["level"] = "rotate-[0deg]", ["tilted"] = "rotate-[40deg]" };
+            s_bPose = "level";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — the tilted pose, about a quarter of a second on.
+            s_bPose = "tilted";
+            RenderShared(mounted);
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — mixed from "a"'s twenty degrees towards "b"'s own a quarter of the way to forty, rather than
+            // towards forty.
+            var own = 40f * 16 * 0.016f;
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(Mathf.Lerp(20f, own, BProgress())).Within(1.5f));
         }
 
         private static readonly Dictionary<string, MotionVariant> s_radiusPoses = new()

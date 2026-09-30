@@ -84,45 +84,36 @@ namespace Velvet
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderTopRightRadius))
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomRightRadius))
             .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomLeftRadius));
-        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands
-        // in the pass that sees it, as MotionOpacity's carry does.
-        private const float MinDurationSec = 1e-4f;
-
-        // Each pass, before anything is read: takes the timing a list a variant swap holds inline gives each corner,
-        // then takes what the projection writes out of that list, as MotionOpacity does for opacity on every draw, so
-        // that a swap started mid-move carries none of the writes here. The swap writes the list's durations with it
-        // and clears both as it ends.
+        // Each pass, before anything is read: takes the timing a list a variant swap holds inline gives rotate and each
+        // corner, then takes what the projection writes out of that list, as MotionOpacity does for opacity on every
+        // draw, so that a swap started mid-move carries none of the writes here.
         public static void Narrow(VisualElement element, LayoutIdProjection projection)
         {
             var style = element.style;
             var lists = new TransitionLists(style.transitionProperty.value, style.transitionDuration.value,
                 style.transitionDelay.value, style.transitionTimingFunction.value);
+            var listed = style.transitionDuration.keyword == StyleKeyword.Undefined;
+            projection.RotateCarry.Hold(lists, listed, "rotate", null);
             for (var corner = 0; corner < 4; corner++)
             {
-                if (style.transitionDuration.keyword != StyleKeyword.Undefined)
-                {
-                    projection.HeldRadiusDurationSec[corner] = float.NaN;
-                }
-                else if (StyleFilterTransitionDriver.TryFindTransition(lists, s_cornerNames[corner], "border-radius",
-                             out var durationMs, out var delayMs, out var easing))
-                {
-                    (projection.HeldRadiusDurationSec[corner], projection.HeldRadiusDelaySec[corner], projection.HeldRadiusEasing[corner]) =
-                        (durationMs / 1000f, delayMs / 1000f, easing);
-                }
+                projection.RadiusCarries[corner].Hold(lists, listed, s_cornerNames[corner], "border-radius");
             }
             if (projection.WritesRotate) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_rotate);
             if (projection.WritesRadii) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_radii);
         }
 
         // The element's own rotate as it is now. While the projection writes the slot it is the inline rotate the
-        // projection took over, else what the element's rules declare, else the one it had as the projection began.
-        public static float OwnRotate(VisualElement element, LayoutIdProjection projection)
+        // projection took over, else what the element's rules declare, else the one it had as the projection began,
+        // carried as OwnRadii carries a corner, over dtSec more.
+        public static float OwnRotate(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
             var inline = projection.WritesRotate ? projection.OwnInlineRotate : element.style.rotate;
-            if (inline.keyword == StyleKeyword.Undefined) return inline.value.angle.ToDegrees();
-            if (!projection.WritesRotate) return element.resolvedStyle.rotate.angle.ToDegrees();
-            var declared = StyleCascade.Rotate(element);
-            return float.IsNaN(declared) ? projection.StartRotate : declared;
+            if (!projection.WritesRotate)
+            {
+                return inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : element.resolvedStyle.rotate.angle.ToDegrees();
+            }
+            var declared = inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : StyleCascade.Rotate(element);
+            return projection.RotateCarry.Step(float.IsNaN(declared) ? projection.StartRotate : declared, dtSec, element, "rotate", null);
         }
 
         // The element's own radii as they are now. While the projection writes the slots a corner's own is an inline
@@ -144,26 +135,17 @@ namespace Velvet
             return own;
         }
 
+        // A change of unit lands at once, since a pixel radius and a percent one do not interpolate.
         private static Length Carry(VisualElement element, LayoutIdProjection projection, int corner, Length target, float dtSec)
         {
-            var carry = projection.RadiusCarry;
-            if (target != carry.Target[corner])
+            var carry = projection.RadiusCarries[corner];
+            if (target.unit != projection.RadiusUnits[corner])
             {
-                (carry.From[corner], carry.Target[corner], carry.ElapsedSec[corner]) = (carry.Value[corner], target, 0f);
-                (carry.DurationSec[corner], carry.DelaySec[corner], carry.Easing[corner]) =
-                    float.IsNaN(projection.HeldRadiusDurationSec[corner])
-                        ? StyleCascade.Transition(element, s_cornerNames[corner], "border-radius")
-                        : (projection.HeldRadiusDurationSec[corner], projection.HeldRadiusDelaySec[corner], projection.HeldRadiusEasing[corner]);
+                projection.RadiusUnits[corner] = target.unit;
+                carry.Land(target.value);
+                return target;
             }
-            carry.ElapsedSec[corner] += dtSec;
-            var t = Mathf.Clamp01((carry.ElapsedSec[corner] - carry.DelaySec[corner] + MinDurationSec)
-                / Mathf.Max(carry.DurationSec[corner], MinDurationSec));
-            var from = carry.From[corner];
-            // Landed exactly, which the curve need not give at its end.
-            carry.Value[corner] = t < 1f && from.unit == target.unit
-                ? new Length(Mathf.LerpUnclamped(from.value, target.value, UssEasing.Evaluate(carry.Easing[corner], t)), target.unit)
-                : target;
-            return carry.Value[corner];
+            return new Length(carry.Step(target.value, dtSec, element, s_cornerNames[corner], "border-radius"), target.unit);
         }
 
         // Mixes two radii as Framer's mixValues does (canMix): a radius of none takes the other's unit, two of one
@@ -183,18 +165,19 @@ namespace Velvet
 
         // Draws the element at the given rotate, or at its own for NaN. The slot is left alone until the projection
         // first needs a value there other than the element's own.
-        public static void WriteRotate(VisualElement element, LayoutIdProjection projection, float rotate)
+        public static void WriteRotate(VisualElement element, LayoutIdProjection projection, float rotate, float dtSec)
         {
             if (!projection.WritesRotate)
             {
-                var own = OwnRotate(element, projection);
+                var own = OwnRotate(element, projection, 0f);
                 if (float.IsNaN(rotate) || Mathf.Approximately(rotate, own)) return;
                 projection.WritesRotate = true;
                 projection.OwnInlineRotate = element.style.rotate;
                 projection.StartRotate = own;
+                projection.RotateCarry.Land(own);
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
             }
-            projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection) : rotate;
+            projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection, dtSec) : rotate;
             element.style.rotate = new Rotate(new Angle(projection.DrawnRotate, AngleUnit.Degree));
             projection.WrittenRotate = element.style.rotate;
         }
@@ -223,8 +206,11 @@ namespace Velvet
                     projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined && !CornerRadiusFit.Wrote(element, corner, slot);
                 }
                 projection.StartRadii = own;
-                own.CopyTo(projection.RadiusCarry.Value, 0);
-                own.CopyTo(projection.RadiusCarry.Target, 0);
+                for (var corner = 0; corner < 4; corner++)
+                {
+                    projection.RadiusCarries[corner].Land(own[corner].value);
+                    projection.RadiusUnits[corner] = own[corner].unit;
+                }
                 CornerRadiusFit.Hold(element);
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }

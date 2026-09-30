@@ -366,10 +366,10 @@ namespace Velvet
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
                 var progress = CrossfadeProgress(projection);
-                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection), progress);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
                 radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt), progress);
             }
-            LayoutIdLook.WriteRotate(element, projection, rotate);
+            LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
         }
 
@@ -1019,12 +1019,11 @@ namespace Velvet
         public Length[] StartRadii = System.Array.Empty<Length>();
         public Length[] DrawnRadii = System.Array.Empty<Length>();
         public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
-        // How each corner's own radius is carried while the projection writes it (LayoutIdLook.OwnRadii), and the
-        // timing a variant swap's held list gave each corner, NaN duration while no such list is held.
-        public readonly LayoutIdRadiusCarry RadiusCarry = new();
-        public readonly float[] HeldRadiusDurationSec = { float.NaN, float.NaN, float.NaN, float.NaN };
-        public readonly float[] HeldRadiusDelaySec = new float[4];
-        public readonly EasingMode[] HeldRadiusEasing = new EasingMode[4];
+        // How the own rotate and each corner's own radius are carried while the projection writes them
+        // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
+        public readonly LayoutIdCarry RotateCarry = new();
+        public readonly LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
+        public readonly LengthUnit[] RadiusUnits = new LengthUnit[4];
 
         // Each element of a member's subtree whose picking it turned off while drawn over the lead, with its own mode.
         public Dictionary<VisualElement, PickingMode>? Picking;
@@ -1116,14 +1115,62 @@ namespace Velvet
         }
     }
 
-    internal sealed class LayoutIdRadiusCarry
+    // One of a projection's own values carried towards what gives it now, as MotionOpacity carries opacity: from where
+    // it stands, on the timing a variant swap's held list gave the property, else the one UI Toolkit runs it by.
+    internal sealed class LayoutIdCarry
     {
-        public readonly Length[] Value = new Length[4];
-        public readonly Length[] From = new Length[4];
-        public readonly Length[] Target = new Length[4];
-        public readonly float[] ElapsedSec = new float[4];
-        public readonly float[] DelaySec = new float[4];
-        public readonly float[] DurationSec = new float[4];
-        public readonly EasingMode[] Easing = new EasingMode[4];
+        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands
+        // in the pass that sees it.
+        private const float MinDurationSec = 1e-4f;
+
+        private float _from;
+        private float _target;
+        private float _elapsedSec;
+        private float _delaySec;
+        private float _durationSec;
+        private EasingMode _easing;
+        // The timing the list a variant swap holds inline gave the property; NaN duration while it holds none.
+        private float _heldDurationSec = float.NaN;
+        private float _heldDelaySec;
+        private EasingMode _heldEasing;
+
+        public float Value { get; private set; }
+
+        public void Land(float value)
+        {
+            Value = _from = _target = value;
+            _elapsedSec = _delaySec = _durationSec = 0f;
+        }
+
+        // Read as the swap writes the list, before the projection takes the property out of it. The swap writes the
+        // list's durations with it and clears both as it ends: listed is whether the inline durations are held.
+        public void Hold(TransitionLists lists, bool listed, string property, string? shorthand)
+        {
+            if (!listed)
+            {
+                _heldDurationSec = float.NaN;
+            }
+            else if (StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing))
+            {
+                (_heldDurationSec, _heldDelaySec, _heldEasing) = (durationMs / 1000f, delayMs / 1000f, easing);
+            }
+        }
+
+        // Carries the value towards target, starting over from where it stands whenever target changes, over dtSec more.
+        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
+        {
+            if (target != _target)
+            {
+                (_from, _target, _elapsedSec) = (Value, target, 0f);
+                (_durationSec, _delaySec, _easing) = float.IsNaN(_heldDurationSec)
+                    ? StyleCascade.Transition(element, property, shorthand)
+                    : (_heldDurationSec, _heldDelaySec, _heldEasing);
+            }
+            _elapsedSec += dtSec;
+            var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
+            // Landed exactly, which the curve need not give at its end.
+            Value = t < 1f ? Mathf.LerpUnclamped(_from, _target, UssEasing.Evaluate(_easing, t)) : _target;
+            return Value;
+        }
     }
 }
