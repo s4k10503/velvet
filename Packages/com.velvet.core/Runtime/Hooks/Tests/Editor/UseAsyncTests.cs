@@ -54,6 +54,12 @@ namespace Velvet.Tests
             ResetUseAsync();
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
+        }
+
         #region FiberSuspendSignal
 
         [Test]
@@ -727,6 +733,72 @@ namespace Velvet.Tests
             // Assert
             Assert.That((textWhilePending, _root.FindFirstLabel()?.text), Is.EqualTo(("loading", "11")),
                 "The render the landing loader asks for reuses the resource that landed, so the boundary leaves its fallback");
+        }
+
+        [Test]
+        public void Given_AnUnkeyedLoaderRebuiltEachRenderUnderStrictMode_When_TheDiagnosticRenderRuns_Then_ItKeepsTheResourceTheCommittedRenderRead()
+        {
+            // Arrange
+            s_uncachedRuns = 0;
+            FiberStrictMode.Enabled = true;
+
+            // Act — the mount's committed render starts the loader, and the diagnostic re-run hands Use a new one
+            using var mounted = V.Mount(_root, V.Component(UncachedHostRender, key: "uncached-host"));
+
+            // Assert
+            Assert.That(s_uncachedRuns, Is.EqualTo(1),
+                "The StrictMode re-run is the same attempt, so it keeps the resource as React's keeps the thenable");
+        }
+
+        private static int s_uncachedRuns;
+        private static int s_uncachedRenders;
+        // Written so the loader captures the render's count, which is what makes each render's loader a new delegate.
+        private static int s_uncachedLastRender;
+
+        [Component]
+        private static VNode UncachedHostRender() => V.Component(UncachedChildRender, key: "child");
+
+        // The loader captures the render's own count, so each render hands Use a new delegate and no key.
+        [Component]
+        private static VNode UncachedChildRender()
+        {
+            var render = ++s_uncachedRenders;
+            return V.Label(text: Hooks.Use<int>((CancellationToken token) =>
+            {
+                s_uncachedLastRender = render;
+                s_uncachedRuns++;
+                return VelvetTask.FromResult(7);
+            }).ToString());
+        }
+
+        // GREEN_ON_BASE(characterization): the base restarted an unkeyed loader on every render.
+        // What this pins is that the StrictMode re-run is the only render keeping the resource it was not
+        // handed, so a later render runs the loader it was handed, as React's use() starts on a new promise.
+        [Test]
+        public void Given_AnUnkeyedLoaderRebuiltEachRender_When_TheComponentRendersAgainAfterACompletedRender_Then_TheNewLoaderRuns()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("factory delegate identity changed"));
+            using var mounted = V.Mount(_root, V.Component(TickLoaderRender, key: "tick-loader"));
+            var atMount = _root.FindFirstLabel()?.text;
+
+            // Act
+            s_tickLoaderSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((atMount, _root.FindFirstLabel()?.text), Is.EqualTo(("0", "1")),
+                "A render after a completed one runs the loader it was handed");
+        }
+
+        private static StateUpdater<int> s_tickLoaderSetTick;
+
+        [Component]
+        private static VNode TickLoaderRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_tickLoaderSetTick = setTick;
+            return V.Label(text: Hooks.Use<int>((CancellationToken token) => VelvetTask.FromResult(tick)).ToString());
         }
 
         private static int s_computedStringKeyRuns;

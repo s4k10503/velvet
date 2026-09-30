@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -33,12 +34,14 @@ namespace Velvet.Tests
     /// or the priority of whatever scope they do land in — a discrete handler's, or a further
     /// <c>startTransition</c> call's — and a completion reached inside a discrete handler asks for its render
     /// there too, coalescing with a resumed update that asked alongside it rather than costing a second pass.
-    /// An <c>await</c> of an already-completed task suspends
-    /// nothing, so what follows such an await is still inside the scope and is still a transition. An update
+    /// An <c>await</c> of an already-completed <see cref="Task"/> suspends
+    /// nothing, so what follows such an await is still inside the scope and is still a transition;
+    /// TransitionCallbackTests holds the <see cref="VelvetTask"/> side, whose await of one does suspend. An update
     /// from elsewhere that lands while the action awaits keeps its own priority.</item>
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
     /// new transition and without throwing; a callback leaving by an exception still closes its scope, in
-    /// either overload.</item>
+    /// either overload, and its exception does not reach the caller: the declaring component's Transition lane
+    /// is queued to carry it.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
     /// until each of those other fibers has discharged that work — committed it, unmounted, or had the
@@ -266,10 +269,10 @@ namespace Velvet.Tests
                 "A joined async call keeps the shared transition pending after the action that started it completes");
         }
 
-        // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too.
-        // It is pinned here because the scope this branch replaces it with is process-wide, where a leak
-        // would put later updates anywhere in the process on the transition lane rather than one
-        // component's.
+        // GREEN_ON_BASE(characterization): the unwind closed the scope on the base too, read off its commit.
+        // It is pinned because the scope is process-wide, where a leak would put later updates anywhere in the
+        // process on the transition lane. The write is read off the immediate tier because the callback's error
+        // queues the Transition lane on this fiber whatever the scope does.
         [Test]
         public void Given_ATransitionCallbackThatThrew_When_ALaterSetterRuns_Then_ThatUpdateTakesTheNormalLane()
         {
@@ -285,13 +288,34 @@ namespace Velvet.Tests
 
             // Act
             s_transitionSetValue.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            Assert.That(
-                (s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
-                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
-                Is.EqualTo((true, false)),
+            // Assert — a write the scope still covered would wait for the delayed tier
+            Assert.That(s_transitionLastValue, Is.EqualTo(1),
                 "A transition callback that throws leaves no scope open behind it");
+        }
+
+        [Test]
+        public void Given_ASynchronousTransitionCallbackThatThrows_When_ItIsStarted_Then_TheCallerSeesNothingAndTheTransitionLaneCarriesTheError()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var threw = false;
+
+            // Act
+            try
+            {
+                s_transitionStart.Invoke(() => throw new InvalidOperationException("transition callback"));
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+
+            // Assert — the lane is folded in, since a callback that was never reached throws nothing either
+            Assert.That((threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((false, true)),
+                "React's startTransition keeps a callback's error from its caller and renders it on the transition's lane");
         }
 
         #endregion
@@ -386,8 +410,9 @@ namespace Velvet.Tests
 
         // The scope closes at the callback's first suspension, not at its first `await`. The cases below hold
         // that difference, which shows only where the awaited task had already completed; the case above is
-        // the same shape with a task that had not.
-        // GREEN_ON_BASE(characterization): the base put this write on the transition lane as well.
+        // the same shape with a task that had not. They await a Task: C# continues inline wherever the awaiter
+        // reports completion, and a completed VelvetTask's awaiter now does not (TransitionCallbackTests).
+        // GREEN_ON_BASE(characterization): the base put this write on the transition lane too, for either task.
         // Twice over, in fact: a per-fiber call depth held for the callback's synchronous run, and an
         // in-flight fallback behind it. Pinned because the boundary is easy to state wrongly — four shipped
         // sentences did.
@@ -398,7 +423,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             Func<VelvetTask> asyncUpdates = async () =>
             {
-                await VelvetTask.CompletedTask;
+                await Task.CompletedTask;
                 s_transitionSetValue.Invoke(1);
             };
 
@@ -414,7 +439,7 @@ namespace Velvet.Tests
                 "A write after an await that never suspended is still inside the scope the starter opened");
         }
 
-        // GREEN_ON_BASE(characterization): the flag was lit on the base as well.
+        // GREEN_ON_BASE(characterization): the flag was lit on the base as well, for either task.
         // Its write took the transition lane there by the route the case above names, so the same enrolment
         // held the flag up. What this pins is the other half of that state — that an action's own completion
         // path cannot settle a slot its own write enrolled.
@@ -425,7 +450,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             Func<VelvetTask> asyncUpdates = async () =>
             {
-                await VelvetTask.CompletedTask;
+                await Task.CompletedTask;
                 s_transitionSetValue.Invoke(1);
             };
 
@@ -440,8 +465,8 @@ namespace Velvet.Tests
                 "An action that never suspended still leaves enrolled work, so its completion cannot settle it");
         }
 
-        // GREEN_ON_BASE(characterization): the base's completion asked for no render in any arrangement.
-        // Pinned because this branch's completion does ask for one, and what separates the arrangement that
+        // GREEN_ON_BASE(characterization): the base's completion asked for no render here, for either task.
+        // Pinned because a completion that suspended does ask for one, and what separates the arrangement that
         // needs it from this one is whether the action suspended, read off the task the callback handed
         // back — so this fails if that reading stops answering.
         [Test]
@@ -453,7 +478,7 @@ namespace Velvet.Tests
             var ranPastTheAwait = false;
             Func<VelvetTask> asyncUpdates = async () =>
             {
-                await VelvetTask.CompletedTask;
+                await Task.CompletedTask;
                 ranPastTheAwait = true;
             };
 
@@ -468,12 +493,10 @@ namespace Velvet.Tests
                 "An action that never suspended asks for the render the synchronous overload asks for: none");
         }
 
-        // GREEN_ON_BASE(characterization): the base's completion asked for no render in any arrangement.
-        // Pinned because the async starter runs its callback inside the try that owns the release, and only a
-        // callback that is not an async method can reach that release by throwing rather than by handing a
+        // Only a callback that is not an async method reaches the release by throwing rather than by handing a
         // task back.
         [Test]
-        public void Given_AnAsyncTransitionCallbackThatThrewBeforeReturningItsTask_When_ItUnwinds_Then_ItAsksForNoRender()
+        public void Given_AnAsyncTransitionCallbackThatThrewBeforeReturningItsTask_When_ItUnwinds_Then_TheTransitionLaneCarriesTheError()
         {
             // Arrange — the callback is a plain lambda rather than an async method, so it throws instead of
             // returning a task, which is the one way the release runs with no task to read
@@ -495,18 +518,18 @@ namespace Velvet.Tests
                 threw = true;
             }
 
-            // Assert — the throw is folded in, since a callback that was never reached leaves the fiber just
-            // as clean
+            // Assert — the lane is folded in, since a callback that was never reached throws nothing either
             Assert.That(
-                (threw, s_transitionFiber.IsDirty),
-                Is.EqualTo((true, false)),
-                "A callback that threw before returning a task suspended nothing, so its clear asks for no render");
+                (threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((false, true)),
+                "The action's error is kept from the task and rendered on the transition's lane, as React's is");
         }
 
         // The case above observes the unwind's effect on the fiber, which a leaked scope leaves looking the
         // same. The scope is process-wide and nothing in the fixture's reset scrubs it, so a leak here
         // reaches later writes on any component in the run, not only this one's.
-        // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too.
+        // GREEN_ON_BASE(characterization): the unwind closed the scope on the base too, read off its commit.
+        // The write is read off the immediate tier for the reason the synchronous case gives.
         [Test]
         public void Given_AnAsyncTransitionCallbackThatThrewBeforeReturningItsTask_When_ALaterSetterRuns_Then_ThatUpdateTakesTheNormalLane()
         {
@@ -527,12 +550,10 @@ namespace Velvet.Tests
 
             // Act
             s_transitionSetValue.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(
-                (s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
-                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
-                Is.EqualTo((true, false)),
+            Assert.That(s_transitionLastValue, Is.EqualTo(1),
                 "An async callback that throws leaves no scope open behind it either");
         }
 

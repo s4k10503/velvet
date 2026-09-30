@@ -28,7 +28,16 @@ namespace Velvet
             }
             finally
             {
-                FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
+                try
+                {
+                    // What a transition action deferred past an await (FiberWorkLoop.DefersAwaitContinuations)
+                    // runs once the handler has returned and ahead of this event's flush, which commits it.
+                    if (!wasInDiscreteEvent) FiberWorkLoop.DrainDeferredAwaitContinuations();
+                }
+                finally
+                {
+                    FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
+                }
                 if (!wasInDiscreteEvent)
                 {
                     // Pending passive effects from a prior commit are flushed before a discrete update's render,

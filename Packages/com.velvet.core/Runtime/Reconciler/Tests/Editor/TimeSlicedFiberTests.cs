@@ -60,6 +60,10 @@ namespace Velvet.Tests
             ResetRotation();
             ResetTransitionList();
             ResetSlowRowList();
+            s_slicedBoundaryFiber = null;
+            s_slicedSuspendFiber = null;
+            s_slicedSuspendSetCount = default;
+            s_slicedSuspendStart = default;
         }
 
         [TearDown]
@@ -1039,6 +1043,70 @@ namespace Velvet.Tests
             Assert.That(
                 (afterDrain, s_parkSeen[target], s_parkCount[target]),
                 Is.EqualTo(("g1-7", "g1-7", 1)));
+        }
+
+        #endregion
+
+        #region A suspend in a resumed slice
+
+        [Test]
+        public void Given_AParkedPassUnderABoundary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsAskedToRenderAndTheTransitionStaysPending()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
+            s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_slicedSuspendFiber.HasPendingReconcileWorkForTest();
+
+            // Act — the resumed slice reaches the second row, whose component suspends
+            FiberWorkLoop.ContinueReconcile(s_slicedSuspendFiber);
+
+            // Assert — the park is folded in, since a pass that finished in one slice suspended in its flush
+            Assert.That(
+                (parked, s_slicedBoundaryFiber.IsDirty, s_slicedSuspendFiber.IsTransitionPending),
+                Is.EqualTo((true, true, true)),
+                "A suspend in a resumed slice goes to the boundary above, and the transition it belonged to has not committed");
+        }
+
+        private static ComponentFiber s_slicedBoundaryFiber;
+        private static ComponentFiber s_slicedSuspendFiber;
+        private static StateUpdater<int> s_slicedSuspendSetCount;
+        private static TransitionStarter s_slicedSuspendStart;
+
+        [Component]
+        private static VNode SlicedBoundaryHost()
+        {
+            s_slicedBoundaryFiber = FiberAmbientStack.Current;
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Component(SlicedSuspendRender, key: "sliced") });
+        }
+
+        // Each row is a keyed Div with a component one level down, so the host's reconcile takes the
+        // time-sliceable keyed path; the second row's component waits on a source nothing completes.
+        [Component]
+        private static VNode SlicedSuspendRender()
+        {
+            s_slicedSuspendFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_slicedSuspendSetCount = setCount;
+            s_slicedSuspendStart = start;
+            var children = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                children[i] = V.Div(key: "ss" + i, children: new VNode?[] { V.Component(SlicedSuspendRow, i, key: "row") });
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode SlicedSuspendRow(int index)
+        {
+            var value = Hooks.Use<int>(_ => index == 0
+                ? VelvetTask.FromResult(0)
+                : new VelvetTaskCompletionSource<int>().Task, index);
+            return V.Label(text: value.ToString());
         }
 
         #endregion
