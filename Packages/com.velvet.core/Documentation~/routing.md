@@ -189,7 +189,7 @@ does. A pathless layout, whose path is empty too, is not an index route.
 - An action that throws, and a route with no action, commit the exception as that route's error, rendered
   by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, that
   route keeps the data it held, and no action data commits.
-- Any other method runs no action: the navigation commits React Router's `Invalid request method` 405 as
+- Any other method runs no action: the navigation commits React Router's 405 ("Invalid request method") as
   the error of the leaf route, as a failed action's is.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.

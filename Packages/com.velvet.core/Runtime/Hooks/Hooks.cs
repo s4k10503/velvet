@@ -664,12 +664,15 @@ namespace Velvet
 
         private static NavigationState ReadNavigationState(Router router)
         {
+#pragma warning disable CS8524 // no discard arm: a new status has to say which phase it reports
             var lifecycle = router.Status switch
             {
                 RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
                 RouterStatus.Submitting => NavigationLifecycle.Submitting,
-                _ => NavigationLifecycle.Idle,
+                RouterStatus.Idle or RouterStatus.Ready or RouterStatus.NotFound or RouterStatus.Error =>
+                    NavigationLifecycle.Idle,
             };
+#pragma warning restore CS8524
             if (lifecycle == NavigationLifecycle.Idle)
             {
                 return default;
