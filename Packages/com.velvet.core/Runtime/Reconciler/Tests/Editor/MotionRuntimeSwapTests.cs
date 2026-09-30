@@ -147,7 +147,7 @@ namespace Velvet.Tests
         private static int s_enterCompletions;
 
         // A presence child that follows its parent's labels, entering from the inherited initial pose on the Fade
-        // preset's timing.
+        // preset's timing. While the label is null none reaches it, and it plays the preset's classic enter.
         [Component]
         private static VNode FadingFollower()
         {
@@ -521,6 +521,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_enterCompletions, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
+        // So a presence child's classic fade-in, started while no label reached it, keeps its transition when the first
+        // label to reach it names a zero-duration pose.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TheFirstLabelToReachItIsAZeroDurationPose_Then_TheFadeKeepsItsTransition()
+        {
+            // Arrange — no label reaches the child as it mounts, so it plays the Fade preset's classic enter.
+            using var labels = new LabelStore();
+            labels.Set(null);
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("item")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swaps never wrote a classic enter's transition list.
+        // So that classic fade-in keeps its preset's transition-property when a zero-duration pose lands over it.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TheFirstLabelToReachItIsAZeroDurationPose_Then_ItsTransitionPropertyIsLeftToItsPreset()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set(null);
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("item").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left a pending mount enter to complete.
