@@ -523,6 +523,33 @@ namespace Velvet
         // separate manipulators resolving their own source.
         public Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
 
+        // Detaches and forgets every stacked manipulator owner gated, and every one those gated in turn, for an
+        // owner that is going away while its target stays: no call opens their gates again, and a retained one
+        // would otherwise stay on the element, hooked, until unmount.
+        internal void DropStackedVariants(object owner)
+        {
+            List<(VisualElement, object, long, StyleVariantKind, string, string?)>? owned = null;
+            foreach (var kv in StackedVariantManipulators)
+            {
+                if (ReferenceEquals(kv.Key.owner, owner))
+                {
+                    (owned ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
+                }
+            }
+            if (owned == null)
+            {
+                return;
+            }
+            foreach (var key in owned)
+            {
+                if (StackedVariantManipulators.Remove(key, out var dropped))
+                {
+                    key.Item1.RemoveManipulator(dropped);
+                    DropStackedVariants(dropped);
+                }
+            }
+        }
+
         // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
         // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A named inner
         // relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves the
@@ -576,6 +603,7 @@ namespace Velvet
                 {
                     target.RemoveManipulator(m);
                     StackedVariantManipulators.Remove(key);
+                    DropStackedVariants(m);
                 }
             }
         }

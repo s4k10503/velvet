@@ -68,6 +68,11 @@ namespace Velvet
             // (relation, name) set authoritative — a name that disappeared from the class list drops its binding.
             ResetApplied();
             UnhookAll();
+            // A binding is the owner its stacked payloads are keyed by, so the ones it leaves go with it.
+            foreach (var b in _bindings)
+            {
+                _ctx.DropStackedVariants(b);
+            }
             _bindings.Clear();
             BuildBindings(configs);
             if (target?.panel != null)

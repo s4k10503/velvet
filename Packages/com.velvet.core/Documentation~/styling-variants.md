@@ -17,7 +17,7 @@ Those need re-deriving when the variant toggles — see
 [Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the ones that get it and for
 the class channels that are not variants at all.
 
-A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
+A payload occupies one slot per rule and token. Declaring the same token literally and
 behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
 literal `gap-4` alone — and so is declaring it behind two variants of different precedence
 (`dark:gap-4 md:gap-4`), or behind two rules of one variant family (`nth-1:gap-4 nth-2:gap-4`). What
@@ -26,7 +26,7 @@ and letting
 the variant override it (`gap-4 md:gap-8`) remains the idiomatic form.
 
 The utilities from [Payloads Velvet realises itself](#payloads-velvet-realises-itself) are ranked by
-that same `(priority, token)` model directly rather than through the class list, since the class list
+that same per-rule model directly rather than through the class list, since the class list
 records only *whether* a class is present and these are read out of it as a family. Two consequences
 worth knowing, both when several variants name one such utility:
 
@@ -128,11 +128,12 @@ Four consequences worth knowing:
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
   however the cascade ranks `.foo`'s declarations.
 
-An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style
-rather than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority
-class stands down so the class shows through, and a class outranked by a higher-priority inline layer
-comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The filter
-family is the exception — filters compose rather than override, so a `filter` class and a
+An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
+than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
+down on the properties the class sets, so the class shows through there (above `md`, `p-[12px] md:pt-6`
+takes its top from `pt-6` and the rest from `p-[12px]`), and a class outranked by a higher-priority
+inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The
+filter family is the exception — filters compose rather than override, so a `filter` class and a
 `blur-[6px]` layer both apply.
 
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
@@ -154,9 +155,9 @@ is 20 px wide; an attribute selector carries a pseudo-class's and is emitted aft
 Lowest first, each row in the order `<` shows. Two variant rules of one rank — `nth-1:` beside `nth-2:`,
 two `data-[…]:` rules — keep their payloads apart, so turning one off leaves the other's standing. While
 both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in.
-Two arbitrary values follow that order on every property they share; where a class is one of the two, the
-outranked one gives way only if the other writes every property it writes, as the second consequence
-above describes. The order is first by their variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
+On every property an arbitrary value shares with another variant rule of its rank, the one emitted later
+takes it; two classes settle it as the second consequence above describes. The order is first by their
+variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
 `group-hover/card:`, `[&:first-child]:` before `[&:nth-child(1)]:`), then by the first property they
 differ on in Tailwind's property order (`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate
 itself, digits read as numbers (`hover:w-[10px]` before `hover:w-[20px]`).

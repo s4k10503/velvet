@@ -164,18 +164,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OneValueClaimedByTwoAttributeRules_When_TheLastOfThemIsWrittenLast_Then_ThatValuePaints()
+        public void Given_OneValueClaimedByTwoAttributeRules_When_ItsLaterRuleOutranksTheOtherValue_Then_ThatValuePaints()
         {
-            // Arrange — three rules of one family at one rank. shadow-lg is claimed twice, and x=1 sorts after
-            // both a=1 and b=1, so Tailwind emits one of its rules last; ranking the token at its other rule
-            // instead would hand the element to the shadow-sm between them.
+            // Arrange — three rules of one family at one rank, emitted a=1, m=1, x=1. shadow-lg is claimed at a=1
+            // and x=1 with shadow-sm between them, so ranking the token at its earlier rule would hand the
+            // element to shadow-sm; ranked at its later one, it keeps it. shadow-sm is written last, so writing order
+            // would hand it the element too.
             using var oracleScope = new ReconcilerScope();
             var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
-            var lit = new Dictionary<string, string> { ["x"] = "1", ["a"] = "1", ["b"] = "1" };
+            var lit = new Dictionary<string, string> { ["x"] = "1", ["m"] = "1", ["a"] = "1" };
             var tree = new VNode[]
             {
-                V.Div(className: "bg-[#FFFFFF] data-[x=1]:shadow-lg data-[a=1]:shadow-sm data-[b=1]:shadow-lg",
+                V.Div(className: "bg-[#FFFFFF] data-[a=1]:shadow-lg data-[x=1]:shadow-lg data-[m=1]:shadow-sm",
                     name: "card", data: lit),
             };
 

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -259,6 +261,29 @@ namespace Velvet.Tests
 
                 // Assert — the inner is seeded from the control's current value, so the leaf applies.
                 Assert.IsTrue(leaf.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_AHoverDarkFocusLeafInTheDarkTheme_When_ItIsHoveredFourTimes_Then_TwoStackedManipulatorsStayAttached()
+            {
+                // Arrange — hover: gates a dark: manipulator, which gates a focus: one of its own.
+                VelvetTheme.IsDark = true;
+                var leaf = MountLeaf("hover:dark:focus:bg-hot");
+                var context = _mounted.Root.Reconciler.Context;
+                var built = new HashSet<StyleStackedVariantManipulator>();
+
+                // Act — each leave drops the dark: manipulator, and each hover builds a new one.
+                for (var i = 0; i < 3; i++)
+                {
+                    using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                    built.UnionWith(context.StackedVariantManipulators.Values);
+                    using (var leave = PointerOutEvent.GetPooled()) leaf.SimulateEvent(leave);
+                }
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                built.UnionWith(context.StackedVariantManipulators.Values);
+
+                // Assert
+                Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(2));
             }
         }
 

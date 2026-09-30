@@ -124,8 +124,8 @@ namespace Velvet.Tests
         public void Given_TwoRadiiSharingACorner_When_Hovered_Then_TheFirstPropertyTheyDifferOnDecides()
         {
             // Arrange — rounded-t writes top-left and top-right, rounded-r top-right and bottom-right: the first
-            // corner they differ on is top-right against bottom-right, which Tailwind's property order puts
-            // rounded-t first, so rounded-r wins the shared corner. The candidate alone would put rounded-r first.
+            // corner they differ on is top-left against top-right, which Tailwind's property order puts rounded-t
+            // first, so rounded-r wins the shared corner. The candidate alone would put rounded-r first.
             var leaf = MountLeaf("w-[100px] h-[100px] hover:rounded-r-[8px] hover:rounded-t-[4px]");
 
             // Act
@@ -208,6 +208,94 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ThreeRadiiChainedByTheirCorners_When_Hovered_Then_EachCornerEndsOnItsLatestWriter()
+        {
+            // Arrange — Tailwind emits rounded-t, then rounded-r, then rounded-b; r shares top-right with t and
+            // bottom-right with b, so the corner b shares with r only is b's though nothing links b to t.
+            var leaf = MountLeaf("w-[100px] h-[100px] hover:rounded-b-[3px] hover:rounded-r-[2px] hover:rounded-t-[1px]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            ForcePanelUpdate(leaf.panel);
+
+            // Assert
+            Assert.That((leaf.resolvedStyle.borderTopRightRadius, leaf.resolvedStyle.borderBottomRightRadius),
+                Is.EqualTo((2f, 3f)));
+        }
+
+        [Test]
+        public void Given_MarginWritersAcrossRanks_When_DarkTurnsOnLast_Then_EachSideEndsOnItsHighestWriter()
+        {
+            // Arrange — focus:mx outranks hover:m, which outranks dark:mt; dark lands last, after the other two.
+            var darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = false;
+            try
+            {
+                var leaf = MountLeaf("dark:mt-[1px] hover:m-[4px] focus:mx-[8px]");
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+
+                // Act
+                VelvetTheme.IsDark = true;
+
+                // Assert
+                Assert.That((leaf.style.marginTop.value.value, leaf.style.marginLeft.value.value),
+                    Is.EqualTo((4f, 8f)));
+            }
+            finally
+            {
+                VelvetTheme.IsDark = darkBefore;
+            }
+        }
+
+        [Test]
+        public void Given_AShorthandAndALonghandBesideAHoverClass_When_Hovered_Then_TheClassKeepsItsSide()
+        {
+            // Arrange — hover:mt-4 outranks both arbitrary margins on margin-top, and m-[4px] keeps the others.
+            var leaf = MountLeaf("m-[4px] mt-[8px] hover:mt-4");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert — no inline margin-top is left to hide the class.
+            Assert.That((leaf.style.marginTop.keyword, leaf.ClassListContains("mt-4"), leaf.style.marginLeft.value.value),
+                Is.EqualTo((StyleKeyword.Null, true, 4f)));
+        }
+
+        [Test]
+        public void Given_TwoGroupStacksSharingTheirFamily_When_AllHold_Then_TheHighestNameDecides()
+        {
+            // Arrange — Tailwind compares the variants highest first, so "z" against "c" decides, not the names
+            // written first.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "gz", className: "group/z", children: new VNode?[]
+                {
+                    V.Div(name: "gc", className: "group/c", children: new VNode?[]
+                    {
+                        V.Div(name: "gb", className: "group/b", children: new VNode?[]
+                        {
+                            V.Div(name: "ga", className: "group/a", children: new VNode?[]
+                            {
+                                V.Div(name: "leaf",
+                                    className: "group-hover/a:group-hover/z:w-[10px] group-hover/b:group-hover/c:w-[20px]"),
+                            }),
+                        }),
+                    }),
+                }));
+            var root = _window.rootVisualElement;
+
+            // Act
+            foreach (var name in new[] { "ga", "gb", "gc", "gz" })
+            {
+                using var over = PointerOverEvent.GetPooled();
+                root.Q<VisualElement>(name).SimulateEvent(over);
+            }
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
         public void Given_TwoChildVariantWidths_When_TheChildIsMounted_Then_TheCandidateOrderDecides()
         {
             // Arrange / Act — [&>*]:w-[10px] sorts before [&>*]:w-[20px], so the 20 px rule is emitted later.
@@ -236,9 +324,9 @@ namespace Velvet.Tests
                 }));
             var root = _window.rootVisualElement;
 
-            // Act
-            using (var overUnnamed = PointerOverEvent.GetPooled()) root.Q<VisualElement>("unnamed").SimulateEvent(overUnnamed);
+            // Act — the named group first, so a shared slot would leave the unnamed rule's width, written last.
             using (var overNamed = PointerOverEvent.GetPooled()) root.Q<VisualElement>("named").SimulateEvent(overNamed);
+            using (var overUnnamed = PointerOverEvent.GetPooled()) root.Q<VisualElement>("unnamed").SimulateEvent(overUnnamed);
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.width.value.value, Is.EqualTo(10f));
