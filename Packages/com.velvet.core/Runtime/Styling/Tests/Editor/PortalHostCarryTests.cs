@@ -476,6 +476,8 @@ namespace Velvet.Tests
             style.opacity, style.display, style.rotate, style.scale,
             style.minWidth, style.minHeight, style.maxWidth, style.maxHeight);
 
+        // GREEN_ON_BASE(characterization): the base's world-space host root keeps the size UIDocument writes and
+        // the document-root class it is created with.
         [Test]
         public void Given_ACarriedSheetWhoseRootRuleSetsAWidth_When_AWorldSpacePanelMounts_Then_ItsHostRootKeepsItsPanelSizeAndTakesTheDocumentRootClass()
         {

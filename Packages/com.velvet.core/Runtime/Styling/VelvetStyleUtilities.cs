@@ -286,13 +286,7 @@ namespace Velvet
             if (style.height.keyword == StyleKeyword.Null) style.height = StyleKeyword.Auto;
             style.minWidth = style.minHeight = StyleKeyword.Auto;
             style.maxWidth = style.maxHeight = StyleKeyword.None;
-
-            // So a carried body-level rule selects a world-space host root as it does a layer's, which UIDocument
-            // gives the class itself.
-            hostRoot.AddToClassList(DocumentRootClass);
         }
-
-        private const string DocumentRootClass = "unity-ui-document__root";
 
         // Outermost first, which is the order the declaring panel's cascade meets them in. A sheet the host's panel
         // already holds above the host root, such as the theme PanelHostFactory copies into its settings, is left

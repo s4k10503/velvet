@@ -23,5 +23,3 @@
   inherited properties still reach the portal's children. A project theme that pads or aligns
   `.unity-ui-document__root` no longer insets or aligns layer portals' content. A layer host under a theme
   without a document-root rule, such as the empty one an editor-hosted tree's hosts get, now fills its panel.
-- Every such host root carries `unity-ui-document__root`, a world-space one included, so a carried rule on
-  that class selects both kinds.
