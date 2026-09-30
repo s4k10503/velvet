@@ -552,15 +552,11 @@ namespace Velvet
             {
                 return Math.Clamp((int)Math.Floor(offset / _node.ItemHeight), 0, last);
             }
-            var low = 0;
-            var high = last;
-            while (low < high)
-            {
-                var middle = (low + high) / 2;
-                if (_offsets[middle + 1] > offset) high = middle;
-                else low = middle + 1;
-            }
-            return low;
+            // Item i ends at _offsets[i + 1]: an end equal to offset belongs to the item before the one holding it,
+            // and otherwise the first end past offset is the holding item's.
+            var end = Array.BinarySearch(_offsets, 1, last + 1, offset);
+            // MUTANT_SURVIVES(equivalent, boundary): a search starting at index 1 never answers 0.
+            return Math.Min(end >= 0 ? end : ~end - 1, last);
         }
 
         // react-window's getOffsetForIndex, against the viewport the last GeometryChangedEvent measured.
@@ -581,8 +577,6 @@ namespace Velvet
             var maxOffset = Math.Max(0, Math.Min(total - viewport, start));
             var minOffset = Math.Max(0, start - viewport + size);
             // An item taller than the viewport is in view while the viewport lies within it.
-            // MUTANT_SURVIVES(equivalent, boundary): where size equals the viewport, minOffset is start, and
-            // both arms ask whether current is start.
             var inView = size > viewport
                 ? current >= start && current <= minOffset
                 : current >= minOffset && current <= start;
