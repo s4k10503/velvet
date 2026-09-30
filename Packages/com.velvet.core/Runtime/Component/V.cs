@@ -735,7 +735,7 @@ namespace Velvet
         /// on unmount, and recreated when <paramref name="effect"/> changes.
         /// </summary>
         /// <param name="effect">The source ParticleSystem (typically a prefab reference) to simulate.
-        /// Null mounts an inert element until an effect is supplied. Local simulation space only.</param>
+        /// Null mounts an inert element until an effect is supplied.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>

@@ -15,7 +15,19 @@ namespace Velvet
         // updates; an unconditional render-phase setState would otherwise loop forever.
         internal const int RenderPhaseUpdateLimit = 25;
 
-        internal static VNode Render(ComponentFiber fiber) => fiber.Body!();
+        // The body's invocation is the rental journal's window, which a memo hit in the body disowns.
+        internal static VNode Render(ComponentFiber fiber)
+        {
+            VNodePool.BeginRentalJournal();
+            try
+            {
+                return fiber.Body!();
+            }
+            finally
+            {
+                VNodePool.EndRentalJournal();
+            }
+        }
 
         internal static void ResetHookIndex(ComponentFiber fiber)
         {

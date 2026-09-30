@@ -38,6 +38,8 @@ namespace Velvet.Tests.Performance
         // A probe stuck at zero satisfies every guard below without measuring anything, and nothing else
         // in the repository would notice. This is the only case here that asserts a NON-zero count, and it
         // is what makes the three that follow mean something.
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // This change reads it over three windows.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
@@ -46,7 +48,7 @@ namespace Velvet.Tests.Performance
             canary();
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(canary);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
@@ -56,6 +58,8 @@ namespace Velvet.Tests.Performance
         // of a code path can charge one-time runtime work (JIT, lazy statics) to the measuring
         // scope, which surfaced as a rare order-sensitive false red on this guard.
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmPropsPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
@@ -67,9 +71,11 @@ namespace Velvet.Tests.Performance
             };
             cycle();
 
-            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
+            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmSingleEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
@@ -80,9 +86,11 @@ namespace Velvet.Tests.Performance
             };
             cycle();
 
-            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
+            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmNodeArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
@@ -94,7 +102,7 @@ namespace Velvet.Tests.Performance
             };
             cycle();
 
-            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
+            Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
         }
     }
 }

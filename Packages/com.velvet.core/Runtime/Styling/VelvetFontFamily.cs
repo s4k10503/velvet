@@ -59,38 +59,76 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Picks the entry whose <see cref="VelvetFontWeightEntry.weight"/> is closest to
-        /// <paramref name="requested"/>. Ties resolve to the heavier entry (matching CSS, which rounds a
-        /// midpoint up). Returns null only when the family has no entries.
+        /// Picks the entry CSS's font matching algorithm picks for <paramref name="requested"/>: an exact
+        /// weight if one is registered; otherwise, for a request from 400 to 500, the lightest entry from
+        /// the request up to 500, then the heaviest below the request, then the lightest above 500; for a
+        /// request under 400, the heaviest at or below it, then the lightest above; for a request over 500,
+        /// the lightest at or above it, then the heaviest below. Of two entries at one weight, the later is
+        /// picked. Returns null when the family has no entries.
         /// </summary>
-        public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested)
+        public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested) => Match(requested, italicFace: null);
+
+        // FindClosestWeight over only the entries that carry the requested style's own face: CSS narrows
+        // the faces by font-style before it compares weights, so a face of the requested style at another
+        // weight beats the right weight in the wrong style.
+        internal VelvetFontWeightEntry? FindClosestWeightWithFace(VelvetFontWeight requested, bool italicFace) =>
+            Match(requested, italicFace);
+
+        private VelvetFontWeightEntry? Match(VelvetFontWeight requested, bool? italicFace)
         {
-            if (weights == null || weights.Count == 0)
+            if (weights == null)
             {
                 return null;
             }
 
             VelvetFontWeightEntry? best = null;
-            var bestDistance = int.MaxValue;
+            var bestTier = int.MaxValue;
+            var bestKey = int.MaxValue;
             foreach (var entry in weights)
             {
-                if (entry == null)
+                if (entry == null || (italicFace != null && !HasFace(entry, italicFace.Value)))
                 {
                     continue;
                 }
 
-                var distance = Math.Abs((int)entry.weight - (int)requested);
-                // A strictly-closer entry always wins; on an equal-distance tie a strictly-heavier later
-                // entry takes over, so the heavier side of a tie is chosen (e.g. requested 500 between
-                // 400 and 600 → 600), matching CSS's round-the-midpoint-up behaviour.
-                if (distance < bestDistance || (distance == bestDistance && best != null && entry.weight > best.weight))
+                var (tier, key) = Rank((int)requested, (int)entry.weight);
+                // At an equal weight the later entry wins, as the later of two @font-face rules for one face
+                // does in CSS.
+                if (tier < bestTier || (tier == bestTier && key <= bestKey))
                 {
                     best = entry;
-                    bestDistance = distance;
+                    bestTier = tier;
+                    bestKey = key;
                 }
             }
 
             return best;
+        }
+
+        private static bool HasFace(VelvetFontWeightEntry entry, bool italicFace) =>
+            italicFace
+                ? entry.italic != null || !string.IsNullOrEmpty(entry.italicAddress)
+                : entry.upright != null || !string.IsNullOrEmpty(entry.uprightAddress);
+
+        // The search order FindClosestWeight documents: the tier is the pass that reaches the candidate, and
+        // within a pass the lower key comes first, so an ascending pass keys on the weight and a descending
+        // one on its negation.
+        private static (int tier, int key) Rank(int desired, int candidate)
+        {
+            if (desired > 500)
+            {
+                return candidate >= desired ? (0, candidate) : (1, -candidate);
+            }
+            if (desired < 400)
+            {
+                return candidate <= desired ? (0, -candidate) : (1, candidate);
+            }
+            if (candidate >= desired && candidate <= 500)
+            {
+                return (0, candidate);
+            }
+            // MUTANT_SURVIVES(unreachable, boundary): a candidate equal to the request returned in tier 0 above.
+            return candidate < desired ? (1, -candidate) : (2, candidate);
         }
     }
 }

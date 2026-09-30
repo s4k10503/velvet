@@ -21,7 +21,8 @@ namespace Velvet.Tests
     /// <item>An immediate-tier flush no-ops while a reconcile is on the stack (the resume reentrancy guard) and
     /// commits once no reconcile is active.</item>
     /// <item>A layout effect is deferred until the paused commit completes, so it observes its ref'd element as
-    /// attached rather than null.</item>
+    /// attached rather than null — including a component's the first slice mounted, when the batch drain that
+    /// ran the slice ends.</item>
     /// <item>When a preceding inline-mount sibling's slot count changes while a following sibling is parked, the
     /// parked sibling's captured slot start is re-based so its resume lands after the preceding sibling's new
     /// prefix — for a single grow, a single shrink, two parked siblings re-based by one delta, a preceding
@@ -58,6 +59,7 @@ namespace Velvet.Tests
             ResetSiblingShift();
             ResetRotation();
             ResetTransitionList();
+            ResetSlowRowList();
         }
 
         [TearDown]
@@ -318,6 +320,27 @@ namespace Velvet.Tests
             Assert.That((pausedMidFlight, s_refOrderingEffectRan, s_refOrderingRefWasNullAtEffect),
                 Is.EqualTo((true, true, false)),
                 "After the paused commit completes the deferred layout effect runs once and observes its ref'd element attached");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's drain end leaves what a parked pass mounted to the commit
+        // that completes the pass.
+        [Test]
+        public void Given_ABatchDrainWhoseTransitionParksAfterAComponentRow_When_ThePassCompletes_Then_TheComponentsLayoutEffectRanOnceWithItsRefAttached()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var parkedAfterTheDrain = s_slowRowListFiber.HasPendingReconcileWorkForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(
+                $"{parkedAfterTheDrain} | {string.Join(", ", s_slowRowLog)}",
+                Is.EqualTo("True | ref attached"));
         }
 
         #endregion
@@ -1076,6 +1099,54 @@ namespace Velvet.Tests
             var (value, setValue) = Hooks.UseState("a");
             s_probeSetValue = () => setValue.Invoke("b");
             return V.Label(text: value);
+        }
+
+        #endregion
+
+        #region SlowRowList component (a keyed list whose first row outlasts a Transition slice's budget)
+
+        // Longer than FiberLane.TimeSlicedBudgetMs, so the slice the batch drain runs goes over its budget.
+        private const int SlowRowRenderMs = 25;
+
+        private static bool s_slowRowsShown;
+        private static ComponentFiber s_slowRowListFiber;
+        private static readonly System.Collections.Generic.List<string> s_slowRowLog = new();
+        private static readonly Ref<Label> s_slowRowRef = new();
+
+        private static void ResetSlowRowList()
+        {
+            s_slowRowsShown = false;
+            s_slowRowListFiber = null;
+            s_slowRowLog.Clear();
+            s_slowRowRef.Set(null);
+        }
+
+        // Keyed Divs at the top level, so the fiber's own reconcile takes the time-sliceable keyed path, and the
+        // component sits one level down, where the first row's Div reaches it.
+        [Component(Compiler = false)]
+        private static VNode SlowRowListRender()
+        {
+            s_slowRowListFiber = FiberAmbientStack.Current;
+            if (!s_slowRowsShown) return V.Fragment(children: new VNode[] { V.Label(text: "empty", key: "empty") });
+            var rows = new VNode[4];
+            rows[0] = V.Div(key: "slow", children: new VNode[] { V.Component(SlowRowRender, key: "row") });
+            for (var i = 1; i < rows.Length; i++)
+            {
+                rows[i] = V.Div(key: "row" + i, children: new VNode[] { V.Label(text: "row-" + i) });
+            }
+            return V.Fragment(children: rows);
+        }
+
+        [Component]
+        private static VNode SlowRowRender()
+        {
+            System.Threading.Thread.Sleep(SlowRowRenderMs);
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_slowRowLog.Add(s_slowRowRef.Current != null ? "ref attached" : "ref null");
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "slow", refCallback: s_slowRowRef.SetElement);
         }
 
         #endregion

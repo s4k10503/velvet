@@ -134,6 +134,10 @@ namespace Velvet
             {
                 target.RegisterCallback<AttachToPanelEvent>(OnAttach);
                 target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
+                if (_source == StackedInnerSource.Responsive)
+                {
+                    StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+                }
                 if (target.panel != null)
                 {
                     if (_source == StackedInnerSource.Responsive)
@@ -168,6 +172,7 @@ namespace Velvet
             {
                 target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
                 target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
+                StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
                 _widthSource?.Unhook();
                 UnhookRelational();
             }
@@ -234,6 +239,12 @@ namespace Velvet
         {
             var width = _widthSource?.Width ?? 0f;
             SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
+        }
+
+        private void OnScopesChanged()
+        {
+            StyleResponsiveScope.Rebind(target, _widthSource);
+            EvaluateResponsive();
         }
         #endregion
 

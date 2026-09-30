@@ -406,13 +406,33 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.Null);
         }
 
-        [Test]
-        public void Given_LeadingBracketWithNonPxUnit_When_Parsed_Then_LeadingIsUnsetNull()
+        [TestCase("leading-[1.5]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[0]", "<line-height=0em>hi</line-height>")]
+        [TestCase("leading-[1.5em]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[150%]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[2rem]", "<line-height=32px>hi</line-height>")]
+        public void Given_LeadingBracketInACssLineHeightUnit_When_ParsedAndApplied_Then_ProducesTheMatchingTag(
+            string cls, string expected)
         {
-            // Arrange — the bracket form accepts only px for v1; an em value inside the bracket (a
-            // plausible mistake, since the named presets DO use em) must be rejected rather than
-            // silently misinterpreted as a pixel count.
-            var classNames = new[] { "leading-[1.5em]" };
+            // Arrange
+            var classNames = new[] { cls };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rejects every non-px bracket value; these pin what the
+        // widened grammar still rejects.
+        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[em]")]
+        public void Given_AnUnparseableLeadingBracket_When_Parsed_Then_LeadingIsUnsetNull(string cls)
+        {
+            // Arrange
+            var classNames = new[] { cls };
 
             // Act
             var effect = StyleTextEffectClass.Parse(classNames);
@@ -505,12 +525,14 @@ namespace Velvet.Tests
             Assert.That(isArbitrary, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the prefix check is unchanged; the value moved from 1.5em, which
+        // now parses, to one that still does not.
         [Test]
         public void Given_MalformedLeadingBracketClass_When_CheckedForArbitraryLeadingClass_Then_StillReturnsTrue()
         {
             // Arrange — the prefix-only check must exclude a malformed bracket value from the USS class
             // list too, exactly like a malformed font-[...] never leaks in either (see IsArbitraryLeadingClass).
-            const string cls = "leading-[1.5em]";
+            const string cls = "leading-[2vw]";
 
             // Act
             var isArbitrary = StyleTextEffectClass.IsArbitraryLeadingClass(cls);

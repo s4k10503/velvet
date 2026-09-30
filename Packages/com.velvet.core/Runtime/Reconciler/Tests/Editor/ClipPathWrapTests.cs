@@ -566,13 +566,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated()
+        public void Given_RingOnMotion_When_Reconciled_Then_TheMotionIsRingedLikeADiv()
         {
-            // A Motion stands down: the band is placed from the element's laid-out box, which the Motion's
-            // own transform does not move (see FiberNodeFactory.WarnIgnoredMotionUtilities). Warned about
-            // rather than silently dropped, like the shadow-* / clip-path-* / z-* gates on a Motion.
+            // The band follows its element's transform, so a Motion's slide or scale carries it too.
             using var scope = new ReconcilerScope();
-            LogAssert.Expect(LogType.Warning, new Regex(@"ring-\*.*on a Motion is ignored"));
 
             Mount(scope, new VNode[]
             {
@@ -584,7 +581,35 @@ namespace Velvet.Tests
             Assert.That(
                 (bindings.ContainsKey(scope.Root.Q<VisualElement>("motion")),
                     bindings.ContainsKey(scope.Root.Q<VisualElement>("card"))),
-                Is.EqualTo((false, true)));
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMotion_When_APatchAddsARing_Then_TheMotionIsRinged()
+        {
+            // The create path and the patch path each decide whether a Motion is ringed.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Motion("", key: "m", name: "motion") };
+            Mount(scope, before);
+
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Motion("ring-2", key: "m", name: "motion") });
+
+            Assert.That(scope.Reconciler.Context.RingBindings.ContainsKey(scope.Root.Q<VisualElement>("motion")),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AMountedRingedElement_When_TheReconcilerIsDisposed_Then_TheBandLeaves()
+        {
+            // The element stays where it is at root disposal; the band beside it, and the per-frame tick it
+            // owns, go with the binding.
+            var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
+            var hosted = RingOverlayIn(scope.Root) != null;
+
+            scope.Reconciler.Dispose();
+
+            Assert.That((hosted, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, false)));
         }
 
         [Test]

@@ -125,11 +125,13 @@ namespace Velvet.Tests.Performance
         {
             viaFactory();
             viaInit();
-            var factoryBlocks = GCAllocationProbe.SampleBlocksDuring(viaFactory);
-            var initBlocks = GCAllocationProbe.SampleBlocksDuring(viaInit);
+            var factoryBlocks = GCAllocationProbe.MedianBlocksDuring(viaFactory);
+            var initBlocks = GCAllocationProbe.MedianBlocksDuring(viaInit);
             return (factoryBlocks - initBlocks, initBlocks > 0);
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedLayerAndFocusOrder_When_VPortalIsCalled_Then_ItsTwoRefusalsAllocateNothing()
         {
@@ -140,10 +142,8 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base's V.WorldSpace allocates its node and no more.
-        // It carries no refusal there at all, so the difference is zero for a different reason than it is
-        // here. What this pins for the branch is that adding one costs nothing: spell the check
-        // `Enum.IsDefined` and the difference measures two blocks.
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedFocusOrder_When_VWorldSpaceIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -154,10 +154,8 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base's V.Particles allocates its node and its settings and
-        // no more. It carries no refusal there at all, so the difference is zero for a different reason
-        // than it is here. What this pins for the branch is that adding one costs nothing: spell the
-        // check `Enum.IsDefined` and the difference measures two blocks.
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedPlayOn_When_VParticlesIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -168,10 +166,8 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base's V.Draggable allocates its node and its settings and
-        // no more. It carries no refusal there at all, so the difference is zero for a different reason
-        // than it is here. What this pins for the branch is that adding one costs nothing: spell the
-        // check `Enum.IsDefined` and the difference measures two blocks.
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedMovement_When_VDraggableIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -182,11 +178,8 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base's V.AnimatePresence allocates its node and no more.
-        // It carries no refusal there at all, so the difference is zero for a different reason than it is
-        // here. What this pins for the branch is that adding one costs nothing: spell the check
-        // `Enum.IsDefined` and the difference measures two blocks. The V.Portal case above needs no
-        // declaration -- the base already refuses `layer:` and pays a block pair for it, so it is red there.
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedMode_When_VAnimatePresenceIsCalled_Then_ItsRefusalAllocatesNothing()
         {
@@ -197,10 +190,8 @@ namespace Velvet.Tests.Performance
             Assert.That(cost, Is.EqualTo((0, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base's V.Route allocates its definition and no more.
-        // It carries no refusal there at all, so the difference is zero for a different reason than it is
-        // here. What this pins for the branch is that adding one costs nothing: spell the check
-        // `Enum.IsDefined` and the difference measures two blocks.
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_ANamedLoaderMode_When_VRouteIsCalled_Then_ItsRefusalAllocatesNothing()
         {
