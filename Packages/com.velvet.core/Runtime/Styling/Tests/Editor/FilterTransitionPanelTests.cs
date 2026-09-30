@@ -864,6 +864,94 @@ namespace Velvet.Tests
             Assert.That((binding.Scheduled != null, binding.StartTime == startedAt), Is.EqualTo((true, true)));
         }
 
+        [Test]
+        public void Given_ATweenRunningUnderAnimateHue_When_APatchRemovesIt_Then_ItsFrameIsWrittenAtOnce()
+        {
+            // Arrange — a blur tween from 4 to 12 started, then an animate-hue frame written over it.
+            const string before = "transition-filter duration-300 blur-sm";
+            const string tweening = "transition-filter duration-300 blur-md";
+            const string animated = "transition-filter duration-300 animate-hue blur-md";
+            var element = MountResolved(before);
+            Reconcile(before, tweening);
+            Reconcile(tweening, animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.25f);
+
+            // Act
+            Reconcile(animated, tweening);
+
+            // Assert — the tween's own frame, near where it started, rather than the hue frame, the target, or a
+            // tween restarted from nothing.
+            var written = element.style.filter.value[0];
+            var amount = written.GetParameter(0).floatValue;
+            Assert.That((written.type, amount > 1f && amount < 11f), Is.EqualTo((FilterFunctionType.Blur, true)));
+        }
+
+        [Test]
+        public void Given_AnimateHue_When_AHueRotateUtilityChanges_Then_NoTweenStarts()
+        {
+            // Arrange — an animate-hue frame on an element carrying transition-filter.
+            var element = MountResolved("transition-filter animate-hue");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.1f);
+
+            // Act — a change the motion's hue-rotate would pair with.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, 90f, LengthUnit.Pixel));
+
+            // Assert
+            Assert.That(binding.Scheduled, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnimateHueOverAHueRotateUtility_When_APatchRemovesIt_Then_TheUtilitysAngleIsWrittenAtOnce()
+        {
+            // Arrange — an animate-hue frame over hue-rotate-90.
+            const string animated = "transition-filter animate-hue hue-rotate-90";
+            const string plain = "transition-filter hue-rotate-90";
+            var element = MountResolved(animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.1f);
+
+            // Act
+            Reconcile(animated, plain);
+
+            // Assert — 90, where a tween from the motion's 36 would still be near 36.
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): a change mid-tween redirects the tween to the new value, as on the base.
+        [Test]
+        public void Given_ARunningTween_When_ADifferentBlurIsWritten_Then_ItHeadsForTheNewValue()
+        {
+            // Arrange — a tween toward blur 12.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+
+            // Act
+            ApplyBlur(element, 6f);
+
+            // Assert
+            Assert.That(binding.Target![0].GetParameter(0).floatValue, Is.EqualTo(6f));
+        }
+
+        // GREEN_ON_BASE(characterization): a running custom tween stops where its argument count changes, as on the base.
+        [Test]
+        public void Given_ARunningCustomTween_When_ItsArgumentCountChanges_Then_TheTweenStops()
+        {
+            // Arrange — a tween fading in a one-argument custom.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var def = CreateUserDefinition(new FilterParameter(0f), new FilterParameter(0f));
+            StyleFilterTransitionDriver.TryStartOrRedirect(element, CustomList(def, new FilterParameter(1f)));
+            var started = binding.Scheduled != null;
+
+            // Act — the same custom with two arguments, which pairs with nothing.
+            StyleFilterTransitionDriver.TryStartOrRedirect(element,
+                CustomList(def, new FilterParameter(1f), new FilterParameter(2f)));
+
+            // Assert
+            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
+        }
+
         private void Reconcile(string from, string to)
             => _mounted.Root.Reconciler.Reconcile(
                 _window.rootVisualElement,

@@ -22,7 +22,7 @@ Every filter utility on an element — built-in or custom — composes into the 
 | `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
-| `hue-rotate-<deg>` / `hue-rotate-[N<unit>]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
+| `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | presets 0/15/30/60/90/180 (degrees); the only filter with a negative form (`-hue-rotate-90`) | bracket: a CSS angle in `deg`, `rad`, `grad` or `turn`; a bare number only as `0`, as CSS takes it |
 | `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
 | `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0, or a percentage | full CSS range, see below |
 

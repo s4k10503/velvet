@@ -183,6 +183,9 @@ namespace Velvet
                 out var filterDuration, out var filterDelay, out var filterEasing);
             var setterRuns = TryFindTransition(element, BackgroundSizePropertyName, BackgroundScaleModePropertyName,
                 out var setterDuration, out var setterDelay, out var setterEasing);
+            // MUTANT_SURVIVES(equivalent, clause removed): a running filter entry never has the (0, 0) timing reported here.
+            // An entry runs only where its duration floored at 0 plus its delay is positive, and (0, 0) is what
+            // TryFindTransition reports for a setter entry it did not find.
             return filterRuns && setterRuns
                 && (filterDuration, filterDelay, filterEasing) == (setterDuration, setterDelay, setterEasing);
         }
