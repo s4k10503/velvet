@@ -36,13 +36,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnImportantNowrapAndAPlainPreLine_When_Parsed_Then_TheExplicitResetWins()
+        public void Given_AnImportantNowrapAndAPlainPreWrap_When_Parsed_Then_TheImportantNowrapWins()
         {
+            // Arrange — pre-wrap sits later in the sheet, so it wins the pair when neither is important.
+            var classes = new[] { "!whitespace-nowrap", "whitespace-pre-wrap" };
+
             // Act
-            var effect = StyleTextEffectClass.Parse(new[] { "!whitespace-nowrap", "whitespace-pre-line" });
+            var effect = StyleTextEffectClass.Parse(classes);
 
             // Assert
-            Assert.That(effect.Whitespace, Is.EqualTo(WhitespaceCollapseKind.None));
+            Assert.That(effect.WhiteSpaceClass, Is.EqualTo(UnityEngine.UIElements.WhiteSpace.NoWrap));
         }
 
         [Test]
