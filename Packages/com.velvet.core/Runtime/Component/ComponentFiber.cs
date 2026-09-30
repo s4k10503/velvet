@@ -752,6 +752,10 @@ namespace Velvet
         // it: GeneralPathReconciler.ExpandBoundaryInline sets it and FiberErrorBoundary.TryCatch reads it.
         internal bool CatchesInTheWalk { get; set; }
 
+        // What this boundary caught, set where the catch succeeds and never cleared: React's boundary keeps its
+        // error state until it remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it.
+        internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
+
         /// <summary>
         /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is
         /// true (the re-entrant <see cref="FiberErrorBoundary.TryCatch"/> call this triggers declines and

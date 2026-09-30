@@ -433,7 +433,18 @@ namespace Velvet
             var passContext = fiber.Reconciler?.Context;
             var abortEndsHere = fiber.IsErrorBoundary && !deferReconcile
                 && passContext is { SharedReconcileDepth: > 0, IsAborted: false };
-            FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            // A boundary showing the fallback it caught with leaves its fallback's errors to the boundaries above,
+            // as GeneralPathReconciler.ExpandFallbackOutput does where the walk expands it.
+            var showsCaughtFallback = fiber.CaughtError != null;
+            fiber.IsShowingFallback |= showsCaughtFallback;
+            try
+            {
+                FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            }
+            finally
+            {
+                if (showsCaughtFallback) fiber.IsShowingFallback = false;
+            }
             if (abortEndsHere && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
@@ -493,7 +504,7 @@ namespace Velvet
 
                 FiberBeginWork.CommitSettledHookDeps(fiber);
 
-                var newTree = FiberTreeReturn.NormalizeToArray(rendered);
+                var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
                 if (fiber.Reconciler?.HasPendingWork == true)
@@ -675,6 +686,8 @@ namespace Velvet
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
+            // A boundary showing the fallback it caught committed that fallback rather than its body's output.
+            if (fiber.CaughtError != null) return;
             // The mount root's Body is a constant passthrough closure over the caller-built tree
             // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
             // returns the SAME node graph the commit owns: there is no render purity to validate,

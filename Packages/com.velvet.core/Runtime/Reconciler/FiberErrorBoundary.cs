@@ -175,7 +175,7 @@ namespace Velvet
                 // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
                 // CommitPhaseCatchAbortLeakTests holds that.
                 if (ctx.SharedReconcileDepth > 0) fiber.Reconciler.SetAborted();
-                QueueReport(ctx, fiber, exception, info!);
+                RecordCatch(ctx, fiber, exception, info!);
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;
             }
@@ -193,8 +193,22 @@ namespace Velvet
             throw new BoundaryCaughtSignal(fiber, new[] { fallback }, throwingFiber, exception, info!);
         }
 
-        internal static void QueueReport(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
-            => ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
+        internal static void RecordCatch(ReconcilerContext ctx, ComponentFiber fiber, Exception exception, ErrorInfo info)
+        {
+            fiber.CaughtError = (exception, info);
+            ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
+        }
+
+        // A boundary that has caught renders its fallback from then on, as React's does until it remounts: a
+        // re-render does not bring its children back, and changing its key is what does. Its body still runs, so
+        // its hooks keep their order and the factory it registers is the current one, which is handed the error
+        // it caught. The body's output is discarded as an aborted render's is.
+        internal static VNode?[] OutputOf(ComponentFiber fiber, VNode?[] bodyOutput)
+        {
+            if (fiber.CaughtError is not var (error, info)) return bodyOutput;
+            FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber);
+            return new[] { fiber.FallbackFactory?.Invoke(error, info) };
+        }
 
         // A throw out of the handler would escape the commit delivering the report.
         internal static void ReportCaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)

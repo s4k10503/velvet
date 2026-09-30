@@ -1675,6 +1675,11 @@ namespace Velvet
         /// <b>Bubble-up</b>: when the factory returns <c>null</c> or itself throws, the exception
         /// bubbles to the next enclosing Error Boundary, ultimately reaching the root as an
         /// unhandled exception when no boundary catches it.
+        /// <para/>
+        /// Once the component has caught, each later render of it invokes the factory again with the error
+        /// it caught and renders what it returns in place of its children, until the component remounts —
+        /// give it a new <c>key</c> to render its children again. On those renders a factory that throws
+        /// throws from the component's own render, to the boundary above it.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
         public static void UseFallback(Func<Exception, VNode> factory)

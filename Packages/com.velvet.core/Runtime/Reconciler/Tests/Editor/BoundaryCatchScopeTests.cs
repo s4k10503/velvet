@@ -27,7 +27,7 @@ namespace Velvet.Tests
     /// boundary above whether that boundary catches in the walk or aborts its own render. The original error
     /// goes on after it where no boundary above caught the content's — to a boundary that declined the
     /// content's error, with the component stack starting at the component that threw, or to the log.</item>
-    /// <item>What the failed output left behind goes with it: an AnimatePresence it rendered keeps no child
+    /// <item>What the failed output left behind goes with it: an AnimatePresence it rendered keeps no state
     /// of it, an enter it completed without playing reports no completion, and a Portal target keeps none of
     /// the rows it inserted.</item>
     /// <item>An element callback's error below a boundary leaves no effect set up under that element.</item>
@@ -390,7 +390,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheNextUpdateThrowsAgain_Then_ItShowsItsFallbackAgain()
+        public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(UpdatingHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -560,25 +560,17 @@ namespace Velvet.Tests
         };
 
         [Test]
-        public void Given_APresenceWhoseChildOnlyAFailedOutputRendered_When_TheBoundarysParentRendersAnotherChild_Then_NoGhostOfTheFirstAppears()
+        public void Given_APresenceInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoStateOfItIsKept()
         {
             // Arrange
             s_throws = true;
-            using var mounted = V.Mount(_root, V.Component(GhostHostRender, key: "host"), CaughtErrors.Unlogged);
-            var caught = Texts();
-            s_throws = false;
 
             // Act
-            s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
+            using var mounted = V.Mount(_root, V.Component(GhostHostRender, key: "host"), CaughtErrors.Unlogged);
 
-            // Assert — the caught reading is folded in, since a boundary that never caught records nothing. Only
-            // the first child is read: what else the host holds after the parent's render is where Velvet, which
-            // renders a boundary's children again on that render, and React, which keeps the fallback until the
-            // boundary's own state resets, part.
-            Assert.That(
-                caught + "|" + _root.Q("host").Children().Any(child => child.name == "item-a"),
-                Is.EqualTo("fallback|False"));
+            // Assert — the fallback is read with the count, since a mount that rendered nothing records nothing
+            Assert.That(Texts() + ", states " + mounted.Root.Reconciler.Context.PresenceStates.Count,
+                Is.EqualTo("fallback, states 0"));
         }
 
         [Test]

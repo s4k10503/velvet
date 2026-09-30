@@ -992,6 +992,13 @@ namespace Velvet
             int nodeIndex,
             int preCount)
         {
+            if (boundary.CaughtError != null)
+            {
+                // Its output is its fallback (FiberErrorBoundary.OutputOf), whose own errors go to the
+                // boundaries above, as they do while the fallback first expands.
+                ExpandFallbackOutput(walk, boundary, component, position, nodeIndex);
+                return;
+            }
             var commit = walk.Commit!;
             var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
             var fibersBefore = _ctx.BufferPool.RentFiberSet();
@@ -1050,13 +1057,27 @@ namespace Velvet
                     ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
                     return;
                 }
-                FiberErrorBoundary.QueueReport(_ctx, boundary, caught.Error, caught.Info);
+                FiberErrorBoundary.RecordCatch(_ctx, boundary, caught.Error, caught.Info);
             }
             finally
             {
                 // MUTANT_SURVIVES(equivalent): a set not handed back is never read again, and the next rent
                 // makes a new one.
                 _ctx.BufferPool.ReturnFiberSet(fibersBefore);
+            }
+        }
+
+        private void ExpandFallbackOutput(
+            InlineWalk walk, ComponentFiber boundary, ComponentNode component, WalkPosition position, int nodeIndex)
+        {
+            boundary.IsShowingFallback = true;
+            try
+            {
+                ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
+            }
+            finally
+            {
+                boundary.IsShowingFallback = false;
             }
         }
 
