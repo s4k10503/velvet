@@ -18,27 +18,25 @@ namespace Velvet
         public static VNode Render(Props p)
         {
             var outcome = Hooks.Use<DeferredOutcome>(p.Resolve.OutcomeTask, p.Resolve);
-            if (outcome.Error != null)
+            if (outcome.Error != null && p.ErrorElement == null)
             {
-                if (p.ErrorElement == null)
-                {
-                    ExceptionDispatchInfo.Capture(outcome.Error).Throw();
-                }
-
-                return V.Provider(Outcome, outcome, new VNode?[] { p.ErrorElement });
+                ExceptionDispatchInfo.Capture(outcome.Error).Throw();
             }
 
-            var resolved = V.Provider(Outcome, outcome, new VNode?[] { V.Component(Resolved, p) });
+            var content = outcome.Error != null
+                ? V.Provider(Outcome, outcome, new VNode?[] { p.ErrorElement })
+                : V.Provider(Outcome, outcome, new VNode?[] { V.Component(Resolved, p) });
             if (p.ErrorElement == null)
             {
-                return resolved;
+                return content;
             }
 
-            // A throw while rendering the resolved value lands on the errorElement too, as React Router's
-            // AwaitErrorBoundary catches it.
+            // React Router's AwaitErrorBoundary: one boundary around both outcomes, so a throw while rendering the
+            // resolved value lands on the errorElement, and keeps it there, for whatever the Await is handed
+            // next, until the Await remounts; a deferred that fails renders the errorElement without catching.
             return V.ErrorBoundary(
                 error => V.Provider(Outcome, new DeferredOutcome(null, error), new VNode?[] { p.ErrorElement }),
-                new VNode?[] { resolved });
+                new VNode?[] { content });
         }
 
         // React Router's ResolveAwait: a component of its own, so a throw from the render function is a

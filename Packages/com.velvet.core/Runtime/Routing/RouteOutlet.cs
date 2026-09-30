@@ -30,8 +30,25 @@ namespace Velvet
                 children: new VNode[]
                 {
                     V.Provider(RouterContext.OutletContext, outletContext!,
-                        children: new VNode[] { routeElement }),
+                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement!) }),
                 });
+        }
+
+        // One key and one place for every route this Outlet renders, as React Router's boundary has, so a
+        // navigation between routes resets it rather than remounting it — RouteErrorBoundary owns the reset.
+        //
+        // What renders for an error the route's element throws while rendering is its own errorElement, and at the
+        // root the default one, as React Router wraps a route with either in its RenderErrorBoundary — around
+        // an errorElement rendering for a loader error too.
+        private static VNode WithRenderErrorBoundary(
+            RouterLocation? location, RouteMatch match, int depth, ComponentNode routeElement)
+        {
+            var errorElement = match.Route?.ErrorElement
+                ?? (depth == 0 ? V.Component(RouteDefaultErrorElement.Render, key: "velvet-default-error-element") : null);
+            return errorElement == null
+                ? routeElement
+                : V.Component(RouteErrorBoundary.Render,
+                    new RouteErrorBoundary.Props(location, errorElement, routeElement), key: "velvet-route-error-boundary");
         }
 
         // The route this Outlet renders, or false for none. depth indexes location.Matches; the returned

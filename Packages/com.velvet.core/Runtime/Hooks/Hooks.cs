@@ -785,16 +785,21 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns the loader error for the route at the current Outlet depth, or null when the route did
-        /// not error.
+        /// Returns the error the route at the current Outlet depth failed with — the error its element, or a
+        /// route below it, threw while rendering, or else its loader's — or null when the route did not error.
         /// </summary>
         public static Exception? UseRouteError()
         {
             _ = Resolve("UseRouteError");
             _ = UseRouterOrThrow("UseRouteError");
+            var renderError = UseContext(RouteErrorBoundary.RenderError);
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
             var errors = UseContext(RouterContext.Errors);
+            if (renderError != null)
+            {
+                return renderError;
+            }
             if (location?.Matches == null || depth <= 0 || errors == null || errors.Count == 0)
             {
                 return null;
@@ -1678,8 +1683,8 @@ namespace Velvet
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
-        /// give it a new <c>key</c> to render its children again. On those renders a factory that throws
-        /// throws from the component's own render, to the boundary above it.
+        /// give it a new <c>key</c> to render its children again. On those renders a factory that returns
+        /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
         public static void UseFallback(Func<Exception, VNode> factory)

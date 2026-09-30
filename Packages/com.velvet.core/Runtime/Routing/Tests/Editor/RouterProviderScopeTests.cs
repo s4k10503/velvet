@@ -354,19 +354,22 @@ namespace Velvet.Tests
         #region Nested providers
 
         [Test]
-        public void Given_ARouterProviderAsARouteElementOfAnother_When_Mounted_Then_ItsRenderThrows()
+        public void Given_ARouterProviderAsARouteElementOfAnother_When_Mounted_Then_TheRootsDefaultErrorElementShowsItsRenderError()
         {
-            // Arrange
+            // Arrange — the throw is a route element's, so the root route's default errorElement renders it, as
+            // React Router's RenderErrorBoundary does, and logs it
             _other = BuildRouter("/inner", Route("inner"));
             _provided = BuildRouter("/start", Route("start", element: V.RouterProvider(_other)));
             Exception? caught = null;
+            const string Message = "You cannot render a V.RouterProvider inside another V.RouterProvider.";
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Exception, "InvalidOperationException: " + Message);
 
             // Act
             using var mounted = MountUnderBoundary(V.RouterProvider(_provided), ex => caught = ex);
+            mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That(caught?.Message,
-                Is.EqualTo("You cannot render a V.RouterProvider inside another V.RouterProvider."));
+            // Assert — the boundary around the router is read too: what the route caught never reaches it
+            Assert.That((caught?.Message, _root.FindLabelByText(Message) != null), Is.EqualTo(((string?)null, true)));
         }
 
         #endregion

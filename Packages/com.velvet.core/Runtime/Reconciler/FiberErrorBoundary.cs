@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 
 namespace Velvet
@@ -35,7 +36,7 @@ namespace Velvet
             info = null;
             if (fiber?.FallbackFactory == null) return null;
             info = new ErrorInfo(BuildComponentStack(throwingFiber)) { ErrorBoundary = Hooks.ComponentName(fiber) };
-            return fiber.FallbackFactory.Invoke(exception, info);
+            return TryInvokeFactory(fiber, exception, info);
         }
 
         // Walks the throwing fiber's Parent chain to produce a component stack
@@ -58,7 +59,7 @@ namespace Velvet
         {
             info = null;
             if (fiber.Reconciler == null) return false;
-            var fallback = TryRenderFallback(fiber, throwingFiber, originalException, out info);
+            var fallback = RenderFallback(fiber, throwingFiber, originalException, out info);
             if (fallback == null) return false;
             var fallbackTree = new[] { fallback };
             try
@@ -107,13 +108,11 @@ namespace Velvet
             return !fiber.FallbackContentFailed;
         }
 
-        private static VNode? TryRenderFallback(
-            ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException, out ErrorInfo? info)
+        private static VNode? TryInvokeFactory(ComponentFiber fiber, Exception originalException, ErrorInfo info)
         {
-            info = null;
             try
             {
-                return RenderFallback(fiber, throwingFiber, originalException, out info);
+                return fiber.FallbackFactory?.Invoke(originalException, info);
             }
             catch (FiberSuspendSignal)
             {
@@ -188,7 +187,7 @@ namespace Velvet
         // produced, so propagation continues.
         private static bool CatchInTheWalk(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
-            var fallback = TryRenderFallback(fiber, throwingFiber, exception, out var info);
+            var fallback = RenderFallback(fiber, throwingFiber, exception, out var info);
             if (fallback == null) return false;
             throw new BoundaryCaughtSignal(fiber, new[] { fallback }, throwingFiber, exception, info!);
         }
@@ -202,12 +201,16 @@ namespace Velvet
         // A boundary that has caught renders its fallback from then on, as React's does until it remounts: a
         // re-render does not bring its children back, and changing its key is what does. Its body still runs, so
         // its hooks keep their order and the factory it registers is the current one, which is handed the error
-        // it caught. The body's output is discarded as an aborted render's is.
+        // it caught. The body's output is discarded as an aborted render's is. A factory that gives no fallback,
+        // by returning null or throwing, passes the error it was handed to the boundaries above, as it does at
+        // the catch: that error is thrown from this boundary's own render.
         internal static VNode?[] OutputOf(ComponentFiber fiber, VNode?[] bodyOutput)
         {
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
             FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber);
-            return new[] { fiber.FallbackFactory?.Invoke(error, info) };
+            var fallback = TryInvokeFactory(fiber, error, info);
+            if (fallback == null) ExceptionDispatchInfo.Capture(error).Throw();
+            return new[] { fallback };
         }
 
         // A throw out of the handler would escape the commit delivering the report.

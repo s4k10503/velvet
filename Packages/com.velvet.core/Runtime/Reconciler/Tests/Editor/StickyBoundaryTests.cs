@@ -15,6 +15,8 @@ namespace Velvet.Tests
     /// <item>Given a new key, it remounts and renders its children.</item>
     /// <item>An error its fallback's content throws on such a render goes to the boundary above, whether its
     /// parent's render or its own update renders it.</item>
+    /// <item>A factory that gives no fallback on such a render passes the error to the boundary above, as it does
+    /// at the catch.</item>
     /// <item>With the StrictMode double render on, rendering its fallback again reports no impure render.</item>
     /// <item>What its body renders on those renders goes back to the pool.</item>
     /// </list>
@@ -28,6 +30,7 @@ namespace Velvet.Tests
         private static Action<int> s_setKey;
         private static Action<int> s_setOwnTick;
         private static int s_innerFactoryRuns;
+        private static bool s_noFallback;
 
         private VisualElement _root;
 
@@ -41,6 +44,7 @@ namespace Velvet.Tests
             s_setKey = null;
             s_setOwnTick = null;
             s_innerFactoryRuns = 0;
+            s_noFallback = false;
             FiberStrictMode.Enabled = false;
         }
 
@@ -123,6 +127,24 @@ namespace Velvet.Tests
             // Assert — the inner factory's runs are read with it: one that caught the content's error again runs
             // it a second time before the boundary above takes it
             Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 1"));
+        }
+
+        [Test]
+        public void Given_ABoundaryShowingItsFallback_When_ItsFactoryGivesNoFallbackOnALaterRender_Then_TheBoundaryAboveCatchesTheError()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(DecliningHostRender, key: "host"), CaughtErrors.Unlogged);
+            var caught = Texts();
+            s_throws = false;
+            s_noFallback = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the first catch is folded in, since a boundary that never caught renders its children
+            Assert.That(caught + "|" + Texts(), Is.EqualTo("inner-fallback|outer-fallback"));
         }
 
         // GREEN_ON_BASE(characterization): the merge base double-renders a boundary's body, which matches its commit.
@@ -247,6 +269,28 @@ namespace Velvet.Tests
         {
             Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
             return V.Component(InnerBoundaryRender, tick, key: "inner");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DecliningInnerRender(int tick)
+        {
+            Hooks.UseFallback(_ => s_noFallback ? null : V.Label(text: "inner-fallback"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DecliningOuterRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(DecliningInnerRender, tick, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DecliningHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(DecliningOuterRender, tick, key: "outer") });
         }
 
         [Component(Compiler = false)]

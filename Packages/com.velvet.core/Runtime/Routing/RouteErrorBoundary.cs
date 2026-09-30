@@ -1,0 +1,34 @@
+#nullable enable
+using System;
+
+namespace Velvet
+{
+    // React Router's RenderErrorBoundary: what an Outlet wraps a route's element in where the route declares an
+    // errorElement, and the root route in any case, so an error its element or a route below it throws while
+    // rendering renders that errorElement, which reads the error through Hooks.UseRouteError. Not beside its
+    // factory's callers in RouteOutlet: this body calls hooks.
+    internal static class RouteErrorBoundary
+    {
+        // React Router's RouteErrorContext, for an error caught while rendering.
+        internal static readonly ComponentContext<Exception?> RenderError = ComponentContext<Exception?>.Create(null);
+
+        internal sealed record Props(RouterLocation? Location, VNode ErrorElement, VNode Element);
+
+        // A boundary keeps what it caught until it remounts (FiberErrorBoundary.OutputOf); this one lets it go when
+        // the location changes, as React Router's getDerivedStateFromProps does, so navigating away from an
+        // errored route, or back to it, renders the route again. The boundary itself stays mounted, as React
+        // Router's does, so the elements below it are not remounted by a navigation that leaves no error.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        public static VNode Render(Props p)
+        {
+            var shownAt = Hooks.UseRef<RouterLocation>();
+            if (!ReferenceEquals(shownAt.Current, p.Location))
+            {
+                FiberAmbientStack.Current!.CaughtError = null;
+                shownAt.Set(p.Location);
+            }
+            Hooks.UseFallback(error => V.Provider(RenderError, error, new VNode?[] { p.ErrorElement }));
+            return p.Element;
+        }
+    }
+}

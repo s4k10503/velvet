@@ -19,6 +19,9 @@ namespace Velvet.Tests
     /// <item>A failed task, or a throw while rendering the value, renders the errorElement, beneath which
     /// <c>UseAsyncError</c> reads the exception; without an errorElement a failed task propagates to the
     /// nearest error boundary.</item>
+    /// <item>After a throw while rendering the value, the errorElement stays for a deferred handed to the same
+    /// <c>V.Await</c> afterwards, as React Router's AwaitErrorBoundary keeps it until it remounts; an Await
+    /// remounted after a failed task renders the new deferred's value.</item>
     /// <item>Element children read the value through <c>UseAsyncValue</c>.</item>
     /// <item>A loader returning a deferred value commits its navigation before the value arrives.</item>
     /// </list>
@@ -43,6 +46,8 @@ namespace Velvet.Tests
             s_errorElement = null;
             s_asyncError = null;
             s_boundaryError = null;
+            s_setAwaitGeneration = null;
+            s_setAwaitTick = null;
         }
 
         [TearDown]
@@ -75,6 +80,22 @@ namespace Velvet.Tests
             => V.Suspense(
                 fallback: V.Label(text: "loading"),
                 children: new VNode[] { V.Await(s_deferred!, V.Component(AsyncValueReader, key: "reader")) });
+
+        private static Action<int>? s_setAwaitGeneration;
+        private static Action<int>? s_setAwaitTick;
+
+        // Keys the Await by a generation, so a new generation remounts it; the tick renders it again as it is.
+        [Component(Compiler = false)]
+        private static VNode KeyedAwaitHost()
+        {
+            var (generation, setGeneration) = Hooks.UseState(0);
+            var (_, setTick) = Hooks.UseState(0);
+            s_setAwaitGeneration = setGeneration;
+            s_setAwaitTick = setTick;
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Await(s_deferred!, s_render, s_errorElement, key: "await-" + generation) });
+        }
 
         [Component]
         private static VNode AsyncValueReader() => V.Label(text: "read-" + Hooks.UseAsyncValue<string>());
@@ -223,6 +244,45 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_asyncError?.Message, Is.EqualTo("deferred-boom"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base renders a remounted Await's new value after a failed task.
+        // React Router's AwaitErrorBoundary resets on a remount alone, and a remount doing so is what this pins.
+        [Test]
+        public void Given_AnAwaitWhoseDeferredFailed_When_ItRemountsWithADeferredThatResolves_Then_ItRendersTheValue()
+        {
+            // Arrange
+            s_deferred = new Deferred<string>(VelvetTask.FromException<string>(new InvalidOperationException("deferred-boom")));
+            s_errorElement = V.Component(AsyncErrorReader, key: "error");
+            using var mounted = V.Mount(_root, V.Component(KeyedAwaitHost, key: "host"));
+            var failed = HasLabel(_root, "await-error");
+            s_deferred = new Deferred<string>(VelvetTask.FromResult("ready"));
+
+            // Act
+            s_setAwaitGeneration!.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((failed, HasLabel(_root, "value-ready")), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnAwaitThatCaughtAThrowRenderingItsValue_When_ItIsHandedADeferredThatResolves_Then_ItKeepsItsErrorElement()
+        {
+            // Arrange
+            s_deferred = new Deferred<string>(VelvetTask.FromResult("first"));
+            s_render = _ => throw new InvalidOperationException("render-boom");
+            s_errorElement = V.Component(AsyncErrorReader, key: "error");
+            using var mounted = V.Mount(_root, V.Component(KeyedAwaitHost, key: "host"), CaughtErrors.Unlogged);
+            s_render = value => V.Label(text: "value-" + value);
+            s_deferred = new Deferred<string>(VelvetTask.FromResult("ready"));
+
+            // Act
+            s_setAwaitTick!.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((HasLabel(_root, "await-error"), s_asyncError?.Message), Is.EqualTo((true, "render-boom")));
         }
 
         [Test]
