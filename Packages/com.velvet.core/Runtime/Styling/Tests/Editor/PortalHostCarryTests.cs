@@ -445,7 +445,8 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Portal(UILayer.Overlay, new VNode[] { V.Div(name: "overlaid") }));
 
             // Assert — a bare element on the host's panel holds every initial value; the root's offsets and size are
-            // compared with the panel's root, which it fills.
+            // compared with the panel's root, which it fills. Overflow and translate have no resolved reading, so
+            // their inline pins are read instead.
             var hostRoot = HostRootHolding("overlaid");
             var bare = new VisualElement();
             hostRoot.panel.visualTree.Add(bare);
@@ -455,17 +456,17 @@ namespace Velvet.Tests
             var inline = hostRoot.style;
             var reading = string.Join(" ",
                 BoxLonghands(root) == BoxLonghands(bare.resolvedStyle),
-                inline.backgroundImage.keyword, inline.overflow.value, inline.translate.keyword,
+                inline.overflow.value, inline.translate.keyword,
                 root.position, root.left, root.top, root.right, root.bottom,
                 root.width == panel.width, root.height == panel.height,
                 Rendered("overlaid").resolvedStyle.color == Color.green);
             bare.RemoveFromHierarchy();
-            Assert.That(reading, Is.EqualTo("True None Visible None Absolute 0 0 0 0 True True True"));
+            Assert.That(reading, Is.EqualTo("True Visible None Absolute 0 0 0 0 True True True"));
         }
 
-        // Every longhand the fixture sets that a resolved style reads, bar the offsets and size.
+        // The longhands a resolved style reads, bar the offsets and size.
         private static string BoxLonghands(IResolvedStyle style) => string.Join(" ",
-            style.backgroundColor,
+            style.backgroundColor, style.backgroundImage,
             style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth,
             style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius,
             style.borderBottomLeftRadius,
