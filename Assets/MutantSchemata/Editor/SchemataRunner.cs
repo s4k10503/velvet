@@ -12,10 +12,9 @@ namespace Velvet.MutantSchemata.Editor
 {
     // Runs a mutation campaign's session: the mutants scripts/test_quality/mutation_check.py placed in
     // one guarded tree, each armed by the variable its switch reads, in one editor. The domain is
-    // reloaded before every stage, so each stage starts from the statics a fresh editor starts from,
-    // and the switch reads the armed id in its static initializer. Everything the runner needs across a
-    // reload is in a file under the plan's output directory, written before anything that can reload
-    // is asked for: a reload drops every pending delayCall and every registered callback.
+    // reloaded before every stage so the switch reads the armed id in its static initializer, which the
+    // `armed` each stage records shows. Everything the runner needs across a reload is in a file under
+    // the plan's output directory, written before anything that can reload is asked for.
     [InitializeOnLoad]
     internal static class SchemataRunner
     {
@@ -57,8 +56,7 @@ namespace Velvet.MutantSchemata.Editor
         // `arm`: the next item's variable is not set yet. `start`: the domain the stage needs has been
         // asked for, and whichever domain reads this next is it. `running`: a job is in flight.
         // `cancelling`: a job was cancelled and has not stopped. `draining`: a job reported its result and
-        // is still running the tasks after that -- leaving play mode, restoring the scene setup -- which a
-        // reload asked for now would cut off, and the next job then stalls on the scene they left.
+        // the next stage waits until the framework has released it and play mode is left.
         [Serializable]
         internal sealed class State
         {
@@ -115,8 +113,7 @@ namespace Velvet.MutantSchemata.Editor
             var state = ReadState();
             if (state.phase == "running")
             {
-                // A reload inside a run, as entering and leaving play mode make: the job survives it,
-                // the callbacks do not.
+                // A reload inside a run: the job goes on, and its callbacks are registered again.
                 Register();
                 return;
             }
@@ -302,8 +299,7 @@ namespace Velvet.MutantSchemata.Editor
                 recorded.cancelled = TestRunnerApi.CancelTestRun(state.guid);
                 if (recorded.cancelled)
                 {
-                    // A cancelled job skips the task that invokes RunFinished, so the stage is closed here
-                    // once the job reports it is no longer running.
+                    // Closed from AwaitCancel once the job is released, rather than from RunFinished.
                     state.phase = "cancelling";
                     WriteState(state);
                     EditorApplication.update += AwaitCancel;
@@ -315,10 +311,8 @@ namespace Velvet.MutantSchemata.Editor
         private static readonly Type? JobHolder =
             typeof(TestRunnerApi).Assembly.GetType("UnityEditor.TestTools.TestRunner.TestRun.TestJobDataHolder");
 
-        // Whether the framework has let go of the job. Not `TestRunnerApi.IsRunning`: that turns false when
-        // the job's last task returns, one editor update before the job is unregistered, and a reload in
-        // that update leaves it registered as running -- `TestJobDataHolder.ResumeRunningJobs` then starts
-        // it again from its first task beside the next job.
+        // Whether the framework has let go of the job. Not `TestRunnerApi.IsRunning`, which in the
+        // prototype let the next stage's reload restart a finished job beside the next one.
         private static bool Released(string guid)
         {
             if (JobHolder == null || guid.Length == 0) return true;

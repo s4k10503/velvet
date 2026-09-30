@@ -2192,10 +2192,9 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
     mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
 
     A mutant runs the stages its own launches would: its area's assemblies first where the area is
-    narrowed, stopping at a kill there, then the whole suite. The session stops each at its first
-    failing case rather than running the stage out, since the verdict is decided there; `killers` is
-    then the cases that failed before the stop. A PlayMode stage is never stopped: a job cancelled in
-    play mode leaves its scene modified, and the next job waits on a dialog batchmode cannot answer.
+    narrowed, stopping at a kill there, then the whole suite. An EditMode stage is cancelled at its first
+    failing case rather than run out, since the verdict is decided there, so `killers` is the cases that
+    failed before the stop; a PlayMode stage runs out.
     """
     stop = platform == "EditMode"
     opening = []
