@@ -30,7 +30,20 @@ namespace Velvet
         // misclassified context's update still drains on its normal frame boundary. A context-scoped flag
         // would instead risk diverging lane classification from the actual synchronous-flush decision, so the
         // process-global flag is kept deliberately.
-        internal static bool IsInDiscreteEvent;
+        internal static bool IsInDiscreteEvent
+        {
+            get => s_isInDiscreteEvent;
+            set
+            {
+                var ending = s_isInDiscreteEvent && !value;
+                s_isInDiscreteEvent = value;
+                // A handler bracketed by FiberDiscreteEventScope has drained the queue already; one that sets
+                // the flag itself would otherwise leave what it deferred to the next discrete event.
+                if (ending) ScheduleDeferredAwaitContinuations();
+            }
+        }
+
+        private static bool s_isInDiscreteEvent;
 
         // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
         // made while these are open is credited to each of them that still owns its slot (see
@@ -110,11 +123,16 @@ namespace Velvet
 
         internal static void DeferAwaitContinuation(Action continuation) => DeferredAwaitContinuations.Enqueue(continuation);
 
+        // VelvetMainThread.Capture drops the drain it had posted, and this queue goes with it.
+        internal static void DiscardDeferredAwaitContinuations() => DeferredAwaitContinuations.Clear();
+
         // Reached as each scope closes. Inside a discrete handler FiberDiscreteEventScope drains the queue once
         // the handler returns, so the handler's own later writes land first; elsewhere the drain waits for the
         // main thread's next tick.
         private static void ScheduleDeferredAwaitContinuations()
         {
+            // MUTANT_SURVIVES(equivalent): a drain posted with nothing queued, or one posted beside the discrete
+            // handler's own, finds the queue empty and runs nothing.
             if (IsInDiscreteEvent || DeferredAwaitContinuations.Count == 0)
             {
                 return;
@@ -365,6 +383,7 @@ namespace Velvet
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             IsRenderingTransitionLane = drainsTransitionWork;
+            var suspended = false;
             try
             {
                 FiberRenderer.RenderAndReconcile(fiber, flushBudget);
@@ -373,7 +392,7 @@ namespace Velvet
             {
                 // A flush of this fiber alone has no ancestor walk on the stack to hand the signal to.
                 FiberRenderer.SuspendPassOwner(fiber);
-                return;
+                suspended = true;
             }
             finally
             {
@@ -382,7 +401,7 @@ namespace Velvet
             // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
             // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
             // would observe null. ContinueReconcile's terminal chunk runs these once the work completes.
-            if (fiber.Reconciler?.HasPendingWork != true)
+            if (!suspended && fiber.Reconciler?.HasPendingWork != true)
             {
                 SettleCompletedTransition(fiber);
                 // Bottom-up commit — descendant effects run before this fiber's so a
@@ -550,6 +569,8 @@ namespace Velvet
                 {
                     // Same exit as FlushState's: the transition this slice belonged to has not committed.
                     FiberRenderer.SuspendPassOwner(fiber);
+                    var suspendedContext = fiber.Reconciler?.Context;
+                    if (suspendedContext != null) FiberEffects.CommitStrandedLayoutWork(suspendedContext);
                     return;
                 }
                 if (fiber.PendingReconcileDrainsTransitionWork)
@@ -643,7 +664,7 @@ namespace Velvet
             {
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
-                    RecordOutcome(fiber, slot, failure);
+                    RecordOutcome(fiber, slot, Dispatch(slot), failure);
                     slot.OwnerDepth--;
                     // A callback that enrolled nothing has settled the moment it returns, whatever else the
                     // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
@@ -667,14 +688,25 @@ namespace Velvet
 
         // React's startTransition catches the callback's error and dispatches it as the isPending update, so the
         // declaring component throws it from its Transition-lane render to the boundary above it, and the caller
-        // never sees it. Each call's outcome replaces the one before, as each is an update to that one state.
-        private static void RecordOutcome(ComponentFiber fiber, HookTransitionSlot slot, ExceptionDispatchInfo? failure)
+        // never sees it. That update takes its place in the queue where the callback returns, an async action's
+        // too, whose settlement only resolves it later, so the outcome rendered is that of the call whose callback
+        // returned last: a later return takes down an error not yet rendered, and an action settling behind a
+        // later return writes nothing.
+        private static int Dispatch(HookTransitionSlot slot)
         {
-            slot.PendingError = failure;
-            if (failure != null)
+            slot.PendingError = null;
+            return ++slot.OutcomeSequence;
+        }
+
+        private static void RecordOutcome(
+            ComponentFiber fiber, HookTransitionSlot slot, int sequence, ExceptionDispatchInfo? failure)
+        {
+            if (failure == null || sequence != slot.OutcomeSequence)
             {
-                RequestTransitionRerender(fiber);
+                return;
             }
+            slot.PendingError = failure;
+            RequestTransitionRerender(fiber);
         }
 
         private static void MarkTransitionWorkQueued(ComponentFiber fiber)
@@ -769,12 +801,21 @@ namespace Velvet
             slot.OwnerDepth++;
             var ownerGeneration = slot.OwnerGeneration;
             var suspended = false;
+            var sequence = 0;
             ExceptionDispatchInfo? failure = null;
             try
             {
                 // The call stays inside the try: asyncUpdates need not be an async method, and one that is not
                 // can throw before handing a task back, which must still reach the release below.
-                var action = RunInTransitionScope(slot, asyncUpdates);
+                VelvetTask action;
+                try
+                {
+                    action = RunInTransitionScope(slot, asyncUpdates);
+                }
+                finally
+                {
+                    sequence = Dispatch(slot);
+                }
                 // A task still pending where the scope has already closed is a callback that suspended, since
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
@@ -793,7 +834,7 @@ namespace Velvet
                 // must not write over whatever took the slot since — see ReleaseTransitionSlotOwnership.
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
-                    RecordOutcome(fiber, slot, failure);
+                    RecordOutcome(fiber, slot, sequence, failure);
                     slot.AsyncOwnerDepth--;
                     slot.OwnerDepth--;
                     // Same slot-scoped exit as the sync overload.

@@ -153,9 +153,10 @@ namespace Velvet
         // async action is still awaiting. An owner compares its own value before touching the flags above,
         // so a task settling after that release cannot clear a pending state a later owner is managing.
         public int OwnerGeneration;
-        // The error the last call's callback threw or its action faulted with, thrown from the declaring
-        // component's next Transition-lane render — see FiberWorkLoop.RecordOutcome.
+        // The error of the call whose callback returned last, thrown from the declaring component's next
+        // Transition-lane render, and the count of those returns that orders them — see FiberWorkLoop.Dispatch.
         public System.Runtime.ExceptionServices.ExceptionDispatchInfo? PendingError;
+        public int OutcomeSequence;
         public TransitionStarter Starter = default!;
     }
 

@@ -1079,6 +1079,10 @@ namespace Velvet
         // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
         public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
 
+        // The fiber whose Hooks.Use read threw the Suspense signal last, which is the read a pass the signal
+        // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
+        internal ComponentFiber? SuspendingReader;
+
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
         // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
         // NextCaughtErrorSequence at the catch.

@@ -1695,15 +1695,12 @@ namespace Velvet
                 var existing = slots[index];
                 // AreEqualObjects, not AreEqual: ResourceKey is declared object, which is exactly the
                 // erasure the comment over AreEqualObjects warns against.
-                if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey))
+                // The StrictMode re-run of the render that read this resource is the same attempt, and React's
+                // second invocation keeps the thenable the first one tracked, whatever key it passes.
+                if (existing is FiberAsyncResource<T> typed
+                    && (ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey) || IsStrictDiagnosticPass(fiber)))
                 {
                     resource = typed;
-                }
-                else if (IsStrictDiagnosticPass(fiber) && existing is FiberAsyncResource<T>)
-                {
-                    // The StrictMode re-run of the render that read this resource is the same attempt, and
-                    // React's second invocation keeps the thenable the first one tracked.
-                    resource = (FiberAsyncResource<T>)existing;
                 }
                 else
                 {
@@ -1726,12 +1723,16 @@ namespace Velvet
                 }
             }
 
-            return resource.Status switch
+            switch (resource.Status)
             {
-                FiberAsyncResourceStatus.Success => resource.Result,
-                FiberAsyncResourceStatus.Error => throw resource.Error!,
-                _ => throw FiberSuspendSignal.Instance,
-            };
+                case FiberAsyncResourceStatus.Success:
+                    return resource.Result;
+                case FiberAsyncResourceStatus.Error:
+                    throw resource.Error!;
+                default:
+                    fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    throw FiberSuspendSignal.Instance;
+            }
         }
 
         #endregion

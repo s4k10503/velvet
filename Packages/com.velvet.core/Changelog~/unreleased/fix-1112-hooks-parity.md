@@ -14,5 +14,5 @@
 
 - A render that a component's own update starts no longer throws the Suspense signal out of the frame
   when something in it suspends, in any slice of a time-sliced render. The nearest boundary above renders
-  its fallback; with none, the suspending component keeps its output and each render that suspended is
-  retried when the resource resolves.
+  again, and the updated component renders again inside it; with none, each render that suspended is
+  retried when a resource of the component whose read suspended it resolves.

@@ -528,7 +528,7 @@ namespace Velvet
                     // the committed state live (a memo hit legitimately shares nodes across the two).
                     fiber.PreviousTree = newTree;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
-                    fiber.SuspendedWithoutBoundary = false;
+                    fiber.SuspendedOn = null;
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
@@ -749,9 +749,10 @@ namespace Velvet
         #region FiberAsyncResource resolve commit path
 
         // A suspend that reaches the fiber whose pass it is, with no walk above that pass for a Suspense
-        // expansion to catch it in. React's nearest boundary shows its fallback; with no boundary React commits
-        // nothing and retries the render when the resource resolves. Searched from the parent: a boundary this
-        // fiber renders has already caught whatever suspended inside it.
+        // expansion to catch it in. The boundary above renders again with this fiber dirty, so its walk renders
+        // this fiber's update again where that expansion catches the suspend: a memoized fiber left clean
+        // would bail there on equal props, and the update it holds would never render. Searched from the
+        // parent: a boundary this fiber renders has already caught whatever suspended inside it.
         internal static void SuspendPassOwner(ComponentFiber fiber)
         {
             var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
@@ -760,31 +761,33 @@ namespace Velvet
                 SuspendWithoutBoundary(fiber);
                 return;
             }
+            fiber.InvalidateMemoCache();
+            FiberWorkLoop.RequestRenderFromHook(fiber);
             boundary.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(boundary);
         }
 
         private static void SuspendWithoutBoundary(ComponentFiber fiber)
         {
-            fiber.SuspendedWithoutBoundary = true;
+            fiber.SuspendedOn = fiber.Reconciler!.Context.SuspendingReader;
             FiberLogger.LogWarning("Suspense",
                 $"FiberRenderer: {Hooks.ComponentName(fiber)} suspended with no Suspense boundary above it;" +
                 " it renders again when the resource resolves. Wrap with V.Suspense().");
         }
 
-        // Every marked pass on the walk is retried, not only the outermost: an inner one the outer retry would
-        // bail on, memoized with equal props, would otherwise never render what it suspended on. The outer
-        // retry subsumes the inner ones it reaches, since they are then dirty.
+        // Every pass on the walk that suspended on this fiber's read is retried, not only the outermost: an inner
+        // one the outer retry would bail on, memoized with equal props, would otherwise never render what it
+        // suspended on. The outer retry subsumes the inner ones it reaches, since they are then dirty.
         private static bool RetrySuspendedPasses(ComponentFiber fiber)
         {
             var retried = false;
             for (var current = fiber; current != null; current = current.Parent)
             {
-                if (!current.SuspendedWithoutBoundary)
+                if (!ReferenceEquals(current.SuspendedOn, fiber))
                 {
                     continue;
                 }
-                current.SuspendedWithoutBoundary = false;
+                current.SuspendedOn = null;
                 current.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(current);
                 retried = true;

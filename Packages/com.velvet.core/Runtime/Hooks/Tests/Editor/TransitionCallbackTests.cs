@@ -1,4 +1,6 @@
 using System;
+using System.Text.RegularExpressions;
+using UnityEngine;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
@@ -15,8 +17,10 @@ namespace Velvet.Tests
     /// thread's await is not held back.</item>
     /// <item>An error a callback throws never reaches the caller: it is thrown from the declaring component's
     /// Transition-lane render to the error boundary above it, that render being its own or an ancestor's pass
-    /// reaching it. The last call's outcome is the one rendered, and a starter whose component has unmounted
-    /// drops its error, for either overload.</item>
+    /// reaching it. The outcome rendered is that of the call whose callback returned last, an action's
+    /// settlement included, and a starter whose component has unmounted drops its error, for either overload.</item>
+    /// <item>A continuation held back that throws is logged and does not keep the ones behind it from running,
+    /// and one held back while a handler set the discrete flag itself runs once the flag clears.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -33,6 +37,7 @@ namespace Velvet.Tests
             s_throwingStart = default;
             s_filterStart = default;
             s_filterSet = default;
+            FiberWorkLoop.IsInDiscreteEvent = false;
         }
 
         #region An await of a completed VelvetTask
@@ -188,7 +193,58 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>("starter-fallback")?.text, Is.EqualTo("second"),
-                "Each call's outcome replaces the one before, as each is an update to React's one isPending state");
+                "The outcome rendered is that of the call whose callback returned last");
+        }
+
+        [Test]
+        public void Given_AnActionThatFaultsAfterALaterCallReturned_When_TheTransitionLaneRendersBeforeTheLaterOneSettles_Then_NoErrorIsThrown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
+                new MountOptions((_, _) => { }));
+            var first = new VelvetTaskCompletionSource();
+            var second = new VelvetTaskCompletionSource();
+            s_throwingStart.Invoke(async () =>
+            {
+                await first.Task;
+                throw new InvalidOperationException("first");
+            });
+            s_throwingStart.Invoke(async () => await second.Task);
+
+            // Act
+            first.TrySetResult();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("starter-out")?.text, Is.EqualTo("content"),
+                "React dispatches each call's outcome where its callback returns, so the later call's pending one is last");
+        }
+
+        [Test]
+        public void Given_AnActionStartedInsideACallbackThatThenThrows_When_TheActionsAwaitResumes_Then_TheCallbacksErrorIsThrown()
+        {
+            // Arrange — the action returns a completed task, so its settlement is an await the open scope holds back
+            using var mounted = V.Mount(_root, V.Component(StarterBoundaryRender, key: "starter-boundary"),
+                new MountOptions((_, _) => { }));
+            try
+            {
+                s_throwingStart.Invoke(() =>
+                {
+                    s_throwingStart.Invoke(() => VelvetTask.CompletedTask);
+                    throw new InvalidOperationException("outer");
+                });
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("starter-fallback")?.text, Is.EqualTo("outer"),
+                "The action's callback returned first, so the outer callback's error is the outcome rendered");
         }
 
         // GREEN_ON_BASE(characterization): the base rethrew the first error to the caller and rendered nothing.
@@ -259,6 +315,60 @@ namespace Velvet.Tests
 
             // Assert — a fault published as unobserved is logged, which this reads
             LogAssert.NoUnexpectedReceived();
+        }
+
+        #endregion
+
+        #region Held-back continuations
+
+        [Test]
+        public void Given_TwoContinuationsHeldBackByATransition_When_TheFirstThrows_Then_TheSecondStillRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            var secondRan = false;
+            LogAssert.Expect(LogType.Exception, new Regex("continuation boom"));
+            try
+            {
+                s_hostStart.Invoke(() =>
+                {
+                    var awaiter = VelvetTask.CompletedTask.GetAwaiter();
+                    awaiter.OnCompleted(() => throw new InvalidOperationException("continuation boom"));
+                    awaiter.OnCompleted(() => secondRan = true);
+                });
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            VelvetMainThread.RunHandoffs();
+
+            // Assert — the expected log is what says the first one's error was published rather than dropped
+            Assert.That(secondRan, Is.True, "A continuation that throws is logged and the drain goes on to the next");
+        }
+
+        // GREEN_ON_BASE(characterization): the base ran this continuation inline, holding none back to lose.
+        // What this pins is that clearing the flag hands what the scope held back to the next tick.
+        [Test]
+        public void Given_AHandlerThatSetsTheDiscreteFlagItself_When_ItClearsTheFlag_Then_TheContinuationItsTransitionHeldBackRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            var ranPastTheAwait = false;
+            FiberWorkLoop.IsInDiscreteEvent = true;
+            s_hostStart.Invoke(async () =>
+            {
+                await VelvetTask.CompletedTask;
+                ranPastTheAwait = true;
+            });
+
+            // Act
+            FiberWorkLoop.IsInDiscreteEvent = false;
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.That(ranPastTheAwait, Is.True, "Clearing the flag posts the drain a bracketed handler runs itself");
         }
 
         #endregion

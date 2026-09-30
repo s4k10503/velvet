@@ -8,8 +8,8 @@
 
 - An error a `startTransition` callback throws, or its `async` action faults with, no longer reaches the
   caller: it is thrown from the declaring component's next Transition-lane render to the error boundary
-  above it, as React's `startTransition` dispatches it as the `isPending` update, and a later call's outcome
-  replaces an error not yet rendered. Once the declaring component has unmounted, the error is dropped. It
+  above it, as React's `startTransition` dispatches it as the `isPending` update where the callback returns,
+  and the outcome rendered is that of the call whose callback returned last, an `async` action's included. Once the declaring component has unmounted, the error is dropped. It
   used to propagate to the caller, or to be logged as an unobserved fault for an `async` action.
 
 - Inside a `startTransition` callback, an `await` of a `VelvetTask` that had already completed suspends,

@@ -182,11 +182,11 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
-        /// Set where a pass this fiber started on its own suspended with no Suspense boundary to catch it.
-        /// Cleared where a pass of this fiber next returns without throwing, and where a resolved resource
-        /// below it asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
+        /// The fiber whose read suspended a pass this fiber started on its own, where no Suspense boundary
+        /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
+        /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
         /// </summary>
-        internal bool SuspendedWithoutBoundary { get; set; }
+        internal ComponentFiber? SuspendedOn { get; set; }
 
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently

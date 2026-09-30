@@ -312,9 +312,12 @@ namespace Velvet.Tests
                 threw = true;
             }
 
-            // Assert — the lane is folded in, since a callback that was never reached throws nothing either
-            Assert.That((threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
-                Is.EqualTo((false, true)),
+            // Assert — the lane and the error it carries are folded in, since a callback that was never reached
+            // throws nothing either
+            Assert.That(
+                (threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                    PendingErrorMessage(s_transitionFiber)),
+                Is.EqualTo((false, true, "transition callback")),
                 "React's startTransition keeps a callback's error from its caller and renders it on the transition's lane");
         }
 
@@ -518,11 +521,24 @@ namespace Velvet.Tests
                 threw = true;
             }
 
-            // Assert — the lane is folded in, since a callback that was never reached throws nothing either
+            // Assert — the lane and the error it carries are folded in, since a callback that was never reached
+            // throws nothing either
             Assert.That(
-                (threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
-                Is.EqualTo((false, true)),
+                (threw, s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                    PendingErrorMessage(s_transitionFiber)),
+                Is.EqualTo((false, true, "transition callback")),
                 "The action's error is kept from the task and rendered on the transition's lane, as React's is");
+        }
+
+        // Read by name so this file still builds on a tree without the field, where the case fails instead.
+        private static string PendingErrorMessage(ComponentFiber fiber)
+        {
+            var field = typeof(HookTransitionSlot).GetField("PendingError",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic);
+            var error = field?.GetValue(fiber.TransitionSlots[0])
+                as System.Runtime.ExceptionServices.ExceptionDispatchInfo;
+            return error?.SourceException.Message;
         }
 
         // The case above observes the unwind's effect on the fiber, which a leaked scope leaves looking the

@@ -13,10 +13,12 @@ namespace Velvet.Tests
     /// Pins what a suspend does where no Suspense expansion is on the stack to catch it: in the render a
     /// component's own flush starts.
     /// <list type="bullet">
-    /// <item>With no boundary above, the flush does not throw, the component keeps its previous output, and the
-    /// resource resolving renders it again with the value. Where the pass that suspended was an ancestor's, the
-    /// resolve retries that ancestor's pass.</item>
-    /// <item>With a boundary above, that boundary renders again and shows its fallback.</item>
+    /// <item>With no boundary above, the flush does not throw. A resource of the component whose read suspended
+    /// the pass resolving retries that pass, an ancestor's included, and every pass on the way that suspended
+    /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
+    /// A component whose own render suspended before it reconciled anything shows what it showed before.</item>
+    /// <item>With a boundary above, that boundary renders again and shows its fallback, and the component whose
+    /// update suspended renders that update inside it, a memoized one included.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -37,6 +39,11 @@ namespace Velvet.Tests
             s_outerSetTick = default;
             s_innerMemoized = false;
             s_parentFiber = null;
+            s_pageSetId = default;
+            s_otherSource = null;
+            s_readerSetOwn = default;
+            s_readerFiber = null;
+            s_twoReadersRenders = 0;
         }
 
         [Test]
@@ -62,20 +69,18 @@ namespace Velvet.Tests
         [Test]
         public void Given_AParentUpdateThatSuspendsItsChildWithNoBoundary_When_TheResourceResolves_Then_TheParentsPassIsRetried()
         {
-            // Arrange — the child comes before the parent's own label, so a pass that stopped at the child left
-            // that label unpatched
+            // Arrange
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             using var mounted = V.Mount(_root, V.Component(KeyedParentRender, key: "parent"));
             s_parentSetKey.Invoke(1);
             mounted.FlushStateForTest();
-            var whileSuspended = Texts();
 
             // Act
             s_source.TrySetResult(5);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((whileSuspended, Texts()), Is.EqualTo(("child:0|parent:0", "child:5|parent:1")),
+            Assert.That(Texts(), Is.EqualTo("child:5|parent:1"),
                 "The resolve retries the parent's pass, which commits the parent's own output with the child's value");
         }
 
@@ -161,6 +166,49 @@ namespace Velvet.Tests
                 "The boundary above a component whose own update suspends renders again and shows its fallback");
         }
 
+        [Test]
+        public void Given_AMemoizedComponentUnderABoundaryWhoseOwnUpdateSuspends_When_TheResourceResolves_Then_ItShowsTheUpdateWithTheValue()
+        {
+            // Arrange — the boundary's walk reaches the memoized page with equal props, so only a page left dirty
+            // renders its update there
+            using var mounted = V.Mount(_root, V.Component(PageBoundaryHostRender, key: "page-host"));
+            s_pageSetId.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("page:1|child:5"),
+                "The boundary's render renders the page's update, whose read then resolves");
+        }
+
+        [Test]
+        public void Given_APassSuspendedOnOneReadAndAnotherComponentsOwnPassSuspended_When_TheOtherResourceResolves_Then_TheFirstPassIsNotRetried()
+        {
+            // Arrange — the reader's own pass suspends first, then the outer pass suspends on the other read ahead
+            // of it
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(TwoReadersRender, key: "two-readers"));
+            s_readerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_readerFiber);
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            var rendersBefore = s_twoReadersRenders;
+
+            // Act
+            s_otherSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert — the reader's retry is folded in, since a resolve that retried nothing leaves the count too
+            Assert.That((s_twoReadersRenders - rendersBefore, Texts()), Is.EqualTo((0, "child:0|reader:7|outer:0")),
+                "A resolve retries the passes that suspended on the resolving component's read, not every one above it");
+        }
+
         private static VelvetTaskCompletionSource<int> s_source;
         private static StateUpdater<int> s_setOwn;
         private static StateUpdater<int> s_parentSetKey;
@@ -168,9 +216,9 @@ namespace Velvet.Tests
 
         // Read by name so this file still builds on a tree without the property, where the case fails instead.
         private static bool MarkedSuspended(ComponentFiber fiber)
-            => (bool)typeof(ComponentFiber).GetProperty("SuspendedWithoutBoundary",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .GetValue(fiber)!;
+            => typeof(ComponentFiber).GetProperty("SuspendedOn",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(fiber) != null;
 
         private string Texts() => string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
 
@@ -257,6 +305,61 @@ namespace Velvet.Tests
                 ? VelvetTask.FromResult(0)
                 : (s_source = new VelvetTaskCompletionSource<int>()).Task, key);
             return V.Label(text: "child:" + value);
+        }
+
+        private static StateUpdater<int> s_pageSetId;
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedPageRender()
+        {
+            var (id, setId) = Hooks.UseState(0);
+            s_pageSetId = setId;
+            return V.Fragment(new VNode[]
+            {
+                V.Label(text: "page:" + id),
+                V.Component(KeyedChildRender, id, key: "details"),
+            });
+        }
+
+        [Component]
+        private static VNode PageBoundaryHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(MemoizedPageRender, key: "page") }),
+            });
+
+        private static VelvetTaskCompletionSource<int> s_otherSource;
+        private static StateUpdater<int> s_readerSetOwn;
+        private static ComponentFiber s_readerFiber;
+        private static int s_twoReadersRenders;
+
+        [Component]
+        private static VNode TwoReadersRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            s_twoReadersRenders++;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(UnmemoizedKeyedChildRender, tick, key: "child"),
+                V.Component(OwnReaderRender, key: "reader"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        [Component]
+        private static VNode OwnReaderRender()
+        {
+            s_readerFiber = FiberAmbientStack.Current;
+            var (own, setOwn) = Hooks.UseState(0);
+            s_readerSetOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_otherSource = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "reader:" + value);
         }
 
         [Component]
