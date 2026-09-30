@@ -84,6 +84,34 @@ namespace Velvet.Tests
                     className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
             });
 
+        // GREEN_ON_BASE(characterization): the base already cancels when another element takes the
+        // source's capture of the drag's pointer; this branch narrows the check to a capture-out the
+        // source itself receives.
+        [UnityTest]
+        public IEnumerator Given_AnActiveDrag_When_AnElementOutsideThePressChainTakesItsPointer_Then_TheDragCancels()
+        {
+            // Arrange — the thief sits under the panel root beside the tree, so no element the press
+            // reached, and none of the session's callbacks, sits on the path of a move delivered to it.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(PlainScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            var thief = new VisualElement();
+            item.panel.visualTree.Add(thief);
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act — the capture changes hands once the next pointer event has been dispatched.
+            thief.CapturePointer(PointerId.mousePointerId);
+            SendPointerMove(thief, new Vector2(30, 10));
+            thief.ReleasePointer(PointerId.mousePointerId);
+            yield return null;
+
+            // Assert
+            Assert.That((s_started.Count, _mounted.Root.Reconciler.Context.ActiveDrag == null), Is.EqualTo((1, true)));
+        }
+
         [UnityTest]
         public IEnumerator Given_AnActiveDragHoldingPointerCapture_When_MovesDispatchToTheRoot_Then_TheDragStillTracksTheDelta()
         {
