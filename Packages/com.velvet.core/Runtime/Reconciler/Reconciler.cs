@@ -391,6 +391,8 @@ namespace Velvet
 
         void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
 
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
+
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
             // The controller stores the slot's top-level element, which for a shadow-*/clip-path-*

@@ -1071,7 +1071,18 @@ namespace Velvet
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
-        public Stack<(ComponentFiber Fiber, bool IsMount)> DeferredInlineLayoutEffectFibers { get; } = new();
+        // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
+        public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
+
+        // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
+        // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // NextCaughtErrorSequence at the catch.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
+        internal long NextCaughtErrorSequence;
+
+        // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
+        // it (FiberEffects.CommitStrandedLayoutWork).
+        internal int EffectCommitDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
@@ -1146,6 +1157,10 @@ namespace Velvet
         private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
 
         private bool _drainingRefAttaches;
+
+        // A boundary catching a ref setup's failure mid-drain must not commit layout effects ahead of the setups
+        // still queued behind it (FiberEffects.IsCommitOnTheStack reads this).
+        internal bool IsDrainingRefAttaches => _drainingRefAttaches;
 
         // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
         // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue
