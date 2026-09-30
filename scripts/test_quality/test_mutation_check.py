@@ -3792,6 +3792,8 @@ class ProjectLockTests(unittest.TestCase):
         self.assertEqual(last, getattr(mutation_check, "LOCK_REFUSED_LINE", None))
 
 
+    # GREEN_ON_BASE(refactor): the base passes this too, since only the editor's bound changed here,
+    # from one second to ten; what the case pins is unchanged.
     def test_Given_AnEditorRefusedTheLockThatOutlivesItsBoundEachTime_When_ItIsRun_Then_ItIsNotReadAsHung(self):
         # Arrange — a refusal followed by an editor that does not exit, so each launch ends at the
         # bound rather than at the refusal. The editor is given ten seconds rather than one: at one,
