@@ -1534,16 +1534,23 @@ class Holder:
             signal.raise_signal(number)
 
     def hold(self, source, original, mutated, description):
+        self.hold_files({source: (original, mutated)}, description)
+
+    def hold_files(self, files, description):
+        """Records every source in `files` (path -> (original, mutated)) under the one sentinel, which
+        is how a session's rewritten tree is held: `release`, `--restore` and `--carried` read the list."""
         # Refusing rather than overwriting: two campaigns started close enough together both reach
         # here, and the second overwriting the first ends with one restoring the other's file.
         if self.sentinel.exists():
             raise SystemExit("{} already records a held mutation; two campaigns are running over one "
                              "tree".format(self.sentinel))
         self.sentinel.write_text(json.dumps({
-            "source": str(source),
-            "original": original,
-            "original_sha": hashlib.sha256(original.encode()).hexdigest(),
-            "mutated_sha": hashlib.sha256(mutated.encode()).hexdigest(),
+            "sources": [{
+                "source": str(source),
+                "original": original,
+                "original_sha": hashlib.sha256(original.encode()).hexdigest(),
+                "mutated_sha": hashlib.sha256(mutated.encode()).hexdigest(),
+            } for source, (original, mutated) in sorted(files.items(), key=lambda item: str(item[0]))],
             "mutation": description,
             "pid": os.getpid(),
             "since": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1555,8 +1562,9 @@ class Holder:
             return None
         try:
             held = json.loads(self.sentinel.read_text())
-            Path(held["source"]).write_text(held["original"])
-        except (OSError, ValueError, KeyError) as failure:
+            for entry in held_sources(held):
+                Path(entry["source"]).write_text(entry["original"])
+        except (OSError, ValueError, KeyError, TypeError) as failure:
             # Leaving the record is the point: what it names is still on disk, and a run that removed
             # it would take the only thing saying so with it.
             print("could not restore from {}: {}".format(self.sentinel, failure), file=sys.stderr)
@@ -1591,6 +1599,18 @@ class Holder:
 
         for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             signal.signal(number, handler)
+
+
+def held_sources(held):
+    """The sources a record names: a list under `sources`, or the one `source` a record written before
+    a session could hold several carries."""
+    if "sources" in held:
+        return list(held["sources"])
+    return [{key: held[key] for key in ("source", "original", "original_sha", "mutated_sha") if key in held}]
+
+
+def held_names(held):
+    return ", ".join(entry.get("source", "<unnamed>") for entry in held_sources(held))
 
 
 def unity_busy():
@@ -1688,9 +1708,10 @@ def relay(stream, said):
         sys.stdout.flush()
 
 
-def launch(command, timeout, holder):
+def launch(command, timeout, holder, env=None, expired=None):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
-    once, and what it printed."""
+    once, and what it printed. `expired`, where given, is asked every few seconds as well, and a true
+    answer kills the editor as the bound does."""
     start = time.time()
     said = []
     if holder is not None:
@@ -1699,7 +1720,7 @@ def launch(command, timeout, holder):
         # A group of its own, so a kill reaches whatever the editor started and left in it.
         child = subprocess.Popen([sys.executable, "-c", WATCHDOG, str(os.getpid()), *command],
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 start_new_session=True)
+                                 start_new_session=True, env=env)
         if holder is not None:
             holder.child = child
     finally:
@@ -1719,7 +1740,7 @@ def launch(command, timeout, holder):
                 child.wait(timeout=3)
                 break
             except subprocess.TimeoutExpired:
-                if time.time() - start > timeout:
+                if time.time() - start > timeout or (expired is not None and expired()):
                     reap(child)
                     timed_out = True
                     break
@@ -1989,6 +2010,376 @@ def read_counts(results):
     if root.tag != "test-run":
         return None
     return {key: int(root.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive")}
+
+
+# --------------------------------------------------------------------------------------------------
+# Measuring many mutants in one editor
+# --------------------------------------------------------------------------------------------------
+
+# A session is launched with this rather than `-runTests`, which starts the test framework's own run
+# and quits after it; the prefix keeps the session inside every busy count UNITY_RUNNING spells.
+# `Assets/MutantSchemata/Editor/SchemataRunner.cs` takes the launch over from the plan it is handed.
+SESSION_FLAG = "-runTestsSchemata"
+SESSION_PLAN = "VELVET_SCHEMATA_PLAN"
+# What each rewritten assembly's switch reads, and so which mutant is live.
+SESSION_SWITCH = "VELVET_MUTANT"
+# Added to a stage's bound before its session is killed: the stage's reload and the test framework's
+# preparation of the job are inside it, where a launch's bound covers its startup the same way.
+SESSION_STAGE_SLACK = 120
+# The unmutated program the areas' own baselines run under.
+SESSION_OPENING = 0
+SESSION_MUTANTS = 16
+
+
+def utf16(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def mutant_edit(text, mutant):
+    """(utf-16 column, utf-16 length, replacement) of the edit `apply_mutation` makes on the mutant's
+    line, or None where the edit read off the mutant is not that one."""
+    start, end = line_spans(text)[mutant.line - 1]
+    line = text[start:end]
+    column = mutant.column
+    if mutant.operator in {operator for _, _, operator in OPERATORS}:
+        length, replacement = len(mutant.before) + 2, " {} ".format(mutant.after)
+    else:
+        length, replacement = len(mutant.before), mutant.after
+    applied = text[:start + column] + replacement + text[start + column + length:]
+    if applied != apply_mutation(text, mutant):
+        return None
+    return utf16(line[:column]), utf16(line[column:column + length]), replacement
+
+
+def response_file(project, assembly):
+    """The response file the editor last compiled `assembly` with, relative to `project`, or None."""
+    found = sorted(Path(project, "Library", "Bee", "artifacts").glob("*/{}.rsp".format(assembly)),
+                   key=lambda path: path.stat().st_mtime)
+    return str(found[-1].relative_to(project)) if found else None
+
+
+def schemata_request(project, mutants, indexes):
+    """What the rewriter is asked, and the mutants declined before it is asked: (request, declined)."""
+    files, assemblies, declined = {}, {}, {}
+    for index in indexes:
+        mutant = mutants[index - 1]
+        text = mutant.path.read_text()
+        edit = mutant_edit(text, mutant)
+        if edit is None:
+            declined[index] = "the edit read off the mutant is not the one apply_mutation makes"
+            continue
+        assembly = assembly_of(mutant.path)
+        rsp = response_file(project, assembly)
+        if rsp is None:
+            declined[index] = "no response file for {}".format(assembly)
+            continue
+        assemblies[assembly] = rsp
+        entry = files.setdefault(mutant.path, {"path": relative_to(mutant.path, project).as_posix(),
+                                               "assembly": assembly, "text": text, "mutants": []})
+        start, length, replacement = edit
+        entry["mutants"].append({"id": index, "line": mutant.line, "start": start, "length": length,
+                                 "replacement": replacement, "operator": mutant.operator,
+                                 "before": mutant.before})
+    return ({"project": str(project), "env": SESSION_SWITCH, "shapeRulesOff": True,
+             "assemblies": assemblies, "files": list(files.values())}, declined)
+
+
+def rewrite_schemata(unity, project, request, scratch):
+    """The rewriter's answer, or None where it could not be built or run."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import schemata_tool
+    try:
+        return schemata_tool.rewrite(unity, project, request, scratch)
+    except SystemExit as failure:
+        print("the rewriter could not run, so every mutant takes its own launch: {}".format(failure))
+        return None
+
+
+def session_filter(scope):
+    """(assembly names, filter terms) of an editor scope, as the test framework's command line reads
+    `-assemblyNames` and `-testFilter`: each split on `;`."""
+    names, terms = [], []
+    for flag, into in (("-assemblyNames", names), ("-testFilter", terms)):
+        if flag in scope:
+            into.extend(scope[scope.index(flag) + 1].split(";"))
+    return names, terms
+
+
+def session_stage(name, scope, stop, bound, gate=""):
+    names, terms = session_filter(scope)
+    return {"name": name, "assemblyNames": names, "groupNames": terms, "testNames": [],
+            "stopAtFirstFailure": stop, "bound": bound, "gate": gate}
+
+
+def cs_id(number):
+    """An id as the runner's `ToString("000")` spells it in a file name."""
+    return format(number, "03d") if number >= 0 else "-" + format(-number, "03d")
+
+
+def read_item(directory, number):
+    try:
+        return json.loads((Path(directory) / "item-{}.json".format(cs_id(number))).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def clean_stage(stage):
+    """Whether a baseline stage the session ran came out green over at least one case."""
+    return bool(stage) and stage.get("finished") and not stage.get("omitted") and not stage.get(
+        "failed") and not stage.get("inconclusive") and not stage.get("failures") and stage.get(
+        "passed", 0) > 0
+
+
+def stage_counts(stage):
+    return read_counts(Path(stage["xml"])) if stage.get("xml") else None
+
+
+def session_verdict(item, planned, index, assembly, expected, opening, confirmed, text_readers):
+    """(verdict, detail, killers) for one mutant the session measured, or None where what it recorded
+    does not stand as a reading -- the mutant then takes its own launch, whose reading does.
+
+    `planned` is the plan's item for it; `expected` maps each of its stages to the cases a whole run of
+    that stage holds; `opening` is the areas' baselines under the unmutated program; `confirmed` says,
+    per killing case, whether it passed again under the unmutated program once the segment was done.
+    """
+    if not item:
+        return None
+    stages = item.get("stages") or []
+    armed = "{}:{}".format(assembly, index)
+    ran = [stage for stage in stages if not stage.get("omitted")]
+    if not ran or any(not stage.get("finished") or armed not in stage.get("armed", []) for stage in ran):
+        return None
+    for stage in ran:
+        if not stage.get("failures"):
+            continue
+        # A kill stands only where the stage's own baseline was green, and its first case passed again
+        # under the unmutated program: a case failing there failed on what the session carried, not on
+        # this mutant.
+        if stage["name"] != "whole" and not clean_stage(opening.get(stage["name"])):
+            return None
+        names = stage["failures"]
+        if confirmed.get(names[0]) is not True:
+            return None
+        behavioural = killed_by_behaviour(names, text_readers)
+        if not behavioural:
+            return None
+        if stage["name"] == "whole":
+            detail = "{} failed: {}".format(len(behavioural), ", ".join(
+                name.split(".")[-1] for name in behavioural[:3]))
+        else:
+            names_of = {planned_stage["name"]: planned_stage for planned_stage in planned["stages"]}
+            detail = "{} failed in {}: {}".format(len(behavioural), ", ".join(
+                names_of[stage["name"]]["assemblyNames"]),
+                                                   ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+        return KILLED, detail, names
+    last = ran[-1]
+    if last["name"] != "whole":
+        return None
+    # A survivor stands on complete runs: every stage it ran held every case that stage's baseline did.
+    for stage in ran:
+        counts = stage_counts(stage)
+        if counts is None or counts["failed"] or counts["total"] != expected.get(stage["name"]):
+            return None
+    counts = stage_counts(last)
+    if counts["inconclusive"]:
+        return INCONCLUSIVE, "{} inconclusive, 0 failed".format(counts["inconclusive"]), ()
+    return SURVIVED, "", ()
+
+
+def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory):
+    """The plan a session runs: the areas' baselines under the unmutated program, then each placed
+    mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
+
+    A mutant runs the stages its own launches would: its area's assemblies first where the area is
+    narrowed, stopping at a kill there, then the whole suite. The session stops each at its first
+    failing case rather than running the stage out, since the verdict is decided there; `killers` is
+    then the cases that failed before the stop. A PlayMode stage is never stopped: a job cancelled in
+    play mode leaves its scene modified, and the next job waits on a dialog batchmode cannot answer.
+    """
+    stop = platform == "EditMode"
+    opening = []
+    for area in sorted(attempts):
+        opening.append(session_stage("narrowed:" + area.name, attempts[area], False, ceiling))
+    items = [{"id": SESSION_OPENING, "stages": opening}] if opening else []
+    segments = []
+    for number, index in enumerate(placed):
+        area = area_of(mutants[index - 1].path, project)
+        stages = []
+        if area in attempts:
+            stages.append(session_stage("narrowed:" + area.name, attempts[area], stop, ceiling,
+                                        gate="narrowed:" + area.name))
+        stages.append(session_stage("whole", whole_scope, stop, timeout))
+        items.append({"id": index, "stages": stages})
+        if number % SESSION_MUTANTS == SESSION_MUTANTS - 1 or number == len(placed) - 1:
+            # A negative id matches no guard, so the confirmation runs the unmutated program.
+            confirmation = -(len(segments) + 1)
+            items.append({"id": confirmation, "confirm": True,
+                          "stages": [session_stage("confirm", [], False, ceiling)]})
+            segments.append(len(items))
+    return {"output": str(directory), "platform": platform, "env": SESSION_SWITCH, "items": items,
+            "start": 0, "end": len(items)}, segments
+
+
+def run_session(args, project, plan, directory, holder):
+    """Runs `plan` through as many session launches as it takes: one per segment, and one more past
+    any item whose stage outlived its bound or took its editor down. Returns (position -> the most
+    other editors seen while it ran, the positions no launch finished, a reason the session could not
+    run at all or None)."""
+    plan_path = directory / "plan.json"
+    state = directory / "runner-state.json"
+    progress = directory / "runner-progress.json"
+    done = directory / "runner-done"
+    items = plan["items"]
+    peaks, lost = {}, set()
+    position = 0
+    for end in plan["segments"]:
+        while position < end:
+            plan["start"], plan["end"] = position, end
+            plan_path.write_text(json.dumps(plan, indent=1))
+            state.write_text(json.dumps({"position": position, "stage": 0, "phase": "arm"}))
+            for stale in (progress, done):
+                if stale.exists():
+                    stale.unlink()
+            log = directory / "session-{:03d}.log".format(position)
+            command = [args.unity, SESSION_FLAG, "-batchmode", "-debugCodeOptimization", "-projectPath",
+                       str(project), "-logFile", str(log)] + args.editor_arg
+            env = dict(os.environ, **{SESSION_PLAN: str(plan_path)})
+            env.pop(SESSION_SWITCH, None)
+            launched = time.time()
+            where = {}
+
+            def expired():
+                try:
+                    current = json.loads(progress.read_text())
+                except (OSError, ValueError):
+                    return time.time() - launched > args.timeout
+                where.update(current)
+                item = items[current["position"]] if current["position"] < len(items) else None
+                stage = item["stages"][current["stage"]] if item and current["stage"] < len(item["stages"]) else None
+                bound = (stage["bound"] if stage else args.timeout) + SESSION_STAGE_SLACK
+                return time.time() - current["since"] > bound
+
+            printed = ""
+            for _ in range(LOCK_ATTEMPTS):
+                wait_for_release(project, LOCK_WAIT)
+                _, _, peak, printed = launch(command, sum(
+                    stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
+                    for stage in item["stages"]) + args.timeout, holder, env, expired)
+                if LOCK_REFUSAL not in printed:
+                    break
+            else:
+                return peaks, lost, "the editor refused each of {} session launches for the project lock".format(
+                    LOCK_ATTEMPTS)
+            reached = where.get("position", position)
+            for passed in range(position, min(reached + 1, end)):
+                peaks[passed] = max(peaks.get(passed, 0), peak)
+            if done.exists():
+                position = end
+                break
+            if not where or build_error(log):
+                return peaks, lost, "the session never reached its first stage; read {}".format(log)
+            # The item it died in takes its own launch; the next launch starts past it.
+            lost.add(reached)
+            if items[reached]["id"] == SESSION_OPENING:
+                return peaks, lost, "the session died in the areas' own baselines; read {}".format(log)
+            position = reached + 1
+    return peaks, lost, None
+
+
+def confirmations(plan, directory):
+    """Killing case -> whether it passed under the unmutated program at the end of its segment."""
+    found = {}
+    for item in plan["items"]:
+        if not item.get("confirm"):
+            continue
+        result = read_item(directory, item["id"]) or {}
+        stage = (result.get("stages") or [{}])[0]
+        if not stage.get("finished") or not stage.get("xml"):
+            continue
+        try:
+            root = ET.parse(stage["xml"]).getroot()
+        except (OSError, ET.ParseError):
+            continue
+        for case in root.iter("test-case"):
+            found[case.get("fullname")] = case.get("result") == "Passed"
+    return found
+
+
+def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
+                       baseline_wall, text_readers, whole_scope, campaign, scope):
+    """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
+    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it.
+    Every other mutant is left to its own launches."""
+    directory = output / "session"
+    directory.mkdir(exist_ok=True)
+    for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
+        stale.unlink()
+    request, declined = schemata_request(project, mutants, pending)
+    answer = rewrite_schemata(args.unity, project, request, directory) if request["files"] else None
+    if answer is None:
+        return {}
+    placed = [index for index in answer["placed"] if index in pending and index not in declined]
+    declined.update({int(key): value for key, value in answer["declined"].items()})
+    for index in sorted(declined):
+        print("[{}] takes its own launch: {}".format(index, declined[index]))
+    if answer["fatal"]:
+        print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
+    if not placed:
+        return {}
+
+    attempts = {}
+    ceiling = min(args.timeout, baseline_wall)
+    expected = {"whole": baseline["total"]}
+    if not scope and args.platform in NARROWED_PLATFORMS:
+        areas = {area_of(mutants[index - 1].path, project) for index in placed} - {None}
+        for area, names in narrowable(baseline_results, areas).items():
+            attempts[area] = excluding(["-assemblyNames", ";".join(names)], text_readers)
+    plan, segments = session_plan(project, mutants, placed, attempts, whole_scope, args.platform, ceiling,
+                                  args.timeout, directory)
+    plan["segments"] = segments
+
+    rewritten = {project / relative: text for relative, text in answer["files"].items()}
+    if not wait_for_quiet(args.busy_timeout):
+        raise SystemExit("another Unity test run is still in flight after {}s, so this "
+                         "session's failures would not all be its mutants'".format(args.busy_timeout))
+    holder.hold_files({path: (path.read_text(), text) for path, text in rewritten.items()},
+                      "{} mutant(s) guarded for one session".format(len(placed)))
+    started = time.time()
+    try:
+        for path, text in rewritten.items():
+            path.write_text(text)
+        peaks, lost, stopped = run_session(args, project, plan, directory, holder)
+    finally:
+        if holder.release() is None:
+            raise SystemExit("could not put the session's sources back; the record at {} names what is "
+                             "outstanding".format(holder.sentinel))
+    print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
+                                                      "; " + stopped if stopped else ""))
+    if stopped and not peaks:
+        return {}
+
+    opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
+    for name, stage in opening.items():
+        counts = stage_counts(stage)
+        expected[name] = counts["total"] if counts else None
+    confirmed = confirmations(plan, directory)
+    measured = {}
+    for position, item in enumerate(plan["items"]):
+        index = item["id"]
+        if item.get("confirm") or index == SESSION_OPENING or position in lost or position not in peaks:
+            continue
+        mutant = mutants[index - 1]
+        reading = session_verdict(read_item(directory, index), item, index, assembly_of(mutant.path),
+                                  expected, opening, confirmed, text_readers)
+        if reading is None:
+            print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
+            continue
+        mutant.verdict, mutant.detail, killers = reading
+        if peaks[position]:
+            mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", peaks[position])
+        write_verdict(output, index, campaign, mutant, project, killers, scope)
+        measured[index] = (mutant.verdict, mutant.detail)
+    return measured
 
 
 # --------------------------------------------------------------------------------------------------
@@ -2300,10 +2691,22 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not
     # taken under a scope the caller chose, which already asks a question of its own.
+    # The mutants the rewriter can place are measured in one editor, and each of the rest -- and each
+    # whose session reading does not stand -- takes its own launches below, as every mutant once did.
+    in_session = {}
+    if not args.launch_per_mutant:
+        pending = [index for index in sorted(selected) if read_verdict(
+            output, index, campaign, mutants[index - 1], project, scope) is None]
+        if pending:
+            in_session = measure_in_session(args, project, holder, output, mutants, pending,
+                                            baseline_results, baseline, baseline_wall, text_readers,
+                                            excluding(scope, text_readers), campaign, scope)
+    own = set(selected) - set(in_session)
+
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
     if not scope and args.platform in NARROWED_PLATFORMS:
-        areas = {area_of(mutants[index - 1].path, project) for index in selected} - {None}
+        areas = {area_of(mutants[index - 1].path, project) for index in own} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
             results = output / "baseline-{}.xml".format(area.name)
@@ -2330,6 +2733,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if index not in selected:
                 continue
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
+            if index in in_session:
+                mutant.verdict, mutant.detail = in_session[index]
+                measured += 1
+                print("      {} ({}) in the session".format(mutant.verdict, mutant.detail or "-"))
+                continue
             kept = read_verdict(output, index, campaign, mutant, project, scope)
             if kept is not None:
                 mutant.verdict, mutant.detail = kept
@@ -2531,6 +2939,9 @@ def main():
     parser.add_argument("--editor-arg", action="append", default=[], metavar="ARG",
                         help="an argument added to every editor launch, spelt --editor-arg=-flag; "
                              "repeatable")
+    parser.add_argument("--launch-per-mutant", action="store_true",
+                        help="give every mutant its own editor launches rather than measuring the "
+                             "mutants the rewriter can place in one session")
     parser.add_argument("--restore", action="store_true",
                         help="put back the mutation an interrupted campaign left, and stop")
     parser.add_argument("--carried", nargs="*",
@@ -2587,11 +2998,11 @@ def main():
                                  holder.sentinel)))
         # Resolved on both sides: a macOS temporary directory reaches the same file through /var and
         # through /private/var, and comparing the spellings finds no match where there is one.
-        held = Path(outstanding.get("source", "")).resolve()
+        held = {Path(entry.get("source", "")).resolve() for entry in held_sources(outstanding)}
         for name in args.carried:
             candidate = Path(name)
             candidate = candidate if candidate.is_absolute() else project / name
-            if candidate.resolve() == held:
+            if candidate.resolve() in held:
                 sys.exit(refusal(CARRIED_REFUSAL,
                                  "a mutation campaign is holding {} -- {}\n"
                                  "Recording it now captures the campaign's edit, not yours. Wait for "
@@ -2609,10 +3020,12 @@ def main():
             # A record survives a SIGKILL, so an author can see the modified file, keep working on it
             # for an hour and then run this. Writing the recorded original back would take that hour
             # with it, and the word this prints afterwards is "restored".
-            source = Path(outstanding.get("source", ""))
-            on_disk = hashlib.sha256(source.read_bytes()).hexdigest() if source.exists() else ""
-            known = (outstanding.get("mutated_sha"), outstanding.get("original_sha"))
-            if on_disk and on_disk not in known:
+            for entry in held_sources(outstanding):
+                source = Path(entry.get("source", ""))
+                on_disk = hashlib.sha256(source.read_bytes()).hexdigest() if source.exists() else ""
+                known = (entry.get("mutated_sha"), entry.get("original_sha"))
+                if not on_disk or on_disk in known:
+                    continue
                 raise SystemExit(
                     "{} holds neither the mutation {} recorded nor the original it replaced, so "
                     "something\nelse has written it since. Nothing here can tell your work from the "
@@ -2622,7 +3035,7 @@ def main():
         if held is None:
             raise SystemExit("{} names a mutation this could not put back; read it and restore by "
                              "hand".format(holder.sentinel))
-        print("restored {} ({})".format(held["source"], held["mutation"]))
+        print("restored {} ({})".format(held_names(held), held["mutation"]))
         return 0
 
     # Before anything is read, because everything below reads the working tree: the baseline would be
@@ -2631,7 +3044,7 @@ def main():
     outstanding = holder.outstanding()
     if outstanding is not None:
         names = ("<unreadable>", "<unreadable>") if outstanding is UNREADABLE else (
-            outstanding.get("source", "<unnamed>"), outstanding.get("mutation", "<unnamed>"))
+            held_names(outstanding), outstanding.get("mutation", "<unnamed>"))
         raise SystemExit(
             "a campaign is holding a mutation in this tree, so nothing here can be measured:\n"
             "  {} -- {}\n"

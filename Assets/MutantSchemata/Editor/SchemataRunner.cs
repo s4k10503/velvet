@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,15 +10,17 @@ using UnityEngine;
 
 namespace Velvet.MutantSchemata.Editor
 {
-    // Prototype. Runs a campaign's mutants in one editor session over a tree the rewriter compiled once:
-    // each mutant is armed by the environment variable its switch reads, the domain is reloaded so every
-    // static starts over as it would in a fresh editor, and its stages run through TestRunnerApi.
-    // Everything it needs across a reload is in files under the plan's output directory, written before
-    // anything that can reload the domain is asked for, since a reload drops every pending delayCall.
+    // Runs a mutation campaign's session: the mutants scripts/test_quality/mutation_check.py placed in
+    // one guarded tree, each armed by the variable its switch reads, in one editor. The domain is
+    // reloaded before every stage, so each stage starts from the statics a fresh editor starts from,
+    // and the switch reads the armed id in its static initializer. Everything the runner needs across a
+    // reload is in a file under the plan's output directory, written before anything that can reload
+    // is asked for: a reload drops every pending delayCall and every registered callback.
     [InitializeOnLoad]
     internal static class SchemataRunner
     {
         private const string PlanVariable = "VELVET_SCHEMATA_PLAN";
+        private const int Opening = 0;
 
         [Serializable]
         internal sealed class Stage
@@ -27,6 +30,8 @@ namespace Velvet.MutantSchemata.Editor
             public string[] groupNames = Array.Empty<string>();
             public string[] testNames = Array.Empty<string>();
             public bool stopAtFirstFailure;
+            // The opening stage that has to have come out green for this one to run.
+            public string gate = "";
         }
 
         [Serializable]
@@ -34,6 +39,8 @@ namespace Velvet.MutantSchemata.Editor
         {
             public int id;
             public Stage[] stages = Array.Empty<Stage>();
+            // Runs the first case each kill since the previous confirmation failed on.
+            public bool confirm;
         }
 
         [Serializable]
@@ -44,8 +51,7 @@ namespace Velvet.MutantSchemata.Editor
             public string env = "";
             public Item[] items = Array.Empty<Item>();
             public int start;
-            public int hang = int.MinValue;
-            public bool scrub;
+            public int end = -1;
         }
 
         // `arm`: the next item's variable is not set yet. `start`: the domain the stage needs has been
@@ -75,14 +81,11 @@ namespace Velvet.MutantSchemata.Editor
             public int skipped;
             public bool cancelled;
             public bool finished;
+            public bool omitted;
             public List<string> failures = new List<string>();
             public double seconds;
             public double reloadSeconds;
             public string[] armed = Array.Empty<string>();
-            public double setupSeconds;
-            public int windows;
-            public int logEntries;
-            public int objects;
         }
 
         [Serializable]
@@ -106,8 +109,6 @@ namespace Velvet.MutantSchemata.Editor
 
         static SchemataRunner()
         {
-            var armedPath = Environment.GetEnvironmentVariable("VELVET_SCHEMATA_ARMED") ?? "";
-            if (armedPath.Length > 0) File.WriteAllText(armedPath, string.Join(",", Armed()));
             var planPath = Environment.GetEnvironmentVariable(PlanVariable) ?? "";
             if (planPath.Length == 0) return;
             plan = JsonUtility.FromJson<Plan>(File.ReadAllText(planPath));
@@ -131,6 +132,8 @@ namespace Velvet.MutantSchemata.Editor
             }
             EditorApplication.delayCall += Step;
         }
+
+        private static int End => plan.end < 0 ? plan.items.Length : Math.Min(plan.end, plan.items.Length);
 
         private static string StatePath => Path.Combine(plan.output, "runner-state.json");
 
@@ -162,8 +165,9 @@ namespace Velvet.MutantSchemata.Editor
             var state = ReadState();
             if (state.phase == "arm")
             {
-                if (state.position >= plan.items.Length)
+                if (state.position >= End)
                 {
+                    Heartbeat(state);
                     File.WriteAllText(Path.Combine(plan.output, "runner-done"), "");
                     EditorApplication.Exit(0);
                     return;
@@ -184,23 +188,29 @@ namespace Velvet.MutantSchemata.Editor
         {
             var item = plan.items[state.position];
             var stage = item.stages[state.stage];
-            if (item.id == plan.hang)
+            var testNames = stage.testNames;
+            var omitted = stage.gate.Length > 0 && !Clean(Result(Opening).stages.FirstOrDefault(s => s.name == stage.gate));
+            if (item.confirm)
             {
-                // The watchdog's own check: a main thread that never returns, as a mutant's loop would.
-                Heartbeat(state);
-                while (true) { }
+                testNames = KillingCases(state.position);
+                omitted = testNames.Length == 0;
             }
             var result = Result(item.id);
-            result.stages.Add(new StageResult
+            var recorded = new StageResult
             {
                 name = stage.name,
                 reloadSeconds = state.requested > 0 ? Now - state.requested : 0,
                 armed = Armed(),
-                windows = Resources.FindObjectsOfTypeAll<EditorWindow>().Length,
-                logEntries = LogEntryCount(),
-                objects = Resources.FindObjectsOfTypeAll<UnityEngine.Object>().Length,
-            });
-            if (plan.scrub) Scrub();
+            };
+            result.stages.Add(recorded);
+            if (omitted)
+            {
+                recorded.omitted = true;
+                recorded.finished = true;
+                WriteResult(result);
+                Advance(state);
+                return;
+            }
             WriteResult(result);
             state.phase = "running";
             state.requested = 0;
@@ -213,7 +223,7 @@ namespace Velvet.MutantSchemata.Editor
                 testMode = plan.platform == "PlayMode" ? TestMode.PlayMode : TestMode.EditMode,
                 assemblyNames = stage.assemblyNames.Length > 0 ? stage.assemblyNames : null,
                 groupNames = stage.groupNames.Length > 0 ? stage.groupNames : null,
-                testNames = stage.testNames.Length > 0 ? stage.testNames : null,
+                testNames = testNames.Length > 0 ? testNames : null,
             });
             var guid = ScriptableObject.CreateInstance<TestRunnerApi>().Execute(settings);
             var now = ReadState();
@@ -224,23 +234,21 @@ namespace Velvet.MutantSchemata.Editor
             }
         }
 
-        private static readonly Type? LogEntries = typeof(EditorWindow).Assembly.GetType("UnityEditor.LogEntries");
+        private static bool Clean(StageResult? stage) =>
+            stage != null && stage.finished && !stage.omitted && stage.failed == 0 && stage.inconclusive == 0 &&
+            stage.failures.Count == 0 && stage.passed > 0;
 
-        private static int LogEntryCount() =>
-            LogEntries?.GetMethod("GetCount", BindingFlags.Static | BindingFlags.Public)?.Invoke(null, null) is int count ? count : -1;
-
-        // Prototype diagnostic: what a fresh editor would not have -- the windows earlier stages left open
-        // and the console entries they logged.
-        private static void Scrub()
+        // The first case each item since the previous confirmation was killed by.
+        private static string[] KillingCases(int position)
         {
-            LogEntries?.GetMethod("Clear", BindingFlags.Static | BindingFlags.Public)?.Invoke(null, null);
-            var keep = new HashSet<string> { "UnityEditor.ConsoleWindow", "UnityEditor.InspectorWindow",
-                "UnityEditor.SceneView", "UnityEditor.GameView", "UnityEditor.SceneHierarchyWindow",
-                "UnityEditor.ProjectBrowser" };
-            foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>())
+            var found = new List<string>();
+            for (var earlier = position - 1; earlier >= 0 && !plan.items[earlier].confirm; earlier--)
             {
-                if (!keep.Contains(window.GetType().FullName ?? "")) window.Close();
+                if (plan.items[earlier].id == Opening) continue;
+                var killed = Result(plan.items[earlier].id).stages.FirstOrDefault(s => s.failures.Count > 0);
+                if (killed != null && !found.Contains(killed.failures[0])) found.Add(killed.failures[0]);
             }
+            return found.ToArray();
         }
 
         private static void Register()
@@ -250,6 +258,8 @@ namespace Velvet.MutantSchemata.Editor
             TestRunnerApi.RegisterTestCallback(callbacks);
         }
 
+        // Each switch's assembly and the id it read, which is how a stage shows the tree it ran was the
+        // guarded one and the mutant armed was the one asked for.
         private static string[] Armed()
         {
             var found = new List<string>();
@@ -268,7 +278,9 @@ namespace Velvet.MutantSchemata.Editor
             return found.ToArray();
         }
 
-        private static string ResultPath(int id) => Path.Combine(plan.output, "item-" + id.ToString("000") + ".json");
+        private static string Name(int id) => id.ToString("000");
+
+        private static string ResultPath(int id) => Path.Combine(plan.output, "item-" + Name(id) + ".json");
 
         private static ItemResult Result(int id)
         {
@@ -306,8 +318,7 @@ namespace Velvet.MutantSchemata.Editor
         // Whether the framework has let go of the job. Not `TestRunnerApi.IsRunning`: that turns false when
         // the job's last task returns, one editor update before the job is unregistered, and a reload in
         // that update leaves it registered as running -- `TestJobDataHolder.ResumeRunningJobs` then starts
-        // it again from its first task beside the next job (measured: a narrowed stage re-ran beside the
-        // whole-suite stage that followed it, and its result was taken as the whole suite's).
+        // it again from its first task beside the next job.
         private static bool Released(string guid)
         {
             if (JobHolder == null || guid.Length == 0) return true;
@@ -344,7 +355,7 @@ namespace Velvet.MutantSchemata.Editor
             var recorded = result.stages[result.stages.Count - 1];
             if (run != null)
             {
-                var xml = Path.Combine(plan.output, "mutant-" + item.id.ToString("000") + "-" + stage.name + ".xml");
+                var xml = Path.Combine(plan.output, "mutant-" + Name(item.id) + "-" + stage.name.Replace(':', '-') + ".xml");
                 TestRunnerApi.SaveResultToFile(run, xml);
                 recorded.xml = xml;
                 recorded.passed = run.PassCount;
@@ -401,14 +412,7 @@ namespace Velvet.MutantSchemata.Editor
 
         private sealed class Callbacks : ICallbacks
         {
-            public void RunStarted(ITestAdaptor testsToRun)
-            {
-                var state = ReadState();
-                if (state.phase != "running") return;
-                var result = Result(plan.items[state.position].id);
-                result.stages[result.stages.Count - 1].setupSeconds = Now - state.started;
-                WriteResult(result);
-            }
+            public void RunStarted(ITestAdaptor testsToRun) { }
 
             public void RunFinished(ITestResultAdaptor result) => Finished(result);
 

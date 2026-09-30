@@ -17,6 +17,7 @@ Run: python3 scripts/test_quality/test_mutation_check.py
 import argparse
 import contextlib
 import fcntl
+import hashlib
 import importlib.util
 import inspect
 import io
@@ -5086,6 +5087,350 @@ class ShardCeilingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
+
+
+class SessionCampaign(StubbedCampaign):
+    """A campaign whose rewriter and session are stubbed as well as its editor launches.
+
+    `outcomes` names what the session records for each mutant it measures: "killed" fails the case
+    `N.C.Kills` in the whole stage, "survived" runs the whole stage green over the baseline's case
+    count. The confirmation that closes a segment passes `N.C.Kills` unless `unconfirmed`.
+    """
+
+    REWRITTEN = "// guarded for the session\n"
+
+    placed = True
+    unconfirmed = False
+    lost = False
+    unarmed = False
+    short = False
+
+    def __init__(self):
+        super().__init__()
+        self.outcome = "killed"
+        self.rewrites = []
+        self.launched = []
+        self.during = None
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        self.launched.append(Path(results).name)
+        return super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+
+    def rewrite(self, _unity, project, request, _scratch):
+        self.rewrites.append(request)
+        ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
+        relative = request["files"][0]["path"]
+        return {"placed": ids if self.placed else [],
+                "declined": {} if self.placed else {str(i): "declined here" for i in ids},
+                "files": {relative: self.REWRITTEN}, "fatal": []}
+
+    def session(self, _args, _project, plan, directory, _holder):
+        self.during = self.source.read_text()
+        assembly = mutation_check.assembly_of(self.source)
+        for item in plan["items"]:
+            number = item["id"]
+            name = directory / "item-{}.json".format(mutation_check.cs_id(number))
+            xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
+            if item.get("confirm"):
+                result = "Failed" if self.unconfirmed else "Passed"
+                xml.write_text('<test-run total="1"><test-case fullname="N.C.Kills" result="{}" />'
+                               '</test-run>'.format(result))
+                stage = {"name": "confirm", "finished": True, "xml": str(xml), "failures": [],
+                         "armed": ["{}:{}".format(assembly, number)]}
+            elif self.outcome == "killed":
+                stage = {"name": "whole", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                         "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
+            else:
+                xml.write_text('<test-run total="2" passed="2" failed="0" inconclusive="0" />'
+                               if self.short else GREEN_RESULTS)
+                stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
+                         "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
+            name.write_text(json.dumps({"id": number, "stages": [stage]}))
+        lost = {position for position, item in enumerate(plan["items"])
+                if self.lost and not item.get("confirm")}
+        return {position: 0 for position in range(len(plan["items"]))}, lost, None
+
+    def recorded(self):
+        return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
+
+
+class SessionRoutingTests(unittest.TestCase):
+    def setUp(self):
+        self.campaign = SessionCampaign()
+        saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
+        mutation_check.rewrite_schemata = self.campaign.rewrite
+        mutation_check.run_session = self.campaign.session
+        mutation_check.response_file = lambda _project, _assembly: "Library/Bee/artifacts/x/A.rsp"
+        self.addCleanup(self.restore, saved)
+
+    @staticmethod
+    def restore(saved):
+        mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file = saved
+
+    def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert — the baseline is the only launch; the session measured the mutant.
+        self.assertEqual(campaign.launched, ["baseline.xml"])
+
+    def test_Given_AMutantTheSessionKilled_When_ItsVerdictIsRecorded_Then_ItIsAKill(self):
+        # Arrange — the stubbed editor would make an own launch survive, so the kill is the session's.
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.recorded(), mutation_check.KILLED)
+
+    def test_Given_AMutantTheSessionLeftSurviving_When_ItsVerdictIsRecorded_Then_ItIsASurvivor(self):
+        # Arrange — the stubbed editor would make an own launch a kill, so the survivor is the session's.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.kills = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.recorded(), mutation_check.SURVIVED)
+
+    def test_Given_AKillWhoseCaseFailsUnmutatedToo_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — a case that fails again under the unmutated program failed on what the session
+        # carried, and a survivor recorded as covered is what that reading would ship.
+        campaign = self.campaign
+        campaign.unconfirmed = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AStageThatDidNotArmTheMutant_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — the editor kept the last build it could compile, which carries no switch.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.unarmed = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_ASurvivingStageShortOfTheBaselinesCases_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — a run that held other cases than the baseline's asked another question.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.short = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantTheRewriterDeclined_When_TheCampaignRuns_Then_ItTakesItsOwnLaunch(self):
+        # Arrange
+        campaign = self.campaign
+        campaign.placed = False
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AnItemNoSessionLaunchFinished_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — the editor was killed at the stage's bound, and the own launch decides as it always has.
+        campaign = self.campaign
+        campaign.lost = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_LaunchPerMutant_When_TheCampaignRuns_Then_TheRewriterIsNotAsked(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1", "--launch-per-mutant")
+
+        # Assert
+        self.assertEqual(campaign.rewrites, [])
+
+    def test_Given_ASession_When_ItRuns_Then_TheRewrittenSourceIsOnDisk(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.during, SessionCampaign.REWRITTEN)
+
+
+class SessionVerdictTests(unittest.TestCase):
+    """A narrowed kill, read directly: the campaign stub runs no narrowed stage."""
+
+    def reading(self, opening_failures):
+        planned = {"id": 7, "stages": [{"name": "narrowed:Styling", "assemblyNames": ["Velvet.Tests.Styling.Editor"]},
+                                       {"name": "whole", "assemblyNames": []}]}
+        item = {"id": 7, "stages": [{"name": "narrowed:Styling", "finished": True, "cancelled": True,
+                                     "failures": ["N.C.Kills"], "armed": ["Velvet:7"]}]}
+        opening = {"narrowed:Styling": {"name": "narrowed:Styling", "finished": True, "passed": 3,
+                                        "failed": len(opening_failures), "failures": opening_failures}}
+        return mutation_check.session_verdict(item, planned, 7, "Velvet", {}, opening, {"N.C.Kills": True}, set())
+
+    def test_Given_ANarrowedKillOverAGreenAreaBaseline_When_Read_Then_ItNamesTheAreasAssemblies(self):
+        # Arrange
+
+        # Act
+        reading = self.reading([])
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.KILLED, "1 failed in Velvet.Tests.Styling.Editor: Kills",
+                                   ["N.C.Kills"]))
+
+    def test_Given_ANarrowedKillOverAnAreaBaselineThatFailed_When_Read_Then_ItDoesNotStand(self):
+        # Arrange — the area failing alone under the unmutated program fails under every mutant too.
+
+        # Act
+        reading = self.reading(["N.C.Other"])
+
+        # Assert
+        self.assertIsNone(reading)
+
+
+class SessionPlanTests(unittest.TestCase):
+    def plan(self, count, platform="EditMode"):
+        project = Path("/p")
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(count)]
+        plan, segments = mutation_check.session_plan(project, mutants, list(range(1, count + 1)), {}, [],
+                                                     platform, 100, 900, Path("/out"))
+        return plan, segments
+
+    def test_Given_MoreMutantsThanOneSegmentHolds_When_Planned_Then_EachSegmentEndsInAConfirmation(self):
+        # Arrange — one mutant past a full segment, so the second segment is the short tail.
+        full = mutation_check.SESSION_MUTANTS
+
+        # Act
+        plan, segments = self.plan(full + 1)
+
+        # Assert — and each launch ends where its confirmation does.
+        self.assertEqual(([position for position, item in enumerate(plan["items"]) if item.get("confirm")],
+                          segments), ([full, full + 2], [full + 1, full + 3]))
+
+    def test_Given_OneSegmentOfMutants_When_Planned_Then_ItHoldsExactlyOneConfirmation(self):
+        # Arrange
+        count = mutation_check.SESSION_MUTANTS
+
+        # Act
+        plan, _ = self.plan(count)
+
+        # Assert
+        self.assertEqual(sum(1 for item in plan["items"] if item.get("confirm")), 1)
+
+    def test_Given_PlayMode_When_Planned_Then_NoStageStopsAtItsFirstFailure(self):
+        # Arrange — a job cancelled in play mode leaves its scene modified for the next one.
+
+        # Act
+        plan, _ = self.plan(2, "PlayMode")
+
+        # Assert
+        self.assertEqual({stage["stopAtFirstFailure"] for item in plan["items"] for stage in item["stages"]},
+                         {False})
+
+    def test_Given_EditMode_When_Planned_Then_AMutantsStagesStopAtTheirFirstFailure(self):
+        # Arrange
+
+        # Act
+        plan, _ = self.plan(2)
+
+        # Assert
+        self.assertEqual([stage["stopAtFirstFailure"] for item in plan["items"] if not item.get("confirm")
+                          for stage in item["stages"]], [True, True])
+
+    def test_Given_TheSessionLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
+        # Arrange — a session the campaign's own wait could not see would share the machine with the next.
+        line = "{} {} -batchmode -projectPath /p".format(mutation_check.DEFAULT_UNITY, mutation_check.SESSION_FLAG)
+
+        # Act
+        counted = re.match(mutation_check.UNITY_RUNNING, line) is not None
+
+        # Assert
+        self.assertTrue(counted)
+
+
+class SessionFilterTests(unittest.TestCase):
+    def test_Given_AnEditorScope_When_ReadAsAStageFilter_Then_EachFlagSplitsOnSemicolons(self):
+        # Arrange
+        scope = ["-assemblyNames", "A;B", "-testFilter", "!\\.X$;!\\.Y$"]
+
+        # Act
+        read = mutation_check.session_filter(scope)
+
+        # Assert
+        self.assertEqual(read, (["A", "B"], ["!\\.X$", "!\\.Y$"]))
+
+
+class HeldFilesTests(unittest.TestCase):
+    def held(self):
+        """A tree holding the record a session writes over two guarded sources."""
+        campaign = StubbedCampaign()
+        second = campaign.project / "Packages/com.velvet.core/Runtime/Second.cs"
+        entries = []
+        for path, original in ((campaign.source, campaign.source.read_text()), (second, "second original")):
+            entries.append({"source": str(path), "original": original,
+                            "original_sha": hashlib.sha256(original.encode()).hexdigest(),
+                            "mutated_sha": hashlib.sha256(b"guarded").hexdigest()})
+            path.write_text("guarded")
+        (campaign.project / mutation_check.SENTINEL).write_text(json.dumps(
+            {"sources": entries, "mutation": "2 mutant(s) guarded for one session"}))
+        return campaign, second
+
+    def test_Given_ASessionsHeldFiles_When_TheHolderReleasesThem_Then_EveryOneIsPutBack(self):
+        # Arrange
+        campaign, second = self.held()
+
+        # Act
+        mutation_check.Holder(campaign.project / mutation_check.SENTINEL).release()
+
+        # Assert
+        self.assertEqual(second.read_text(), "second original")
+
+    def test_Given_ASessionsHeldFiles_When_ACommitWouldRecordAnyOfThem_Then_ItIsRefused(self):
+        # Arrange — the second file, not the first: a reader of one `source` sees only the first.
+        campaign, _ = self.held()
+
+        # Act
+        code = campaign.run("--carried", "Packages/com.velvet.core/Runtime/Second.cs")
+
+        # Assert
+        self.assertEqual(code, mutation_check.CARRIED_REFUSAL)
+
+    def test_Given_ASessionsHeldFileEditedSince_When_RestoreRuns_Then_ItRefusesToOverwriteIt(self):
+        # Arrange
+        campaign, second = self.held()
+        second.write_text("somebody's own work")
+
+        # Act — a reader of one `source` finds none in this record and stops on an OSError instead.
+        try:
+            code = campaign.run("--restore")
+        except OSError as failure:
+            code = failure
+
+        # Assert
+        self.assertIn("holds neither the mutation", str(code))
 
 
 if __name__ == "__main__":

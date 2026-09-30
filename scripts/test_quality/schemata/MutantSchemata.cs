@@ -1,7 +1,8 @@
 // Rewrites a campaign's mutants into one compilable tree, each guarded by a switch read at run time.
 //
-// Built and run by mutant_schemata.py with the editor's own .NET runtime and Roslyn, so the parse and
-// the compile check are the ones Unity's build uses. Input and output are JSON; see mutant_schemata.py.
+// Built and run by schemata_tool.py with the editor's own .NET runtime and Roslyn, so the parse and
+// the compile check are the ones Unity's build uses. Input and output are JSON; mutation_check.py's
+// schemata_request writes the input and measure_in_session reads the output.
 
 using System;
 using System.Collections.Generic;

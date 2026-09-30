@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build and run the schemata rewriter with the editor's own .NET runtime and Roslyn.
 
-Prototype. `MutantSchemata.cs` is compiled once per source digest into Logs/, against the runtime and the
-compiler the editor ships, so the parse and the compile check it makes are the ones Unity's build makes.
+`MutantSchemata.cs` is compiled once per source digest into Logs/, against the runtime and the compiler
+the editor ships, so the parse and the compile check it makes are the ones Unity's build makes.
 """
 
 import hashlib
