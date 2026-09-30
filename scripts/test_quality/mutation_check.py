@@ -2017,7 +2017,8 @@ def read_counts(results):
 # --------------------------------------------------------------------------------------------------
 
 # A session is launched with this rather than `-runTests`, which starts the test framework's own run
-# and quits after it; the prefix keeps the session inside every busy count UNITY_RUNNING spells.
+# and quits after it. The prefix keeps a session inside UNITY_RUNNING, the pattern neuter_check.py's and
+# base_red_check.py's busy counts spell too.
 # `Assets/MutantSchemata/Editor/SchemataRunner.cs` takes the launch over from the plan it is handed.
 SESSION_FLAG = "-runTestsSchemata"
 SESSION_PLAN = "VELVET_SCHEMATA_PLAN"

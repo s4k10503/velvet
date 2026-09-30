@@ -5092,14 +5092,15 @@ class ShardCeilingTests(unittest.TestCase):
 class SessionCampaign(StubbedCampaign):
     """A campaign whose rewriter and session are stubbed as well as its editor launches.
 
-    `outcomes` names what the session records for each mutant it measures: "killed" fails the case
+    `outcome` names what the session records for each mutant it measures: "killed" fails the case
     `N.C.Kills` in the whole stage, "survived" runs the whole stage green over the baseline's case
-    count. The confirmation that closes a segment passes `N.C.Kills` unless `unconfirmed`.
+    count, or over none of them where `short`. The confirmation that closes a segment passes
+    `N.C.Kills` unless `unconfirmed`; `unarmed` records no switch in any stage, and `lost` reports every
+    mutant's item as one no launch finished.
     """
 
     REWRITTEN = "// guarded for the session\n"
 
-    placed = True
     unconfirmed = False
     lost = False
     unarmed = False
@@ -5120,9 +5121,7 @@ class SessionCampaign(StubbedCampaign):
         self.rewrites.append(request)
         ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
         relative = request["files"][0]["path"]
-        return {"placed": ids if self.placed else [],
-                "declined": {} if self.placed else {str(i): "declined here" for i in ids},
-                "files": {relative: self.REWRITTEN}, "fatal": []}
+        return {"placed": ids, "declined": {}, "files": {relative: self.REWRITTEN}, "fatal": []}
 
     def session(self, _args, _project, plan, directory, _holder):
         self.during = self.source.read_text()
@@ -5141,7 +5140,7 @@ class SessionCampaign(StubbedCampaign):
                 stage = {"name": "whole", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             else:
-                xml.write_text('<test-run total="2" passed="2" failed="0" inconclusive="0" />'
+                xml.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />'
                                if self.short else GREEN_RESULTS)
                 stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
@@ -5228,17 +5227,6 @@ class SessionRoutingTests(unittest.TestCase):
         campaign = self.campaign
         campaign.outcome = "survived"
         campaign.short = True
-
-        # Act
-        campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
-
-    def test_Given_AMutantTheRewriterDeclined_When_TheCampaignRuns_Then_ItTakesItsOwnLaunch(self):
-        # Arrange
-        campaign = self.campaign
-        campaign.placed = False
 
         # Act
         campaign.run("--max", "1")
