@@ -5089,6 +5089,9 @@ class ShardCeilingTests(unittest.TestCase):
         self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
 
 
+READ_IL = mutation_check.il_reading_assemblies
+
+
 class SessionCampaign(StubbedCampaign):
     """A campaign whose rewriter and session are stubbed as well as its editor launches.
 
@@ -5147,7 +5150,8 @@ class SessionCampaign(StubbedCampaign):
             name.write_text(json.dumps({"id": number, "stages": [stage]}))
         lost = {position for position, item in enumerate(plan["items"])
                 if self.lost and not item.get("confirm")}
-        return {position: 0 for position in range(len(plan["items"]))}, lost, None
+        return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
+                if position not in lost}, lost, None
 
     def recorded(self):
         return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
@@ -5160,11 +5164,14 @@ class SessionRoutingTests(unittest.TestCase):
         mutation_check.rewrite_schemata = self.campaign.rewrite
         mutation_check.run_session = self.campaign.session
         mutation_check.response_file = lambda _project, _assembly: "Library/Bee/artifacts/x/A.rsp"
-        self.addCleanup(self.restore, saved)
+        self.il_read = set()
+        mutation_check.il_reading_assemblies = lambda _project: self.il_read
+        self.addCleanup(self.restore, saved + (READ_IL,))
 
     @staticmethod
     def restore(saved):
-        mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file = saved
+        (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file,
+         mutation_check.il_reading_assemblies) = saved
 
     def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
         # Arrange
@@ -5236,7 +5243,9 @@ class SessionRoutingTests(unittest.TestCase):
 
     def test_Given_AnItemNoSessionLaunchFinished_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
         # Arrange — the editor was killed at the stage's bound, and the own launch decides as it always has.
+        # A survivor, since a kill would fall back on its confirmation's launch as well.
         campaign = self.campaign
+        campaign.outcome = "survived"
         campaign.lost = True
 
         # Act
@@ -5264,6 +5273,51 @@ class SessionRoutingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.during, SessionCampaign.REWRITTEN)
+
+
+    def test_Given_ASurvivorInAnAssemblyAFixtureReadsTheILOf_When_TheSessionEnds_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — that fixture read every guard compiled together, not this mutant's build.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        self.il_read = {mutation_check.assembly_of(campaign.source), "Elsewhere"}
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_NoMutantIsMeasuredInASession(self):
+        # Arrange — the runner starts each stage itself, so the argument would reach none of them.
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1", "--editor-arg=-someFlag")
+
+        # Assert
+        self.assertEqual(campaign.rewrites, [])
+
+
+class ILReadingAssemblyTests(unittest.TestCase):
+    def test_Given_AFixtureReadingTheModuleOfAType_When_Derived_Then_TheTypesAssemblyIsRead(self):
+        # Arrange — one assembly a fixture reads by a type, one it never names.
+        project = Path(tempfile.mkdtemp(prefix="il-read-"))
+        for name, declares in (("Read", "public static class V { }"), ("Unread", "public static class W { }")):
+            directory = project / "Packages" / name
+            directory.mkdir(parents=True)
+            (directory / "{}.asmdef".format(name)).write_text(json.dumps({"name": name}))
+            (directory / "{}.cs".format(name)).write_text(declares)
+        tests = project / "Packages" / "Read" / "Tests"
+        tests.mkdir()
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(
+            "class ReaderTests { void A() { ModuleDefinition.ReadModule(typeof(V).Assembly.Location); } }")
+
+        # Act
+        read = mutation_check.il_reading_assemblies(project)
+
+        # Assert
+        self.assertEqual(read, {"Read"})
 
 
 class SessionVerdictTests(unittest.TestCase):
@@ -5348,16 +5402,6 @@ class SessionPlanTests(unittest.TestCase):
         self.assertEqual([stage["stopAtFirstFailure"] for item in plan["items"] if not item.get("confirm")
                           for stage in item["stages"]], [True, True])
 
-    def test_Given_TheSessionLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
-        # Arrange — a session the campaign's own wait could not see would share the machine with the next.
-        line = "{} {} -batchmode -projectPath /p".format(mutation_check.DEFAULT_UNITY, mutation_check.SESSION_FLAG)
-
-        # Act
-        counted = re.match(mutation_check.UNITY_RUNNING, line) is not None
-
-        # Assert
-        self.assertTrue(counted)
-
 
 class SessionFilterTests(unittest.TestCase):
     def test_Given_AnEditorScope_When_ReadAsAStageFilter_Then_EachFlagSplitsOnSemicolons(self):
@@ -5419,6 +5463,200 @@ class HeldFilesTests(unittest.TestCase):
 
         # Assert
         self.assertIn("holds neither the mutation", str(code))
+
+
+class SessionLaunchTests(unittest.TestCase):
+    """`run_session` against a runner played by a stub of `launch`, which writes what the real runner
+    writes: its progress, and `runner-done` or `runner-failed`."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="session-launch-"))
+        project = Path("/p")
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(3)]
+        self.plan, segments = mutation_check.session_plan(project, mutants, [1, 2, 3], {}, [], "EditMode",
+                                                          100, 900, self.directory)
+        self.plan["segments"] = segments
+        self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
+                                       editor_arg=[])
+        self.commands, self.answers, self.busy = [], [], []
+        self.scripts = []
+        saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
+                 mutation_check.wait_for_quiet)
+        mutation_check.launch = self.launch
+        mutation_check.wait_for_quiet = lambda _seconds: True
+        mutation_check.unity_busy = lambda: self.busy.pop(0) if self.busy else 1
+        mutation_check.wait_for_release = lambda _project, _seconds: True
+        self.addCleanup(self.restore, saved)
+
+    @staticmethod
+    def restore(saved):
+        (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
+         mutation_check.wait_for_quiet) = saved
+
+    def progress(self, position, phase="running", age=0):
+        (self.directory / "runner-progress.json").write_text(json.dumps(
+            {"position": position, "id": 0, "stage": 0, "phase": phase, "since": time.time() - age}))
+
+    def launch(self, command, _timeout, _holder, _env, expired):
+        self.commands.append(command)
+        self.scripts.pop(0)(expired)
+        return 0.0, False, 0, ""
+
+    def finishes(self, expired):
+        self.progress(len(self.plan["items"]))
+        (self.directory / "runner-done").write_text("")
+
+    def session(self):
+        return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
+        # Arrange — the first launch dies in the second mutant's item.
+        def dies(expired):
+            self.progress(2)
+        self.scripts = [dies, self.finishes]
+
+        # Act
+        runs, lost, _ = self.session()
+
+        # Assert
+        self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
+                         ([2], {0: 1, 1: 1, 3: 2}))
+
+    def test_Given_AStageOlderThanItsBound_When_Asked_Then_ItHasExpired(self):
+        # Arrange — the plan's stage bound plus the slack, and a second past it.
+        bound = self.plan["items"][0]["stages"][0]["bound"] + mutation_check.SESSION_STAGE_SLACK
+        def overdue(expired):
+            self.progress(0, age=bound + 1)
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [overdue]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [True])
+
+    def test_Given_AStageInsideItsBound_When_Asked_Then_ItHasNotExpired(self):
+        # Arrange
+        def young(expired):
+            self.progress(0, age=1)
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [young]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [False])
+
+    def test_Given_AReloadThatNeverCompletes_When_ItsBoundPasses_Then_TheSessionIsAbandoned(self):
+        # Arrange — asked for, and past SESSION_RELOAD_BOUND though well inside the stage's own bound.
+        def stuck(expired):
+            self.progress(1, phase="start", age=mutation_check.SESSION_RELOAD_BOUND + 1)
+            expired()
+        self.scripts = [stuck, self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert — and no second launch was made.
+        self.assertEqual((len(self.commands), "reload" in (stopped or "")), (1, True))
+
+    def test_Given_ARunnerThatFailedClosed_When_TheLaunchEnds_Then_TheSessionIsAbandoned(self):
+        # Arrange
+        def fails(expired):
+            self.progress(0)
+            (self.directory / "runner-failed").write_text("no holder")
+        self.scripts = [fails, self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "no holder" in (stopped or "")), (1, True))
+
+    def test_Given_AnotherEditorDuringOneItem_When_TheSessionEnds_Then_OnlyThatItemCarriesIt(self):
+        # Arrange — unity_busy counts the session's own editor too, so 2 is one neighbour.
+        def neighbour(expired):
+            self.busy = [2, 1]
+            self.progress(1)
+            expired()
+            self.progress(2)
+            expired()
+            self.finishes(expired)
+        self.scripts = [neighbour]
+
+        # Act
+        runs, _, _ = self.session()
+
+        # Assert
+        self.assertEqual({position: run["peak"] for position, run in runs.items()}, {0: 0, 1: 1, 2: 0, 3: 0})
+
+    def test_Given_AMachineThatStaysBusy_When_ASessionWouldLaunch_Then_NoEditorIsStarted(self):
+        # Arrange — a later segment's launch waits for the machine as the first one did.
+        mutation_check.wait_for_quiet = lambda _seconds: False
+        self.scripts = [self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert
+        self.assertEqual((self.commands, "still in flight" in (stopped or "")), ([], True))
+
+    def test_Given_TheSessionsOwnLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
+        # Arrange — a session the campaign's own wait could not see would share the machine with the next.
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertIsNotNone(re.match(mutation_check.UNITY_RUNNING, " ".join(self.commands[0])))
+
+
+class SessionConfirmationTests(unittest.TestCase):
+    """Which confirmation a kill stands on: its own segment's, run in its own launch."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="session-confirm-"))
+        project = Path("/p")
+        count = mutation_check.SESSION_MUTANTS + 1
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(count)]
+        self.plan, _ = mutation_check.session_plan(project, mutants, list(range(1, count + 1)), {}, [],
+                                                   "EditMode", 100, 900, self.directory)
+        # The first segment's confirmation failed the case, the second's passed it.
+        for number, result in ((-1, "Failed"), (-2, "Passed")):
+            xml = self.directory / "confirm{}.xml".format(number)
+            xml.write_text('<test-run><test-case fullname="N.C.Kills" result="{}" /></test-run>'.format(result))
+            (self.directory / "item-{}.json".format(mutation_check.cs_id(number))).write_text(json.dumps(
+                {"id": number, "stages": [{"name": "confirm", "finished": True, "xml": str(xml)}]}))
+        self.found = mutation_check.confirmations(self.plan, self.directory)
+
+    def test_Given_AKillInTheFirstSegment_When_ItsConfirmationIsRead_Then_ItIsItsOwnSegments(self):
+        # Arrange — every item carried by the one launch.
+        runs = {position: {"launch": 1, "peak": 0} for position in range(len(self.plan["items"]))}
+
+        # Act
+        confirmed = mutation_check.confirmed_for(self.plan, 0, runs, self.found)
+
+        # Assert — the second segment's pass does not clear the first's failure.
+        self.assertEqual(confirmed, {"N.C.Kills": False})
+
+    def test_Given_AConfirmationFromALaterLaunch_When_ItsKillIsRead_Then_NothingConfirmsIt(self):
+        # Arrange — the item's editor died after it, and its segment's confirmation ran in the next one.
+        closing = next(position for position, item in enumerate(self.plan["items"]) if item.get("confirm"))
+        runs = {position: {"launch": 1 if position < 3 else 2, "peak": 0} for position in range(closing + 1)}
+        found = {closing: {"N.C.Kills": True}}
+
+        # Act
+        confirmed = mutation_check.confirmed_for(self.plan, 0, runs, found)
+
+        # Assert
+        self.assertEqual(confirmed, {})
 
 
 if __name__ == "__main__":

@@ -99,6 +99,7 @@ namespace Velvet.MutantSchemata.Editor
             public int position;
             public int id;
             public int stage;
+            public string phase = "";
             public double since;
         }
 
@@ -148,6 +149,7 @@ namespace Velvet.MutantSchemata.Editor
                 position = state.position,
                 id = state.position < plan.items.Length ? plan.items[state.position].id : int.MinValue,
                 stage = state.stage,
+                phase = state.phase,
                 since = Now,
             }));
         }
@@ -235,11 +237,12 @@ namespace Velvet.MutantSchemata.Editor
             stage != null && stage.finished && !stage.omitted && stage.failed == 0 && stage.inconclusive == 0 &&
             stage.failures.Count == 0 && stage.passed > 0;
 
-        // The first case each item since the previous confirmation was killed by.
+        // The first case each item since the previous confirmation was killed by, in this launch: an item an
+        // earlier launch carried is not confirmed by this one.
         private static string[] KillingCases(int position)
         {
             var found = new List<string>();
-            for (var earlier = position - 1; earlier >= 0 && !plan.items[earlier].confirm; earlier--)
+            for (var earlier = position - 1; earlier >= plan.start && !plan.items[earlier].confirm; earlier--)
             {
                 if (plan.items[earlier].id == Opening) continue;
                 var killed = Result(plan.items[earlier].id).stages.FirstOrDefault(s => s.failures.Count > 0);
@@ -313,12 +316,23 @@ namespace Velvet.MutantSchemata.Editor
 
         // Whether the framework has let go of the job. Not `TestRunnerApi.IsRunning`, which in the
         // prototype let the next stage's reload restart a finished job beside the next one.
+        // Fails closed: without the holder there is no telling when a stage may reload, so the session ends
+        // and every mutant it had not finished takes its own launch.
         private static bool Released(string guid)
         {
-            if (JobHolder == null || guid.Length == 0) return true;
-            var holder = JobHolder.GetProperty("instance",
+            if (guid.Length == 0) return Fail("a stage's job id was never recorded");
+            var holder = JobHolder?.GetProperty("instance",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.FlattenHierarchy)?.GetValue(null);
-            return JobHolder.GetMethod("GetRunner")?.Invoke(holder, new object[] { guid }) == null;
+            var runner = JobHolder?.GetMethod("GetRunner", new[] { typeof(string) });
+            if (holder == null || runner == null) return Fail("TestJobDataHolder.instance.GetRunner(string) did not resolve");
+            return runner.Invoke(holder, new object[] { guid }) == null;
+        }
+
+        private static bool Fail(string reason)
+        {
+            File.WriteAllText(Path.Combine(plan.output, "runner-failed"), reason);
+            EditorApplication.Exit(3);
+            return false;
         }
 
         private static void AwaitCancel()

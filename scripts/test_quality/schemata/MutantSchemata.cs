@@ -80,19 +80,14 @@ namespace Velvet.MutantSchemata
             {
                 if (!input.assemblies.TryGetValue(group.Key, out var rsp))
                 {
-                    foreach (var file in group)
-                        foreach (var m in file.mutants)
-                            declined[m.id] = "no compiler response file for assembly " + group.Key;
+                    DeclineEach(group, declined, "no compiler response file for assembly " + group.Key);
                     continue;
                 }
                 var result = RewriteAssembly(input, group.Key, rsp, group.ToList(), declined);
                 if (result.Fatal != null)
                 {
                     fatal.Add(group.Key + ": " + result.Fatal);
-                    foreach (var file in group)
-                        foreach (var m in file.mutants)
-                            if (!declined.ContainsKey(m.id))
-                                declined[m.id] = "the assembly could not be rewritten: " + result.Fatal;
+                    DeclineEach(group, declined, "the assembly could not be rewritten: " + result.Fatal);
                     continue;
                 }
                 foreach (var pair in result.Files) files[pair.Key] = pair.Value;
@@ -116,7 +111,13 @@ namespace Velvet.MutantSchemata
             return fatal.Count == 0 ? 0 : 1;
         }
 
-        private sealed class AssemblyResult
+        private static void DeclineEach(IEnumerable<FileInput> files, SortedDictionary<int, string> declined, string reason)
+        {
+            foreach (var mutant in files.SelectMany(file => file.mutants).Where(mutant => !declined.ContainsKey(mutant.id)))
+                declined[mutant.id] = reason;
+        }
+
+        internal sealed class AssemblyResult
         {
             public string? Fatal;
             public Dictionary<string, string> Files = new();
@@ -124,48 +125,64 @@ namespace Velvet.MutantSchemata
             public int Rounds;
         }
 
+        internal sealed class CompileContext
+        {
+            public CSharpParseOptions ParseOptions = null!;
+            public List<MetadataReference> References = new();
+            public CSharpCompilationOptions Options = null!;
+            public List<ISourceGenerator> Generators = new();
+            public ImmutableArray<DiagnosticAnalyzer> Analyzers = ImmutableArray<DiagnosticAnalyzer>.Empty;
+            public ImmutableArray<AdditionalText> Additional = ImmutableArray<AdditionalText>.Empty;
+            public List<(string path, string text)> Sources = new();
+        }
+
         private static AssemblyResult RewriteAssembly(Input input, string assembly, string rsp,
                                                       List<FileInput> targets, SortedDictionary<int, string> declined)
         {
-            var result = new AssemblyResult();
             var arguments = CSharpCommandLineParser.Default.Parse(
                 new[] { "@" + Path.GetFullPath(Path.Combine(input.project, rsp)) }, input.project, null);
             var parseErrors = arguments.Errors.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
             if (parseErrors.Count > 0)
-            {
-                result.Fatal = "the response file did not parse: " + parseErrors[0].GetMessage();
-                return result;
-            }
-            var parseOptions = arguments.ParseOptions;
-            var references = arguments.MetadataReferences.Select(r =>
-                (MetadataReference)MetadataReference.CreateFromFile(Full(input.project, r.Reference), r.Properties)).ToList();
+                return new AssemblyResult { Fatal = "the response file did not parse: " + parseErrors[0].GetMessage() };
             var loader = new Loader();
             var analyzerReferences = arguments.AnalyzerReferences
                 .Select(a => new AnalyzerFileReference(Full(input.project, a.FilePath), loader)).ToList();
-            var analyzers = analyzerReferences.SelectMany(a => a.GetAnalyzers(LanguageNames.CSharp)).ToImmutableArray();
-            var generators = analyzerReferences.SelectMany(a => a.GetGenerators(LanguageNames.CSharp)).ToList();
-            var additional = arguments.AdditionalFiles
-                .Select(f => (AdditionalText)new FileText(Full(input.project, f.Path))).ToImmutableArray();
-
+            var context = new CompileContext
+            {
+                ParseOptions = arguments.ParseOptions,
+                References = arguments.MetadataReferences.Select(r =>
+                    (MetadataReference)MetadataReference.CreateFromFile(Full(input.project, r.Reference), r.Properties)).ToList(),
+                Options = arguments.CompilationOptions,
+                Generators = analyzerReferences.SelectMany(a => a.GetGenerators(LanguageNames.CSharp)).ToList(),
+                Analyzers = analyzerReferences.SelectMany(a => a.GetAnalyzers(LanguageNames.CSharp)).ToImmutableArray(),
+                Additional = arguments.AdditionalFiles
+                    .Select(f => (AdditionalText)new FileText(Full(input.project, f.Path))).ToImmutableArray(),
+            };
             var byPath = targets.ToDictionary(t => Norm(Full(input.project, t.path)), t => t);
-            var sources = new List<(string path, string text)>();
             foreach (var source in arguments.SourceFiles)
             {
                 var full = Norm(source.Path);
-                sources.Add((full, byPath.TryGetValue(full, out var target) ? target.text : File.ReadAllText(full)));
+                context.Sources.Add((full, byPath.TryGetValue(full, out var target) ? target.text : File.ReadAllText(full)));
             }
             foreach (var target in byPath.Keys)
             {
-                if (!sources.Any(s => s.path == target))
-                {
-                    result.Fatal = "the response file does not compile " + target + "; run the baseline first";
-                    return result;
-                }
+                if (!context.Sources.Any(s => s.path == target))
+                    return new AssemblyResult { Fatal = "the response file does not compile " + target + "; run the baseline first" };
             }
+            return RewriteSources(input, assembly, context, targets, declined);
+        }
+
+        // Everything after the response file: the pristine compile, placing each site, and the rounds that
+        // decline what a guard breaks. Separate so the placement can be run over sources a test hands it.
+        internal static AssemblyResult RewriteSources(Input input, string assembly, CompileContext context,
+                                                      List<FileInput> targets, SortedDictionary<int, string> declined)
+        {
+            var result = new AssemblyResult();
+            var parseOptions = context.ParseOptions;
+            var sources = context.Sources;
 
             // The unmutated tree has to compile clean here, or an error below cannot be blamed on a mutant.
-            var pristine = Compile(sources, parseOptions, references, arguments.CompilationOptions, generators,
-                                   analyzers, additional, assembly);
+            var pristine = Compile(sources, context, assembly);
             var pristineErrors = Errors(pristine.diagnostics).ToList();
             if (pristineErrors.Count > 0)
             {
@@ -179,7 +196,6 @@ namespace Velvet.MutantSchemata
             {
                 var full = Norm(Full(input.project, target.path));
                 var tree = pristine.compilation.SyntaxTrees.First(t => Norm(t.FilePath) == full);
-                var model = pristine.compilation.GetSemanticModel(tree);
                 foreach (var mutant in target.mutants)
                 {
                     if (PostProcessorAssemblies.Contains(assembly))
@@ -187,7 +203,7 @@ namespace Velvet.MutantSchemata
                         declined[mutant.id] = "the assembly runs inside the compiler's post-processor, not the editor";
                         continue;
                     }
-                    var reason = Locate(target, mutant, tree, model, pristine.compilation, parseOptions, out var site);
+                    var reason = Locate(target, mutant, tree, pristine.compilation, parseOptions, out var site);
                     if (reason != null) declined[mutant.id] = reason;
                     else sites.Add(site!);
                 }
@@ -210,7 +226,7 @@ namespace Velvet.MutantSchemata
                         host = full;
                         switchName = SwitchName(target.text, parseOptions, assembly);
                     }
-                    rewritten[full] = Rewrite(target.text, parseOptions, full, mine, switchName!,
+                    rewritten[full] = Rewrite(target.text, parseOptions, mine, switchName!,
                                               host == full ? SwitchDeclaration(assembly, input.env) : null, input.shapeRulesOff);
                 }
                 if (rewritten.Count == 0)
@@ -218,8 +234,7 @@ namespace Velvet.MutantSchemata
                     return result;
                 }
                 var mutatedSources = sources.Select(s => rewritten.TryGetValue(s.path, out var r) ? (s.path, r.text) : s).ToList();
-                var compiled = Compile(mutatedSources, parseOptions, references, arguments.CompilationOptions,
-                                       generators, analyzers, additional, assembly);
+                var compiled = Compile(mutatedSources, context, assembly);
                 var errors = Errors(compiled.diagnostics).ToList();
                 if (errors.Count == 0)
                 {
@@ -227,105 +242,142 @@ namespace Velvet.MutantSchemata
                     result.Switch = switchName + ".Active";
                     return result;
                 }
-                var blamed = new HashSet<int>();
-                foreach (var error in errors)
+                var fatal = Blame(errors, rewritten, declined);
+                if (fatal != null)
                 {
-                    var location = error.Location;
-                    var path = Norm(location.SourceTree?.FilePath ?? "");
-                    if (!rewritten.TryGetValue(path, out var r))
-                    {
-                        result.Fatal = "an error outside every mutated file: " + error;
-                        return result;
-                    }
-                    var at = location.SourceSpan;
-                    var inMutated = r.spans.Where(s => s.mutated.Contains(at)).ToList();
-                    var inWrap = r.spans.Where(s => s.wrap.Contains(at)).ToList();
-                    var inMember = r.spans.Where(s => s.member.Contains(at)).ToList();
-                    List<int> ids;
-                    if (inMutated.Count > 0)
-                        ids = inMutated.OrderBy(s => s.mutated.Length).Take(1).Select(s => s.id).ToList();
-                    else if (inWrap.Count > 0)
-                    {
-                        var innermost = inWrap.Min(s => s.wrap.Length);
-                        ids = inWrap.Where(s => s.wrap.Length == innermost).Select(s => s.id).ToList();
-                    }
-                    else if (inMember.Count > 0)
-                        ids = inMember.Select(s => s.id).ToList();
-                    else
-                    {
-                        result.Fatal = "an error no mutant accounts for: " + error;
-                        return result;
-                    }
-                    foreach (var id in ids)
-                    {
-                        blamed.Add(id);
-                        if (!declined.ContainsKey(id))
-                            declined[id] = "the guarded form does not compile: " + error.Id + " " + error.GetMessage();
-                    }
+                    result.Fatal = fatal;
+                    return result;
                 }
             }
             result.Fatal = "still not compiling after " + input.rounds + " rounds";
             return result;
         }
 
-        private static string? Locate(FileInput file, MutantInput mutant, SyntaxTree tree, SemanticModel model,
-                                      Compilation compilation, CSharpParseOptions parseOptions, out Site? site)
+        // What placing one mutant reads: the unmutated tree and its model, and where the edit lands.
+        private sealed class Placing
+        {
+            public FileInput File = null!;
+            public MutantInput Mutant = null!;
+            public SyntaxTree Tree = null!;
+            public Compilation Compilation = null!;
+            public SemanticModel Model = null!;
+            public CSharpParseOptions Options = null!;
+            public SourceText Text = null!;
+            public int EditStart;
+            public TextSpan Edit => new(EditStart, Mutant.length);
+        }
+
+        // Declines the mutant each error lands in: its mutated branch, else the innermost guard holding it,
+        // else every mutant of the member holding it. Returns why the assembly cannot go on, or null.
+        private static string? Blame(List<Diagnostic> errors,
+                                     Dictionary<string, (string text, List<(int id, TextSpan wrap, TextSpan mutated, TextSpan member)> spans)> rewritten,
+                                     SortedDictionary<int, string> declined)
+        {
+            foreach (var error in errors)
+            {
+                var location = error.Location;
+                if (!rewritten.TryGetValue(Norm(location.SourceTree?.FilePath ?? ""), out var r))
+                    return "an error outside every mutated file: " + error;
+                var ids = Blamed(r.spans, location.SourceSpan);
+                if (ids.Count == 0) return "an error no mutant accounts for: " + error;
+                foreach (var id in ids.Where(id => !declined.ContainsKey(id)))
+                    declined[id] = "the guarded form does not compile: " + error.Id + " " + error.GetMessage();
+            }
+            return null;
+        }
+
+        private static List<int> Blamed(List<(int id, TextSpan wrap, TextSpan mutated, TextSpan member)> spans, TextSpan at)
+        {
+            var inMutated = spans.Where(s => s.mutated.Contains(at)).ToList();
+            if (inMutated.Count > 0) return inMutated.OrderBy(s => s.mutated.Length).Take(1).Select(s => s.id).ToList();
+            var inWrap = spans.Where(s => s.wrap.Contains(at)).ToList();
+            if (inWrap.Count > 0)
+            {
+                var innermost = inWrap.Min(s => s.wrap.Length);
+                return inWrap.Where(s => s.wrap.Length == innermost).Select(s => s.id).ToList();
+            }
+            return spans.Where(s => s.member.Contains(at)).Select(s => s.id).ToList();
+        }
+
+        private static string? Locate(FileInput file, MutantInput mutant, SyntaxTree tree, Compilation compilation,
+                                      CSharpParseOptions parseOptions, out Site? site)
         {
             site = null;
             var text = tree.GetText();
             if (mutant.line < 1 || mutant.line > text.Lines.Count) return "the line is outside the file";
-            var editStart = text.Lines[mutant.line - 1].Start + mutant.start;
-            var edit = new TextSpan(editStart, mutant.length);
-            var root = tree.GetRoot();
-            var directText = text.ToString().Remove(editStart, mutant.length).Insert(editStart, mutant.replacement);
-            var direct = CSharpSyntaxTree.ParseText(directText, parseOptions);
-
-            if (mutant.@operator is "line removed" or "guard removed")
+            var placing = new Placing
             {
-                var statement = root.FindNode(edit, getInnermostNodeForTie: true)
-                    .AncestorsAndSelf().OfType<StatementSyntax>().FirstOrDefault(s => s.Span == edit);
-                if (statement == null) return "the removed text is not one whole statement";
-                if (statement is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax)
-                    return "the removed statement declares a name";
-                if (InComponentBody(statement)) return "the statement is in a [Component] body the weaver reads";
-                site = new Site { Mutant = mutant, File = file, Node = statement, Statement = true };
-                return null;
-            }
-
-            SyntaxNode? start;
-            if (mutant.@operator is "clause removed")
-            {
-                start = root.FindNode(edit).AncestorsAndSelf().OfType<ExpressionSyntax>()
-                    .FirstOrDefault(e => e.Span.Contains(edit));
-            }
-            else
-            {
-                var at = mutant.@operator == "literal" ? editStart : editStart + 1;
-                var token = root.FindToken(at);
-                if (token.SpanStart != at || token.Text != mutant.before) return "no '" + mutant.before + "' token at the mutant";
-                start = mutant.@operator == "literal"
-                    ? token.Parent as LiteralExpressionSyntax
-                    : token.Parent is BinaryExpressionSyntax binary && binary.OperatorToken == token ? binary : null;
-            }
+                File = file, Mutant = mutant, Tree = tree, Compilation = compilation, Model = compilation.GetSemanticModel(tree),
+                Options = parseOptions, Text = text, EditStart = text.Lines[mutant.line - 1].Start + mutant.start,
+            };
+            if (mutant.@operator is "line removed" or "guard removed") return LocateStatement(placing, out site);
+            var start = StartOf(placing, out var missing);
+            if (missing != null) return missing;
             if (start == null) return "the mutated operator is not an expression of its own here";
             if (InComponentBody(start)) return "the expression is in a [Component] body the weaver reads";
-            var canonicalDirect = Canonical(direct.GetRoot());
-            for (var node = start; node is ExpressionSyntax; node = node.Parent)
+            return Climb(placing, start, out site);
+        }
+
+        private static string? LocateStatement(Placing placing, out Site? site)
+        {
+            site = null;
+            var statement = placing.Tree.GetRoot().FindNode(placing.Edit, getInnermostNodeForTie: true)
+                .AncestorsAndSelf().OfType<StatementSyntax>().FirstOrDefault(s => s.Span == placing.Edit);
+            if (statement == null) return "the removed text is not one whole statement";
+            if (statement is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax)
+                return "the removed statement declares a name";
+            if (InComponentBody(statement)) return "the statement is in a [Component] body the weaver reads";
+            site = new Site { Mutant = placing.Mutant, File = placing.File, Node = statement, Statement = true };
+            return null;
+        }
+
+        // The expression the edit is made in: the one holding a removed clause, the literal, or the binary
+        // expression whose operator token is the one mutated.
+        private static SyntaxNode? StartOf(Placing placing, out string? missing)
+        {
+            missing = null;
+            var root = placing.Tree.GetRoot();
+            var mutant = placing.Mutant;
+            if (mutant.@operator is "clause removed")
+                return root.FindNode(placing.Edit).AncestorsAndSelf().OfType<ExpressionSyntax>()
+                    .FirstOrDefault(e => e.Span.Contains(placing.Edit));
+            var literal = mutant.@operator == "literal";
+            var at = literal ? placing.EditStart : placing.EditStart + 1;
+            var token = root.FindToken(at);
+            if (token.SpanStart != at || token.Text != mutant.before)
             {
-                if (node is not (BinaryExpressionSyntax or ParenthesizedExpressionSyntax or LiteralExpressionSyntax
-                        or PrefixUnaryExpressionSyntax)) break;
-                var offset = editStart - node.SpanStart;
+                missing = "no '" + mutant.before + "' token at the mutant";
+                return null;
+            }
+            if (literal) return token.Parent as LiteralExpressionSyntax;
+            return token.Parent is BinaryExpressionSyntax binary && binary.OperatorToken == token ? binary : null;
+        }
+
+        // Climbs from the edited expression until substituting the edit there parses as the direct mutant
+        // does, so the guarded branch is the textual mutant rather than a node swap of different precedence.
+        private static string? Climb(Placing placing, SyntaxNode start, out Site? site)
+        {
+            site = null;
+            var mutant = placing.Mutant;
+            var text = placing.Text.ToString();
+            var direct = text.Remove(placing.EditStart, mutant.length).Insert(placing.EditStart, mutant.replacement);
+            var canonicalDirect = Canonical(CSharpSyntaxTree.ParseText(direct, placing.Options).GetRoot());
+            for (var node = start; node is BinaryExpressionSyntax or ParenthesizedExpressionSyntax or LiteralExpressionSyntax
+                     or PrefixUnaryExpressionSyntax; node = node.Parent!)
+            {
+                var offset = placing.EditStart - node.SpanStart;
                 if (offset < 0 || offset + mutant.length > node.Span.Length) continue;
-                var original = node.ToString();
-                var mutated = original.Remove(offset, mutant.length).Insert(offset, mutant.replacement);
-                var candidate = text.ToString().Remove(node.SpanStart, node.Span.Length).Insert(node.SpanStart, "(" + mutated + ")");
-                var candidateTree = CSharpSyntaxTree.ParseText(candidate, parseOptions, tree.FilePath);
+                var mutated = node.ToString().Remove(offset, mutant.length).Insert(offset, mutant.replacement);
+                var candidate = text.Remove(node.SpanStart, node.Span.Length).Insert(node.SpanStart, "(" + mutated + ")");
+                var candidateTree = CSharpSyntaxTree.ParseText(candidate, placing.Options, placing.Tree.FilePath);
                 if (Canonical(candidateTree.GetRoot()) != canonicalDirect) continue;
-                var why = TypeMismatch(node, model, compilation, tree, candidateTree);
+                var why = TypeMismatch(node, placing.Model, placing.Compilation, placing.Tree, candidateTree)
+                          ?? DirectMutantError(placing.Compilation, placing.Tree, candidateTree)
+                          ?? ConstantRebinds(node, mutated, placing.Model, placing.Compilation, placing.Tree, placing.Options);
                 if (why != null) return why;
-                if (InExpressionTree(node, model)) return "the expression is inside an expression tree";
-                if (mutated.Contains('\n') && !SingleLine(mutated, parseOptions)) return "the mutated expression spans lines it cannot be folded onto";
-                site = new Site { Mutant = mutant, File = file, Node = node, Mutated = Fold(mutated, parseOptions) };
+                if (InExpressionTree(node, placing.Model)) return "the expression is inside an expression tree";
+                if (mutated.Contains('\n') && !SingleLine(mutated, placing.Options)) return "the mutated expression spans lines it cannot be folded onto";
+                site = new Site { Mutant = mutant, File = placing.File, Node = node, Mutated = Fold(mutated, placing.Options) };
                 return null;
             }
             return "no enclosing expression parses as the direct mutant does";
@@ -359,6 +411,52 @@ namespace Velvet.MutantSchemata
             if (!SymbolEqualityComparer.Default.Equals(before, mutatedType))
                 return "the mutated expression's type differs: " + before.ToDisplayString() + " -> " + mutatedType.ToDisplayString();
             return null;
+        }
+
+        // The guarded file is what gets compiled, so a direct mutant that would not compile -- a constant
+        // narrowed out of range once the operator flips -- would otherwise be measured rather than named
+        // uncompilable by its own launch.
+        private static string? DirectMutantError(Compilation compilation, SyntaxTree tree, SyntaxTree candidateTree)
+        {
+            var replaced = compilation.ReplaceSyntaxTree(tree, candidateTree);
+            var error = replaced.GetSemanticModel(candidateTree).GetDiagnostics()
+                .FirstOrDefault(d => d.Severity == DiagnosticSeverity.Error);
+            return error == null ? null : "the direct mutant does not compile: " + error.Id + " " + error.GetMessage();
+        }
+
+        // A guard makes a constant operand non-constant, which takes away the implicit constant conversion
+        // an overload may have been chosen by: both the unmutated and the mutated operand are bound with and
+        // without a guard around them, and the site is declined where the call they sit in changes.
+        private static string? ConstantRebinds(SyntaxNode node, string mutated, SemanticModel model,
+                                               Compilation compilation, SyntaxTree tree, CSharpParseOptions options)
+        {
+            var constant = model.GetConstantValue(node);
+            if (!constant.HasValue || constant.Value is null or bool or string) return null;
+            var call = node.Ancestors().TakeWhile(a => a is not StatementSyntax)
+                .OfType<ArgumentSyntax>().FirstOrDefault()?.Parent?.Parent;
+            if (call == null) return null;
+            foreach (var operand in new[] { node.ToString(), mutated })
+            {
+                var plain = Bound(call, node, "(" + operand + ")", compilation, tree, options);
+                var guarded = Bound(call, node, "(System.Environment.TickCount == int.MinValue ? (" + operand + ") : (" +
+                                                operand + "))", compilation, tree, options);
+                if (plain != guarded)
+                    return "a guard makes the constant operand non-constant, and the call binds " + guarded + " rather than " + plain;
+            }
+            return null;
+        }
+
+        private static string Bound(SyntaxNode call, SyntaxNode node, string replacement, Compilation compilation,
+                                    SyntaxTree tree, CSharpParseOptions options)
+        {
+            var text = tree.GetText().ToString();
+            var candidate = text.Remove(node.SpanStart, node.Span.Length).Insert(node.SpanStart, replacement);
+            var candidateTree = CSharpSyntaxTree.ParseText(candidate, options, tree.FilePath);
+            var replaced = compilation.ReplaceSyntaxTree(tree, candidateTree);
+            var found = candidateTree.GetRoot().FindToken(call.SpanStart).Parent?.AncestorsAndSelf()
+                .FirstOrDefault(n => n.RawKind == call.RawKind && n.SpanStart == call.SpanStart);
+            if (found == null) return "nothing";
+            return replaced.GetSemanticModel(candidateTree).GetSymbolInfo(found).Symbol?.ToDisplayString() ?? "nothing";
         }
 
         private static bool InExpressionTree(SyntaxNode node, SemanticModel model)
@@ -406,10 +504,10 @@ namespace Velvet.MutantSchemata
         }
 
         private static (string text, List<(int id, TextSpan wrap, TextSpan mutated, TextSpan member)> spans) Rewrite(
-            string text, CSharpParseOptions options, string path, List<Site> sites, string switchName, string? declaration,
+            string text, CSharpParseOptions options, List<Site> sites, string switchName, string? declaration,
             bool shapeRulesOff)
         {
-            var tree = CSharpSyntaxTree.ParseText(text, options, path);
+            var tree = CSharpSyntaxTree.ParseText(text, options);
             var root = tree.GetRoot();
             // Sites were located on the pristine compilation's tree, which is this text parsed the same way.
             var byNode = new Dictionary<SyntaxNode, List<Site>>();
@@ -496,7 +594,7 @@ namespace Velvet.MutantSchemata
 
         private static string Sanitize(string name) => new string(name.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
 
-        private static string Canonical(SyntaxNode root)
+        internal static string Canonical(SyntaxNode root)
         {
             var builder = new StringBuilder();
             void Walk(SyntaxNodeOrToken item)
@@ -521,18 +619,16 @@ namespace Velvet.MutantSchemata
         }
 
         private static (CSharpCompilation compilation, ImmutableArray<Diagnostic> diagnostics) Compile(
-            List<(string path, string text)> sources, CSharpParseOptions parseOptions, List<MetadataReference> references,
-            CSharpCompilationOptions options, List<ISourceGenerator> generators, ImmutableArray<DiagnosticAnalyzer> analyzers,
-            ImmutableArray<AdditionalText> additional, string assembly)
+            List<(string path, string text)> sources, CompileContext context, string assembly)
         {
-            var trees = sources.Select(s => CSharpSyntaxTree.ParseText(SourceText.From(s.text, Encoding.UTF8), parseOptions, s.path)).ToList();
-            var compilation = CSharpCompilation.Create(assembly, trees, references, options);
+            var trees = sources.Select(s => CSharpSyntaxTree.ParseText(SourceText.From(s.text, Encoding.UTF8), context.ParseOptions, s.path)).ToList();
+            var compilation = CSharpCompilation.Create(assembly, trees, context.References, context.Options);
             var provider = new EmptyOptionsProvider();
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(generators, additional, parseOptions, provider);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(context.Generators, context.Additional, context.ParseOptions, provider);
             driver.RunGeneratorsAndUpdateCompilation(compilation, out var generated, out var generatorDiagnostics);
-            var diagnostics = (analyzers.IsEmpty
+            var diagnostics = (context.Analyzers.IsEmpty
                 ? generated.GetDiagnostics()
-                : generated.WithAnalyzers(analyzers, new AnalyzerOptions(additional, provider))
+                : generated.WithAnalyzers(context.Analyzers, new AnalyzerOptions(context.Additional, provider))
                     .GetAllDiagnosticsAsync(CancellationToken.None).Result).AddRange(generatorDiagnostics);
             return ((CSharpCompilation)generated, diagnostics);
         }

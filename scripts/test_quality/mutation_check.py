@@ -1728,10 +1728,10 @@ def launch(command, timeout, holder, env=None, expired=None):
             holder.started()
     reader = threading.Thread(target=relay, args=(child.stdout, said), daemon=True)
     reader.start()
-    # Sampled for the run's whole life, not once before it. The campaign waits before every mutant,
-    # and a neighbour arriving ten seconds in is invisible for the rest of that mutant -- where it can
-    # redden a timing-sensitive case, and the mutant is then recorded killed. A mutant that actually
-    # survived, which is a hole in the tests, reported as covered.
+    # Sampled for the run's whole life, not once before it. The campaign waits before its baseline, each
+    # session launch and each mutant's own launch, and a neighbour arriving ten seconds in is invisible
+    # for the rest of that run -- where it can redden a timing-sensitive case, and the mutant is then
+    # recorded killed. A mutant that actually survived, which is a hole in the tests, reported as covered.
     peak = 0
     timed_out = False
     try:
@@ -1877,6 +1877,49 @@ def text_reading_fixtures(project):
             if any(corpus in text for corpus in TEXT_CORPUS):
                 found.update(FIXTURE_CLASS.findall(text))
     return found
+
+
+# A fixture reading compiled IL rather than running it. Inside a session it reads the assembly every
+# placed guard was compiled into, not the one mutant its own launch would have built.
+IL_READ = re.compile(r"\b(?:ModuleDefinition\.ReadModule|AssemblyDefinition\.ReadAssembly)\s*\(|\.GetILAsByteArray\s*\(")
+TYPEOF_ASSEMBLY = re.compile(r"typeof\(\s*(?:[A-Za-z_][\w]*\.)*([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\)\.Assembly\b")
+QUOTED = re.compile(r'"([A-Za-z_][\w.]*)"')
+DECLARED_TYPE = re.compile(r"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_]\w*)")
+
+
+def il_reading_assemblies(project):
+    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
+    such a fixture takes, and those it names by a string equal to an assembly's name.
+
+    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
+    test assemblies included, since what matters is only whether a mutated one is among them.
+    """
+    sources, asmdefs = [], {}
+    for root, directories, files in os.walk(str(project)):
+        directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
+        for name in files:
+            path = Path(root) / name
+            if name.endswith(".asmdef"):
+                try:
+                    asmdefs[json.loads(path.read_text())["name"]] = path.parent
+                except (OSError, ValueError, KeyError):
+                    continue
+            elif name.endswith(".cs"):
+                sources.append(path)
+    types, names = set(), set()
+    for path in sources:
+        if not path.name.endswith("Tests.cs"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if IL_READ.search(text):
+            types.update(TYPEOF_ASSEMBLY.findall(text))
+            names.update(name for name in QUOTED.findall(text) if name in asmdefs)
+    if types:
+        for path in sources:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if types & set(DECLARED_TYPE.findall(text)):
+                names.add(assembly_of(path))
+    return names - {None}
 
 
 def killed_by_behaviour(names, text_readers):
@@ -2027,6 +2070,9 @@ SESSION_SWITCH = "VELVET_MUTANT"
 # Added to a stage's bound before its session is killed: the stage's reload and the test framework's
 # preparation of the job are inside it, where a launch's bound covers its startup the same way.
 SESSION_STAGE_SLACK = 120
+# A reload asked for and not finished within this ends the session: every stage asks for one, so the rest
+# would each wait out their bound.
+SESSION_RELOAD_BOUND = 180
 # The unmutated program the areas' own baselines run under.
 SESSION_OPENING = 0
 SESSION_MUTANTS = 16
@@ -2222,31 +2268,37 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
 
 def run_session(args, project, plan, directory, holder):
     """Runs `plan` through as many session launches as it takes: one per segment, and one more past
-    any item whose stage outlived its bound or took its editor down. Returns (position -> the most
-    other editors seen while it ran, the positions no launch finished, a reason the session could not
-    run at all or None)."""
+    any item whose stage outlived its bound or took its editor down.
+
+    Returns (position -> {"launch": which launch carried it to its end, "peak": the most other editors
+    seen while it was the item in progress}, the positions no launch finished, and the reason the rest of
+    the session was abandoned, or None).
+    """
     plan_path = directory / "plan.json"
     state = directory / "runner-state.json"
     progress = directory / "runner-progress.json"
     done = directory / "runner-done"
+    failed = directory / "runner-failed"
     items = plan["items"]
-    peaks, lost = {}, set()
+    runs, lost = {}, set()
+    launches = 0
     position = 0
     for end in plan["segments"]:
         while position < end:
+            launches += 1
             plan["start"], plan["end"] = position, end
             plan_path.write_text(json.dumps(plan, indent=1))
             state.write_text(json.dumps({"position": position, "stage": 0, "phase": "arm"}))
-            for stale in (progress, done):
+            for stale in (progress, done, failed):
                 if stale.exists():
                     stale.unlink()
             log = directory / "session-{:03d}.log".format(position)
             command = [args.unity, SESSION_FLAG, "-batchmode", "-debugCodeOptimization", "-projectPath",
-                       str(project), "-logFile", str(log)] + args.editor_arg
+                       str(project), "-logFile", str(log)]
             env = dict(os.environ, **{SESSION_PLAN: str(plan_path)})
             env.pop(SESSION_SWITCH, None)
             launched = time.time()
-            where = {}
+            where, peaks, stuck = {}, {}, []
 
             def expired():
                 try:
@@ -2254,42 +2306,58 @@ def run_session(args, project, plan, directory, holder):
                 except (OSError, ValueError):
                     return time.time() - launched > args.timeout
                 where.update(current)
-                item = items[current["position"]] if current["position"] < len(items) else None
+                now = current["position"]
+                peaks[now] = max(peaks.get(now, 0), max(0, unity_busy() - 1))
+                waited = time.time() - current["since"]
+                if current.get("phase") == "start" and waited > SESSION_RELOAD_BOUND:
+                    stuck.append(now)
+                    return True
+                item = items[now] if now < len(items) else None
                 stage = item["stages"][current["stage"]] if item and current["stage"] < len(item["stages"]) else None
-                bound = (stage["bound"] if stage else args.timeout) + SESSION_STAGE_SLACK
-                return time.time() - current["since"] > bound
+                return waited > (stage["bound"] if stage else args.timeout) + SESSION_STAGE_SLACK
 
+            if not wait_for_quiet(args.busy_timeout):
+                return runs, lost, "another Unity test run was still in flight after {}s".format(args.busy_timeout)
             printed = ""
             for _ in range(LOCK_ATTEMPTS):
                 wait_for_release(project, LOCK_WAIT)
-                _, _, peak, printed = launch(command, sum(
+                _, _, _, printed = launch(command, sum(
                     stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
                     for stage in item["stages"]) + args.timeout, holder, env, expired)
                 if LOCK_REFUSAL not in printed:
                     break
             else:
-                return peaks, lost, "the editor refused each of {} session launches for the project lock".format(
+                return runs, lost, "the editor refused each of {} session launches for the project lock".format(
                     LOCK_ATTEMPTS)
-            reached = where.get("position", position)
-            for passed in range(position, min(reached + 1, end)):
-                peaks[passed] = max(peaks.get(passed, 0), peak)
+            # Read again rather than taken from the last `expired`, which the editor can outlive by a sample.
+            try:
+                where.update(json.loads(progress.read_text()))
+            except (OSError, ValueError):
+                pass
+            reached = end if done.exists() else where.get("position", position)
+            for passed in range(position, min(reached, end)):
+                runs[passed] = {"launch": launches, "peak": peaks.get(passed, 0)}
+            if failed.exists():
+                return runs, lost, "the runner stopped: {}".format(failed.read_text().strip())
+            if stuck:
+                return runs, lost, "a domain reload did not complete within {}s".format(SESSION_RELOAD_BOUND)
             if done.exists():
                 position = end
                 break
             if not where or build_error(log):
-                return peaks, lost, "the session never reached its first stage; read {}".format(log)
+                return runs, lost, "the session never reached its first stage; read {}".format(log)
             # The item it died in takes its own launch; the next launch starts past it.
             lost.add(reached)
             if items[reached]["id"] == SESSION_OPENING:
-                return peaks, lost, "the session died in the areas' own baselines; read {}".format(log)
+                return runs, lost, "the session died in the areas' own baselines; read {}".format(log)
             position = reached + 1
-    return peaks, lost, None
+    return runs, lost, None
 
 
 def confirmations(plan, directory):
-    """Killing case -> whether it passed under the unmutated program at the end of its segment."""
+    """Confirmation position -> killing case -> whether it passed there under the unmutated program."""
     found = {}
-    for item in plan["items"]:
+    for position, item in enumerate(plan["items"]):
         if not item.get("confirm"):
             continue
         result = read_item(directory, item["id"]) or {}
@@ -2300,9 +2368,18 @@ def confirmations(plan, directory):
             root = ET.parse(stage["xml"]).getroot()
         except (OSError, ET.ParseError):
             continue
-        for case in root.iter("test-case"):
-            found[case.get("fullname")] = case.get("result") == "Passed"
+        found[position] = {case.get("fullname"): case.get("result") == "Passed" for case in root.iter("test-case")}
     return found
+
+
+def confirmed_for(plan, position, runs, found):
+    """What the confirmation closing `position`'s segment read, where that confirmation ran in the same
+    launch as the item; otherwise nothing, so no kill of it stands."""
+    closing = next((later for later in range(position + 1, len(plan["items"]))
+                    if plan["items"][later].get("confirm")), None)
+    if closing is None or closing not in runs or runs[closing]["launch"] != runs.get(position, {}).get("launch"):
+        return {}
+    return found.get(closing, {})
 
 
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
@@ -2348,35 +2425,41 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     try:
         for path, text in rewritten.items():
             path.write_text(text)
-        peaks, lost, stopped = run_session(args, project, plan, directory, holder)
+        runs, lost, stopped = run_session(args, project, plan, directory, holder)
     finally:
         if holder.release() is None:
             raise SystemExit("could not put the session's sources back; the record at {} names what is "
                              "outstanding".format(holder.sentinel))
     print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
                                                       "; " + stopped if stopped else ""))
-    if stopped and not peaks:
+    if not runs:
         return {}
 
     opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
     for name, stage in opening.items():
         counts = stage_counts(stage)
         expected[name] = counts["total"] if counts else None
-    confirmed = confirmations(plan, directory)
+    found = confirmations(plan, directory)
+    il_read = il_reading_assemblies(project)
     measured = {}
     for position, item in enumerate(plan["items"]):
         index = item["id"]
-        if item.get("confirm") or index == SESSION_OPENING or position in lost or position not in peaks:
+        if item.get("confirm") or index == SESSION_OPENING or position not in runs:
             continue
         mutant = mutants[index - 1]
-        reading = session_verdict(read_item(directory, index), item, index, assembly_of(mutant.path),
-                                  expected, opening, confirmed, text_readers)
+        assembly = assembly_of(mutant.path)
+        reading = session_verdict(read_item(directory, index), item, index, assembly, expected, opening,
+                                  confirmed_for(plan, position, runs, found), text_readers)
+        if reading is not None and reading[0] in SURVIVING and assembly in il_read:
+            # The session compiled every guard into the assembly, so a fixture reading its IL read the
+            # union of the mutants rather than this one.
+            reading = None
         if reading is None:
             print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
             continue
         mutant.verdict, mutant.detail, killers = reading
-        if peaks[position]:
-            mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", peaks[position])
+        if runs[position]["peak"]:
+            mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", runs[position]["peak"])
         write_verdict(output, index, campaign, mutant, project, killers, scope)
         measured[index] = (mutant.verdict, mutant.detail)
     return measured
@@ -2687,14 +2770,14 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     assemblies_dir = project / "Library" / "ScriptAssemblies"
     baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
 
-    # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
-    # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
-    # built. Not
-    # taken under a scope the caller chose, which already asks a question of its own.
     # The mutants the rewriter can place are measured in one editor, and each of the rest -- and each
     # whose session reading does not stand -- takes its own launches below, as every mutant once did.
+    # Not under --editor-arg: the runner starts each stage itself, so an argument meant for the test
+    # framework would scope the baseline and the own launches and not the session's stages.
     in_session = {}
-    if not args.launch_per_mutant:
+    if args.editor_arg and not args.launch_per_mutant:
+        print("--editor-arg reaches no session stage, so every mutant takes its own launches")
+    if not args.launch_per_mutant and not args.editor_arg:
         pending = [index for index in sorted(selected) if read_verdict(
             output, index, campaign, mutants[index - 1], project, scope) is None]
         if pending:
@@ -2703,6 +2786,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                                             excluding(scope, text_readers), campaign, scope)
     own = set(selected) - set(in_session)
 
+    # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
+    # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
+    # built. Not
+    # taken under a scope the caller chose, which already asks a question of its own.
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
     if not scope and args.platform in NARROWED_PLATFORMS:
