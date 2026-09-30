@@ -25,14 +25,15 @@ namespace Velvet
         private static readonly PropertyInfo? s_duration = s_type?.GetProperty("transitionDuration");
         private static readonly PropertyInfo? s_delay = s_type?.GetProperty("transitionDelay");
         private static readonly PropertyInfo? s_curve = s_type?.GetProperty("transitionTimingFunction");
+        private static readonly PropertyInfo? s_rotate = s_type?.GetProperty("rotate");
         private static readonly PropertyInfo?[] s_radii =
         {
             s_type?.GetProperty("borderTopLeftRadius"), s_type?.GetProperty("borderTopRightRadius"),
             s_type?.GetProperty("borderBottomRightRadius"), s_type?.GetProperty("borderBottomLeftRadius"),
         };
         private static readonly bool s_readable = Array.TrueForAll(
-            new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve, s_radii[0], s_radii[1],
-                s_radii[2], s_radii[3] }, m => m != null);
+            new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve, s_rotate, s_radii[0],
+                s_radii[1], s_radii[2], s_radii[3] }, m => m != null);
 
         private static readonly object?[] s_args = new object?[2];
 
@@ -56,14 +57,14 @@ namespace Velvet
                 : (opacity, 0f, 0f, EasingMode.Ease);
         }
 
-        // A corner's radius in pixels, in LayoutIdLook's corner order; NaN where the cached style cannot be read or gives
-        // it in another unit.
-        public static float Radius(VisualElement element, int corner)
-        {
-            if (Style(element) is not { } style) return float.NaN;
-            var length = (Length)s_radii[corner]!.GetValue(style);
-            return length.unit == LengthUnit.Pixel ? length.value : float.NaN;
-        }
+        // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
+        // be read.
+        public static Length? Radius(VisualElement element, int corner) =>
+            Style(element) is { } style ? (Length)s_radii[corner]!.GetValue(style) : null;
+
+        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read.
+        public static float Rotate(VisualElement element) =>
+            Style(element) is { } style ? ((Rotate)s_rotate!.GetValue(style)).angle.ToDegrees() : float.NaN;
 
         private static object? Style(VisualElement element)
         {

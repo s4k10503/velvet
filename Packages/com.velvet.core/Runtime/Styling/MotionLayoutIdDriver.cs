@@ -355,7 +355,7 @@ namespace Velvet
         {
             LayoutIdLook.Adopt(element, projection);
             var rotate = float.NaN;
-            Vector4? radii = null;
+            Length[]? radii = null;
             if (projection.Leader != null)
             {
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
@@ -366,8 +366,7 @@ namespace Velvet
             {
                 var progress = CrossfadeProgress(projection);
                 rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection), progress);
-                // Clamped at zero, as mixValues clamps a mixed radius: a curve that overshoots its end mixes past it.
-                radii = Vector4.Max(Vector4.LerpUnclamped(from.Radii, LayoutIdLook.OwnRadii(element, projection), progress), Vector4.zero);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection), progress);
             }
             LayoutIdLook.WriteRotate(element, projection, rotate);
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale);
@@ -552,6 +551,7 @@ namespace Velvet
         {
             if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
             AdoptForeignWrites(element, projection);
+            LayoutIdLook.Adopt(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             WriteOpacity(element, projection, null);
@@ -1005,16 +1005,19 @@ namespace Velvet
 
         public bool WritesRotate;
         public StyleRotate OwnInlineRotate;
-        public float OwnRotate;
+        // The rotate the element had as the projection first wrote it.
+        public float StartRotate;
         public float DrawnRotate;
         public StyleRotate WrittenRotate;
 
         public bool WritesRadii;
         public StyleLength[] OwnInlineRadii = System.Array.Empty<StyleLength>();
-        // The radii the element was drawn with as the projection first wrote them.
-        public Vector4 StartRadii;
-        public Vector4 DrawnRadii;
-        public Vector4 WrittenRadii;
+        // The corners whose inline value is the element's own rather than one CornerRadiusFit wrote.
+        public bool[] InlineRadii = System.Array.Empty<bool>();
+        // The radii the element had as the projection first wrote them.
+        public Length[] StartRadii = System.Array.Empty<Length>();
+        public Length[] DrawnRadii = System.Array.Empty<Length>();
+        public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
 
         // Each element of a member's subtree whose picking it turned off while drawn over the lead, with its own mode.
         public Dictionary<VisualElement, PickingMode>? Picking;

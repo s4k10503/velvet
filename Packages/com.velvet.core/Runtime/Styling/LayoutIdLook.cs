@@ -13,7 +13,7 @@ namespace Velvet
         // The source of a look whose holder has let go of the id: an element no Motion is, so no id holds it.
         private static readonly VisualElement s_released = new();
 
-        private LayoutIdLook(float opacity, float rotate, Vector4 radii, VisualElement source)
+        private LayoutIdLook(float opacity, float rotate, Length[] radii, VisualElement source)
         {
             Opacity = opacity;
             Rotate = rotate;
@@ -24,8 +24,8 @@ namespace Velvet
         public float Opacity { get; }
         // In degrees.
         public float Rotate { get; }
-        // Top-left, top-right, bottom-right and bottom-left, in pixels.
-        public Vector4 Radii { get; }
+        // Top-left, top-right, bottom-right and bottom-left.
+        public Length[] Radii { get; }
         // The holder whose own opacity is read again while it still holds the id; compared by reference only, since
         // once it leaves the pool can hand it to another Motion.
         public VisualElement Source { get; }
@@ -44,14 +44,21 @@ namespace Velvet
         public static float RotateOf(VisualElement element, LayoutIdProjection? projection) =>
             projection is { WritesRotate: true } ? projection.DrawnRotate : element.resolvedStyle.rotate.angle.ToDegrees();
 
-        public static Vector4 RadiiOf(VisualElement element, LayoutIdProjection? projection) =>
-            projection is { WritesRadii: true } ? projection.DrawnRadii : ResolvedRadii(element);
+        public static Length[] RadiiOf(VisualElement element, LayoutIdProjection? projection) =>
+            projection is { WritesRadii: true } ? projection.DrawnRadii : Declared(element);
 
-        private static Vector4 ResolvedRadii(VisualElement element)
+        // The radii the element holds with no projection writing them: its inline slots, else what its rules declare,
+        // else what it is resolved at.
+        private static Length[] Declared(VisualElement element)
         {
-            var resolved = element.resolvedStyle;
-            return new Vector4(resolved.borderTopLeftRadius, resolved.borderTopRightRadius,
-                resolved.borderBottomRightRadius, resolved.borderBottomLeftRadius);
+            var radii = new Length[4];
+            for (var corner = 0; corner < 4; corner++)
+            {
+                var slot = CornerRadiusFit.InlineCorner(element.style, corner);
+                radii[corner] = slot.keyword == StyleKeyword.Undefined ? slot.value
+                    : StyleCascade.Radius(element, corner) ?? new Length(CornerRadiusFit.ResolvedCorner(element.resolvedStyle, corner));
+            }
+            return radii;
         }
 
         // A slot that no longer holds the last value written here was written by someone else, and that value is the
@@ -59,49 +66,56 @@ namespace Velvet
         public static void Adopt(VisualElement element, LayoutIdProjection projection)
         {
             var rotate = element.style.rotate;
-            if (projection.WritesRotate && rotate != projection.WrittenRotate)
-            {
-                projection.OwnInlineRotate = rotate;
-                projection.OwnRotate = rotate.value.angle.ToDegrees();
-            }
+            if (projection.WritesRotate && rotate != projection.WrittenRotate) projection.OwnInlineRotate = rotate;
             if (!projection.WritesRadii) return;
             for (var corner = 0; corner < 4; corner++)
             {
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
-                if (slot != new StyleLength(projection.WrittenRadii[corner])) projection.OwnInlineRadii[corner] = slot;
+                if (slot == projection.WrittenRadii[corner]) continue;
+                projection.OwnInlineRadii[corner] = slot;
+                projection.InlineRadii[corner] = true;
             }
         }
 
-        // The element's own rotate: what the projection keeps for it while it writes it, and otherwise its inline
-        // rotate or its resolved one, which then holds nothing of the projection's.
+        // The element's own rotate as it is now. While the projection writes the slot it is the inline rotate the
+        // projection took over, else what the element's rules declare, else the one it had as the projection began.
         public static float OwnRotate(VisualElement element, LayoutIdProjection projection)
         {
-            if (projection.WritesRotate) return projection.OwnRotate;
-            var inline = element.style.rotate;
-            return inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : element.resolvedStyle.rotate.angle.ToDegrees();
+            var inline = projection.WritesRotate ? projection.OwnInlineRotate : element.style.rotate;
+            if (inline.keyword == StyleKeyword.Undefined) return inline.value.angle.ToDegrees();
+            if (!projection.WritesRotate) return element.resolvedStyle.rotate.angle.ToDegrees();
+            var declared = StyleCascade.Rotate(element);
+            return float.IsNaN(declared) ? projection.StartRotate : declared;
         }
 
-        // The element's own radii as they are now. While the projection writes the slots a corner's own is read from
-        // what gives it rather than from the element: the radius CornerRadiusFit fits it to, an inline value the
-        // projection took over, or the one the element's rules cascade to, in that order, and the one it was drawn
-        // with as the projection began where none of those reads.
-        public static Vector4 OwnRadii(VisualElement element, LayoutIdProjection projection)
+        // The element's own radii as they are now. While the projection writes the slots a corner's own is an inline
+        // value the projection took over from something other than CornerRadiusFit, else the radius the fit gives
+        // it, else what the element's rules declare, else the one it had as the projection began.
+        public static Length[] OwnRadii(VisualElement element, LayoutIdProjection projection)
         {
-            if (!projection.WritesRadii) return ResolvedRadii(element);
-            var own = projection.StartRadii;
+            if (!projection.WritesRadii) return Declared(element);
+            var own = new Length[4];
             for (var corner = 0; corner < 4; corner++)
             {
-                var inline = projection.OwnInlineRadii[corner];
-                var radius = CornerRadiusFit.Fitted(element, corner);
-                if (float.IsNaN(radius))
-                {
-                    radius = inline.keyword == StyleKeyword.Undefined && inline.value.unit == LengthUnit.Pixel
-                        ? inline.value.value
-                        : StyleCascade.Radius(element, corner);
-                }
-                if (!float.IsNaN(radius)) own[corner] = radius;
+                own[corner] = projection.InlineRadii[corner] ? projection.OwnInlineRadii[corner].value
+                    : CornerRadiusFit.Fitted(element, corner) ?? StyleCascade.Radius(element, corner) ?? projection.StartRadii[corner];
             }
             return own;
+        }
+
+        // Mixes two radii as Framer's mixValues does (canMix): a radius of none takes the other's unit, two of one
+        // unit mix and do not go below zero, and a pixel radius and a percent one do not mix, the lead's being taken.
+        public static Length[] Mix(Length[] from, Length[] to, float progress)
+        {
+            var mixed = new Length[4];
+            for (var corner = 0; corner < 4; corner++)
+            {
+                var (a, b) = (from[corner], to[corner]);
+                var unit = a.value == 0f ? b.unit : a.unit;
+                mixed[corner] = b.value != 0f && b.unit != unit ? b
+                    : new Length(Mathf.Max(0f, Mathf.LerpUnclamped(a.value, b.value, progress)), b.value == 0f ? unit : b.unit);
+            }
+            return mixed;
         }
 
         // Draws the element at the given rotate, or at its own for NaN. The slot is left alone until the projection
@@ -114,45 +128,66 @@ namespace Velvet
                 if (float.IsNaN(rotate) || Mathf.Approximately(rotate, own)) return;
                 projection.WritesRotate = true;
                 projection.OwnInlineRotate = element.style.rotate;
-                projection.OwnRotate = own;
+                projection.StartRotate = own;
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
             }
-            projection.DrawnRotate = float.IsNaN(rotate) ? projection.OwnRotate : rotate;
+            projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection) : rotate;
             element.style.rotate = new Rotate(new Angle(projection.DrawnRotate, AngleUnit.Degree));
             projection.WrittenRotate = element.style.rotate;
         }
 
-        // Draws the element with the given radii on screen, or its own for null, divided by the scale it is drawn at
-        // so that the scale leaves them as given, as Framer's correctBorderRadius does. A corner holds a single length
-        // rather than the two radii of an ellipse, so a scale different on each axis is divided out by the geometric
-        // mean of the two. A box drawn with no extent on an axis is written no radius, which is what the scale leaves
-        // of any radius on screen.
-        public static void WriteRadii(VisualElement element, LayoutIdProjection projection, Vector4? radii, Vector2 scale)
+        // Draws the element with the given radii, or its own for null, so that the scale it is drawn at leaves them as
+        // given, as Framer's correctBorderRadius does. A percent radius is of the box and scales with it, so it is
+        // written as it is. A pixel one is divided by the scale; IStyle takes one length for a corner, where a scale
+        // different on each axis would need one per axis, so it is divided by the geometric mean of the two, and a box
+        // drawn with no extent on an axis is written none.
+        public static void WriteRadii(VisualElement element, LayoutIdProjection projection, Length[]? radii, Vector2 scale)
         {
             var divisor = Mathf.Sqrt(scale.x * scale.y);
             if (!projection.WritesRadii)
             {
-                var own = ResolvedRadii(element);
+                var own = Declared(element);
                 var target = radii ?? own;
-                if (target == Vector4.zero || target == own && Mathf.Approximately(divisor, 1f)) return;
+                if (IsNone(own) && IsNone(target) || Same(target, own) && Mathf.Approximately(divisor, 1f)) return;
                 projection.WritesRadii = true;
-                var style = element.style;
-                projection.OwnInlineRadii = new[]
+                projection.OwnInlineRadii = new StyleLength[4];
+                projection.InlineRadii = new bool[4];
+                projection.WrittenRadii = new StyleLength[4];
+                for (var corner = 0; corner < 4; corner++)
                 {
-                    CornerRadiusFit.InlineCorner(style, 0), CornerRadiusFit.InlineCorner(style, 1),
-                    CornerRadiusFit.InlineCorner(style, 2), CornerRadiusFit.InlineCorner(style, 3),
-                };
+                    var slot = CornerRadiusFit.InlineCorner(element.style, corner);
+                    projection.OwnInlineRadii[corner] = slot;
+                    projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined && !CornerRadiusFit.Wrote(element, corner, slot);
+                }
                 projection.StartRadii = own;
                 CornerRadiusFit.Hold(element);
-                MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Length);
+                MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
             projection.DrawnRadii = radii ?? OwnRadii(element, projection);
-            var written = divisor > 0f ? projection.DrawnRadii / divisor : Vector4.zero;
-            element.style.borderTopLeftRadius = written.x;
-            element.style.borderTopRightRadius = written.y;
-            element.style.borderBottomRightRadius = written.z;
-            element.style.borderBottomLeftRadius = written.w;
-            projection.WrittenRadii = written;
+            for (var corner = 0; corner < 4; corner++)
+            {
+                var radius = projection.DrawnRadii[corner];
+                var written = radius.unit == LengthUnit.Percent ? radius
+                    : new Length(divisor > 0f ? radius.value / divisor : 0f, radius.unit);
+                projection.WrittenRadii[corner] = written;
+                Write(element.style, corner, written);
+            }
+        }
+
+        private static bool IsNone(Length[] radii) =>
+            radii[0].value == 0f && radii[1].value == 0f && radii[2].value == 0f && radii[3].value == 0f;
+
+        private static bool Same(Length[] a, Length[] b) => a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+
+        private static void Write(IStyle style, int corner, StyleLength value)
+        {
+            switch (corner)
+            {
+                case 0: style.borderTopLeftRadius = value; break;
+                case 1: style.borderTopRightRadius = value; break;
+                case 2: style.borderBottomRightRadius = value; break;
+                default: style.borderBottomLeftRadius = value; break;
+            }
         }
 
         // Hands back what the projection wrote here, and the radius slots to CornerRadiusFit, which refits them for
@@ -161,10 +196,10 @@ namespace Velvet
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
             if (!projection.WritesRadii) return;
-            element.style.borderTopLeftRadius = projection.OwnInlineRadii[0];
-            element.style.borderTopRightRadius = projection.OwnInlineRadii[1];
-            element.style.borderBottomRightRadius = projection.OwnInlineRadii[2];
-            element.style.borderBottomLeftRadius = projection.OwnInlineRadii[3];
+            for (var corner = 0; corner < 4; corner++)
+            {
+                Write(element.style, corner, projection.OwnInlineRadii[corner]);
+            }
             CornerRadiusFit.Unhold(element);
         }
     }

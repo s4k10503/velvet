@@ -3336,6 +3336,8 @@ namespace Velvet.Tests
             Assert.That(HoldsAListWithout(Root.Q<VisualElement>("a"), "border-top-left-radius"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so none goes below zero.
+        // A radius mix carried past its end by an overshooting curve must stop at zero, as mixValues clamps it.
         [Test]
         public void Given_ALeadJoiningARoundedHolderOnASpring_When_ItOvershootsItsBox_Then_ItsRadiusNeverGoesBelowZero()
         {
@@ -3356,6 +3358,95 @@ namespace Velvet.Tests
 
             // Assert — the spring carries "b" past its box, where the mix runs past its own radius of none.
             Assert.That(overshot ? least : float.NaN, Is.GreaterThanOrEqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base narrows a held variant list by nothing a radius mix writes.
+        // A radius mix must take the four radii out of the list and leave every other length in it.
+        [Test]
+        public void Given_AMemberMidVariantSwapBehindARoundedLead_When_ItIsDrawnAtTheLeadsRadius_Then_TheSwapsListStillCarriesItsWidth()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverASwappingA("rounded-[20px]");
+
+            // Assert
+            var names = Root.Q<VisualElement>("a").style.transitionProperty.value;
+            Assert.That(names != null && names.Exists(n => n == new StylePropertyName("width")), Is.True);
+        }
+
+        [Test]
+        public void Given_AnUnroundedHolderRemovedAsARoundedLeadMountsOnADelayedTween_When_TheDelayRuns_Then_TheLeadIsDrawnAtTheHoldersRadius()
+        {
+            // Arrange — "a" with no radius, removed as "b" mounts under its id with a radius of its own, on a tween that
+            // waits half a second before it starts.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_sharedClasses, s_bClasses) = (300, "", "rounded-[20px]");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 1f, DelaySec = 0.5f, Easing = EasingMode.Linear };
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — at "a"'s radius of none while "b" is still drawn over "a"'s box.
+            var b = Root.Q<VisualElement>("b");
+            Assert.That((TranslateX(b) < -290f, b.style.borderTopLeftRadius.value.value), Is.EqualTo((true, 0f)));
+        }
+
+        [Test]
+        public void Given_ALeadJoiningARoundedHolder_When_ItTakesALargerRadiusMidMove_Then_ItMixesTowardsThatRadius()
+        {
+            // Arrange — "b", with no radius of its own, a quarter of the way from "a"'s twenty pixels.
+            s_aClasses = "rounded-[20px]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act
+            s_bClasses = "rounded-[30px]";
+            RenderShared(mounted);
+
+            // Assert — between "a"'s twenty and its own thirty, rather than on the way to none.
+            var radius = Root.Q<VisualElement>("b").style.borderTopLeftRadius.value.value;
+            Assert.That(radius, Is.EqualTo(Mathf.Lerp(20f, 30f, BProgress())).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_AStylesheetRotatedLead_When_ItTakesAnotherRotateMidMove_Then_ItMixesTowardsThatRotate()
+        {
+            // Arrange — the bundled sheet; "b" at rotate-45 some way from an unrotated "a".
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — and a frame more, the first pass reading the rules as the render left them.
+            s_bClasses = "rotate-90";
+            RenderShared(mounted);
+            Tick();
+
+            // Assert
+            var rotate = Root.Q<VisualElement>("b").style.rotate.value.angle.ToDegrees();
+            Assert.That(rotate, Is.EqualTo(90f * BProgress()).Within(1.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never writes the rotate of a layoutId Motion, so a render's rotate shows.
+        // A render that ends the projection must keep a rotate it writes over the member.
+        [Test]
+        public void Given_ARotatedMemberBehindALead_When_ARenderRotatesItAndRemovesTheLead_Then_ItKeepsTheNewRotate()
+        {
+            // Arrange
+            s_aClasses = "rotate-[40deg]";
+            s_bClasses = "rotate-[10deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act
+            (s_aClasses, s_bMounted) = ("rotate-[70deg]", false);
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.rotate.value.angle.ToDegrees(), Is.EqualTo(70f).Within(0.01f));
         }
 
         // Steps the resizing box to step 1, where it doubles, with s_resizeOrigin as its classes, and plays the frames.
@@ -3456,6 +3547,52 @@ namespace Velvet.Tests
             var element = Root.Q<VisualElement>("shared");
             var scale = element.style.scale.value.value.x;
             Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(20f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a percent radius in its slot as the fit wrote it.
+        // A percent radius is of the box and scales with it, so a scaled Motion's must be left as it is.
+        [Test]
+        public void Given_APercentRoundedLayoutIdMotionDoublingInPlace_When_ItIsDrawnScaled_Then_ItsRadiusIsTheSamePercent()
+        {
+            // Arrange / Act — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[25%]", 3);
+
+            // Assert
+            var radius = Root.Q<VisualElement>("shared").style.borderTopLeftRadius.value;
+            Assert.That((radius.unit, radius.value), Is.EqualTo((LengthUnit.Percent, 25f)));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_SomethingElseWritesOneCornerMidMove_Then_ItIsDrawnAtThatCornerAtOnce()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act
+            element.style.borderTopLeftRadius = 5f;
+            Tick();
+
+            // Assert — five pixels on screen, the radius written times the scale it is drawn at, while that scale is
+            // still well short of whole.
+            var scale = element.style.scale.value.value.x;
+            Assert.That(scale < 0.95f ? element.style.borderTopLeftRadius.value.value * scale : float.NaN, Is.EqualTo(5f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a removed rounded class to CornerRadiusFit, which clears the slot.
+        // A radius the Motion loses mid-move must be drawn as none at once.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionDoublingInPlace_When_ItLosesItsRadiusMidMove_Then_ItIsDrawnWithNone()
+        {
+            // Arrange — a few frames into doubling on a spring.
+            using var mounted = ResizeBoxFor("rounded-[10px]", 3);
+
+            // Act
+            RestyleResizedBox(mounted, "");
+
+            // Assert
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That((element.style.scale.value.value.x < 0.95f, element.style.borderTopLeftRadius.value.value), Is.EqualTo((true, 0f)));
         }
 
         // GREEN_ON_BASE(characterization): the base never writes the radius of a layoutId Motion, so a corner written there stays.

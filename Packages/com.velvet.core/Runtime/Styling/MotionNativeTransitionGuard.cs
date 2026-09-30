@@ -33,7 +33,9 @@ namespace Velvet
         BackgroundPosition = 1 << 7,
         // MotionLayoutIdDriver hides a layoutId member that another holder leads through `visibility`.
         Visibility = 1 << 8,
-        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
+        // The four corner radii alone, for a layoutId projection that writes them and no other length.
+        Radius = 1 << 9,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility | Radius,
     }
 
     /// <summary>
@@ -297,6 +299,12 @@ namespace Velvet
             StyleLonghand.FontSize,
             StyleLonghand.LetterSpacing);
 
+        private static readonly StyleLonghandSet s_radiusProperties = SetOf(
+            StyleLonghand.BorderTopLeftRadius,
+            StyleLonghand.BorderTopRightRadius,
+            StyleLonghand.BorderBottomLeftRadius,
+            StyleLonghand.BorderBottomRightRadius);
+
         /// <summary>The driver channels that would contend for the properties a declaration names.</summary>
         private static MotionTransitionSlots SlotsOf(StyleLonghandSet declared)
         {
@@ -307,6 +315,7 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
+            if (declared.Overlaps(s_radiusProperties)) slots |= MotionTransitionSlots.Radius;
             if (declared.Contains(StyleLonghand.Visibility)) slots |= MotionTransitionSlots.Visibility;
             return slots;
         }
@@ -321,6 +330,7 @@ namespace Velvet
             if ((slots & MotionTransitionSlots.Rotate) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Rotate));
             if ((slots & MotionTransitionSlots.Color) != 0) set = set.Union(s_colorProperties);
             if ((slots & MotionTransitionSlots.Length) != 0) set = set.Union(s_lengthProperties);
+            if ((slots & MotionTransitionSlots.Radius) != 0) set = set.Union(s_radiusProperties);
             if ((slots & MotionTransitionSlots.Filter) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Filter));
             if ((slots & MotionTransitionSlots.BackgroundPosition) != 0)
             {

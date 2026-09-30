@@ -356,8 +356,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move. The lead
-  also mixes its rotate and border radius from that holder's to its own, a radius not below zero, and the
-  others are drawn with the lead's. A move of the lead's own that interrupts the crossfade holds the
+  also mixes its rotate and border radius from that holder's to its own, a radius not below zero and a
+  pixel radius not mixing with a percent one, the lead's being taken, and the others are drawn with the
+  lead's. A move of the lead's own that interrupts the crossfade holds the
   opacities it had reached until that move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
@@ -379,10 +380,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   logged where the move settles rather than on every render.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
-  the stretch as for any change of size. A scaled Motion's border radius is divided by the scale it is
-  drawn at, so the corner keeps its own radius on screen, by the geometric mean of the two axes where
-  they differ, since a corner holds one length; a radius the Motion is given meanwhile is drawn as it is
-  given. The scale holds the element's transform origin still (its
+  the stretch as for any change of size. A scaled Motion's pixel border radius is divided by the scale
+  it is drawn at, by the geometric mean of the two axes where they differ, since a style takes one length
+  per corner; a percent radius, which scales with the box, is left as it is. A radius or rotate the
+  Motion is given meanwhile is drawn as it is given. The scale holds the element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
