@@ -632,8 +632,6 @@ namespace Velvet
             [ArbitraryProperty.BorderRightWidth] = new Action<IStyle, StyleFloat>[] { (s, v) => s.borderRightWidth = v },
             [ArbitraryProperty.BorderBottomWidth] = new Action<IStyle, StyleFloat>[] { (s, v) => s.borderBottomWidth = v },
             [ArbitraryProperty.BorderLeftWidth] = new Action<IStyle, StyleFloat>[] { (s, v) => s.borderLeftWidth = v },
-            // opacity-[..] is a unitless StyleFloat (0..1).
-            [ArbitraryProperty.Opacity] = new Action<IStyle, StyleFloat>[] { (s, v) => s.opacity = v },
             // grow-[..] / shrink-[..] are unitless factors.
             [ArbitraryProperty.FlexGrow] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexGrow = v },
             [ArbitraryProperty.FlexShrink] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexShrink = v },
@@ -1468,6 +1466,10 @@ namespace Velvet
                     element.style.transformOrigin = new TransformOrigin(
                         new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
                     return;
+                // opacity-[..] is a unitless factor (0..1), written through the slot a layoutId crossfade shares.
+                case ArbitraryProperty.Opacity:
+                    MotionOpacity.WriteTransitioned(element, style.Value);
+                    return;
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -1579,6 +1581,9 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.TransformOrigin:
                     element.style.transformOrigin = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.Opacity:
+                    MotionOpacity.WriteTransitioned(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;

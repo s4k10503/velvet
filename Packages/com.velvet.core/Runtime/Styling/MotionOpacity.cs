@@ -1,0 +1,297 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // What a layoutId crossfade draws an element's opacity at, over the element's own: Lerp(From, own, Mix) * Scale.
+    // Framer's mixValues (mix-values.ts) gives a lead fading in `(0, easeIn, 1)`, a member behind it
+    // `(the previous lead's, 0, 1 - easeOut)` and a lead alone under its id `(the previous holder's, progress, 1)`.
+    internal readonly struct LayoutIdFade
+    {
+        public static readonly LayoutIdFade None = new(0f, 1f, 1f);
+
+        public LayoutIdFade(float from, float mix, float scale)
+        {
+            From = from;
+            Mix = mix;
+            Scale = scale;
+        }
+
+        public float From { get; }
+        public float Mix { get; }
+        public float Scale { get; }
+    }
+
+    // The inline opacity slot, which the writers of an element's own opacity (MotionSpringDriver, BezierTweenDriver,
+    // StyleAnimateDriver's pulse, an opacity-[x] class) and a layoutId crossfade share. While a crossfade draws an
+    // element, each writes through here, and the slot holds the crossfade applied to the element's own opacity.
+    //
+    // An own opacity the element's classes give it — a static opacity-*, or a change of class a transition carries,
+    // as a variant swap or a transition-opacity class does — is read off the cascade
+    // (Cascade) while a crossfade holds the slot, and its transition is run here, the engine's being suspended for
+    // the crossfade through MotionNativeTransitionGuard as for the per-frame drivers. A transition still running as
+    // the crossfade ends runs on here until it lands, and only then is the slot handed back.
+    internal static class MotionOpacity
+    {
+        private sealed class Drawing
+        {
+            public LayoutIdFade Fade;
+            // The element's own inline opacity, or Null where its classes give it.
+            public StyleFloat OwnInline;
+            public StyleFloat Written;
+            // The element's own opacity, carried from From towards Target by the transition it declares for opacity.
+            public float Value;
+            public float From;
+            public float Target;
+            public float ElapsedSec;
+            public float DelaySec;
+            public float DurationSec;
+            public EasingMode Easing;
+            // The timing the list a variant swap holds inline gave opacity, before this took opacity out of it; NaN
+            // duration while the slot holds no such list.
+            public float HeldDurationSec = float.NaN;
+            public float HeldDelaySec;
+            public EasingMode HeldEasing;
+            // Steps the element's own opacity once the crossfade has ended, until it lands.
+            public IVisualElementScheduledItem? Tail;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, Drawing> s_drawing = new();
+        // The owner of the transition suspension an element holds while a crossfade draws it.
+        private static readonly object s_owner = new();
+        private static readonly StyleLonghandSet s_opacity = StyleLonghandSet.Of(StyleLonghand.Opacity);
+        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands in
+        // the call that sees it, as the engine applies it.
+        private const float MinDurationSec = 1e-4f;
+
+        // Writes the element's own inline opacity for a driver that writes it every frame, Null handing it back to its
+        // classes. Under a crossfade it lands at once, and the slot holds the crossfade applied to it.
+        public static void Write(VisualElement element, StyleFloat own)
+        {
+            if (!s_drawing.TryGetValue(element, out var drawing))
+            {
+                element.style.opacity = own;
+                return;
+            }
+            drawing.OwnInline = own;
+            Land(element, drawing);
+            Apply(element, drawing);
+        }
+
+        // Writes the element's own inline opacity for a class that gives it, which under a crossfade is carried on the
+        // element's opacity transition, as the engine carries it otherwise.
+        public static void WriteTransitioned(VisualElement element, StyleFloat own)
+        {
+            if (!s_drawing.TryGetValue(element, out var drawing))
+            {
+                element.style.opacity = own;
+                return;
+            }
+            drawing.OwnInline = own;
+            Carry(element, drawing, 0f);
+            Apply(element, drawing);
+        }
+
+        // The element's own opacity as it is now: its inline value, or what its classes give it, as a crossfade has
+        // carried it while one draws the element.
+        public static float Own(VisualElement element)
+        {
+            if (s_drawing.TryGetValue(element, out var drawing)) return drawing.Value;
+            var inline = element.style.opacity;
+            return inline.keyword == StyleKeyword.Undefined ? inline.value : element.resolvedStyle.opacity;
+        }
+
+        // Draws the element at the crossfade, its own opacity carried on by dtSec. The first draw starts from the
+        // opacity the element is resolved at.
+        public static void Draw(VisualElement element, LayoutIdFade fade, float dtSec)
+        {
+            if (!s_drawing.TryGetValue(element, out var drawing))
+            {
+                var resolved = element.resolvedStyle.opacity;
+                drawing = new Drawing { OwnInline = element.style.opacity, Written = element.style.opacity, Value = resolved, Target = resolved };
+                s_drawing.Add(element, drawing);
+            }
+            drawing.Tail?.Pause();
+            drawing.Tail = null;
+            drawing.Fade = fade;
+            Step(element, drawing, dtSec);
+        }
+
+        // Stops the crossfade. The slot is handed back to the element's own inline opacity, or to its classes, and
+        // the transitions with it, once the element's own opacity has landed.
+        public static void End(VisualElement element)
+        {
+            if (!s_drawing.TryGetValue(element, out var drawing)) return;
+            drawing.Fade = LayoutIdFade.None;
+            if (Landed(drawing))
+            {
+                Finish(element, drawing);
+                return;
+            }
+            Apply(element, drawing);
+            drawing.Tail ??= element.schedule.Execute(state => StepTail(element, drawing, state.deltaTime / 1000f))
+                .Every(StyleAnimateDriver.TickMs);
+        }
+
+        // Drops an element torn down mid-crossfade, so that nothing writing it after the pool hands it on finds it drawn.
+        public static void Forget(VisualElement element)
+        {
+            if (!s_drawing.TryGetValue(element, out var drawing)) return;
+            drawing.Tail?.Pause();
+            s_drawing.Remove(element);
+        }
+
+        private static void StepTail(VisualElement element, Drawing drawing, float dtSec)
+        {
+            Step(element, drawing, dtSec);
+            if (Landed(drawing)) Finish(element, drawing);
+        }
+
+        private static void Finish(VisualElement element, Drawing drawing)
+        {
+            drawing.Tail?.Pause();
+            s_drawing.Remove(element);
+            element.style.opacity = drawing.OwnInline;
+            MotionNativeTransitionGuard.Release(element, s_owner);
+        }
+
+        private static void Step(VisualElement element, Drawing drawing, float dtSec)
+        {
+            // A value something else wrote into the slot is the element's own from then on, carried as the engine
+            // would carry it.
+            if (element.style.opacity != drawing.Written) drawing.OwnInline = element.style.opacity;
+            // The timing is read out of a held list before the suspension takes opacity out of it.
+            HoldTiming(element, drawing);
+            Cascade.OpacityTransition(element, out var durationSec, out _, out _);
+            var intercepted = durationSec > 0f
+                || (MotionNativeTransitionGuard.DeclaredSlots(element) & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None;
+            MotionNativeTransitionGuard.SyncSuspension(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
+            Carry(element, drawing, dtSec);
+            Apply(element, drawing);
+        }
+
+        private static bool Landed(Drawing drawing) => drawing.ElapsedSec >= drawing.DelaySec + drawing.DurationSec;
+
+        private static float OwnTarget(VisualElement element, Drawing drawing) =>
+            drawing.OwnInline.keyword == StyleKeyword.Undefined ? drawing.OwnInline.value : Cascade.Opacity(element);
+
+        private static void Land(VisualElement element, Drawing drawing)
+        {
+            var target = OwnTarget(element, drawing);
+            if (float.IsNaN(target)) return;
+            drawing.Value = drawing.From = drawing.Target = target;
+            drawing.ElapsedSec = drawing.DelaySec = drawing.DurationSec = 0f;
+        }
+
+        private static void Apply(VisualElement element, Drawing drawing)
+        {
+            var fade = drawing.Fade;
+            element.style.opacity = Mathf.Clamp01(Mathf.LerpUnclamped(fade.From, drawing.Value, fade.Mix) * fade.Scale);
+            drawing.Written = element.style.opacity;
+        }
+
+        // A list a variant swap holds inline names the timing the engine would have run opacity by. It is read as the
+        // swap writes it, and opacity is taken out of it so that the list does not carry the writes here. The swap
+        // writes the list's durations with it and clears both as it ends, while the suspension writes names alone.
+        private static void HoldTiming(VisualElement element, Drawing drawing)
+        {
+            var durations = element.style.transitionDuration;
+            var lists = new TransitionLists(element.style.transitionProperty.value, durations.value,
+                element.style.transitionDelay.value, element.style.transitionTimingFunction.value);
+            if (durations.keyword != StyleKeyword.Undefined)
+            {
+                drawing.HeldDurationSec = float.NaN;
+            }
+            else if (StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out var easing))
+            {
+                drawing.HeldDurationSec = durationMs / 1000f;
+                drawing.HeldDelaySec = delayMs / 1000f;
+                drawing.HeldEasing = easing;
+            }
+            MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_opacity);
+        }
+
+        // Carries the element's own opacity towards what it is given now, starting over from where it stands whenever
+        // that changes, on the timing a held list gave opacity or else the one the element's classes declare.
+        private static void Carry(VisualElement element, Drawing drawing, float dtSec)
+        {
+            var target = OwnTarget(element, drawing);
+            if (!float.IsNaN(target) && target != drawing.Target)
+            {
+                drawing.From = drawing.Value;
+                drawing.Target = target;
+                drawing.ElapsedSec = 0f;
+                if (!float.IsNaN(drawing.HeldDurationSec))
+                {
+                    (drawing.DurationSec, drawing.DelaySec, drawing.Easing) = (drawing.HeldDurationSec, drawing.HeldDelaySec, drawing.HeldEasing);
+                }
+                else
+                {
+                    Cascade.OpacityTransition(element, out drawing.DurationSec, out drawing.DelaySec, out drawing.Easing);
+                }
+            }
+            drawing.ElapsedSec += dtSec;
+            var t = Mathf.Clamp01((drawing.ElapsedSec - drawing.DelaySec + MinDurationSec) / Mathf.Max(drawing.DurationSec, MinDurationSec));
+            drawing.Value = Mathf.LerpUnclamped(drawing.From, drawing.Target, UssEasing.Evaluate(drawing.Easing, t));
+        }
+
+        // The style an element's classes cascade to, which UI Toolkit caches under the element's matchingRulesHash
+        // (StyleCache), internal to it and so read by reflection. Where that cannot be read, the classes' value stays
+        // the one the crossfade started from. Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_
+        // Then_ItsOwnIsCarriedOnThatTransition fails when the read stops giving the cascaded value.
+        private static class Cascade
+        {
+            private static readonly FieldInfo? s_style =
+                typeof(VisualElement).GetField("m_Style", BindingFlags.NonPublic | BindingFlags.Instance);
+            private static readonly Type? s_type = s_style?.FieldType;
+            private static readonly FieldInfo? s_hash = s_type?.GetField("matchingRulesHash");
+            private static readonly MethodInfo? s_tryGet = s_type == null ? null
+                : typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache")?.GetMethod("TryGetValue",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null,
+                    new[] { typeof(long), s_type.MakeByRefType() }, null);
+            private static readonly PropertyInfo? s_opacity = s_type?.GetProperty("opacity");
+            private static readonly PropertyInfo? s_property = s_type?.GetProperty("transitionProperty");
+            private static readonly PropertyInfo? s_duration = s_type?.GetProperty("transitionDuration");
+            private static readonly PropertyInfo? s_delay = s_type?.GetProperty("transitionDelay");
+            private static readonly PropertyInfo? s_curve = s_type?.GetProperty("transitionTimingFunction");
+            private static readonly bool s_readable = Array.TrueForAll(
+                new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
+
+            // NaN where the cached style cannot be read.
+            public static float Opacity(VisualElement element) =>
+                Read(element) is { } style ? (float)s_opacity!.GetValue(style) : float.NaN;
+
+            // No transition where the cached style cannot be read or declares none for opacity.
+            public static void OpacityTransition(VisualElement element, out float durationSec, out float delaySec, out EasingMode easing)
+            {
+                durationSec = delaySec = 0f;
+                easing = EasingMode.Ease;
+                if (Read(element) is not { } style) return;
+                var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
+                    s_duration!.GetValue(style) as List<TimeValue>, s_delay!.GetValue(style) as List<TimeValue>,
+                    s_curve!.GetValue(style) as List<EasingFunction>);
+                if (!StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out easing))
+                {
+                    return;
+                }
+                durationSec = durationMs / 1000f;
+                delaySec = delayMs / 1000f;
+            }
+
+            private static object? Read(VisualElement element)
+            {
+                // MUTANT_SURVIVES(equivalent): on the editor this package declares, every member resolves and this returns nothing.
+                // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
+                // fails where one does not.
+                if (!s_readable) return null;
+                var args = new[] { s_hash!.GetValue(s_style!.GetValue(element)), null };
+                return s_tryGet!.Invoke(null, args) is true ? args[1] : null;
+            }
+        }
+    }
+}

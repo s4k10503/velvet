@@ -200,7 +200,7 @@ namespace Velvet
                 // Pulse owns the opacity slot while active (a static opacity-* is shadowed — Pulse wins). Null
                 // returns it to no-inline-opacity; a surviving class-driven opacity is re-asserted by the
                 // reconciler right after Detach (a NAMED opacity-* re-resolves, an opacity-[.x] is re-applied).
-                element.style.opacity = StyleKeyword.Null;
+                MotionOpacity.Write(element, StyleKeyword.Null);
             }
         }
 
@@ -314,7 +314,7 @@ namespace Velvet
                 {
                     // Geometry-free: opacity is a value-compared float, so writing it each frame dirties the
                     // element correctly (no reference-list pitfall like the filter slot above).
-                    element.style.opacity = PulseOpacity(t);
+                    MotionOpacity.Write(element, PulseOpacity(t));
                     break;
                 }
                 case AnimateMode.Spin:

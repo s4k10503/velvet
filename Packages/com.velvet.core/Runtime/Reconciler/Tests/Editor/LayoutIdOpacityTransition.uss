@@ -1,0 +1,5 @@
+.layout-id-test-fade {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}
