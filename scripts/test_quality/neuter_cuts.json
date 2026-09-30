@@ -584,12 +584,12 @@
     {
       "name": "balance-token",
       "mechanism": "balance",
-      "summary": "the balance class parser finds no text-balance class on a class list",
+      "summary": "the wrap-style reader finds no text-balance or text-pretty class on a class list",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",
-          "anchor": "public static bool HasTextBalanceClass(string[] classNames)",
-          "neuter": "return false;"
+          "anchor": "public static TextWrapStyle ReadWrapStyle(string[] classNames)",
+          "neuter": "return TextWrapStyle.None;"
         }
       ]
     },

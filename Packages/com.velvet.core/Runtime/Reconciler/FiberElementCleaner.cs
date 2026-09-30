@@ -350,6 +350,10 @@ namespace Velvet
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
             }
+            if (_ctx.LeadingLengthProbes.TryGetValue(element, out var leadingProbe))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
+            }
             if (_ctx.GradientBackgrounds.ContainsKey(element))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior

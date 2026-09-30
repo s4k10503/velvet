@@ -194,8 +194,7 @@ namespace Velvet.SourceGenerators.AutoDeps
         /// component closure. The match is deliberately conservative to avoid false positives:
         /// <list type="bullet">
         /// <item>Locals are captured only when declared outside the lambda body (enclosing scope).</item>
-        /// <item>Instance fields qualify; <c>static</c>, <c>const</c>, and <c>readonly</c> fields are stable and excluded.</item>
-        /// <item>Instance properties qualify; <c>static</c> and init-only properties are stable and excluded.</item>
+        /// <item>Instance fields and properties qualify as <see cref="ReactiveInstanceMembers"/> decides.</item>
         /// <item>Methods (<see cref="IMethodSymbol"/>), types, namespaces, and parameters are never flagged.</item>
         /// <item>Both unqualified (<c>_field</c>) and <c>this.</c>-qualified (<c>this._field</c>) instance members are tracked.</item>
         /// </list>
@@ -211,18 +210,8 @@ namespace Velvet.SourceGenerators.AutoDeps
                     // Captured = declared outside the lambda body (i.e. lives in an enclosing scope).
                     return !lambdaSpan.Contains(declRef.Span);
                 }
-                // Instance field read through the component closure. Static / const / readonly fields hold a
-                // value fixed after construction, so they are not reactive between renders and must not be
-                // flagged (e.g. an injected `readonly IRepository _repo`).
-                case IFieldSymbol field:
-                    return !field.IsStatic && !field.IsConst && !field.IsReadOnly;
-                // Instance property read through the component closure. Static and init-only properties hold a
-                // value fixed after construction and are excluded; a getter-only property may be a computed
-                // reactive value, so it is still tracked.
-                case IPropertySymbol property:
-                    return !property.IsStatic && !(property.SetMethod?.IsInitOnly ?? false);
                 default:
-                    return false;
+                    return ReactiveInstanceMembers.Contains(symbol);
             }
         }
 

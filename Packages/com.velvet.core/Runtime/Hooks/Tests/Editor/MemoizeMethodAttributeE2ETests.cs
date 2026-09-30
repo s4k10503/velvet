@@ -17,6 +17,8 @@ namespace Velvet.Tests
     /// re-invoked to rebuild the VNode.</item>
     /// <item>The dependency array captures every method argument, so a change to any position (first, middle,
     /// or last) triggers the miss.</item>
+    /// <item>The instance the method is called on is part of the key, so calling it on another instance with
+    /// the same arguments is a miss.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -75,6 +77,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(demo.Arity1ImplCallCount, Is.EqualTo(2),
                 "A changed dependency is a cache miss, so the impl body rebuilds");
+        }
+
+        [Test]
+        public void Given_Arity1_When_ReconciledAgainOnAnotherInstanceWithSameArg_Then_ThatInstanceBuilds()
+        {
+            // Arrange
+            var first = new MemoizeMethodAttributeDemoComponent();
+            var second = new MemoizeMethodAttributeDemoComponent();
+            var tree1 = new VNode[] { first.BuildArity1("title") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
+
+            // Act
+            var tree2 = new VNode[] { second.BuildArity1("title") };
+            Reconciler.Reconcile(Root, tree1, tree2);
+
+            // Assert
+            Assert.That((first.Arity1ImplCallCount, second.Arity1ImplCallCount), Is.EqualTo((1, 1)),
+                "The instance is part of the key, so the same argument on another instance is a cache miss");
         }
 
         [Test]

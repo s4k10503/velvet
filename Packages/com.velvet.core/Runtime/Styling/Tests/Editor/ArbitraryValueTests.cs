@@ -1602,25 +1602,191 @@ namespace Velvet.Tests
             Assert.That((s.Unit, s.Unit2), Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
         }
 
+        // CSS transform-origin's grammar inside the brackets: a keyword stands for its percentage, a lone
+        // vertical keyword is the y, a keyword-only pair may come in either order, and a pair holding a
+        // length is x then y. Each pivot below differs on both axes, so a swapped reading cannot pass.
+
         [Test]
-        public void Given_TransformOriginKeywordValue_When_Parsed_Then_Declines()
+        public void Given_TransformOriginLoneHorizontalKeyword_When_Parsed_Then_ItIsTheXAndTheYIsHalf()
         {
-            // Act — the nine keyword pivots are USS classes, so origin-top-left is how they are written.
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_top]", out _);
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[right]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, 100f, LengthUnit.Percent, 50f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginLoneVerticalKeyword_When_Parsed_Then_ItIsTheYAndTheXIsHalf()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[bottom]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, 50f, LengthUnit.Percent, 100f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginKeywordPairWrittenYFirst_When_Parsed_Then_EachKeywordTakesItsOwnAxis()
+        {
+            // Act — CSS accepts a keyword-only pair in either order.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[bottom_left]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Value2), Is.EqualTo((true, 0f, 100f)));
+        }
+
+        [Test]
+        public void Given_TransformOriginCenterThenTop_When_Parsed_Then_TheXIsHalfAndTheYIsZero()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[center_top]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Value2), Is.EqualTo((true, 50f, 0f)));
+        }
+
+        [Test]
+        public void Given_TransformOriginKeywordThenLength_When_Parsed_Then_TheKeywordIsTheX()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_20px]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, 0f, LengthUnit.Percent, 20f, LengthUnit.Pixel)));
+        }
+
+        // The pairs CSS declares invalid: a length is always read x then y, so a vertical keyword ahead of
+        // one or a horizontal keyword behind one has no axis left, and two keywords of one axis leave the
+        // other unstated.
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginVerticalKeywordThenLength_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_20px]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginLengthThenHorizontalKeyword_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_left]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginTwoHorizontalKeywords_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_right]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginTwoVerticalKeywords_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_bottom]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle_20px]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginUnknownWordSecond_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_middle]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginWithAPercentZ_When_Parsed_Then_Declines()
+        {
+            // Act — CSS takes the z as a length only.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
+        [Test]
+        public void Given_TransformOriginWithFourComponents_When_Parsed_Then_Declines()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[10px_20px_30px_40px]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
         }
 
         [Test]
-        public void Given_TransformOriginWithThreeComponents_When_Parsed_Then_Declines()
+        public void Given_TransformOriginWithALengthZ_When_Applied_Then_TheInlineOriginCarriesIt()
         {
-            // Act — CSS's third component is a z and the engine carries one, so this refusal is a choice
-            // about the value shape rather than something that could not be done.
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
+            // Arrange
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30px]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, el.style.transformOrigin.value.z), Is.EqualTo((true, 30f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines both spellings, so each keys by its raw text.
+        // What the case adds is that a z stays in the key once both parse.
+        [Test]
+        public void Given_TwoTransformOriginsDifferingOnlyInZ_When_Keyed_Then_TheKeysDiffer()
+        {
+            // Act
+            var first = FiberNodePatcher.ValueKey("origin-[1px_2px_3px]");
+            var second = FiberNodePatcher.ValueKey("origin-[1px_2px_4px]");
+
+            // Assert
+            Assert.That(first, Is.Not.EqualTo(second));
         }
 
         [Test]

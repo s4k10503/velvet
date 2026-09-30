@@ -15,7 +15,9 @@ namespace Velvet.TestUtilities
     /// </remarks>
     public static class GCAllocationProbe
     {
-        public static int SampleBlocksDuring(Action action)
+        private static readonly Action Nothing = () => { };
+
+        private static int SampleBlocksDuring(Action action)
         {
             if (action == null) throw new ArgumentNullException(nameof(action));
 
@@ -39,6 +41,33 @@ namespace Velvet.TestUtilities
                 recorder.CollectFromAllThreads();
             }
             return blocks;
+        }
+
+        /// <summary>
+        /// Counts the blocks one run of a delegate charges as the middle of three windows, for a delegate
+        /// whose every run allocates the same.
+        /// </summary>
+        /// <remarks>
+        /// A single window is not offered: an exact count read from one fails when that window reads a
+        /// block high, and one high window among the three cannot move the middle count.
+        /// </remarks>
+        public static int MedianBlocksDuring(Action repeatable) => MedianBlocksDuring(Nothing, repeatable);
+
+        /// <summary>
+        /// As <see cref="MedianBlocksDuring(Action)"/>, running <paramref name="arrange"/> outside each window
+        /// first, for a delegate whose run changes the state it measures.
+        /// </summary>
+        public static int MedianBlocksDuring(Action arrange, Action measured)
+        {
+            if (arrange == null) throw new ArgumentNullException(nameof(arrange));
+
+            arrange();
+            var first = SampleBlocksDuring(measured);
+            arrange();
+            var second = SampleBlocksDuring(measured);
+            arrange();
+            var third = SampleBlocksDuring(measured);
+            return Math.Max(Math.Min(first, second), Math.Min(Math.Max(first, second), third));
         }
     }
 }

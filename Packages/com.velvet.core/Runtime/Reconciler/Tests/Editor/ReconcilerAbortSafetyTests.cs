@@ -337,6 +337,70 @@ namespace Velvet.Tests
     }
 
     /// <summary>
+    /// Specifies that a boundary catching outside every reconcile pass — from a passive effect here — leaves
+    /// <see cref="ReconcilerContext.IsAborted"/> unset, so the next pass to start, an unrelated fiber's, commits.
+    /// </summary>
+    [TestFixture]
+    internal sealed class CommitPhaseCatchAbortLeakTests
+    {
+        private VisualElement _root;
+        private static StateUpdater<string> s_setCounterText;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_setCounterText = default;
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaughtAPassiveEffectsError_When_AnUnrelatedComponentUpdatesNext_Then_ItsChangeCommits()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setCounterText.Invoke("updated");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                $"{_root.Q<Label>("fallback")?.text} | {_root.Q<Label>("counter")?.text}",
+                Is.EqualTo("caught | updated"));
+        }
+
+        [Component]
+        private static VNode Host() => V.Div(children: new VNode[]
+        {
+            V.Component(BoundaryRender, key: "boundary"),
+            V.Component(CounterRender, key: "counter"),
+        });
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "fallback", text: "caught"));
+            return V.Component(ThrowInPassiveEffectRender, key: "child");
+        }
+
+        [Component]
+        private static VNode ThrowInPassiveEffectRender()
+        {
+            Hooks.UseEffect((Func<Action>)(() => throw new InvalidOperationException("boom")), Array.Empty<object>());
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        private static VNode CounterRender()
+        {
+            var (text, setText) = Hooks.UseState("initial");
+            s_setCounterText = setText;
+            return V.Label(name: "counter", text: text);
+        }
+    }
+
+    /// <summary>
     /// Characterizes the ChildReconciler DOM-desync RECOVERY guards: <c>TryRebuildDesyncedSlotRange</c> for keyed
     /// children, and the <c>slotExists</c> / remove-skip guards for indexed children. They recover when the live
     /// container is SHORTER than the fiber's committed baseline claims — the state a completing AnimatePresence

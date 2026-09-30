@@ -67,8 +67,10 @@ namespace Velvet
             Action<Exception, ErrorInfo>? onCaughtError = null)
         {
             SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
+            var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
+            FiberEffects.CommitStrandedLayoutWork(context);
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
             // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
             // before the caller regains control, exactly as a drain-driven flush loops until quiet —
@@ -98,7 +100,8 @@ namespace Velvet
             // stale (null) refs. Push the fiber onto the deferred stack and let the top-level
             // reconcile entry drain it (LIFO = bottom-up) before its own layout-effect commit so the
             // root commits last.
-            fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true));
+            var mountContext = fiber.Reconciler!.Context;
+            mountContext.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true, mountContext.CurrentPass));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
         }
 
@@ -132,7 +135,8 @@ namespace Velvet
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
-            subsumedReconciler.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
+            var subsumedContext = subsumedReconciler.Context;
+            subsumedContext.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, subsumedContext.CurrentPass));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
             SettleSubsumedFiber(fiber);
         }
@@ -768,6 +772,9 @@ namespace Velvet
             // boundary to reuse; a faulted child's Use<T> throws a real exception that routes to the error
             // boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps the
             // fallback. Without a boundary (plain async) the child commits its own slot directly.
+            // Read before the render, which can dispose this fiber when an error boundary above it catches.
+            var context = fiber.Reconciler!.Context;
+            var catchesBeforeTheRender = context.NextCaughtErrorSequence;
             try
             {
                 RenderAndReconcile(fiber, deferReconcile: underBoundary);
@@ -779,19 +786,22 @@ namespace Velvet
             if (!underBoundary && fiber.Reconciler?.HasPendingWork != true)
             {
                 // Plain async (no Suspense boundary): the resolved child commits its own slot in the
-                // call above, so its UseImperativeHandle factory must run here. Under a boundary the
-                // child's commit is driven by the boundary's re-render below (Mount path = Run is
-                // invoked there); skipping the call avoids committing a handle that the boundary's
-                // re-render is about to discard.
-                FiberHookCommit.RunImperativeHandleSlots(fiber);
+                // call above, so its effects, its UseImperativeHandle factory and the inline children that
+                // render mounted commit here. Under a boundary the child's commit is driven by the
+                // boundary's re-render below (Mount path = Run is invoked there); skipping the call avoids
+                // committing what the boundary's re-render is about to discard.
+                FiberEffects.CommitSubtreeEffects(fiber);
             }
-            if (underBoundary)
+            // An error boundary that caught the render above has shown its fallback for this error already, and a
+            // retry that renders the faulted child again has it caught and reported a second time.
+            if (underBoundary && context.NextCaughtErrorSequence == catchesBeforeTheRender)
             {
                 // Invalidate the (possibly memoized) boundary so its re-render re-walks the now-resolved
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.
                 boundary!.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(boundary);
             }
+            FiberEffects.CommitStrandedLayoutWork(context);
         }
 
         #endregion

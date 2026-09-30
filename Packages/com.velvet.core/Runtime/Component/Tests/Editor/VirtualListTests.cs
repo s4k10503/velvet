@@ -27,7 +27,9 @@ namespace Velvet.Tests
     /// the renderer set on that row's own node does not change that: the selector's key is the identity
     /// the range diff runs on.</item>
     /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
-    /// driven from a scroll rather than from a reconcile pass.</item>
+    /// driven from a scroll rather than from a reconcile pass, and so have the layout effects of a component
+    /// inside an item. A component item mounted by its host's pass commits its own subtree only, leaving a
+    /// component that pass mounted ahead of the list to commit once its ref is attached.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
     /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
@@ -216,6 +218,95 @@ namespace Velvet.Tests
 
             // Assert — the last item the window rendered is the one the shared capture holds.
             Assert.That(captured, Is.SameAs(visibleContainer.ElementAt(visibleContainer.childCount - 1)));
+        }
+
+        private static int s_itemLayoutEffectRuns;
+
+        private static StateUpdater<int> s_setRefHostTick;
+        private static readonly Ref<Label> s_beforeListRef = new();
+        private static string s_beforeListReading;
+
+        [Component]
+        private static VNode RefReadingLayoutRender()
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_beforeListReading = s_beforeListRef.Current != null ? "ref attached" : "ref null";
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "before", refCallback: s_beforeListRef.SetElement);
+        }
+
+        [Component]
+        private static VNode ComponentAheadOfListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRefHostTick = setTick;
+            return V.Fragment(children: new VNode[]
+            {
+                tick > 0 ? V.Component(RefReadingLayoutRender, key: "before") : null,
+                V.VirtualList(
+                    items: tick > 0 ? new[] { "a" } : Array.Empty<string>(),
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(LayoutEffectItemRender, key: item),
+                    overscan: 0,
+                    key: "list"),
+            });
+        }
+
+        [Test]
+        public void Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the item mounts through a mount of its own, whose commit is scoped to that item, before the
+            // host's pass attaches the refs it queued.
+            s_itemLayoutEffectRuns = 0;
+            s_beforeListReading = "never ran";
+            s_beforeListRef.Set(null);
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ComponentAheadOfListHostRender, key: "host"));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 50f);
+            s_setRefHostTick.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert — the item's run count is read beside the reading, because a host that rendered no item
+            // commits nothing scoped and reaches the same reading with nothing about the scope measured.
+            Assert.That($"{s_itemLayoutEffectRuns} | {s_beforeListReading}", Is.EqualTo("1 | ref attached"));
+        }
+
+
+        [Component]
+        private static VNode LayoutEffectItemRender()
+        {
+            Hooks.UseLayoutEffect(() => { s_itemLayoutEffectRuns++; return (Action)null; }, Array.Empty<object>());
+            return V.Label(text: "row");
+        }
+
+        [Test]
+        public void Given_AnItemHoldingAComponentWithALayoutEffect_When_ARangeIsRenderedOutsideAPass_Then_TheLayoutEffectHasRunWhenTheUpdateReturns()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no item until the range
+            // update below.
+            s_itemLayoutEffectRuns = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(key: item, children: new VNode[] { V.Component(LayoutEffectItemRender, key: "row") }),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Assert
+            Assert.That(s_itemLayoutEffectRuns, Is.EqualTo(1));
         }
 
         [Test]

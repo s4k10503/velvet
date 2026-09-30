@@ -365,17 +365,18 @@ covered every case would leave it unread; there it is read anyway, and a platfor
 for fails rather than passing on excuses.
 
 Which cases are the branch's own is decided by comparing each case's code — its own text with the
-comments blanked out — against the base's, since a diff over a large rewrite describes untouched text
-as re-added, and a comment edited inside a case body is a changed line there. So a change that edits
-only comments poses nothing, and the cases kept out are named on a line of their own — `out of scope:
-12 case(s) of <file> hold a line this branch changed and no code it changed` — because an empty plan
-is equally what a branch that changed no test file at all leaves. Nothing the plan poses is named
-there: that line is what says a case owes no GREEN_ON_BASE declaration, and the run gives every
-case the plan poses a verdict. Alongside that, the cases the branch left alone in a file it changed
-nothing shared in are the base's own text, so one of those going red means the tree is answering
-about itself and that fixture's verdicts are withdrawn. Change a `[SetUp]`, a field, a private
-helper or anything under `TestUtilities/`, and those cases stop being the base's text and stop being
-read as the instrument — the run says which and why.
+comments, and a Python file's docstrings, blanked out — against the base's, since a diff over a large
+rewrite describes untouched text as re-added, and a comment edited inside a case body is a changed line
+there. So a change that edits only comments or docstrings poses nothing, wherever in the file they sit,
+and the cases kept out are named on a line of their own — `out of scope: 12 case(s) of <file> hold a
+line this branch changed and no code it changed` — because an empty plan is equally what a branch that
+changed no test file at all leaves. Nothing the plan poses is named there: that line is what says a
+case owes no GREEN_ON_BASE declaration, and the run gives every case the plan poses a verdict.
+Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's
+own text, so one of those going red means the tree is answering about itself and that fixture's
+verdicts are withdrawn. Change a `[SetUp]`, a field, a private helper or anything under
+`TestUtilities/`, and those cases stop being the base's text and stop being read as the instrument —
+the run says which and why.
 
 Red on the base means the base ran the case and the case said no, and only that. Except for a
 statically proven branch-only Python surface or a C# compile failure, a case that dies before it
