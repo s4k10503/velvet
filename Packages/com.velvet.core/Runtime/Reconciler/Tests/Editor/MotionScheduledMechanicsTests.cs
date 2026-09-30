@@ -2530,7 +2530,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneBehindTheLeadLeaves_Then_TheLeadsTweenCarriesOn()
         {
-            // Arrange — "b" part way into its one-second tween from "a".
+            // Arrange — the bundled sheet, so that both are absolute and "a" leaving moves nothing else; "b" part way into
+            // its one-second tween from "a".
+            VelvetStyleUtilities.AttachTo(Root);
             using var mounted = MountBOverA();
             for (var i = 0; i < 10; i++) Tick();
             var before = TranslateX(Root.Q<VisualElement>("b"));

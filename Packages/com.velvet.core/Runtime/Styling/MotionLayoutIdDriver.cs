@@ -174,13 +174,6 @@ namespace Velvet
             {
                 fromBox = redrawn;
             }
-            // One still moving that the patch left where it was carries on: the wait can settle on a layout event the
-            // patch did not cause, as a sibling's teardown gives it
-            // (Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheOneBehindTheLeadLeaves_Then_TheLeadsTweenCarriesOn).
-            else if (pending.ReadOffItself && layout == pending.PatchedLayout)
-            {
-                return;
-            }
 
             var parentScale = AncestorScale(parent, ctx);
             // Taken to undistorted units: a box read under this parent was drawn at the scale its ancestors had
