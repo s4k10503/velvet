@@ -286,50 +286,38 @@ namespace Velvet
         // A reconcile of target's own children opens a frame holding PortalSlotTracker.RowsBehindRanges as it
         // stood, and closing it follows the rows that reconcile placed (FollowOwnRows). A Portal on target
         // patched from inside it — one declared among target's own children — catches up first, since the
-        // own rows ahead of its range may already have moved, and rebases the frame after. Returns -1 where
-        // no Portal is mounted in the tree, which nothing then reads.
-        internal static int OpenOwnRows(ReconcilerContext ctx, VisualElement target)
+        // own rows ahead of its range may already have moved, and rebases the frame after. Opens nothing where
+        // no Portal is mounted in the tree.
+        internal static void OpenOwnRows(ReconcilerContext ctx, VisualElement target)
         {
-            if (ctx.PortalState.Count == 0)
+            // MUTANT_SURVIVES(equivalent): with no Portal mounted the frame would hold null, which closing and
+            // catching up both pass over, and closing removes it.
+            if (ctx.PortalState.Count > 0)
             {
-                return -1;
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
             }
-            ctx.OwnRowFrames.Add((target, PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target)));
-            return ctx.OwnRowFrames.Count - 1;
         }
 
-        // Pops frame and every frame above it, and returns what it held.
-        internal static int? PopOwnRows(ReconcilerContext ctx, int frame)
+        // Closes target's frame and returns what it held; null where none was open.
+        internal static int? PopOwnRows(ReconcilerContext ctx, VisualElement target)
+            => ctx.OwnRowFrames.Remove(target, out var rowsBehind) ? rowsBehind : null;
+
+        // Catches the ranges on target up with the frame open on it; false where none is open.
+        internal static bool CatchUpOwnRows(ReconcilerContext ctx, VisualElement target)
         {
-            if (frame < 0)
+            if (!ctx.OwnRowFrames.TryGetValue(target, out var rowsBehind))
             {
-                return null;
+                return false;
             }
-            var rowsBehind = ctx.OwnRowFrames[frame].RowsBehind;
-            ctx.OwnRowFrames.RemoveRange(frame, ctx.OwnRowFrames.Count - frame);
-            return rowsBehind;
+            if (rowsBehind != null)
+            {
+                FollowOwnRows(ctx, target, rowsBehind.Value);
+            }
+            return true;
         }
 
-        // The innermost open frame on target, caught up; -1 where none is open.
-        internal static int CatchUpOwnRows(ReconcilerContext ctx, VisualElement target)
-        {
-            for (var frame = ctx.OwnRowFrames.Count - 1; frame >= 0; frame--)
-            {
-                var (frameTarget, rowsBehind) = ctx.OwnRowFrames[frame];
-                if (!ReferenceEquals(frameTarget, target)) continue;
-                if (rowsBehind != null) FollowOwnRows(ctx, target, rowsBehind.Value);
-                return frame;
-            }
-            return -1;
-        }
-
-        internal static void RebaseOwnRows(ReconcilerContext ctx, int frame, VisualElement target)
-        {
-            if (frame >= 0)
-            {
-                ctx.OwnRowFrames[frame] = (target, PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target));
-            }
-        }
+        internal static void RebaseOwnRows(ReconcilerContext ctx, VisualElement target)
+            => ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining
         // commits the remaining child-count delta (e.g. the atomic keyed reorder inserting created

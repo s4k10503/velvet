@@ -63,13 +63,9 @@ namespace Velvet.Tests
             }),
         });
 
-        private static IEnumerator Frames()
-        {
-            for (var i = 0; i < 5; i++)
-            {
-                yield return null;
-            }
-        }
+        // Long enough for several of the driver's ticks after the host document has placed its panel, however
+        // few frames that takes: the document places it in a frame's LateUpdate, which a tick only reads later.
+        private static IEnumerator Frames() => PlayModeRealtimeTestHelpers.WaitRealtime(0.25);
 
         [UnityTest]
         public IEnumerator Given_AnAnchoredInsideAWorldSpacePanel_When_ItsTargetLiesOnThatPanel_Then_ItSitsOverTheTarget()

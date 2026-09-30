@@ -192,8 +192,6 @@ namespace Velvet
                 var range = entry.Value;
                 if (!ReferenceEquals(range.Target, parent)) continue;
                 if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
-                // MUTANT_SURVIVES(unreachable): two ranges holding one row are nested, and the inner one opens behind
-                // its placeholder, a row of the outer one, so they never start at one slot.
                 if (range.SlotStart <= holderStart) continue;
                 holder = entry.Key;
                 holderStart = range.SlotStart;

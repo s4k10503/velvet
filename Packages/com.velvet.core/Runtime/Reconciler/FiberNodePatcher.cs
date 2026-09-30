@@ -451,7 +451,7 @@ namespace Velvet
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
             // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
             // would put an element between this container and each Component's output.
-            var ownRows = FiberCommitWork.OpenOwnRows(_ctx, childContainer);
+            FiberCommitWork.OpenOwnRows(_ctx, childContainer);
             int? rowsBehindRanges;
             try
             {
@@ -461,7 +461,7 @@ namespace Velvet
             }
             finally
             {
-                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, ownRows);
+                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
             }
             if (rowsBehindRanges != null)
             {
@@ -1243,7 +1243,7 @@ namespace Velvet
             VisualElement placeholder, VisualElement target,
             VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw, string describe)
         {
-            var ownRows = FiberCommitWork.CatchUpOwnRows(_ctx, target);
+            var inOwnRows = FiberCommitWork.CatchUpOwnRows(_ctx, target);
             if (!_ctx.PortalState.TryGetValue(placeholder, out var prevState))
             {
                 // PortalState missing means CreateElement never recorded this Portal's slot range
@@ -1298,7 +1298,10 @@ namespace Velvet
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
-            FiberCommitWork.RebaseOwnRows(_ctx, ownRows, target);
+            if (inOwnRows)
+            {
+                FiberCommitWork.RebaseOwnRows(_ctx, target);
+            }
         }
 
         // Applies the diff for a ContextProviderNode.

@@ -132,7 +132,6 @@ namespace Velvet
             {
                 if (!ReferenceEquals(info.Target, target)) continue;
                 var end = info.SlotStart + info.SlotLength;
-                // MUTANT_SURVIVES(equivalent): where the two are equal, either arm is the same number.
                 lastEnd = lastEnd > end ? lastEnd : end;
             }
             return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;
@@ -887,9 +886,9 @@ namespace Velvet
         // SlotStart of Portals later in target.children is shifted by the delta.
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
 
-        // The reconciles of a Portal target's own children in progress, innermost last: FiberCommitWork.OpenOwnRows
-        // owns what each frame holds.
-        internal List<(VisualElement Target, int? RowsBehind)> OwnRowFrames { get; } = new();
+        // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
+        // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.
+        internal Dictionary<VisualElement, int?> OwnRowFrames { get; } = new();
 
         // The Portal placeholder whose children are being reconciled right now, or null outside any such
         // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
