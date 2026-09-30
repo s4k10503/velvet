@@ -1,8 +1,10 @@
 /* Border Utilities - border-width, border-color, border-radius */
 
-/* Border Width (all sides) */
-.border-0 { border-width: 0; }
+/* Border Width (all sides). Within a property each group follows Tailwind's candidate order, which puts
+   the bare utility before -0 and -0 before -2, so the later of two utilities on one edge wins as it does
+   there. */
 .border { border-width: 1px; }
+.border-0 { border-width: 0; }
 .border-2 { border-width: 2px; }
 .border-4 { border-width: 4px; }
 .border-8 { border-width: 8px; }
@@ -10,6 +12,8 @@
 /* Border Width - two sides (x / y). Precedes the single-side utilities: it contains them. */
 .border-x { border-left-width: 1px; border-right-width: 1px; }
 .border-y { border-top-width: 1px; border-bottom-width: 1px; }
+.border-x-0 { border-left-width: 0; border-right-width: 0; }
+.border-y-0 { border-top-width: 0; border-bottom-width: 0; }
 .border-x-2 { border-left-width: 2px; border-right-width: 2px; }
 .border-y-2 { border-top-width: 2px; border-bottom-width: 2px; }
 .border-x-4 { border-left-width: 4px; border-right-width: 4px; }
@@ -22,6 +26,10 @@
 .border-r { border-right-width: 1px; }
 .border-b { border-bottom-width: 1px; }
 .border-l { border-left-width: 1px; }
+.border-t-0 { border-top-width: 0; }
+.border-r-0 { border-right-width: 0; }
+.border-b-0 { border-bottom-width: 0; }
+.border-l-0 { border-left-width: 0; }
 .border-t-2 { border-top-width: 2px; }
 .border-r-2 { border-right-width: 2px; }
 .border-b-2 { border-bottom-width: 2px; }

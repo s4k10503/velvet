@@ -6,3 +6,6 @@
 - Two inline values of one property under the same variants resolve as Tailwind orders their names,
   the later one winning: `w-[2px] w-[1px]` is 2px wide, where the value the className listed last won.
   A repeated `filter-[name:…]` still takes the one listed last.
+
+- `border border-0` has no border, as in Tailwind, whose `border-0` sorts after `border`; `border` used to
+  win there.

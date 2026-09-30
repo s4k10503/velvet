@@ -493,7 +493,7 @@ namespace Velvet
         };
 
         private static readonly Dictionary<string, int> ByClassName =
-            new Dictionary<string, int>(2139, StringComparer.Ordinal)
+            new Dictionary<string, int>(2145, StringComparer.Ordinal)
         {
             { "absolute", 0 },
             { "active-bg-danger-active", 1 },
@@ -852,6 +852,7 @@ namespace Velvet
             { "border-amber-900", 12 },
             { "border-amber-950", 12 },
             { "border-b", 13 },
+            { "border-b-0", 13 },
             { "border-b-2", 13 },
             { "border-b-4", 13 },
             { "border-b-8", 13 },
@@ -935,6 +936,7 @@ namespace Velvet
             { "border-indigo-900", 12 },
             { "border-indigo-950", 12 },
             { "border-l", 14 },
+            { "border-l-0", 14 },
             { "border-l-2", 14 },
             { "border-l-4", 14 },
             { "border-l-8", 14 },
@@ -994,6 +996,7 @@ namespace Velvet
             { "border-purple-900", 12 },
             { "border-purple-950", 12 },
             { "border-r", 15 },
+            { "border-r-0", 15 },
             { "border-r-2", 15 },
             { "border-r-4", 15 },
             { "border-r-8", 15 },
@@ -1054,6 +1057,7 @@ namespace Velvet
             { "border-stone-950", 12 },
             { "border-strong", 12 },
             { "border-t", 16 },
+            { "border-t-0", 16 },
             { "border-t-2", 16 },
             { "border-t-4", 16 },
             { "border-t-8", 16 },
@@ -1082,10 +1086,12 @@ namespace Velvet
             { "border-violet-950", 12 },
             { "border-white", 12 },
             { "border-x", 17 },
+            { "border-x-0", 17 },
             { "border-x-2", 17 },
             { "border-x-4", 17 },
             { "border-x-8", 17 },
             { "border-y", 18 },
+            { "border-y-0", 18 },
             { "border-y-2", 18 },
             { "border-y-4", 18 },
             { "border-y-8", 18 },
