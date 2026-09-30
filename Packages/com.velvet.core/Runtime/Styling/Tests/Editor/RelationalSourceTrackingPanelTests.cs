@@ -157,6 +157,37 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        [Test]
+        public void Given_TheOnlyCheckedPeer_When_TheCleanerReleasesItOutsideARender_Then_ThePayloadClears()
+        {
+            // Arrange — a cleanup with no render pass after it, so only the cleaner's own release can clear the
+            // consumer.
+            Mount(Screen, new Peers(FarChecked: true, NearChecked: false));
+            var before = Lit;
+            var far = _window.rootVisualElement.Q<Toggle>("far");
+
+            // Act
+            ((IReconcilerBridge)_mounted.Root.Reconciler).CleanupElementForController(far);
+
+            // Assert
+            Assert.That((before, Lit), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_TwoCheckedPeers_When_TheNearerIsRemovedAndThenTheFartherUnchecks_Then_OnlyTheSecondStepClears()
+        {
+            // Arrange
+            Mount(Screen, new Peers(FarChecked: true, NearChecked: true));
+
+            // Act
+            Change(s => s with { ShowNear = false });
+            var afterRemoval = Lit;
+            Change(s => s with { FarChecked = false });
+
+            // Assert
+            Assert.That((afterRemoval, Lit), Is.EqualTo((true, false)));
+        }
+
         // GREEN_ON_BASE(characterization): the base already clears a moved consumer once its only peer unchecks.
         [Test]
         public void Given_AConsumerLitByACheckedPeer_When_ItMovesAndThenThePeerUnchecks_Then_ThePayloadClears()
