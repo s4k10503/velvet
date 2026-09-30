@@ -5,13 +5,44 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // One particle system inside the hidden host — the root or a child, a sub-emitter among them — as
+    // captured at clone time: the framework owns the clone, so no one changes these settings on it
+    // afterwards.
+    internal sealed class HostedParticleSystem
+    {
+        public readonly ParticleSystem System;
+        // Null for a system that draws nothing: its renderer was off in the source, or rendered in
+        // ParticleSystemRenderMode.None. Otherwise it grows to the live count as the draw finds it.
+        public ParticleSystem.Particle[]? Buffer;
+        public readonly Texture? Texture;
+        public readonly ParticleSystemSimulationSpace Space;
+        public readonly Transform? CustomSpace;
+        // A sub-emitter emits only when its parent's particles trigger it, and a disabled emission
+        // module never does, so neither keeps the effect alive on its own clock.
+        public readonly bool EmitsOnItsOwn;
+        // Seconds after play at which the system's own emission ends: never, for a looping one.
+        public readonly float EmitsUntil;
+
+        public HostedParticleSystem(ParticleSystem system, ParticleSystem.Particle[]? buffer, Texture? texture,
+            bool emitsOnItsOwn, float emitsUntil)
+        {
+            System = system;
+            Buffer = buffer;
+            Texture = texture;
+            var main = system.main;
+            Space = main.simulationSpace;
+            CustomSpace = main.customSimulationSpace;
+            EmitsOnItsOwn = emitsOnItsOwn;
+            EmitsUntil = emitsUntil;
+        }
+    }
+
     // Reconciler-side bookkeeping for one Particles element, keyed in
     // ReconcilerContext.ParticlesBindings by the element itself. Holds the current settings, the
     // hidden framework-owned simulation host cloned from the source effect (plus the source's
-    // instance id, so a swap is detected even after the old source object dies), the particle read
-    // buffer (allocated once per host), the draw texture resolved from the host's renderer material,
-    // the registered callbacks (so they can be unregistered on detach), and the recurring repaint
-    // tick so it can be paused whenever nothing simulates.
+    // instance id, so a swap is detected even after the old source object dies), every particle
+    // system inside that host, the registered callbacks (so they can be unregistered on detach), and
+    // the recurring repaint tick so it can be paused whenever nothing simulates.
     internal sealed class ParticlesBinding
     {
         public ParticlesSettings Settings;
@@ -22,8 +53,7 @@ namespace Velvet
         // The play trigger last applied to the live Host, so a settings change applies a playOn flip
         // exactly once instead of re-triggering on every unrelated diff.
         public PlayTrigger AppliedPlayOn;
-        public ParticleSystem.Particle[]? Buffer;
-        public Texture? Texture;
+        public HostedParticleSystem[]? Systems;
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public IVisualElementScheduledItem? RepaintTick;
@@ -32,17 +62,9 @@ namespace Velvet
         // simulation manually exactly while this is set — the native isPlaying flag cannot serve,
         // because ParticleSystem.Simulate itself flips the system to paused.
         public bool LogicallyPlaying;
-        // Advisory warn-once flags, per mounted element: an unstable effect reference that rebuilds
-        // its source every render must not repeat the advice per rebuild, while two elements whose
-        // sources merely share a name stay independent problems. Dying with the binding, the flags
-        // need no static registry and no domain-reload reset.
-        public bool WarnedSimulationSpace;
-        public bool WarnedDrawCap;
-        // The host's own loop flag and duration, captured at clone time (the framework owns the
-        // clone, so they cannot change underneath): the editor drained-probe reads them every tick
-        // and each ParticleSystem property access is a native call.
-        public bool HostLoops;
-        public float HostDuration;
+        // Seconds the repaint tick has stepped the host since it last started playing, outside Play
+        // Mode — the clock HostedParticleSystem.EmitsUntil is read against there.
+        public float SimulatedSeconds;
         // An inline filter renders the element through an offscreen tree sized to its layout boundingBox, so
         // the particle quads drawn beyond the host rect clip; a last-child spacer widens the boundingBox to
         // cover them (shared with the skew / shadow paints via SilhouetteBoundsSpacer). Unlike those static
@@ -71,10 +93,10 @@ namespace Velvet
     /// </summary>
     internal static class ParticlesDriver
     {
-        // The particle draw cap. A UI Toolkit mesh allocation is bounded by its vertex budget and each
-        // particle costs 4 vertices, so an effect declaring an enormous maxParticles must not translate
-        // into an unbounded per-frame allocation; 2048 quads (8192 vertices) stays well inside it.
-        private const int MaxDrawnParticles = 2048;
+        // The quads one mesh allocation carries. A UI Toolkit mesh allocation is bounded by its vertex
+        // budget and each particle costs 4 vertices, so a denser system is drawn as several
+        // allocations of at most this many quads rather than one unbounded one.
+        private const int MaxQuadsPerAllocation = 2048;
 
         // Where the hidden host parks: far below any plausible scene content so a stray scene camera
         // (or the scene view) never composes the simulation twice even before the renderer disable
@@ -250,39 +272,64 @@ namespace Velvet
             }
         }
 
-        // Clones the source effect into the hidden simulation host: renderer disabled (no camera may
-        // draw it — only GetParticles is consumed; sub-emitter renderers are not reached, out of
-        // scope), hidden from the hierarchy and excluded from editor scene saves, parked far out of
-        // scene content. The draw texture is the renderer material's main texture (a disabled renderer
-        // keeps sharedMaterial readable).
+        // Clones the source effect into the hidden simulation host: each particle system's renderer
+        // disabled (no camera may draw it — only GetParticles is consumed), hidden from the hierarchy
+        // and excluded from editor scene saves, parked far out of scene content. Each system's draw
+        // texture is its renderer material's main texture (a disabled renderer keeps sharedMaterial
+        // readable).
         private static void CreateHost(ParticlesBinding binding)
         {
             var source = binding.Settings.Effect!;
-            WarnOnceForSource(binding, source);
-
-            var host = UnityEngine.Object.Instantiate(source);
+            var host = UnityEngine.Object.Instantiate(source, HostParkingPosition, source.transform.rotation);
             // Cloning preserves activeSelf, and an inactive host never simulates; a pooled prefab kept
             // inactive until spawned must still drive a live element.
             host.gameObject.SetActive(true);
             VelvetObjectUtil.HideFrameworkSceneObject(host.gameObject);
-            host.transform.position = HostParkingPosition;
-            // The renderer is disabled and the host sits far from every camera, so Unity's automatic
-            // culling would judge it offscreen and PAUSE a looping simulation, freezing the drawn
-            // output — the host must always simulate; only the element consumes it.
-            var main = host.main;
-            main.cullingMode = ParticleSystemCullingMode.AlwaysSimulate;
-            binding.HostLoops = main.loop;
-            binding.HostDuration = main.duration;
-            var renderer = host.GetComponent<ParticleSystemRenderer>();
-            if (renderer != null)
+            var systems = host.GetComponentsInChildren<ParticleSystem>();
+            var subEmitters = new System.Collections.Generic.HashSet<ParticleSystem>();
+            foreach (var system in systems)
             {
-                binding.Texture = renderer.sharedMaterial != null ? renderer.sharedMaterial.mainTexture : null;
-                renderer.enabled = false;
+                var module = system.subEmitters;
+                for (var s = 0; s < module.subEmittersCount; s++)
+                {
+                    subEmitters.Add(module.GetSubEmitterSystem(s));
+                }
             }
-            binding.Buffer = new ParticleSystem.Particle[Mathf.Clamp(main.maxParticles, 1, MaxDrawnParticles)];
+            var hosted = new HostedParticleSystem[systems.Length];
+            for (var i = 0; i < systems.Length; i++)
+            {
+                var system = systems[i];
+                var main = system.main;
+                // The renderers are disabled and the host sits far from every camera, so Unity's
+                // automatic culling would judge a system offscreen and PAUSE a looping simulation,
+                // freezing the drawn output — every system must always simulate.
+                main.cullingMode = ParticleSystemCullingMode.AlwaysSimulate;
+                ParticleSystem.Particle[]? buffer = null;
+                Texture? texture = null;
+                if (system.TryGetComponent<ParticleSystemRenderer>(out var renderer))
+                {
+                    if (Draws(renderer))
+                    {
+                        buffer = Array.Empty<ParticleSystem.Particle>();
+                        texture = renderer.sharedMaterial != null ? renderer.sharedMaterial.mainTexture : null;
+                    }
+                    renderer.enabled = false;
+                }
+                var emitsOnItsOwn = system.emission.enabled && !subEmitters.Contains(system);
+                var emitsUntil = main.loop ? float.PositiveInfinity : main.startDelay.constantMax + main.duration;
+                hosted[i] = new HostedParticleSystem(system, buffer, texture, emitsOnItsOwn, emitsUntil);
+            }
+            binding.Systems = hosted;
             binding.SourceId = source.GetEntityId();
             binding.Host = host;
             ApplyPlayTrigger(binding);
+        }
+
+        // What the scene would draw of the source system: nothing with its renderer off or set to
+        // render nothing.
+        private static bool Draws(ParticleSystemRenderer renderer)
+        {
+            return renderer.enabled && renderer.renderMode != ParticleSystemRenderMode.None;
         }
 
         // Applies the CURRENT settings' play trigger to the live host and records it so Sync can
@@ -293,6 +340,7 @@ namespace Velvet
             {
                 binding.Host!.Play();
                 binding.LogicallyPlaying = true;
+                binding.SimulatedSeconds = 0f;
             }
             else
             {
@@ -310,8 +358,7 @@ namespace Velvet
             }
             binding.Host = null;
             binding.SourceId = EntityId.None;
-            binding.Buffer = null;
-            binding.Texture = null;
+            binding.Systems = null;
             binding.LogicallyPlaying = false;
         }
 
@@ -325,9 +372,10 @@ namespace Velvet
             }
             // Editor-side replay: a Simulate()-driven clock clamps at a finished non-looping timeline
             // and Play() merely resumes the pause there, so a drained host restarts from zero first.
-            if (!Application.isPlaying && EditorSimulationDrained(binding.Host, binding))
+            if (!Application.isPlaying && !AnySystemLive(binding, false))
             {
                 binding.Host.Simulate(0f, withChildren: true, restart: true, fixedTimeStep: false);
+                binding.SimulatedSeconds = 0f;
             }
             binding.Host.Play();
             binding.LogicallyPlaying = true;
@@ -347,77 +395,111 @@ namespace Velvet
             }
         }
 
-        // Advisory mount warnings, once per mounted element (see the binding's warn-once flags).
-        private static void WarnOnceForSource(ParticlesBinding binding, ParticleSystem source)
-        {
-            var main = source.main;
-            // Particle positions are read in the simulation's LOCAL space (the element rect is the
-            // canvas); any other space draws at meaningless offsets, so say so up front instead of
-            // rendering garbage silently. Advisory: the host still simulates.
-            if (main.simulationSpace != ParticleSystemSimulationSpace.Local && !binding.WarnedSimulationSpace)
-            {
-                binding.WarnedSimulationSpace = true;
-                Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" does not use local simulation space; particle positions are read locally, so a world- or custom-space simulation will not match the drawn layout. Use local simulation space.");
-            }
-            // The draw path truncates at its particle cap; a denser effect must say so once instead of
-            // silently thinning out compared to everywhere else the same source is used.
-            if (main.maxParticles > MaxDrawnParticles && !binding.WarnedDrawCap)
-            {
-                binding.WarnedDrawCap = true;
-                Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" declares {main.maxParticles} max particles, above the {MaxDrawnParticles} the element draws; the densest frames will render truncated.");
-            }
-        }
-
-        // Emits one textured quad per live particle into the element's own visual content: centered on
-        // the element rect center, world x/y mapped through PixelsPerUnit with y flipped (world up =
-        // element up; UI Toolkit y grows downward), scaled by the particle's current size, rotated by
-        // its rotation, tinted by its current color. Quads are NOT clipped to the rect — overflow is
-        // visible by default like any painted content, and overflow-hidden composes through the usual
-        // utilities on the element.
+        // Emits one textured quad per live particle of every drawn system into the element's own visual
+        // content: positions taken into the root's local space, centered on the element rect center,
+        // x/y mapped through PixelsPerUnit with y flipped (up = element up; UI Toolkit y grows downward),
+        // scaled by the particle's current size, rotated by its rotation, tinted by its current color.
+        // Quads are NOT clipped to the rect — overflow is visible by default like any painted content,
+        // and overflow-hidden composes through the usual utilities on the element.
         private static void Draw(MeshGenerationContext mgc, VisualElement element, ParticlesBinding binding)
         {
+            // Reset first so every early return leaves no extent: the spacer collapses back to the box on
+            // the next tick.
+            binding.LiveExtentLocal = default;
             var host = binding.Host;
-            var buffer = binding.Buffer;
-            if (host == null || buffer == null)
+            if (host == null)
             {
-                binding.LiveExtentLocal = default;
                 return;
             }
             var w = element.layout.width;
             var h = element.layout.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
             {
-                binding.LiveExtentLocal = default;
-                return;
-            }
-            var count = host.GetParticles(buffer);
-            if (count <= 0)
-            {
-                // No live quads, so the spacer collapses back to the box on the next tick.
-                binding.LiveExtentLocal = default;
                 return;
             }
 
-            var ppu = binding.Settings.PixelsPerUnit;
-            var cx = w * 0.5f;
-            var cy = h * 0.5f;
+            var toHost = host.transform.worldToLocalMatrix;
             // Only a filtered element consumes the extent, so the far more common no-filter case skips the
-            // per-particle reach work and the Rect write entirely.
-            var track = binding.WantSpacer;
-            var minX = float.MaxValue;
-            var minY = float.MaxValue;
-            var maxX = float.MinValue;
-            var maxY = float.MinValue;
-            var mwd = mgc.Allocate(4 * count, 6 * count, binding.Texture);
-            for (var q = 0; q < count; q++)
+            // per-particle reach work and the Rect write entirely. With nothing drawn the bounds stay
+            // inverted, a negative size SyncBoundsSpacer treats as no extent.
+            var frame = new QuadFrame
             {
-                var p = buffer[q];
+                Cx = w * 0.5f,
+                Cy = h * 0.5f,
+                Ppu = binding.Settings.PixelsPerUnit,
+                Track = binding.WantSpacer,
+                MinX = float.MaxValue,
+                MinY = float.MaxValue,
+                MaxX = float.MinValue,
+                MaxY = float.MinValue,
+            };
+            foreach (var hosted in binding.Systems!)
+            {
+                // A child whose stop action destroyed it is gone while the host lives on.
+                if (hosted.Buffer != null && hosted.System != null)
+                {
+                    DrawSystem(mgc, hosted, toHost * SimulationToWorld(hosted), ref frame);
+                }
+            }
+            if (frame.Track)
+            {
+                binding.LiveExtentLocal = Rect.MinMaxRect(frame.MinX, frame.MinY, frame.MaxX, frame.MaxY);
+            }
+        }
+
+        // The element-space mapping every system shares within one Draw, and the extent it accumulates.
+        private struct QuadFrame
+        {
+            public float Cx;
+            public float Cy;
+            public float Ppu;
+            public bool Track;
+            public float MinX;
+            public float MinY;
+            public float MaxX;
+            public float MaxY;
+        }
+
+        private static void DrawSystem(MeshGenerationContext mgc, HostedParticleSystem hosted, Matrix4x4 toDrawSpace, ref QuadFrame frame)
+        {
+            var system = hosted.System;
+            var alive = system.particleCount;
+            // MUTANT_SURVIVES(equivalent, boundary): regrowing a buffer that already fits reads the same particles into it.
+            if (alive > hosted.Buffer!.Length)
+            {
+                hosted.Buffer = new ParticleSystem.Particle[Mathf.NextPowerOfTwo(alive)];
+            }
+            var count = system.GetParticles(hosted.Buffer);
+            // MUTANT_SURVIVES(equivalent, boundary): the extra pass `<=` adds allocates zero quads, which Allocate returns without drawing.
+            for (var first = 0; first < count; first += MaxQuadsPerAllocation)
+            {
+                DrawQuads(mgc, hosted, toDrawSpace, first, Mathf.Min(count - first, MaxQuadsPerAllocation), ref frame);
+            }
+        }
+
+        private static void DrawQuads(MeshGenerationContext mgc, HostedParticleSystem hosted, Matrix4x4 toDrawSpace, int first, int quads, ref QuadFrame frame)
+        {
+            var system = hosted.System;
+            var buffer = hosted.Buffer!;
+            var cx = frame.Cx;
+            var cy = frame.Cy;
+            var ppu = frame.Ppu;
+            var track = frame.Track;
+            var minX = frame.MinX;
+            var minY = frame.MinY;
+            var maxX = frame.MaxX;
+            var maxY = frame.MaxY;
+            var mwd = mgc.Allocate(4 * quads, 6 * quads, hosted.Texture);
+            for (var q = 0; q < quads; q++)
+            {
+                var p = buffer[first + q];
+                p.position = toDrawSpace.MultiplyPoint3x4(p.position);
                 var center = new Vector2(cx + (p.position.x * ppu), cy - (p.position.y * ppu));
-                var half = p.GetCurrentSize(host) * ppu * 0.5f;
+                var half = p.GetCurrentSize(system) * ppu * 0.5f;
                 var rad = p.rotation * Mathf.Deg2Rad;
                 var cos = Mathf.Cos(rad);
                 var sin = Mathf.Sin(rad);
-                Color32 tint = p.GetCurrentColor(host);
+                Color32 tint = p.GetCurrentColor(system);
 
                 if (track)
                 {
@@ -444,9 +526,24 @@ namespace Velvet
                 mwd.SetNextIndex((ushort)(b + 2));
                 mwd.SetNextIndex((ushort)(b + 3));
             }
-            if (track)
+            frame.MinX = minX;
+            frame.MinY = minY;
+            frame.MaxX = maxX;
+            frame.MaxY = maxY;
+        }
+
+        // The frame a system's particle positions are expressed in, as a matrix into world space. A
+        // Custom space with no transform assigned is read as World.
+        private static Matrix4x4 SimulationToWorld(HostedParticleSystem hosted)
+        {
+            switch (hosted.Space)
             {
-                binding.LiveExtentLocal = new Rect(minX, minY, maxX - minX, maxY - minY);
+                case ParticleSystemSimulationSpace.Local:
+                    return hosted.System.transform.localToWorldMatrix;
+                case ParticleSystemSimulationSpace.Custom:
+                    return hosted.CustomSpace != null ? hosted.CustomSpace.localToWorldMatrix : Matrix4x4.identity;
+                default:
+                    return Matrix4x4.identity;
             }
         }
 
@@ -480,11 +577,9 @@ namespace Velvet
             // A drained simulation — a finished burst, a stopped Manual host, a host killed by a scene
             // unload — must not keep dirtying the element at tick rate forever: park the tick (Sync
             // and Play() re-arm it) after one final dirty, so the last live frame's quads are
-            // regenerated away instead of lingering. Root-only liveness: the draw samples only the
-            // root's particles, so a longer-lived child sub-emitter must not hold the tick open after
-            // the drawn output is already empty.
-            if (host == null || !host.IsAlive(false)
-                || (!playing && binding.LogicallyPlaying && EditorSimulationDrained(host, binding)))
+            // regenerated away instead of lingering. Liveness spans the children, since the draw
+            // samples their particles too.
+            if (host == null || !AnySystemLive(binding, playing))
             {
                 StopRepaintTick(binding);
                 // Collapse the reserved bounds before the tick parks, else a one-shot burst leaves the filter
@@ -499,9 +594,9 @@ namespace Velvet
                     // Outside Play Mode the engine never steps a particle system's clock on its own, so an
                     // editor-context panel (preview tooling, EditMode fixtures) would repaint one frozen
                     // frame forever. Advance the hidden host by the tick's real elapsed time, clamped the
-                    // way frame deltas are clamped; children advance in step for coherence even though
-                    // only the root is drawn.
+                    // way frame deltas are clamped, children with it.
                     host.Simulate(Mathf.Min(dt, Time.maximumDeltaTime), withChildren: true, restart: false, fixedTimeStep: false);
+                    binding.SimulatedSeconds += Mathf.Min(dt, Time.maximumDeltaTime);
                 }
                 // Draw stashed the extent last repaint, one frame behind the particles — invisible after the
                 // quantize + slack, and it saves a second GetParticles here.
@@ -510,14 +605,33 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        // The editor-side twin of the IsAlive park above: a Simulate()-driven system is left PAUSED,
-        // and a paused system reads IsAlive forever (it never transitions to stopped on its own, and
-        // its clock clamps at the end of a non-looping timeline), so "drained" is derived directly —
-        // a non-looping root whose clock reached its end with no live particles has nothing left to
-        // draw or emit. Root-only on purpose, like the draw. Callers gate on !Application.isPlaying.
-        private static bool EditorSimulationDrained(ParticleSystem host, ParticlesBinding binding)
+        // Whether any system still holds a particle or will emit one on its own clock. In Play Mode
+        // that clock is the engine's; outside it the engine leaves a Simulate()-driven system PAUSED,
+        // and a paused system reads IsAlive forever, so the clock is the one the tick keeps.
+        private static bool AnySystemLive(ParticlesBinding binding, bool playing)
         {
-            return !binding.HostLoops && host.particleCount == 0 && host.time >= binding.HostDuration;
+            // MUTANT_SURVIVES(unreachable): every caller has found the host alive, and the host's own system is an entry, so the loop assigns live before it returns.
+            var live = false;
+            foreach (var hosted in binding.Systems!)
+            {
+                if (hosted.System == null)
+                {
+                    continue;
+                }
+                live = hosted.System.particleCount > 0 || (hosted.EmitsOnItsOwn && EmissionPending(binding, hosted, playing));
+                if (live)
+                {
+                    break;
+                }
+            }
+            return live;
+        }
+
+        private static bool EmissionPending(ParticlesBinding binding, HostedParticleSystem hosted, bool playing)
+        {
+            return playing
+                ? hosted.System.IsAlive(false)
+                : binding.LogicallyPlaying && binding.SimulatedSeconds < hosted.EmitsUntil;
         }
 
         private static void StopRepaintTick(ParticlesBinding binding)
