@@ -1201,6 +1201,24 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
         }
 
+        [Test]
+        public void Given_ATransitionAllElementAMotionDriverSuspended_When_AContrastIsCleared_Then_ThePaintIsInstant()
+        {
+            // Arrange — a contrast at rest on an element whose transitions a driver writing its opacity has suspended,
+            // which leaves `none` for its transition-property and the class's duration standing.
+            var element = MountResolved("w-[100px] h-[40px] transition-all duration-300");
+            ApplyContrast(element, 2f);
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.Opacity);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — nothing is painted, as UI Toolkit runs no transition under `none`.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
         // GREEN_ON_BASE(characterization): clearing the filter under a background-size entry alone paints at once.
         [Test]
         public void Given_NoBindingAndATransitionNamingBackgroundSize_When_AContrastIsCleared_Then_ThePaintIsInstant()
