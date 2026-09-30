@@ -66,6 +66,8 @@ namespace Velvet.Tests
             ["visible"] = "pose-rest",
         };
         private static bool s_withInitial;
+        private static bool s_boxed;
+        private static readonly ComponentContext<int> s_context = ComponentContext<int>.Create(0);
 
         private VisualElement _root;
         private EditorWindow _window;
@@ -76,6 +78,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_store = null;
             s_withInitial = false;
+            s_boxed = false;
         }
 
         [TearDown]
@@ -258,6 +261,28 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        // A PopLayout presence whose keyed children are Providers around a Motion sized by arbitrary values, which the
+        // Provider's node carries none of; s_boxed flips the Motion's element type while its key stays.
+        [Component]
+        private static VNode CompletedPopLayoutProviderHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Provider(s_context, 1, new VNode[]
+                {
+                    V.Motion(name: "item-" + key, elementType: s_boxed ? typeof(Box) : null,
+                        className: "w-[60px] h-[24px]", variants: s_recolor, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { Type = TransitionType.Spring }),
+                }, key: key.ToString()));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", mode: AnimatePresenceMode.PopLayout, children: children.ToArray()),
             });
         }
 
@@ -588,6 +613,28 @@ namespace Velvet.Tests
             Assert.AreEqual((true, false, true),
                 (parked, item.ClassListContains("pose-exit"), item.ClassListContains("pose-rest")),
                 "The re-entry replaces the exit pose before replaying the enter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base skipped the PopLayout restore for an element it never pinned.
+        [Test]
+        public void Given_ACompletedPopLayoutExit_When_TheKeyReturnsOnANewElement_Then_ItsArbitrarySizeIsKept()
+        {
+            // Arrange — the spring exit completes inside this flush and leaves the drop render pending.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedPopLayoutProviderHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+            var parked = Parked(mounted, _root.Q<VisualElement>("item-a"));
+
+            // Act — the key returns inside the completed-exit window on a new element type.
+            s_boxed = true;
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the new element keeps the width its arbitrary class wrote.
+            var item = _root.Q<VisualElement>("item-a");
+            Assert.That((parked, item is Box, item.style.width.value.value), Is.EqualTo((true, true, 60f)));
         }
 
         // GREEN_ON_BASE(characterization): the base replays the enter on the element a completed exit left attached.
