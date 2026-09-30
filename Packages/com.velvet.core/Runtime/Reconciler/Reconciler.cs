@@ -674,6 +674,10 @@ namespace Velvet
             _ctx.DragOverlayBindings.Clear();
             _ctx.DndScopeBindings.Clear();
             _ctx.DroppableBindings.Clear();
+            // MUTANT_SURVIVES(equivalent, line removed): the set's one reader is DndActiveDrag.Arm, reached
+            // only from a draggable armer; the loop above detaches every armer still registered, and
+            // Reconcile returns on the context marked disposed at the top of Dispose, so none attaches
+            // again. The clear only drops references to elements the unmount cleaner did not reach.
             _ctx.NoDragElements.Clear();
         }
 
