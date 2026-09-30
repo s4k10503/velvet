@@ -22,8 +22,8 @@
   passed null, no list at all, which rebuilt every render.
 
 - A `[MemoizeMethod]` method taking no parameters no longer warns (VEL001) when the generator cannot prove its
-  `_Impl` pure. Its empty dependency list is a complete declaration, as `useMemo(factory, [])` is in React, and
-  VEL001 is gone.
+  `_Impl` pure, and VEL001 is gone. Where its `_Impl` is static, its empty dependency list is a complete
+  declaration, as `useMemo(factory, [])` is in React; an instance one keys on the instance it is called on.
 
 - VEL008 reports a `[MemoizeMethod]` return type deriving from `VNode` other than `MemoNode`, and a return by
   reference. It accepted both, and the generated body, which returns a `MemoNode` by value, then failed to

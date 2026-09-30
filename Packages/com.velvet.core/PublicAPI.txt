@@ -85,7 +85,6 @@
 [Velvet] ctor Velvet.PointerMoveBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PointerUpBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PortalNode.ctor(): System.Void
-[Velvet] ctor Velvet.PureAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
 [Velvet] ctor Velvet.RouteBlockerManager.ctor(): System.Void
@@ -1081,7 +1080,6 @@
 [Velvet] type Velvet.PointerMoveBinding
 [Velvet] type Velvet.PointerUpBinding
 [Velvet] type Velvet.PortalNode
-[Velvet] type Velvet.PureAttribute
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.ResolvedFont
 [Velvet] type Velvet.RouteBlockerManager

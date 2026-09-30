@@ -11,7 +11,7 @@ match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script 
 them that shape is its own change. What this adds is reporting them together: one run names
 everything wrong rather than costing a round of CI per reason.
 
-**One has no hook: a draft head**, or one whose merge state is `dirty`.
+**One has no hook: a draft head**, or one whose merge state is `dirty`, or one no longer open.
 
 Ten preconditions:
 
@@ -31,9 +31,13 @@ Ten preconditions:
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
   merged branch from an abandoned one.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
+  Nor is a list complete while the head still has a workflow run to finish, carries a workflow
+  whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
+  of those is and why it is read.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
-- **A draft is not merged**, and neither is one whose merge state is `dirty`.
+- **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
+  or already merged.
 - **A head on another repository is not merged from here.** Its branch is a ref this checkout has
   not got, so neither containment above is asked of it, and the branch deleted after a merge is
   addressed on origin by that name.
@@ -92,6 +96,9 @@ published_check = load_published_check()
 red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
 
 long_lived = load_by_path(Path(__file__).resolve().with_name("long_lived.py"), "long_lived")
+
+expected_checks = load_by_path(Path(__file__).resolve().with_name("expected_checks.py"),
+                               "expected_checks")
 
 campaign = load_by_path(Path(__file__).resolve().with_name("campaign.py"), "campaign")
 
@@ -207,7 +214,8 @@ def head_sha(project, number):
 
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
-PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork labels")
+PullRequest = collections.namedtuple("PullRequest",
+                                     "sha branch base draft merge_state fork labels state")
 
 
 def pull_request(project, number):
@@ -230,7 +238,8 @@ def pull_request(project, number):
     labels = frozenset(label.get("name") for label in payload.get("labels") or []
                        if isinstance(label, dict))
     return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
-                       payload.get("mergeable_state") or "", home != base_repository, labels)
+                       payload.get("mergeable_state") or "", home != base_repository, labels,
+                       "merged" if payload.get("merged") else payload.get("state") or "unnamed")
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -257,11 +266,45 @@ def checks(project, sha, runs=()):
 
 
 def campaign_runs(project, sha):
-    """Every workflow run whose head is `sha`, which `campaign.py` reads the campaign out of."""
-    payload = rest_json(campaign.runs_path(repository(project), sha))
+    """Every workflow run whose head is `sha`, which `campaign.py` reads the campaign out of and
+    `expected_checks.py` reads every other workflow's runs out of."""
+    payload = rest_json(expected_checks.runs_path(repository(project), sha))
     listed = payload.get("workflow_runs", [])
     whole_page(payload, listed, "workflow runs")
     return listed
+
+
+def run_jobs(project, runs, now):
+    """The jobs of each run in `expected_checks.open_runs`, by run id."""
+    slug = repository(project)
+    found = {}
+    for run in expected_checks.open_runs(runs, now):
+        payload = rest_json(expected_checks.jobs_path(slug, run))
+        listed = payload.get("jobs", [])
+        whole_page(payload, listed, "jobs")
+        found[run.get("id")] = listed
+    return found
+
+
+def campaign_state(runs, jobs, now):
+    """`campaign.state`, with what a run concluded read the way `expected_checks` reads it."""
+    return campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now))
+
+
+def campaign_reason(labels, runs, jobs, now, head):
+    """`campaign.reason` for a head, naming how to end its newest campaign where it is stuck."""
+    newest = campaign.newest(runs)
+    return campaign.reason(labels, campaign_state(runs, jobs, now), head,
+                           expected_checks.stuck_exit(newest) if newest else "")
+
+
+def required_contexts(project, base):
+    """The status-check contexts the rulesets over `base` require."""
+    contexts = expected_checks.required(rest_json(expected_checks.rules_path(repository(project),
+                                                                             base)))
+    if contexts is None:
+        raise RuntimeError(f"the rules over {base} filled a whole page, so one may not have been read")
+    return contexts
 
 
 def whole_page(payload, listed, kind):
@@ -347,7 +390,7 @@ def contains_commit(project, branch, sha):
 
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
-                 long_lived_head, owed_campaign):
+                 long_lived_head, runs_unfinished, runs_failed, required, owed_campaign):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -355,8 +398,9 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     none either: a caller that stopped supplying it would read as a green base. It holds the base's
     failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
     newest release commit where the head lacks it, and None otherwise. `long_lived_head` takes none
-    for the reason `unpublished_release` gives, and neither does `owed_campaign`, the reason
-    `campaign.reason` gives or None.
+    for the reason `unpublished_release` gives, and neither do `runs_unfinished` and `runs_failed`,
+    `expected_checks`' reasons about the head's workflow runs, `required`, the contexts the base
+    requires, or `owed_campaign`, the reason `campaign.reason` gives or None.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -379,8 +423,17 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")
 
-    if not results:
+    absent = expected_checks.absent(required, (entry["name"] for entry in results))
+    if not results and not runs_unfinished:
         reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
+    elif absent:
+        reasons.append("required by {} and not reported at {}: {}".format(
+            base, after[:7], ", ".join(absent)))
+    if runs_unfinished:
+        reasons.append("workflow runs not finished at {}: {}".format(after[:7],
+                                                                   ", ".join(runs_unfinished)))
+    if runs_failed:
+        reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
 
     unfinished = [entry["name"] for entry in results
                   if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
@@ -418,11 +471,12 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
 Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
 
 # The readings that answer for something wider than one pull request: the publication state of a
-# base, its newest release commit, its required workflows' last push verdicts, and the branches this
+# base, its newest release commit, its required workflows' last push verdicts, the contexts its
+# rulesets require, and the branches this
 # checkout's worktrees hold, which is the repository's. Taken once per base and handed down, so a watcher poll over N pull
-# requests costs one fetch, one `git ls-remote --tags` and one runs listing per workflow per base
-# rather than N of each.
-ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release")
+# requests costs one fetch, one `git ls-remote --tags`, one rules listing and one runs listing per
+# workflow per base rather than N of each.
+ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release required")
 
 
 def project_state(project, base):
@@ -436,7 +490,7 @@ def project_state(project, base):
            if failing]
     return ProjectState(worktree_branches(project),
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
-                        red, release_commit(project, base))
+                        red, release_commit(project, base), required_contexts(project, base))
 
 
 def release_commit(project, base):
@@ -459,6 +513,11 @@ def blocking_reasons(project, number, base=None, states=None):
     """
     before = pull_request(project, number)
     target = base or before.base
+    # Ahead of every other reading, and with no check results, so `watch` has nothing to print or
+    # record for a pull request that closed after the listing named it.
+    if before.state != "open":
+        return Blocking([f"it is {before.state}, not open: there is nothing to merge"],
+                        before.sha, before.branch, [], target)
     states = {} if states is None else states
     if target not in states:
         states[target] = project_state(project, target)
@@ -471,6 +530,9 @@ def blocking_reasons(project, number, base=None, states=None):
             project, f"origin/{target}", fetch=False, result=before.sha)
     runs = campaign_runs(project, before.sha)
     results = checks(project, before.sha, runs)
+    now = time.time()
+    others = campaign.others(runs)
+    jobs = run_jobs(project, runs, now)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -490,8 +552,11 @@ def blocking_reasons(project, number, base=None, states=None):
                                  failing_runs=uncovered,
                                  behind_release=behind_release,
                                  long_lived_head=long_lived_head,
-                                 owed_campaign=None if before.fork else campaign.reason(
-                                     before.labels, campaign.state(runs), before.sha)),
+                                 runs_unfinished=expected_checks.unfinished(others, jobs, now),
+                                 runs_failed=expected_checks.failed(others, jobs, now),
+                                 required=state.required,
+                                 owed_campaign=None if before.fork else campaign_reason(
+                                     before.labels, runs, jobs, now, before.sha)),
                     after, before.branch, results, target)
 
 

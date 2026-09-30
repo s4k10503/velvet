@@ -6,6 +6,6 @@ namespace MyApp.@event
     partial class @class<@struct>
     {
         private partial global::Velvet.VNode Build<@int>(@int x, global::MyApp.@event.@delegate y, @struct z)
-            => global::Velvet.V.Memoized(() => Build_Impl<@int>(x, y, z), new object?[] { x, y, z, typeof(@int) });
+            => global::Velvet.V.Memoized(() => Build_Impl<@int>(x, y, z), new object?[] { x, y, z, typeof(@int), this });
     }
 }

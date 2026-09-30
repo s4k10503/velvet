@@ -54,9 +54,6 @@ namespace Velvet
                     valueSpan, negate, out result);
             }
 
-            // origin-[33%_75%] is a pair, and the nine keyword spellings are USS classes rather than bracket
-            // values, so nothing here parses a keyword: origin-[left_top] is rejected and origin-top-left is
-            // the way to say it.
             if (prefix == "origin-")
             {
                 return TryParseTransformOrigin(valueSpan, negate, out result);
@@ -136,35 +133,117 @@ namespace Velvet
             return true;
         }
 
-        // A pivot: one length, or two separated by the underscore the bracket grammar spells a space with.
-        // Here rather than in the prefix table because one class writes both components, and what the
-        // table builds carries one.
-        // The negation prefix is refused because Tailwind declares no negative variant of this utility, and
-        // nothing is lost by it: a minus inside the brackets reaches the value grammar intact, so
-        // origin-[-10px] and origin-[-10px_-20px] both parse.
+        // CSS transform-origin, with the underscore standing for the space: one component, or an x and a
+        // y followed by an optional z length. The negation prefix is refused because Tailwind declares no
+        // negative variant of this utility, and nothing is lost by it: a minus inside the brackets reaches
+        // the value grammar intact, so origin-[-10px] and origin-[-10px_-20px] both parse.
         private static bool TryParseTransformOrigin(ReadOnlySpan<char> valueSpan, bool negate,
             out ArbitraryStyle result)
         {
             result = default;
             if (negate) return false;
 
-            var separator = valueSpan.IndexOf('_');
-            var xSpan = separator < 0 ? valueSpan : valueSpan[..separator];
-            if (!StyleArbitraryValueResolver.TryParseValue(xSpan, out var x, out var xUnit)) return false;
-
-            // A single component is the x alone, and CSS leaves the y at 50% — not at the x, which would
-            // make origin-[0px] the top-left corner instead of the left edge's middle.
-            if (separator < 0)
+            var first = valueSpan.IndexOf('_');
+            if (first == -1)
             {
-                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, 50f, LengthUnit.Percent);
+                if (!TryParseOriginComponent(valueSpan, out var only)) return false;
+                // A lone vertical keyword is the y, and CSS leaves the other axis at 50% — not at the stated
+                // value, which would make origin-[0px] the top-left corner instead of the left edge's middle.
+                result = only.Kind == OriginKind.Vertical
+                    ? new ArbitraryStyle(ArbitraryProperty.TransformOrigin, 50f, LengthUnit.Percent, only.Value, only.Unit)
+                    : new ArbitraryStyle(ArbitraryProperty.TransformOrigin, only.Value, only.Unit, 50f, LengthUnit.Percent);
                 return true;
             }
 
-            // A third component needs no rejection of its own: the value grammar rejects "20%_30%" whole.
-            var ySpan = valueSpan[(separator + 1)..];
-            if (!StyleArbitraryValueResolver.TryParseValue(ySpan, out var y, out var yUnit)) return false;
+            var rest = valueSpan[(first + 1)..];
+            var second = rest.IndexOf('_');
+            var z = 0f;
+            if (second != -1)
+            {
+                // The z is a length and never a percentage or a keyword; a fourth component fails its parse.
+                if (!StyleArbitraryValueResolver.TryParseValue(rest[(second + 1)..], out z, out var zUnit))
+                {
+                    return false;
+                }
+                if (zUnit == LengthUnit.Percent)
+                {
+                    return false;
+                }
+                rest = rest[..second];
+            }
 
-            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, y, yUnit);
+            if (!TryParseOriginComponent(valueSpan[..first], out var a))
+            {
+                return false;
+            }
+            if (!TryParseOriginComponent(rest, out var b))
+            {
+                return false;
+            }
+
+            if (a.Kind != OriginKind.Vertical && b.Kind != OriginKind.Horizontal)
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, a.Value, a.Unit, b.Value, b.Unit, z);
+                return true;
+            }
+
+            // The swapped order is CSS's keyword-only pair (top left); a length on either side of it is not.
+            if (a.Kind == OriginKind.Length || b.Kind == OriginKind.Length
+                || a.Kind == OriginKind.Horizontal || b.Kind == OriginKind.Vertical)
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, b.Value, b.Unit, a.Value, a.Unit, z);
+            return true;
+        }
+
+        private enum OriginKind
+        {
+            Length,
+            Center,
+            Horizontal,
+            Vertical,
+        }
+
+        private readonly struct OriginComponent
+        {
+            public OriginComponent(OriginKind kind, float value, LengthUnit unit)
+            {
+                Kind = kind;
+                Value = value;
+                Unit = unit;
+            }
+
+            public OriginKind Kind { get; }
+            public float Value { get; }
+            public LengthUnit Unit { get; }
+        }
+
+        private static readonly (string Keyword, OriginKind Kind, float Percent)[] s_originKeywords =
+        {
+            ("left", OriginKind.Horizontal, 0f),
+            ("right", OriginKind.Horizontal, 100f),
+            ("top", OriginKind.Vertical, 0f),
+            ("bottom", OriginKind.Vertical, 100f),
+            ("center", OriginKind.Center, 50f),
+        };
+
+        private static bool TryParseOriginComponent(ReadOnlySpan<char> span, out OriginComponent component)
+        {
+            foreach (var (keyword, kind, percent) in s_originKeywords)
+            {
+                if (span.SequenceEqual(keyword.AsSpan()))
+                {
+                    component = new OriginComponent(kind, percent, LengthUnit.Percent);
+                    return true;
+                }
+            }
+            if (!StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            {
+                component = default;
+                return false;
+            }
+            component = new OriginComponent(OriginKind.Length, value, unit);
             return true;
         }
     }

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -13,11 +14,9 @@ namespace Velvet
     // element's class list (it is not a variant, so the patcher adds it verbatim), found by an ancestor class
     // walk — no ReconcilerContext tracking, userData, or extra manipulator needed.
     //
-    // Resolution timing (structural, like a real CSS container): a descendant's variant manipulator resolves its
-    // width source ONCE, when it attaches to the panel. Toggling MarkerClass on an already-attached ancestor at
-    // runtime does NOT re-point already-attached descendants — they keep the source they bound at attach until
-    // they re-attach. Supported usage is therefore to mark the scope element before its subtree mounts (or to
-    // re-mount the subtree after changing the marker, as the preview viewport switcher does).
+    // A responsive manipulator resolves its width source when it attaches, and again whenever a reconcile
+    // toggles MarkerClass on any element (ScopesChanged): the walk finds the nearest marked ancestor at that
+    // moment, so a descendant attached before the toggle re-points just as one attached after it would.
     internal static class StyleResponsiveScope
     {
         // The class that marks an element as a responsive scope. Spelled like the CSS container-query
@@ -48,5 +47,30 @@ namespace Velvet
 
         private static VisualElement DeclaringRootOrSelf(VisualElement root)
             => s_declaringRoots.TryGetValue(root, out var declaring) ? DeclaringRootOrSelf(declaring) : root;
+
+        // Carries no element, so a handler re-resolves whatever was toggled rather than filtering to the toggled
+        // element's descendants: a toggle is rare, and such a filter would be a second ancestor walk that has to
+        // agree with the one above.
+        internal static event Action? ScopesChanged;
+
+        // Points source at target's width source as target's ancestors now stand. A target off a panel is
+        // left alone: its source was unhooked when it detached, and it resolves again when it attaches.
+        internal static void Rebind(VisualElement? target, ResponsiveWidthSource? source)
+        {
+            if (target?.panel == null)
+            {
+                return;
+            }
+            source?.Hook(ResolveWidthSource(target, target.panel.visualTree));
+        }
+
+        // Raised by the class diff, which is where a className gains or loses the marker.
+        internal static void OnClassesChanged(string[] oldClasses, string[] newClasses)
+        {
+            if ((Array.IndexOf(oldClasses, MarkerClass) >= 0) != (Array.IndexOf(newClasses, MarkerClass) >= 0))
+            {
+                ScopesChanged?.Invoke();
+            }
+        }
     }
 }

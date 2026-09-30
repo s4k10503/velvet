@@ -217,6 +217,7 @@ namespace Velvet
             if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
+                StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
             }
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class
@@ -387,8 +388,7 @@ namespace Velvet
         // paintTail is the one per-path knob, and for the three silhouette layers it is the same distinction
         // the gradient's skewable flag draws: an ElementNode may render a sheared silhouette, a Motion never
         // does, so a Motion's gradient stays on the straight background-image path and those three stand down
-        // entirely. The ring rides the same knob on a reason of its own, stated where the Motion path warns
-        // about it (FiberNodeFactory.WarnIgnoredMotionUtilities).
+        // entirely.
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {
@@ -396,13 +396,12 @@ namespace Velvet
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
             _appliers.ApplyParticlesSpacer(element, classNames);
-            if (!paintTail)
+            if (paintTail)
             {
-                return;
+                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+                _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             }
-            var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-            _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
-            _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
         }
 
@@ -623,9 +622,6 @@ namespace Velvet
             // classes present, and the three silhouette paints stand down (skewable: false). A Motion also
             // carries no clip wrapper, so nothing can suppress a paint here.
             ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, paintTail: false, clipActive: false);
-            // A Motion carries neither a shadow paint nor a ring overlay: the create path warns and skips both
-            // on a Motion, and paintTail:false above keeps the patch from attaching one — so there is nothing
-            // here to update.
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
@@ -696,7 +692,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Color}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -2428,10 +2424,10 @@ namespace Velvet
             }
         }
 
-        // Applies / clears each has-[.class]: rule's payload by querying the element's descendants for the
-        // named class. Stateless and idempotent. The scan iterates the direct children's subtrees (element.Q
-        // is root-inclusive, so querying the element itself would self-match — :has() is descendant-only, and
-        // a self-match would also latch when the payload class equals the queried class).
+        // Applies / clears each has-[.class]: rule's payload by scanning the element's descendants for the
+        // named class. Stateless and idempotent. The scan starts at the direct children, never the element
+        // itself — :has() is descendant-only, and a self-match would also latch when the payload class equals
+        // the queried class.
         private static void EvaluateHasClass(ReconcilerContext ctx, VisualElement element,
             List<(string? ClassName, string?[] Payloads, int[] Declarations)> rules)
         {
@@ -2440,7 +2436,7 @@ namespace Velvet
                 var on = false;
                 foreach (var child in element.Children())
                 {
-                    if (child.Q(className: rule.ClassName) != null)
+                    if (SubtreeCarriesClass(child, rule.ClassName!))
                     {
                         on = true;
                         break;
@@ -2449,6 +2445,24 @@ namespace Velvet
                 StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
                     declarations: rule.Declarations);
             }
+        }
+
+        // A class the projection took off an element to let a variant win still matches: :has(.foo) tests
+        // the class attribute, which the cascade never edits.
+        private static bool SubtreeCarriesClass(VisualElement root, string cls)
+        {
+            if (root.ClassListContains(cls) || StyleClassProjection.SuppressesDeclared(root, cls))
+            {
+                return true;
+            }
+            for (var i = 0; i < root.hierarchy.childCount; i++)
+            {
+                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Element-as-subject post-children pass for has-[.class]:. Re-derives every has-class rule on the
@@ -3278,7 +3292,8 @@ namespace Velvet
         private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
-            if (!StyleTextBalanceClass.HasTextBalanceClass(classNames))
+            var wrapStyle = StyleTextBalanceClass.ReadWrapStyle(classNames);
+            if (wrapStyle == TextWrapStyle.None)
             {
                 if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
                 {
@@ -3296,11 +3311,11 @@ namespace Velvet
 
             if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
             {
-                existing.Refresh();
+                existing.Refresh(wrapStyle);
             }
             else
             {
-                var manipulator = new StyleTextBalanceManipulator(_ctx);
+                var manipulator = new StyleTextBalanceManipulator(_ctx, wrapStyle);
                 element.AddManipulator(manipulator);
                 _ctx.TextBalanceManipulators[element] = manipulator;
             }

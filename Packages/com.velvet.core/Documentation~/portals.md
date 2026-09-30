@@ -97,7 +97,7 @@ The boundary behaves the same in all four forms:
   on its layer in the tree and answers the panel of the last one to render into it; where that panel
   is itself a layer or world-space host, the panel that host's portal was declared on answers in
   turn. An `@container` among the child's own ancestors still takes precedence, as a container query
-  does, and a child's width source is bound when it attaches.
+  does. When a child resolves its width source is [styling-variants.md](styling-variants.md)'s to state.
 - `dark:` is global and identical everywhere.
 
 ## Cross-panel input routing (`V.Portal(layer:)` / `V.WorldSpace`)
