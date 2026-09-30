@@ -853,14 +853,15 @@ namespace Velvet
             SchedulePullBack(containRoot, armedBinding!, leaving, ctx);
         }
 
-        // Pulls focus that left `leaving` back into the scope on its panel's next tick, unless by then the scope's
-        // panel holds focus, or the landing is inside the scope or inside a newer contain scope. Focus that went
-        // nowhere is pulled back only from the scope's own elements: React Aria listens for a blur on those alone,
-        // so a blur from portal content elsewhere is left.
+        // Pulls focus that left `leaving` back into the scope on its panel's next tick, unless by then focus has
+        // moved within the scope's own panel, or the landing is inside the scope or inside a newer contain scope.
+        // Focus that went nowhere is pulled back only from the scope's own elements: React Aria listens for a blur
+        // on those alone, so a blur from portal content elsewhere is left.
         private static void SchedulePullBack(
             VisualElement containRoot, FocusScopeBinding armedBinding, VisualElement leaving, ReconcilerContext ctx)
         {
             var fromOwnContent = ReferenceEquals(FindEnclosingContainScopeRoot(leaving, ctx, out _), containRoot);
+            var fromScopePanel = leaving.panel == containRoot.panel;
             var root = containRoot.panel?.visualTree;
             if (root == null)
             {
@@ -875,11 +876,14 @@ namespace Velvet
                 {
                     return;
                 }
-                if (containRoot.panel.focusController?.focusedElement != null)
+                // A landing on the scope's panel from that same panel raised a FocusIn with a related target, which
+                // the snap-back there owns; from another panel it had none, so it is judged here.
+                var held = containRoot.panel.focusController?.focusedElement as VisualElement;
+                if (held != null && fromScopePanel)
                 {
                     return;
                 }
-                var elsewhere = FocusedElementInAnyTree() ?? FocusedElementInAnyDocument();
+                var elsewhere = held ?? FocusedElementInAnyTree() ?? FocusedElementInAnyDocument();
                 if (elsewhere == null
                         ? !fromOwnContent
                         : IsLogicallyWithin(elsewhere, containRoot) || LandsInANewerContainScope(elsewhere, binding))

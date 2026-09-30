@@ -549,6 +549,8 @@ namespace Velvet.Tests
             m1.Blur();
             inner.Focus();
             var innerHeld = inner.panel.focusController.focusedElement == inner;
+            // A frame for the host panel that gained focus, for the reason PooledFocusMemoryTests' MountAndFocus gives.
+            yield return null;
             var outside = Main("outside");
             var landingsOutside = CountLandings(outside);
 
@@ -616,6 +618,8 @@ namespace Velvet.Tests
             m1.Blur();
             w1.Focus();
             var w1Held = w1.panel.focusController.focusedElement == w1;
+            // As in the layer case above.
+            yield return null;
             var outside = Main("outside");
             var landingsOutside = CountLandings(outside);
 

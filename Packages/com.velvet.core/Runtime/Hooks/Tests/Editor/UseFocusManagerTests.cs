@@ -353,7 +353,7 @@ namespace Velvet.Tests
 
             // Assert — the Foldout's own toggle, not the Button its collapsed content holds.
             Assert.That((fold.contentContainer.resolvedStyle.display, moved),
-                Is.EqualTo((DisplayStyle.None, fold.Q<Toggle>())));
+                Is.EqualTo((DisplayStyle.None, (VisualElement)fold.Q<Toggle>())));
         }
 
         [Component]

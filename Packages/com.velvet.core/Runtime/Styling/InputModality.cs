@@ -8,10 +8,10 @@ namespace Velvet
 {
     // React Aria's useFocusVisible input modality: one process-wide reading, which every panel Velvet renders
     // into writes, as every window React Aria tracks writes its one currentModality. After a pointer press,
-    // release or move, no focus shows a ring, a programmatic Focus() included, until a key press or release or a
-    // navigation move. A press, a key or a navigation move is also announced to Changed, which a focused
-    // element's ring follows as useFocusVisibleListener's does; useFocusVisible announces neither a pointer move
-    // nor a pointer release.
+    // release or move, no focus in a panel shows a ring, a programmatic Focus() included, until a key press or
+    // release or a navigation move. A press, a key or a navigation move is also sent to Announced, which a
+    // focused element's ring follows as useFocusVisibleListener's does; useFocusVisible announces neither a
+    // pointer move nor a pointer release.
     internal static class InputModality
     {
         private static readonly ConditionalWeakTable<IPanel, object> s_tracked = new();
@@ -22,7 +22,7 @@ namespace Velvet
         private static bool s_pointer;
 
         // The event that changed the reading: a pointer press, or the key or navigation event.
-        internal static event Action<bool, EventBase>? Changed;
+        internal static event Action<bool, EventBase>? Announced;
 
         internal static void Track(IPanel? panel)
         {
@@ -48,7 +48,7 @@ namespace Velvet
         private static void Announce(bool pointer, EventBase cause)
         {
             s_pointer = pointer;
-            Changed?.Invoke(pointer, cause);
+            Announced?.Invoke(pointer, cause);
         }
 
         private static void AnnounceKey<T>(T evt) where T : EventBase, IKeyboardEvent

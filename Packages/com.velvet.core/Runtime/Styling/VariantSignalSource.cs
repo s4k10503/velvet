@@ -116,7 +116,7 @@ namespace Velvet
         // it suppresses.
         private bool _pointerFocus;
 
-        // Whether this element's ring follows InputModality.Changed, which it does while it holds focus.
+        // Whether this element's ring follows InputModality.Announced, which it does while it holds focus.
         private bool _following;
 
         public ElementLocalVariantSignals(Action<VariantSignal, bool> emit) => _emit = emit;
@@ -255,7 +255,7 @@ namespace Velvet
             if (!_following)
             {
                 _following = true;
-                InputModality.Changed += OnModalityChanged;
+                InputModality.Announced += OnModalityChanged;
             }
         }
 
@@ -287,7 +287,7 @@ namespace Velvet
             if (_following)
             {
                 _following = false;
-                InputModality.Changed -= OnModalityChanged;
+                InputModality.Announced -= OnModalityChanged;
             }
         }
 
