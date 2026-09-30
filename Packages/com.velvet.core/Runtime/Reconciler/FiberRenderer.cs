@@ -431,11 +431,13 @@ namespace Velvet
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
-            var abortEndsHere = fiber.IsErrorBoundary && !deferReconcile
-                && passContext is { SharedReconcileDepth: > 0, IsAborted: false };
+            var abortEndsHere = fiber.IsErrorBoundary && !deferReconcile && InsideAnUnabortedPass(passContext);
             FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
             if (abortEndsHere && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
+
+        private static bool InsideAnUnabortedPass(ReconcilerContext? context)
+            => context is { SharedReconcileDepth: > 0, IsAborted: false };
 
         internal static void RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
