@@ -36,14 +36,20 @@ jobs:
   # A pull_request_target event's jobs are checks on the pull request's head, so a merge decided
   # inside this run would find its own job pending there. automerge.py dispatches the merge run
   # instead, which waits for this run to finish — or, where the head has no campaign, the campaign,
-  # whose aggregate dispatches the merge run once it passes.
+  # whose aggregate dispatches the merge run once it passes. The campaign waits for the head's Test
+  # run to pass, so that run passing hands the labelled pull request off as well; the path is
+  # campaign.py's AFTER, which test_automerge.py holds this condition to.
   hand-off:
     name: Hand off the labelled pull request
     if: >-
-      github.event_name == 'pull_request_target'
-      && ((github.event.action == 'labeled' && github.event.label.name == 'automerge')
-          || (github.event.action != 'labeled'
-              && contains(github.event.pull_request.labels.*.name, 'automerge')))
+      (github.event_name == 'pull_request_target'
+       && ((github.event.action == 'labeled' && github.event.label.name == 'automerge')
+           || (github.event.action != 'labeled'
+               && contains(github.event.pull_request.labels.*.name, 'automerge'))))
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'pull_request'
+          && github.event.workflow_run.path == '.github/workflows/test.yml')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -60,7 +66,7 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/pr/automerge.py
+        run: python3 scripts/pr/automerge.py --hand-off
 
   # This job's `if` and the sweep's are automerge.py's `run_selection` taken again, so a completed
   # run it would decline starts no job. test_automerge.py holds the workflow names in them to its.

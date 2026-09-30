@@ -1,7 +1,7 @@
 """Whether a pull request's head owes the mutation campaign, and what the campaign on it concluded.
 
 The campaign runs once per labelled head rather than on every push: `automerge.py`'s hand-off
-dispatches `WORKFLOW` onto the head's branch when the label is added and on each push while it is
+dispatches `WORKFLOW` onto the head's branch once `AFTER` has passed on that head while the label is
 on. CONTRIBUTING.md's continuous-integration section owns the label's meaning. `settle.py`,
 `automerge.py` and `refuse/merge_unproven_head.py` all decide from here.
 
@@ -14,6 +14,10 @@ LABEL = "automerge"
 WORKFLOW = "mutation.yml"
 
 PATH = ".github/workflows/" + WORKFLOW
+
+# The workflow a head has to pass before its campaign is dispatched, by the file it runs.
+# CONTRIBUTING.md's continuous-integration section owns why.
+AFTER = ".github/workflows/test.yml"
 
 RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
 
@@ -45,6 +49,18 @@ def state(runs, concluded):
     return {"success": PASSED, "cancelled": CANCELLED}.get(found, FAILED)
 
 
+def after_passed(runs, concluded):
+    """Whether the newest `pull_request` run of `AFTER` among the head's runs concluded `success`.
+
+    `concluded` answers as it does for `state`. Newest as `expected_checks.failed` orders a workflow's
+    runs. A run of another event is left out, since `base-red` runs on a `pull_request` run alone.
+    """
+    ours = [run for run in runs if run.get("path") == AFTER and run.get("event") == "pull_request"]
+    run = max(ours, key=lambda run: (run.get("run_number") or 0, run.get("run_attempt") or 1),
+              default=None)
+    return run is not None and concluded(run) == "success"
+
+
 def others(runs):
     """The runs of every workflow but `WORKFLOW`: `reason` alone decides what a campaign owes, so a
     reading of what the head's other runs owe leaves it out."""
@@ -70,8 +86,9 @@ def reason(labels, found, head, stuck):
         return None
     if found is None:
         return (f"it carries the {LABEL} label and no {WORKFLOW} run has measured {short}: a "
-                f"hand-off dispatches one for a branch of this repository whose base holds "
-                f"automerge.yml, and for any other the label comes off before a merge by hand")
+                f"hand-off dispatches one once {AFTER} passes on it, for a branch of this "
+                f"repository whose base holds automerge.yml, and for any other the label comes off "
+                f"before a merge by hand")
     if found == RUNNING:
         return f"its {WORKFLOW} run on {short} has not finished ({stuck})"
     if found == CANCELLED:
