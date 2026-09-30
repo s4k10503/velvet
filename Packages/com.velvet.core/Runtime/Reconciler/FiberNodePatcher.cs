@@ -3265,7 +3265,8 @@ namespace Velvet
         private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
-            if (!StyleTextBalanceClass.HasTextBalanceClass(classNames))
+            var wrapStyle = StyleTextBalanceClass.ReadWrapStyle(classNames);
+            if (wrapStyle == TextWrapStyle.None)
             {
                 if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
                 {
@@ -3283,11 +3284,11 @@ namespace Velvet
 
             if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
             {
-                existing.Refresh();
+                existing.Refresh(wrapStyle);
             }
             else
             {
-                var manipulator = new StyleTextBalanceManipulator(_ctx);
+                var manipulator = new StyleTextBalanceManipulator(_ctx, wrapStyle);
                 element.AddManipulator(manipulator);
                 _ctx.TextBalanceManipulators[element] = manipulator;
             }
