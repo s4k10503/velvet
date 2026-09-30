@@ -21,5 +21,5 @@
 ### Changed
 
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` refuse a `StyleVariantKind` value naming
-  no member with an `ArgumentOutOfRangeException` naming the parameter, where the exception was a
-  `SwitchExpressionException`.
+  no member with an `ArgumentOutOfRangeException` naming the parameter, where they threw the exception a switch
+  expression raises for a value none of its arms matches.

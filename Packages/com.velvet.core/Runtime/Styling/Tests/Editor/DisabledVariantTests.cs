@@ -53,7 +53,10 @@ namespace Velvet.Tests
             return V.Div(name: "leaf", className: className);
         }
 
-        private static int BubbleCallbackCount(VisualElement element)
+        // The callbacks for UI Toolkit's internal enabledSelf announcement on element's bubble list, read by
+        // reflection: its registry and the event type are both internal. Counting only these keeps a callback
+        // something else registers or drops on the host out of the reading.
+        private static int AnnouncementCallbackCount(VisualElement element)
         {
             var registry = typeof(CallbackEventHandler)
                 .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -62,10 +65,28 @@ namespace Velvet.Tests
             {
                 return 0;
             }
-            var list = registry.GetType()
+            var dynamicList = registry.GetType()
                 .GetField("m_BubbleUpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
-                .GetValue(registry);
-            return (int)list!.GetType().GetProperty("Count")!.GetValue(list)!;
+                .GetValue(registry)!;
+            var list = dynamicList.GetType()
+                .GetMethod("GetCallbackListForReading", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
+                .Invoke(dynamicList, null)!;
+            var count = (int)list.GetType().GetProperty("Count")!.GetValue(list)!;
+            var item = list.GetType().GetProperty("Item")!;
+            var eventType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.PropertyChangedEvent")!;
+            var typeId = (long)typeof(EventBase<>).MakeGenericType(eventType)
+                .GetMethod("TypeId", BindingFlags.Static | BindingFlags.Public)!
+                .Invoke(null, null)!;
+            var matches = 0;
+            for (var i = 0; i < count; i++)
+            {
+                var functor = item.GetValue(list, new object[] { i })!;
+                if ((long)functor.GetType().GetField("eventTypeId")!.GetValue(functor)! == typeId)
+                {
+                    matches++;
+                }
+            }
+            return matches;
         }
 
         private static void RegisterProbe<TEvent>(VisualElement element, Action onEvent)
@@ -321,16 +342,15 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADisabledPayloadUnderAHost_When_ARenderDropsIt_Then_TheHostKeepsNoRegistrationOfIt()
         {
-            // Arrange — counted after the mount, so whatever the mount itself registers on the host is in both
-            // readings.
+            // Arrange
             var host = new VisualElement();
             _window.rootVisualElement.Add(host);
             s_initialClass = "bg-cold";
             _mounted = V.Mount(host, V.Component(RenderSwitchable));
-            var before = BubbleCallbackCount(host);
+            var before = AnnouncementCallbackCount(host);
             s_setClass.Invoke("disabled:bg-hot");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
-            var whileWatched = BubbleCallbackCount(host);
+            var whileWatched = AnnouncementCallbackCount(host);
 
             // Act
             s_setClass.Invoke("bg-cold");
@@ -338,7 +358,7 @@ namespace Velvet.Tests
 
             // Assert — the count while watched rides along, so a host that was never registered on cannot read
             // as released.
-            Assert.That((whileWatched > before, BubbleCallbackCount(host) == before), Is.EqualTo((true, true)));
+            Assert.That((whileWatched > before, AnnouncementCallbackCount(host) == before), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the engine announcement DisabledVariantSignal reads, which the
