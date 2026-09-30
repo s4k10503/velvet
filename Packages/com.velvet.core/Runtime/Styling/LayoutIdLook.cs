@@ -77,6 +77,43 @@ namespace Velvet
             }
         }
 
+        private static readonly string[] s_cornerNames =
+            { "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius" };
+        private static readonly StyleLonghandSet s_rotate = StyleLonghandSet.Of(StyleLonghand.Rotate);
+        private static readonly StyleLonghandSet s_radii = StyleLonghandSet.Of(StyleLonghand.BorderTopLeftRadius)
+            .Union(StyleLonghandSet.Of(StyleLonghand.BorderTopRightRadius))
+            .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomRightRadius))
+            .Union(StyleLonghandSet.Of(StyleLonghand.BorderBottomLeftRadius));
+        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands
+        // in the pass that sees it, as MotionOpacity's carry does.
+        private const float MinDurationSec = 1e-4f;
+
+        // Each pass, before anything is read: takes the timing a list a variant swap holds inline gives each corner,
+        // then takes what the projection writes out of that list, as MotionOpacity does for opacity on every draw, so
+        // that a swap started mid-move carries none of the writes here. The swap writes the list's durations with it
+        // and clears both as it ends.
+        public static void Narrow(VisualElement element, LayoutIdProjection projection)
+        {
+            var style = element.style;
+            var lists = new TransitionLists(style.transitionProperty.value, style.transitionDuration.value,
+                style.transitionDelay.value, style.transitionTimingFunction.value);
+            for (var corner = 0; corner < 4; corner++)
+            {
+                if (style.transitionDuration.keyword != StyleKeyword.Undefined)
+                {
+                    projection.HeldRadiusDurationSec[corner] = float.NaN;
+                }
+                else if (StyleFilterTransitionDriver.TryFindTransition(lists, s_cornerNames[corner], "border-radius",
+                             out var durationMs, out var delayMs, out var easing))
+                {
+                    (projection.HeldRadiusDurationSec[corner], projection.HeldRadiusDelaySec[corner], projection.HeldRadiusEasing[corner]) =
+                        (durationMs / 1000f, delayMs / 1000f, easing);
+                }
+            }
+            if (projection.WritesRotate) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_rotate);
+            if (projection.WritesRadii) MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_radii);
+        }
+
         // The element's own rotate as it is now. While the projection writes the slot it is the inline rotate the
         // projection took over, else what the element's rules declare, else the one it had as the projection began.
         public static float OwnRotate(VisualElement element, LayoutIdProjection projection)
@@ -91,16 +128,42 @@ namespace Velvet
         // The element's own radii as they are now. While the projection writes the slots a corner's own is an inline
         // value the projection took over from something other than CornerRadiusFit, else the radius the fit gives
         // it, else what the element's rules declare, else the one it had as the projection began.
-        public static Length[] OwnRadii(VisualElement element, LayoutIdProjection projection)
+        // A corner's own changes are carried as MotionOpacity carries opacity: from where it stands towards what gives
+        // it now, on the timing a variant swap's held list gave the corner, else the one UI Toolkit runs it by, over
+        // dtSec more.
+        public static Length[] OwnRadii(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
             if (!projection.WritesRadii) return Declared(element);
             var own = new Length[4];
             for (var corner = 0; corner < 4; corner++)
             {
-                own[corner] = projection.InlineRadii[corner] ? projection.OwnInlineRadii[corner].value
+                var target = projection.InlineRadii[corner] ? projection.OwnInlineRadii[corner].value
                     : CornerRadiusFit.Fitted(element, corner) ?? StyleCascade.Radius(element, corner) ?? projection.StartRadii[corner];
+                own[corner] = Carry(element, projection, corner, target, dtSec);
             }
             return own;
+        }
+
+        private static Length Carry(VisualElement element, LayoutIdProjection projection, int corner, Length target, float dtSec)
+        {
+            var carry = projection.RadiusCarry;
+            if (target != carry.Target[corner])
+            {
+                (carry.From[corner], carry.Target[corner], carry.ElapsedSec[corner]) = (carry.Value[corner], target, 0f);
+                (carry.DurationSec[corner], carry.DelaySec[corner], carry.Easing[corner]) =
+                    float.IsNaN(projection.HeldRadiusDurationSec[corner])
+                        ? StyleCascade.Transition(element, s_cornerNames[corner], "border-radius")
+                        : (projection.HeldRadiusDurationSec[corner], projection.HeldRadiusDelaySec[corner], projection.HeldRadiusEasing[corner]);
+            }
+            carry.ElapsedSec[corner] += dtSec;
+            var t = Mathf.Clamp01((carry.ElapsedSec[corner] - carry.DelaySec[corner] + MinDurationSec)
+                / Mathf.Max(carry.DurationSec[corner], MinDurationSec));
+            var from = carry.From[corner];
+            // Landed exactly, which the curve need not give at its end.
+            carry.Value[corner] = t < 1f && from.unit == target.unit
+                ? new Length(Mathf.LerpUnclamped(from.value, target.value, UssEasing.Evaluate(carry.Easing[corner], t)), target.unit)
+                : target;
+            return carry.Value[corner];
         }
 
         // Mixes two radii as Framer's mixValues does (canMix): a radius of none takes the other's unit, two of one
@@ -141,7 +204,7 @@ namespace Velvet
         // written as it is. A pixel one is divided by the scale; IStyle takes one length for a corner, where a scale
         // different on each axis would need one per axis, so it is divided by the geometric mean of the two, and a box
         // drawn with no extent on an axis is written none.
-        public static void WriteRadii(VisualElement element, LayoutIdProjection projection, Length[]? radii, Vector2 scale)
+        public static void WriteRadii(VisualElement element, LayoutIdProjection projection, Length[]? radii, Vector2 scale, float dtSec)
         {
             var divisor = Mathf.Sqrt(scale.x * scale.y);
             if (!projection.WritesRadii)
@@ -160,10 +223,12 @@ namespace Velvet
                     projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined && !CornerRadiusFit.Wrote(element, corner, slot);
                 }
                 projection.StartRadii = own;
+                own.CopyTo(projection.RadiusCarry.Value, 0);
+                own.CopyTo(projection.RadiusCarry.Target, 0);
                 CornerRadiusFit.Hold(element);
                 MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
-            projection.DrawnRadii = radii ?? OwnRadii(element, projection);
+            projection.DrawnRadii = radii ?? OwnRadii(element, projection, dtSec);
             for (var corner = 0; corner < 4; corner++)
             {
                 var radius = projection.DrawnRadii[corner];

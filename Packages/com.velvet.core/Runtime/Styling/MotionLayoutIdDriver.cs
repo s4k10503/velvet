@@ -354,6 +354,7 @@ namespace Velvet
         private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
         {
             LayoutIdLook.Adopt(element, projection);
+            LayoutIdLook.Narrow(element, projection);
             var rotate = float.NaN;
             Length[]? radii = null;
             if (projection.Leader != null)
@@ -366,10 +367,10 @@ namespace Velvet
             {
                 var progress = CrossfadeProgress(projection);
                 rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection), progress);
-                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection), progress);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt), progress);
             }
             LayoutIdLook.WriteRotate(element, projection, rotate);
-            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale);
+            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
         }
 
         // Read before the projection takes its new tween. A move of the lead's own that interrupts its crossfade holds
@@ -1018,6 +1019,12 @@ namespace Velvet
         public Length[] StartRadii = System.Array.Empty<Length>();
         public Length[] DrawnRadii = System.Array.Empty<Length>();
         public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
+        // How each corner's own radius is carried while the projection writes it (LayoutIdLook.OwnRadii), and the
+        // timing a variant swap's held list gave each corner, NaN duration while no such list is held.
+        public readonly LayoutIdRadiusCarry RadiusCarry = new();
+        public readonly float[] HeldRadiusDurationSec = { float.NaN, float.NaN, float.NaN, float.NaN };
+        public readonly float[] HeldRadiusDelaySec = new float[4];
+        public readonly EasingMode[] HeldRadiusEasing = new EasingMode[4];
 
         // Each element of a member's subtree whose picking it turned off while drawn over the lead, with its own mode.
         public Dictionary<VisualElement, PickingMode>? Picking;
@@ -1107,5 +1114,16 @@ namespace Velvet
             Value = 1f - _timing.Ease(t);
             return t >= 1f;
         }
+    }
+
+    internal sealed class LayoutIdRadiusCarry
+    {
+        public readonly Length[] Value = new Length[4];
+        public readonly Length[] From = new Length[4];
+        public readonly Length[] Target = new Length[4];
+        public readonly float[] ElapsedSec = new float[4];
+        public readonly float[] DelaySec = new float[4];
+        public readonly float[] DurationSec = new float[4];
+        public readonly EasingMode[] Easing = new EasingMode[4];
     }
 }

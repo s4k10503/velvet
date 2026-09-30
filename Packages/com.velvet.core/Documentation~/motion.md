@@ -383,7 +383,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   the stretch as for any change of size. A scaled Motion's pixel border radius is divided by the scale
   it is drawn at, by the geometric mean of the two axes where they differ, since a style takes one length
   per corner; a percent radius, which scales with the box, is left as it is. A radius or rotate the
-  Motion is given meanwhile is drawn as it is given. The scale holds the element's transform origin still (its
+  Motion is given meanwhile is drawn as it is given, a radius on the transition it changes by, such as a
+  variant swap's. The scale holds the element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read

@@ -37,14 +37,26 @@ namespace Velvet
 
         private static readonly object?[] s_args = new object?[2];
 
-        // The element's cascaded opacity and the transition it runs opacity by: the rules' transition-property with
-        // the inline duration, delay and curve lists wherever the element holds them, as UI Toolkit combines the
-        // two, the inline transition-property being a suspension's (MotionOpacity). NaN and no transition where the
-        // cached style cannot be read.
+        // The element's cascaded opacity and the transition it runs opacity by (Transition). NaN and no transition
+        // where the cached style cannot be read.
         public static (float Opacity, float DurationSec, float DelaySec, EasingMode Easing) Opacity(VisualElement element)
         {
             if (Style(element) is not { } style) return (float.NaN, 0f, 0f, EasingMode.Ease);
-            var opacity = (float)s_opacity!.GetValue(style);
+            var (durationSec, delaySec, easing) = Transition(element, style, "opacity", null);
+            return ((float)s_opacity!.GetValue(style), durationSec, delaySec, easing);
+        }
+
+        // The transition the element runs a property by: the rules' transition-property with the inline duration,
+        // delay and curve lists wherever the element holds them, as UI Toolkit combines the two, the inline
+        // transition-property being a suspension's (MotionNativeTransitionGuard). None where the cached style cannot
+        // be read or names no entry for the property.
+        public static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, string property,
+            string? shorthand) =>
+            Style(element) is { } style ? Transition(element, style, property, shorthand) : (0f, 0f, EasingMode.Ease);
+
+        private static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, object style,
+            string property, string? shorthand)
+        {
             var inline = element.style;
             var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
                 inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,
@@ -52,9 +64,9 @@ namespace Velvet
                 inline.transitionTimingFunction.keyword == StyleKeyword.Undefined
                     ? inline.transitionTimingFunction.value
                     : s_curve!.GetValue(style) as List<EasingFunction>);
-            return StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out var easing)
-                ? (opacity, durationMs / 1000f, delayMs / 1000f, easing)
-                : (opacity, 0f, 0f, EasingMode.Ease);
+            return StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing)
+                ? (durationMs / 1000f, delayMs / 1000f, easing)
+                : (0f, 0f, EasingMode.Ease);
         }
 
         // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot

@@ -73,7 +73,7 @@ namespace Velvet.Tests
             s_sharedClasses = null;
             (s_cMounted, s_cTransition) = (false, null);
             (s_aClasses, s_bClasses) = (null, null);
-            (s_aPose, s_aTransition) = (null, null);
+            (s_aPose, s_aTransition, s_bPose) = (null, null, null);
             (s_aField, s_looseField) = (false, false);
             s_resizeFrom = 100;
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
@@ -2398,6 +2398,8 @@ namespace Velvet.Tests
         // The pose "a" takes of s_fade, none while null, on s_aTransition in place of s_slowTween while set.
         private static string s_aPose;
         private static StyleTransitionConfig s_aTransition;
+        // The pose "b" takes of s_fade, none while null.
+        private static string s_bPose;
         // A TextField "field" inside "a", and one "loose" outside every holder.
         private static bool s_aField;
         private static bool s_looseField;
@@ -2420,6 +2422,7 @@ namespace Velvet.Tests
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
+                    variants: s_bPose != null ? s_fade : null, animate: s_bPose,
                     className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses} {s_bClasses}"));
             }
             if (s_cMounted)
@@ -3447,6 +3450,68 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").style.rotate.value.angle.ToDegrees(), Is.EqualTo(70f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_AVariantSwapStartsMidMove_Then_TheSwapsListCarriesNoRotate()
+        {
+            // Arrange — "b" at its visible pose, some way from a rotated "a".
+            (s_aClasses, s_bPose) = ("rotate-[40deg]", "visible");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "b" swaps to its hidden pose, whose list names every property.
+            s_bPose = "hidden";
+            RenderShared(mounted);
+            Tick();
+
+            // Assert
+            Assert.That(HoldsAListWithout(Root.Q<VisualElement>("b"), "rotate"), Is.True);
+        }
+
+        private static readonly Dictionary<string, MotionVariant> s_radiusPoses = new()
+        {
+            ["small"] = "rounded-[10px]",
+            ["large"] = "rounded-[30px]",
+        };
+        private static string s_radiusPose;
+
+        // From step 1 the box doubles in place, its top-left corner fixed, on a linear second; it takes s_radiusPose,
+        // on the same second.
+        [Component]
+        private static VNode PosedBoxRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var size = step == 0 ? 100 : 200;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_slowTween, variants: s_radiusPoses,
+                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens()
+        {
+            // Arrange — at its small pose, some way into doubling.
+            s_radiusPose = "small";
+            using var mounted = V.Mount(Root, V.Component(PosedBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — the large pose, about a quarter of a second on.
+            s_radiusPose = "large";
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — on screen, the radius written times the scale it is drawn at, about a quarter of the way from ten
+            // to thirty pixels, rather than at thirty.
+            var element = Root.Q<VisualElement>("shared");
+            Assert.That(element.style.borderTopLeftRadius.value.value * element.style.scale.value.value.x, Is.InRange(12f, 20f));
         }
 
         // Steps the resizing box to step 1, where it doubles, with s_resizeOrigin as its classes, and plays the frames.
