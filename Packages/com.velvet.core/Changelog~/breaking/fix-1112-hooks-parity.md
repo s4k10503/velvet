@@ -16,5 +16,5 @@
   as JavaScript's `await` resumes in a microtask once the code that called `startTransition` has returned:
   the continuation runs after a discrete handler returns, or on the main thread's next tick outside one, so
   the updates after it are no longer part of the transition and a handler's own writes after the call land
-  first. They ran inline inside the transition. An `await` of a completed `Task`, `ValueTask` or
+  first. They ran inline inside the transition. An `await` of a completed `Task`, a ValueTask or
   `Awaitable` still continues inline, and what follows it stays in the transition.
