@@ -139,7 +139,8 @@ Generators~/
 │   ├── Velvet.SourceGenerators.csproj
 │   ├── MemoOverloadGenerator.cs              (auto-generates Memoized<T1..T8>)
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
-│   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
+│   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table,
+│   │                                          VEL012 [MemoizeMethod] _Impl instance-read analyzer)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
 │   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count
 │   │                                          + VEL503 tolerance on a tuple comparison)

@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class HomePage
     {
         public new virtual partial global::Velvet.VNode Footer(int count)
-            => global::Velvet.V.Memoized(() => Footer_Impl(count), new object?[] { count });
+            => global::Velvet.V.Memoized(() => Footer_Impl(count), new object?[] { count, this });
     }
 }

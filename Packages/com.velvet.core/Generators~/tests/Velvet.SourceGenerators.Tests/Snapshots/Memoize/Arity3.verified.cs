@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class HomePage
     {
         private partial global::Velvet.VNode BuildHeader(string title, int count, bool visible)
-            => global::Velvet.V.Memoized(() => BuildHeader_Impl(title, count, visible), new object?[] { title, count, visible });
+            => global::Velvet.V.Memoized(() => BuildHeader_Impl(title, count, visible), new object?[] { title, count, visible, this });
     }
 }
