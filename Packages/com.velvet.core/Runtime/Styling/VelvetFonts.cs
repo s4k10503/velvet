@@ -168,7 +168,7 @@ namespace Velvet
                 return fallback;
             }
 
-            var entry = def.FindClosestWeight(weight);
+            var entry = def.FindClosestWeightWithFace(weight, italic) ?? def.FindClosestWeight(weight);
             if (entry == null)
             {
                 return fallback;

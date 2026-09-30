@@ -275,6 +275,7 @@ namespace Velvet
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.
             MotionNativeTransitionGuard.ReleaseAll(element);
+            StyleAnimateDriver.ForgetHolds(element);
         }
 
         // The generateVisualContent-driven paint bindings: shadow/clip/ring/skew/border/divide/overline
@@ -340,6 +341,10 @@ namespace Velvet
             {
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
+            }
+            if (_ctx.LeadingLengthProbes.TryGetValue(element, out var leadingProbe))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
             if (_ctx.GradientBackgrounds.ContainsKey(element))
             {

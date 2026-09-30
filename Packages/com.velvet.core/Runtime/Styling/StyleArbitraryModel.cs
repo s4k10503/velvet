@@ -210,9 +210,8 @@ namespace Velvet
         TranslateX,   // translate-x-[Np] -> translate x axis    (Value + Unit, merges with y)
         TranslateY,   // translate-y-[Np] -> translate y axis    (Value + Unit, merges with x)
         Rotate,       // rotate-[45deg]   -> rotate: <deg>       (Value = degrees)
-        // origin-[33%_75%] -> transform-origin: <x> <y>. One class carries both components, so unlike the
-        // axis pairs above it is one property with a pair payload (Value/Unit + Value2/Unit2). A single
-        // component means the x alone, and the y is the 50% CSS leaves it at.
+        // origin-[33%_75%] -> transform-origin: <x> <y> <z>. One class carries every component, so unlike the
+        // axis pairs above it is one property with a pair payload (Value/Unit + Value2/Unit2, z in Value3).
         TransformOrigin,
         #endregion
 
@@ -282,6 +281,8 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
+        // TransformOrigin's z, a length in pixels; 0 for every other property.
+        public float Value3 { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
@@ -296,19 +297,21 @@ namespace Velvet
             Unit = unit;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Color = default;
             Custom = null;
         }
 
         // Creates a pair-valued length result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit,
-            float value2, LengthUnit unit2)
+            float value2, LengthUnit unit2, float value3 = 0f)
         {
             Property = property;
             Value = value;
             Unit = unit;
             Value2 = value2;
             Unit2 = unit2;
+            Value3 = value3;
             Color = default;
             Custom = null;
         }
@@ -322,6 +325,7 @@ namespace Velvet
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Custom = null;
         }
 
@@ -334,6 +338,7 @@ namespace Velvet
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
             Color = default;
         }
     }

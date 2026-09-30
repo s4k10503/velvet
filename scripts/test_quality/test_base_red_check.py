@@ -4548,6 +4548,23 @@ class CommentOnlyBranchTests(unittest.TestCase):
         return ([line for line in lines if line.startswith("out of scope:")],
                 [line for line in lines if line.startswith("N.ProbeTests.")])
 
+    def documented(self, remark):
+        return ("import unittest\n\n\nclass ProbeTests(unittest.TestCase):\n"
+                '    """' + remark + '"""\n\n'
+                "    def test_Given_A_When_B_Then_C(self):\n"
+                "        self.assertEqual(1, 1)\n")
+
+    def test_Given_AClassDocstringRewritten_When_TheBranchIsRead_Then_NoCaseIsInScope(self):
+        # Arrange -- the docstring is the only line outside a case that moved, which a reading
+        # counting it as shared material answers by putting every case in the file on trial.
+        before, after = self.documented("One count."), self.documented("Another count.")
+
+        # Act
+        scope = self.scope(self.PYTHON, "python", before, after)
+
+        # Assert
+        self.assertEqual(scope, [])
+
     def test_Given_ARemarkRewrittenInACase_When_TheBranchIsRead_Then_TheCaseIsNotInScope(self):
         # Arrange -- the replacement is as long as what it replaces and sits on its own line, so
         # nothing but the blanking of comments separates the two readings of this branch.

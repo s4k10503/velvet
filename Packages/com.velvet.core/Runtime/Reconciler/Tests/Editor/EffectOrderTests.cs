@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -13,7 +14,7 @@ namespace Velvet.Tests
     /// <item>Layout and insertion effects commit bottom-up: a child's effect runs before its parent's, through
     /// any depth of single-child nesting.</item>
     /// <item>Sibling effects commit left-to-right, then the parent — on both the mount commit and the update
-    /// commit (parent re-render) path.</item>
+    /// commit (parent re-render) path, including a parent's own update flushed outside any drain.</item>
     /// <item>Disposing a mounted tree marks the root fiber disposed, so disposed-gated closures short-circuit.</item>
     /// <item>A parent re-render that changes an inline child's props runs the prior setup's cleanup then the new
     /// setup (deps changed) for layout, insertion, and passive effects; a parent re-render that leaves the
@@ -291,6 +292,41 @@ namespace Velvet.Tests
                 "Left sibling A commits before right sibling B on the update-commit path");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs a flushed parent's re-rendered child first already.
+        // Its commit of the parent took the whole deferred stack, the child's entry included.
+        [Test]
+        public void Given_AParentAndItsChildWithLayoutEffects_When_TheParentsOwnUpdateIsFlushed_Then_TheChildsSetupRunsFirst()
+        {
+            // Arrange — a flush outside any drain commits the parent's re-render as a commit scoped to it.
+            using var mounted = V.Mount(_root, V.Component(ScopedCommitParentRender, key: "parent"));
+            s_log.Clear();
+            s_scopedParentSet.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("child:1, parent:1"));
+        }
+
+        private static StateUpdater<int> s_scopedParentSet;
+
+        [Component]
+        private static VNode ScopedCommitParentRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_scopedParentSet = setTick;
+            Hooks.UseLayoutEffect(() => { s_log.Add("parent:" + tick); return (Action)null; }, new object[] { tick });
+            return V.Div(children: new VNode[] { V.Component(ScopedCommitChildRender, tick, key: "child") });
+        }
+
+        [Component]
+        private static VNode ScopedCommitChildRender(int tick)
+        {
+            Hooks.UseLayoutEffect(() => { s_log.Add("child:" + tick); return (Action)null; }, new object[] { tick });
+            return V.Label(text: "child");
+        }
+
         #endregion
 
         #region Mounted tree teardown
@@ -533,7 +569,9 @@ namespace Velvet.Tests
     /// before ANY fiber's layout effect runs, so a layout effect observes the already-committed output of the
     /// other fibers flushed in the same batch — not a half-updated tree. Previously each fiber ran its layout
     /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
-    /// sibling had even rendered.
+    /// sibling had even rendered. Across the drain, every layout-effect cleanup runs before any setup, each a
+    /// child before its parent, and components in tree order whatever order their updates were enqueued in,
+    /// siblings and cousins alike.
     /// </summary>
     [TestFixture]
     internal sealed class LayoutEffectDrainPhaseTests
@@ -558,6 +596,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_store = null;
             s_log = new List<string>();
+            s_setters.Clear();
         }
 
         // Sibling A: re-renders on the store tick and has a layout effect (keyed on the tick so it re-runs).
@@ -609,6 +648,169 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)),
                 "All renders in a batch must complete before any layout effect runs (React commit-phase order)");
         }
+
+        [Test]
+        public void Given_TwoSiblingsWithInlineChildrenDirtiedInOneDrain_When_Drained_Then_EveryLayoutCleanupPrecedesAnySetupInTreeOrder()
+        {
+            // Arrange
+            using var store = new TickStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PhaseHost, key: "host"));
+            s_log.Clear();
+            store.Bump();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(", ", s_log),
+                Is.EqualTo("A-child:cleanup, A:cleanup, B-child:cleanup, B:cleanup, A-child:setup, A:setup, B-child:setup, B:setup"));
+        }
+
+        [Test]
+        public void Given_SiblingsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OwnStateHost, key: "host"));
+            s_log.Clear();
+            s_setters["second"].Invoke(1);
+            s_setters["first"].Invoke(1);
+            s_setters["third"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first:setup, second:setup, third:setup"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs these three setups in tree order already.
+        // Its commit of the item took the whole deferred stack, the host's re-rendered child included.
+        [Test]
+        public void Given_AHostWhoseDrainedRenderMountsAVirtualListItemAfterReRenderingAnEarlierChild_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the item mounts through a mount of its own inside the drain, and the child is re-rendered by
+            // the host's render.
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, 50f);
+            s_log.Clear();
+            s_setters["child"].Invoke(1);
+            s_setters["host"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("child:setup, item:setup, host:setup"));
+        }
+
+        [Test]
+        public void Given_CousinsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_Drained_Then_TheirLayoutSetupsRunInTreeOrder()
+        {
+            // Arrange — each cousin sits under a parent of its own that the drain does not re-render.
+            using var mounted = V.Mount(_root, V.Component(CousinHost, key: "host"));
+            s_log.Clear();
+            s_setters["second-child"].Invoke(1);
+            s_setters["first-child"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("first-child:setup, second-child:setup"));
+        }
+
+        [Component]
+        private static VNode CousinParent(string name)
+            => V.Div(children: new VNode[] { V.Component(OwnStateSibling, name + "-child", key: "child") });
+
+        [Component]
+        private static VNode CousinHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(CousinParent, "first", key: "first"),
+                V.Component(CousinParent, "second", key: "second"),
+            });
+
+        private static readonly Dictionary<string, StateUpdater<int>> s_setters = new();
+
+        [Component]
+        private static VNode OwnStateSibling(string name)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setters[name] = setTick;
+            Hooks.UseLayoutEffect(() => { s_log.Add(name + ":setup"); return (Action)null; }, new object[] { tick });
+            return V.Label(text: name);
+        }
+
+        [Component]
+        private static VNode OwnStateHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "first", key: "first"),
+                V.Component(OwnStateSibling, "second", key: "second"),
+                V.Component(OwnStateSibling, "third", key: "third"),
+            });
+
+        [Component]
+        private static VNode ListHost()
+        {
+            var (items, setItems) = Hooks.UseState(0);
+            s_setters["host"] = setItems;
+            Hooks.UseLayoutEffect(() => { s_log.Add("host:setup"); return (Action)null; }, new object[] { items });
+            return V.Div(children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "child", key: "child"),
+                V.VirtualList(
+                    items: items == 0 ? Array.Empty<string>() : new[] { "item" },
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(OwnStateSibling, item, key: item),
+                    overscan: 0),
+            });
+        }
+
+        // Each parent re-renders on the store tick on its own, and hands the tick to its inline child, so one bump
+        // puts both parents in the drain and each re-render reaches its child.
+        [Component]
+        private static VNode PhaseParent(string name)
+        {
+            var tick = Hooks.UseStore(s_store, s => s.Tick);
+            Hooks.UseLayoutEffect(
+                () =>
+                {
+                    s_log.Add(name + ":setup");
+                    return (Action)(() => s_log.Add(name + ":cleanup"));
+                },
+                new object[] { name, tick });
+            return V.Div(children: new VNode[] { V.Component(PhaseChild, (name + "-child", tick), key: "child") });
+        }
+
+        [Component]
+        private static VNode PhaseChild((string Name, int Tick) props)
+        {
+            Hooks.UseLayoutEffect(
+                () =>
+                {
+                    s_log.Add(props.Name + ":setup");
+                    return (Action)(() => s_log.Add(props.Name + ":cleanup"));
+                },
+                new object[] { props.Name, props.Tick });
+            return V.Label(text: props.Name);
+        }
+
+        [Component]
+        private static VNode PhaseHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(PhaseParent, "A", key: "a"),
+                V.Component(PhaseParent, "B", key: "b"),
+            });
     }
 
     /// <summary>

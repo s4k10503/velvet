@@ -40,14 +40,17 @@ settle = load_module()
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
-            fork=False, failing_runs=(), behind_release=None, long_lived_head=False):
+            fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
+            runs_failed=(), required=(), owed_campaign=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
                                held_by_worktree=held_by_worktree,
                                unpublished_release=unpublished_release, draft=draft,
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
-                               behind_release=behind_release, long_lived_head=long_lived_head)
+                               behind_release=behind_release, long_lived_head=long_lived_head,
+                               runs_unfinished=runs_unfinished, runs_failed=runs_failed,
+                               required=required, owed_campaign=owed_campaign)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -201,7 +204,8 @@ class MergeDecisionTests(unittest.TestCase):
 # One pull request's whole state, so `watch` and `merge` can be posed the same table. `holds` is the
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch base draft merge_state results holds held fork")
+    "Fabricated",
+    "sha after branch base draft merge_state results holds held fork labels runs state jobs")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -211,6 +215,39 @@ SUITES_RAN = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "pass"},
 SUITES_SKIPPED = PASSING + [{"name": "Unity tests (EditMode)", "bucket": "skipping"},
                             {"name": "Unity tests (PlayMode)", "bucket": "skipping"}]
 
+# The head that was called mergeable: `Source generators` had finished green, and `Test` was pending,
+# so none of its jobs had put a check on the head.
+GENERATOR_CHECKS = [{"name": "Required checks (generators)", "bucket": "pass"},
+                    {"name": "Source generators (dotnet)", "bucket": "pass"}]
+GENERATORS_DONE = {"id": 36512896257, "name": "Source generators", "workflow_id": 2,
+                   "run_number": 90, "status": "completed", "conclusion": "success"}
+TEST_PENDING = {"id": 36512896182, "name": "Test", "workflow_id": 1, "run_number": 70,
+                "status": "pending", "conclusion": None}
+TEST_PENDING_EXIT = "Test (pending, run 36512896182: `gh run cancel 36512896182` if it is stuck)"
+
+# A run GitHub left `queued` after every job of its latest attempt had completed. Its `updated_at` is
+# left out, so the jobs are all that separate it from a run still going.
+STUCK = {"id": 31128456870, "name": "Source generators", "workflow_id": 2, "run_number": 80,
+         "run_attempt": 1, "status": "queued", "conclusion": None}
+COMPLETED_JOBS = [{"name": "Source generators (dotnet)", "status": "completed",
+                   "conclusion": "success"},
+                  {"name": "Required checks (generators)", "status": "completed",
+                   "conclusion": "success"}]
+
+# The label that owes a head a campaign.
+AUTOMERGE = "automerge"
+
+CAMPAIGN = ".github/workflows/mutation.yml"
+
+
+def campaign_run(number, conclusion, path=CAMPAIGN, status="completed", suite=None):
+    """One entry of the Actions runs listing for a head."""
+    return {"id": 9000 + number, "run_number": number, "path": path, "status": status,
+            "conclusion": conclusion, "check_suite_id": suite if suite is not None else number}
+
+
+CAMPAIGN_PASSED = [campaign_run(1, "success")]
+
 # The base whose required workflows last failed in the tables below, at `BROKE`. No case poses it
 # for anything else, so a case posing another base reads it green.
 RED = "1.x"
@@ -218,30 +255,38 @@ RED = "1.x"
 # The base whose newest release commit is `RELEASED`, dating 2.1.0. No case poses it for anything else.
 RELEASING = "3.x"
 
+# What every base in the tables below requires, unless a case hands `fabricated_readings` another
+# answer for it.
+REQUIRED = ("Required checks (Unity)",)
+
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
-              held=False, moved=False, fork=False, base="main", branch=None):
+              held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
+              state="open", jobs=None):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
-                      held=held, fork=fork)
+                      held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
+                      jobs=jobs or {})
 
 
-def base_state(held, base, red=(RED,), releasing=(RELEASING,)):
-    """What `project_state` answers for one base, with each base in `red` failing at `BROKE` and
-    each in `releasing` last released at `RELEASED`.
+def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
+    """What `project_state` answers for one base, with each base in `red` failing at `BROKE`, each
+    in `releasing` last released at `RELEASED`, and each requiring what `required` maps it to, or
+    `REQUIRED`.
 
     The attributes the decision reads rather than settle.ProjectState itself, for the reason
     `fabricated_readings` gives about the pull request.
     """
     return types.SimpleNamespace(held=held, unpublished_release=None,
                                  red=[failing()] if base in red else [],
-                                 release=(RELEASED, "2.1.0") if base in releasing else None)
+                                 release=(RELEASED, "2.1.0") if base in releasing else None,
+                                 required=(required or {}).get(base, REQUIRED))
 
 
 @contextlib.contextmanager
-def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
+def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -249,6 +294,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
     """
     by_sha = {state.sha: state for state in states.values()}
     by_branch = {state.branch: state for state in states.values()}
+    by_run = {run: jobs for state in states.values() for run, jobs in state.jobs.items()}
     with contextlib.ExitStack() as stack:
         for name, answer in (
             ("repository", lambda *_: "owner/name"),
@@ -259,17 +305,21 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,)):
             ("pull_request", lambda _project, number: types.SimpleNamespace(
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
-                fork=states[number].fork)),
-            ("checks", lambda _project, sha: by_sha[sha].results),
+                fork=states[number].fork, labels=states[number].labels, state=states[number].state)),
+            ("checks", lambda _project, sha, *_: by_sha[sha].results),
+            ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
+            ("run_jobs", lambda _project, runs, _now: {
+                run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
                 else sha in by_branch[branch].holds)),
             ("project_state", lambda _project, base: base_state(
                 {state.branch for state in states.values() if state.held}, base, red,
-                releasing)),
+                releasing, required)),
         ):
-            stack.enter_context(mock.patch.object(settle, name, answer))
+            # `create`, so the table is posed to a settle that has not got a reading as well.
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         yield stack
 
 
@@ -364,6 +414,11 @@ class ReadinessTests(unittest.TestCase):
         13: fabricate(13, base=RED, holds=(BROKE,), results=SUITES_SKIPPED),
         14: fabricate(14, base=RELEASING),
         15: fabricate(15, base=RELEASING, holds=(RELEASED,)),
+        16: fabricate(16, labels=(AUTOMERGE,)),
+        17: fabricate(17, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED),
+        18: fabricate(18, runs=[campaign_run(1, None, status="in_progress")]),
+        19: fabricate(19, runs=(TEST_PENDING,)),
+        20: fabricate(20, results=GENERATOR_CHECKS),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -397,6 +452,271 @@ class ReadinessTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(polled(table), {592})
+
+
+class ExpectedCheckTests(unittest.TestCase):
+    """A head is not green on the checks it lists while it is still owed others."""
+
+    def test_Given_EveryListedCheckPassedAndARunNotStarted_When_Decided_Then_TheRunIsNamed(self):
+        # Arrange — the required context has reported, so the run is all that is left to refuse on.
+        states = {1: fabricate(1, runs=(GENERATORS_DONE, TEST_PENDING))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [f"workflow runs not finished at 0000000: {TEST_PENDING_EXIT}"])
+
+    def test_Given_EveryListedCheckPassedAndARequiredOneNeverReported_When_Decided_Then_ItIsNamed(self):
+        # Arrange — every run has finished, so the absent context is all that is left to refuse on.
+        states = {1: fabricate(1, results=GENERATOR_CHECKS, runs=(GENERATORS_DONE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided,
+                         ["required by main and not reported at 0000000: Required checks (Unity)"])
+
+    def test_Given_NoCheckYetAndARunPending_When_Decided_Then_ItIsRefusedAsPendingNotNeverTriggered(self):
+        # Arrange
+        states = {1: fabricate(1, results=[], runs=(TEST_PENDING,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert — the refusal rides along because a head merged with nothing said names no trigger
+        # either.
+        self.assertEqual((bool(decided), any("never triggered" in reason for reason in decided)),
+                         (True, False))
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run GitHub left queued holds nothing.
+    # What it pins is that the jobs end it: `if not (jobs.get(run.get("id"))` spelled `if not (False`
+    # reddens it.
+    def test_Given_ARunLeftQueuedWhoseJobsAllCompleted_When_Decided_Then_NothingBlocks(self):
+        # Arrange
+        states = {1: fabricate(1, runs=(STUCK,), jobs={STUCK["id"]: COMPLETED_JOBS})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ARunLeftQueuedWithAJobStillGoing_When_Decided_Then_ItIsNamedWithItsExit(self):
+        # Arrange — one job completed and one not, so the jobs of the attempt do not end the run.
+        jobs = [COMPLETED_JOBS[0], {"name": "Required checks (generators)", "status": "queued"}]
+        states = {1: fabricate(1, runs=(STUCK,), jobs={STUCK["id"]: jobs})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs not finished at 0000000: Source generators "
+                                   "(queued, run 31128456870: `gh run cancel 31128456870` if it is "
+                                   "stuck)"])
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so a run untouched for weeks holds nothing.
+    # What it pins is the bound: `untouched_for(run, now) < STALE_AFTER` spelled `True` reddens it.
+    def test_Given_ARunUntouchedForLongerThanTheBound_When_Decided_Then_NothingBlocks(self):
+        # Arrange — no job listed at all, so the bound is all that ends it.
+        stale = dict(STUCK, updated_at="2026-08-06T21:55:26Z")
+        states = {1: fabricate(1, runs=(stale,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_TheNewestRunOfAWorkflowFailedWithNoCheck_When_Decided_Then_ItIsNamed(self):
+        # Arrange — a base requiring nothing, so no absent context stands in for the failed run.
+        failed = dict(TEST_PENDING, status="completed", conclusion="startup_failure")
+        states = {1: fabricate(1, base="4.x", results=GENERATOR_CHECKS,
+                               runs=(GENERATORS_DONE, failed))}
+
+        # Act
+        with fabricated_readings(states, required={"4.x": ()}):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs failed at 0000000: Test (startup_failure, run "
+                                   "36512896182)"])
+
+    # GREEN_ON_BASE(characterization): the base reads no run, so an older failed run holds nothing.
+    # What it pins is that only the newest run of a workflow is read: `if workflow not in newest or
+    # order > newest[workflow][0]:` spelled `if True:` reddens it.
+    def test_Given_AFailedRunSupersededByANewerOne_When_Decided_Then_NothingBlocks(self):
+        # Arrange — newest first, the order the runs listing answers in.
+        newer = dict(TEST_PENDING, id=2, run_number=71, status="completed", conclusion="success")
+        older = dict(TEST_PENDING, id=1, run_number=70, status="completed", conclusion="failure")
+        states = {1: fabricate(1, runs=(newer, older))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    # GREEN_ON_BASE(characterization): the base merges a head no ruleset asks anything more of.
+    # What it pins is that neither reading is a wall: requiring the aggregates whatever the ruleset
+    # says, or counting a completed run as unfinished, reddens it.
+    def test_Given_ABaseRequiringNothingAndAWorkflowThatNeverStarted_When_Decided_Then_NothingBlocks(self):
+        # Arrange — `Test` has no run at all on this head, the way a path filter leaves one.
+        states = {1: fabricate(1, base="4.x", results=GENERATOR_CHECKS, runs=(GENERATORS_DONE,))}
+
+        # Act
+        with fabricated_readings(states, required={"4.x": ()}):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AHeadWhoseRunHasNotStarted_When_TheWatcherPolls_Then_ItIsNotRecordedAsReady(self):
+        # Arrange
+        table = {1: fabricate(1, runs=(TEST_PENDING,))}
+
+        # Act / Assert
+        self.assertEqual(polled(table), set())
+
+    def test_Given_ABase_When_ItsStateIsRead_Then_ItCarriesWhatItsRulesetsRequire(self):
+        # Arrange — answered for 2.x alone, so a reading that asks about another base raises.
+        rules = [{"type": "pull_request", "parameters": {}},
+                 {"type": "required_status_checks", "parameters": {"required_status_checks": [
+                     {"context": "Required checks (generators)"},
+                     {"context": "Required checks (Unity)"}]}}]
+        answers = {"repos/owner/name/rules/branches/2.x?per_page=100": rules}
+        with contextlib.ExitStack() as stack:
+            for name, answer in (("gh_git", lambda *_: ""),
+                                 ("repository", lambda *_: "owner/name"),
+                                 ("worktree_branches", lambda *_: set()),
+                                 ("rest_json", lambda path: answers[path] if "/rules/" in path
+                                  else {"workflow_runs": []}),
+                                 ("release_commit", lambda *_: None)):
+                stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
+                                                  lambda *_, **__: None))
+
+            # Act
+            state = settle.project_state(Path("."), "2.x")
+
+        # Assert
+        self.assertEqual(getattr(state, "required", None),
+                         ["Required checks (Unity)", "Required checks (generators)"])
+
+    def test_Given_ARuleOfAnotherTypeCarryingContexts_When_Read_Then_TheyAreNotRequired(self):
+        # Arrange — the same parameter key under a rule that is not a status-check rule, so the rule's
+        # type is all that separates the two.
+        rules = [{"type": "workflows", "parameters": {"required_status_checks": [
+                     {"context": "Deploy"}]}},
+                 {"type": "required_status_checks", "parameters": {"required_status_checks": [
+                     {"context": "Required checks (Unity)"}]}}]
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: rules))
+
+            # Act
+            required = settle.required_contexts(Path("."), "main")
+
+        # Assert
+        self.assertEqual(required, ["Required checks (Unity)"])
+
+    def test_Given_RulesFillingAWholePage_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the listing carries no total, so a full page is read as one that may have
+        # dropped a rule.
+        rules = [{"type": "pull_request", "parameters": {}}] * 100
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: rules))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.required_contexts, Path("."), "main")
+
+    # GREEN_ON_BASE(characterization): the base reads the same runs listing for the campaign.
+    # What it pins is that the one runs reading both rules share keeps its page size.
+    def test_Given_AHead_When_ItsRunsAreRead_Then_ThePathNamesItsShaAndAPageSize(self):
+        # Arrange
+        asked = []
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(
+                settle, "rest_json",
+                lambda path: (asked.append(path), {"total_count": 0, "workflow_runs": []})[1]))
+
+            # Act
+            settle.campaign_runs(Path("."), GREEN)
+
+        # Assert
+        self.assertEqual(asked, [f"repos/owner/name/actions/runs?head_sha={GREEN}&per_page=100"])
+
+    def test_Given_AJobsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the job that fell off the page could be the one still going.
+        truncated = {"total_count": 2, "jobs": [COMPLETED_JOBS[0]]}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: truncated))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.run_jobs, Path("."), [STUCK], 0)
+
+    # GREEN_ON_BASE(characterization): the base raises on a partial runs page for the campaign too.
+    # What it pins is that the one runs reading both rules share keeps doing so.
+    def test_Given_ARunsPageCarryingLessThanItsTotal_When_Read_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — the run that fell off the page could be the one still going.
+        truncated = {"total_count": 2, "workflow_runs": [GENERATORS_DONE]}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda _path: truncated))
+
+            # Act / Assert
+            self.assertRaises(RuntimeError, settle.campaign_runs, Path("."), GREEN)
+
+
+class ClosedPullRequestTests(unittest.TestCase):
+    """A pull request the listing named and that stopped being open before it was decided."""
+
+    def test_Given_AMergedPullRequestWhoseChecksPassed_When_ItsMergeIsDryRun_Then_ItIsRefusedByItsState(self):
+        # Arrange — every other reading is clean, so the state is all that is left to refuse on.
+        printed = io.StringIO()
+        with fabricated_readings({1157: fabricate(1157, state="merged")}):
+            with contextlib.redirect_stderr(printed), contextlib.redirect_stdout(io.StringIO()):
+                # Act
+                code = settle.merge(Path("."), 1157, None, dry_run=True)
+
+        # Assert
+        self.assertEqual((code, "it is merged, not open" in printed.getvalue()), (1, True))
+
+    def test_Given_APullRequestClosedAfterTheListing_When_TheWatcherPolls_Then_NothingIsSaidOrRecorded(self):
+        # Arrange
+        table = {1: fabricate(1, state="closed")}
+
+        # Act
+        outcome = poll(table)
+
+        # Assert
+        self.assertEqual((outcome.ready, outcome.output), (set(), ""))
+
+    def test_Given_APayloadOfAMergedPullRequest_When_Read_Then_ItsStateIsMerged(self):
+        # Arrange — GitHub reports a merged pull request as `closed`, with `merged` beside it.
+        payload = {"head": {"sha": GREEN, "ref": "topic", "repo": {"full_name": "o/v"}},
+                   "base": {"ref": "main", "repo": {"full_name": "o/v"}},
+                   "state": "closed", "merged": True}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "o/v"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda *_: payload))
+
+            # Act
+            read = settle.pull_request(Path("."), 1)
+
+        # Assert
+        self.assertEqual(getattr(read, "state", None), "merged")
 
 
 class HeartbeatDuringAPollTests(unittest.TestCase):
@@ -703,6 +1023,204 @@ class RetirementTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((set(answers), watched.code), ({True}, 0))
+
+
+@contextlib.contextmanager
+def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
+    """A head read over REST: its check runs, its workflow runs, and nothing else blocking it.
+
+    Patched at `rest_json`, so `checks` and `campaign_runs` both run.
+    """
+    state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
+                                  merge_state="clean", fork=False, labels=frozenset(labels),
+                                  state="open")
+    answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
+               "/status": NO_STATUSES,
+               "/actions/runs": {"total_count": len(workflow_runs), "workflow_runs": workflow_runs}}
+    with contextlib.ExitStack() as stack:
+        for name, answer in (
+            ("repository", lambda *_: "owner/name"),
+            ("pull_request", lambda *_: state),
+            ("head_sha", lambda *_: GREEN),
+            ("project_state", lambda _project, base: base_state(set(), base)),
+            ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
+        ):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        yield stack
+
+
+def check_run(name, conclusion, suite):
+    return {"name": name, "status": "completed", "conclusion": conclusion,
+            "check_suite": {"id": suite}}
+
+
+class CampaignMergeTests(unittest.TestCase):
+    """What a campaign on a head, or a label owing one, does to its merge."""
+
+    def test_Given_ALabelledHeadNoCampaignRanOn_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — every check passed, so the missing campaign is the only thing left to refuse on.
+        states = {1: fabricate(1, labels=(AUTOMERGE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [
+            "it carries the automerge label and no mutation.yml run has measured 0000000: a "
+            "hand-off dispatches one for a branch of this repository whose base holds "
+            "automerge.yml, and for any other the label comes off before a merge by hand"])
+
+    # GREEN_ON_BASE(characterization): a labelled head whose campaign passed merges on both sides.
+    # It is the side the refusal above must not take, which a rule ignoring the run would.
+    def test_Given_ALabelledHeadWhoseCampaignPassed_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ASkippedCampaignCheckOfAnotherWorkflow_When_TheMergeIsDecided_Then_ItIsNoCampaign(self):
+        # Arrange — the job test.yml carried before the campaign moved, skipped on a run of its own.
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Mutation campaign", "skipped", 7)]
+        runs = [campaign_run(40, "success", path=".github/workflows/test.yml", suite=7)]
+
+        # Act
+        with rest_readings(checks, runs):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual([reason.partition(":")[0] for reason in decided],
+                         ["it carries the automerge label and no mutation.yml run has measured "
+                          "aaaaaaa"])
+
+    def test_Given_ACancelledCampaignAndANewerOneThatPassed_When_Decided_Then_TheCancelledChecksAreNotRead(self):
+        # Arrange — the older campaign's aggregate failed on the cancel, in a suite of its own.
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Mutation campaign", "failure", 8),
+                  check_run("Mutation campaign (EditMode shard 0)", "cancelled", 8),
+                  check_run("Mutation campaign", "success", 9)]
+        runs = [campaign_run(2, "success", suite=9), campaign_run(1, "cancelled", suite=8)]
+
+        # Act
+        with rest_readings(checks, runs):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_APassedCampaignAndANewerOneCancelled_When_Decided_Then_ALabelledHeadIsRefused(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "success"),
+                                                            campaign_run(2, "cancelled")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
+                                   "again dispatches another"])
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignFailed_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — a campaign that ran has to have passed, whether or not one was owed.
+        states = {1: fabricate(1, runs=[campaign_run(1, "failure")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
+
+    def test_Given_AnUnlabelledHeadWhoseCampaignWasCancelled_When_Decided_Then_NothingBlocksIt(self):
+        # Arrange — a cancelled campaign measured nothing, and nothing owed one.
+        states = {1: fabricate(1, runs=[campaign_run(1, "cancelled")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert — the reading rides along, since a settle that never asks reports nothing as well.
+        self.assertEqual((decided, settle.campaign_state(states[1].runs, {}, 0)), ([], "cancelled"))
+
+    def test_Given_ALabelledHeadWhoseCampaignConcludedSkipped_When_Decided_Then_ItIsRefused(self):
+        # Arrange — `success` alone is a pass, and a skipped run measured nothing.
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "skipped")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 failed"])
+
+    # GREEN_ON_BASE(characterization): a labelled fork is refused for its repository alone on both sides.
+    # No campaign is dispatched onto it, so a reason saying one would be is not added beside it.
+    def test_Given_ALabelledForkWithNoCampaign_When_TheMergeIsDecided_Then_OnlyTheForkIsNamed(self):
+        # Arrange
+        states = {1: fabricate(1, fork=True, labels=(AUTOMERGE,))}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its head is on another repository: this settles branches on origin"])
+
+    def test_Given_ACampaignLeftQueuedWhoseJobsAllPassed_When_TheMergeIsDecided_Then_NothingBlocks(self):
+        # Arrange — labelled, so the campaign has to have passed, and GitHub still calls it queued.
+        run = campaign_run(1, None, status="queued")
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[run], jobs={run["id"]: COMPLETED_JOBS})}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_ACampaignLeftQueuedPastTheBound_When_TheMergeIsDecided_Then_ItReadsAsCancelled(self):
+        # Arrange — no job listed, so the bound is all that ends it; a labelled head then owes another.
+        run = dict(campaign_run(1, None, status="queued"), updated_at="2026-08-06T21:55:26Z")
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[run])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 was cancelled: adding the label "
+                                   "again dispatches another"])
+
+    def test_Given_ACampaignQueuedWithNoCheckYet_When_TheMergeIsDecided_Then_ItIsRefused(self):
+        # Arrange — a dispatched run carries no check until its first job starts.
+        states = {1: fabricate(1, runs=[campaign_run(1, None, status="queued")])}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 has not finished (run 9001: "
+                                   "`gh run cancel 9001` if it is stuck)"])
+
+    # GREEN_ON_BASE(characterization): the watcher prints every finished check on both sides.
+    # A loop waiting on the campaign reads this line, which a filter over the output would drop.
+    def test_Given_ACampaignThatPassed_When_TheWatcherPolls_Then_ItPrintsItsCheck(self):
+        # Arrange
+        results = PASSING + [{"name": "Mutation campaign", "bucket": "pass"}]
+
+        # Act
+        outcome = poll({1: fabricate(1, results=results)})
+
+        # Assert
+        self.assertIn("PR#1 0000000 Mutation campaign => pass", outcome.output)
 
 
 class ForkMergeTests(unittest.TestCase):
@@ -1056,22 +1574,27 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
+    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base merges on both sides.
+    # The branch changed only its arrangement: the readings it answers and the pull request's state.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
-                                      merge_state="clean", fork=False)
+                                      merge_state="clean", fork=False, labels=frozenset(),
+                                      state="open")
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
                 ("repository", lambda *_: "owner/name"),
                 ("pull_request", lambda *_: state),
                 ("checks", lambda *_: PASSING),
+                ("campaign_runs", lambda *_: []),
+                ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
-                stack.enter_context(mock.patch.object(settle, name, answer))
+                stack.enter_context(mock.patch.object(settle, name, answer, create=True))
 
             # Act
             decided = settle.blocking_reasons(Path("."), 1).reasons
@@ -1079,6 +1602,8 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    # GREEN_ON_BASE(characterization): the base keeps the one failing workflow as well.
+    # Its listing now answers the rules reading too, which the base does not take.
     def test_Given_OneRequiredWorkflowFailedOnTheBase_When_ItsStateIsRead_Then_ThatOneIsKept(self):
         # Arrange — a base other than main, so a reading that asks about main answers wrong here.
         payloads = {"test.yml": {"workflow_runs": [workflow_run(1, "success", GREEN)]},
@@ -1089,6 +1614,8 @@ class RedBaseMergeTests(unittest.TestCase):
         asked = []
 
         def listing(path):
+            if "/rules/branches/" in path:
+                return []
             asked.append(path)
             return payloads[path.split("/actions/workflows/")[1].split("/")[0]]
 
@@ -1116,7 +1643,8 @@ def project_readings(release_commit):
         for name, answer in (("gh_git", lambda *_: ""),
                              ("repository", lambda *_: "owner/name"),
                              ("worktree_branches", lambda *_: set()),
-                             ("rest_json", lambda _path: {"workflow_runs": []})):
+                             ("rest_json", lambda path: [] if "/rules/branches/" in path
+                              else {"workflow_runs": []})):
             stack.enter_context(mock.patch.object(settle, name, answer))
         stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
                                               lambda *_, **__: None))

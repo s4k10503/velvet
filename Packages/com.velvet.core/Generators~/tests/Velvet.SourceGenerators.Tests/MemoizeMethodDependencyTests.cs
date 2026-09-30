@@ -47,14 +47,53 @@ namespace MyApp
             // Arrange
             const string members = @"
         [global::Velvet.MemoizeMethod]
-        public partial global::Velvet.VNode Cell<T>(string label);
-        private global::Velvet.VNode Cell_Impl<T>(string label) => null;";
+        public static partial global::Velvet.VNode Cell<T>(string label);
+        private static global::Velvet.VNode Cell_Impl<T>(string label) => null;";
 
             // Act
-            var deps = DependenciesOf(members, @"Show(page.Cell<int>(""x"")) + ""|"" + Show(page.Cell<float>(""x""))");
+            var deps = DependenciesOf(members, @"Show(Page.Cell<int>(""x"")) + ""|"" + Show(Page.Cell<float>(""x""))");
 
             // Assert
             Assert.Equal("x,System.Int32|x,System.Single", deps);
+        }
+
+        [Fact]
+        public void Given_AnInstanceMethod_When_CalledOnTwoInstances_Then_EachInstanceIsADependency()
+        {
+            // Arrange
+            const string members = @"
+        public string Name = ""p"";
+        public override string ToString() => Name;
+        [global::Velvet.MemoizeMethod]
+        public partial global::Velvet.VNode Title(string text);
+        private global::Velvet.VNode Title_Impl(string text) => null;";
+
+            // Act
+            var deps = DependenciesOf(
+                members, @"Show(page.Title(""a"")) + ""|"" + Show(new Page { Name = ""q"" }.Title(""a""))");
+
+            // Assert
+            Assert.Equal("a,p|a,q", deps);
+        }
+
+        [Fact]
+        public void Given_AnInstanceMethodWithAStaticImpl_When_CalledOnTwoInstances_Then_TheInstanceIsNotADependency()
+        {
+            // Arrange
+            const string members = @"
+        public string Name = ""p"";
+        public override string ToString() => Name;
+        [global::Velvet.MemoizeMethod]
+        public partial global::Velvet.VNode Title(string text);
+        private static global::Velvet.VNode Title_Impl(string text) => null;
+        private global::Velvet.VNode Title_Impl(int unrelated) => null;";
+
+            // Act
+            var deps = DependenciesOf(
+                members, @"Show(page.Title(""a"")) + ""|"" + Show(new Page { Name = ""q"" }.Title(""a""))");
+
+            // Assert
+            Assert.Equal("a|a", deps);
         }
 
         [Fact]
@@ -63,11 +102,11 @@ namespace MyApp
             // Arrange
             const string members = @"
         [global::Velvet.MemoizeMethod]
-        public partial global::Velvet.VNode Row(string title, params string[] cells);
-        private global::Velvet.VNode Row_Impl(string title, string[] cells) => null;";
+        public static partial global::Velvet.VNode Row(string title, params string[] cells);
+        private static global::Velvet.VNode Row_Impl(string title, string[] cells) => null;";
 
             // Act
-            var deps = DependenciesOf(members, @"Show(page.Row(""t"", ""a"", ""b""))");
+            var deps = DependenciesOf(members, @"Show(Page.Row(""t"", ""a"", ""b""))");
 
             // Assert
             Assert.Equal("t,2,a,b", deps);
@@ -79,12 +118,12 @@ namespace MyApp
             // Arrange
             const string members = @"
         [global::Velvet.MemoizeMethod]
-        public partial global::Velvet.VNode Nums(params int[] xs);
-        private global::Velvet.VNode Nums_Impl(int[] xs) => null;";
+        public static partial global::Velvet.VNode Nums(params int[] xs);
+        private static global::Velvet.VNode Nums_Impl(int[] xs) => null;";
 
             // Act
             var deps = DependenciesOf(
-                members, @"Show(page.Nums(1, 2)) + ""|"" + Show(page.Nums()) + ""|"" + Show(page.Nums(null))");
+                members, @"Show(Page.Nums(1, 2)) + ""|"" + Show(Page.Nums()) + ""|"" + Show(Page.Nums(null))");
 
             // Assert
             Assert.Equal("2,1,2|0|null", deps);
@@ -96,11 +135,11 @@ namespace MyApp
             // Arrange
             const string members = @"
         [global::Velvet.MemoizeMethod]
-        public partial global::Velvet.VNode Tags(string[] tags);
-        private global::Velvet.VNode Tags_Impl(string[] tags) => null;";
+        public static partial global::Velvet.VNode Tags(string[] tags);
+        private static global::Velvet.VNode Tags_Impl(string[] tags) => null;";
 
             // Act
-            var deps = DependenciesOf(members, @"Show(page.Tags(null))");
+            var deps = DependenciesOf(members, @"Show(Page.Tags(null))");
 
             // Assert
             Assert.Equal("null", deps);
