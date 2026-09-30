@@ -19,6 +19,8 @@ namespace Velvet.Tests
         [MemoizeMethod]
         public partial VNode BuildArity6(int a, int b, int c, int d, int e, int f);
 
+        // The counters record how often each _Impl runs and take no part in the node it builds.
+#pragma warning disable VEL012
         public VNode BuildArity1_Impl(string title)
         {
             Arity1ImplCallCount++;
@@ -39,5 +41,6 @@ namespace Velvet.Tests
             Arity6ImplCallCount++;
             return V.Label(text: $"{a}|{b}|{c}|{d}|{e}|{f}");
         }
+#pragma warning restore VEL012
     }
 }

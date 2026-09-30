@@ -17,6 +17,10 @@ namespace Velvet
         // ReconcilerContext.DrainRefAttaches's own.
         void DrainRefAttachesForController();
 
+        // A range rendered outside a reconcile pass has no enclosing entry to end with
+        // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
+        void CommitStrandedLayoutWorkForController();
+
         // Patches an item element previously returned by CreateElementForController or by this
         // method. element may be a structural WRAPPER (shadow-* / clip-path-* item roots —
         // CreateElement returns the wrapper): the implementation resolves the real inner before

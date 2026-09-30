@@ -18,6 +18,8 @@ namespace Velvet.Tests
         static async VelvetTask VelvetTaskYieldAwait() => await VelvetTask.Yield();
 #endif
 
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // This change reads it over three windows.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
@@ -26,12 +28,14 @@ namespace Velvet.Tests
             canary();
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(canary);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmSyncAwaitSteadyState_When_Awaited_Then_SteadyPathAllocatesNoMoreThanAsyncStateMachine()
         {
@@ -42,7 +46,7 @@ namespace Velvet.Tests
             }
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(
+            var blocks = GCAllocationProbe.MedianBlocksDuring(
                 () => VelvetTaskSyncAwait().GetAwaiter().GetResult());
 
             // Assert — the async lambda delegate may retain one GC.Alloc block from its state machine.
@@ -50,6 +54,8 @@ namespace Velvet.Tests
         }
 
 #if UNITY_EDITOR
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmYieldAwaitSteadyState_When_YieldDrainedAndAwaited_Then_SteadyPathAllocatesNoMoreThanMeasuredBlocks()
         {
@@ -62,7 +68,7 @@ namespace Velvet.Tests
             }
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(() =>
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() =>
             {
                 var task = VelvetTaskYieldAwait();
                 DrainEditorUpdateForTest();
