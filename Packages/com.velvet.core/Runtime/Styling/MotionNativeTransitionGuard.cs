@@ -719,21 +719,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Narrows <paramref name="owner"/> to the longhands of <paramref name="drivenSlots"/> alone, for one that has
-        /// stopped writing some of what it narrowed; a no-op for an owner that narrows nothing.
-        /// </summary>
-        internal static void NarrowTo(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
-        {
-            if (!s_suspensions.TryGetValue(element, out var suspension) || !suspension.Narrowers.ContainsKey(owner)) return;
-            (suspension.Narrowers[owner], suspension.Stale) = (LonghandsOf(drivenSlots), true);
-            WriteNarrowed(element, suspension);
-        }
-
-        /// <summary>
         /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
         /// each pass a layoutId projection draws the element
-        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming)
-        /// and each step it runs its rotate and radii on past its landing.
+        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming).
         /// </summary>
         internal static void Refresh(VisualElement element)
         {

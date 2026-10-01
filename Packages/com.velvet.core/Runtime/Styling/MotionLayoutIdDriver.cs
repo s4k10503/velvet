@@ -229,7 +229,6 @@ namespace Velvet
 
         private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
-            LayoutIdLook.Settle(element);
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
@@ -575,7 +574,8 @@ namespace Velvet
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             WriteOpacity(element, projection, null);
             LayoutIdPicking.Restore(projection);
-            LayoutIdLook.End(element, projection);
+            LayoutIdLook.Restore(element, projection);
+            MotionNativeTransitionGuard.Release(element, projection);
         }
 
         private static Vector3 Pixels(Translate translate, Rect layout) => new(
@@ -624,7 +624,6 @@ namespace Velvet
             if (ctx.LayoutIdProjections.Remove(element, out var projection)) LayoutIdPicking.Restore(projection);
             LayoutIdPicking.Release(element, ctx);
             MotionOpacity.Forget(element);
-            LayoutIdLook.Forget(element);
             CancelPendingSettle(element, ctx);
         }
 

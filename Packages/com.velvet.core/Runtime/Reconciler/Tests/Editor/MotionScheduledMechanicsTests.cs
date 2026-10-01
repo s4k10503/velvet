@@ -3508,33 +3508,6 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Undefined, StyleKeyword.Undefined)));
         }
 
-        // GREEN_ON_BASE(characterization): the base hands the transitions back as the move lands.
-        // Running the rotate on past the landing must take a change of the classes as it comes.
-        [Test]
-        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsClassesTurnItsTransitionsOff_Then_ItsBackgroundChangesAtOnce()
-        {
-            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
-            // second and black; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the
-            // move lands while "b"'s turn runs on.
-            VelvetStyleUtilities.AttachTo(Root);
-            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear bg-black", "transition-all duration-1000 ease-linear bg-black");
-            using var mounted = MountBOverA();
-            for (var i = 0; i < 36; i++) Tick();
-            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
-            RenderShared(mounted);
-            for (var i = 0; i < 30; i++) Tick();
-
-            // Act — both stop transitioning, keeping their duration, and turn white.
-            (s_bClasses, s_controlClasses) = ("transition-none duration-1000 ease-linear bg-white rotate-90", "transition-none duration-1000 ease-linear bg-white rotate-90");
-            RenderShared(mounted);
-            for (var i = 0; i < 3; i++) Tick();
-
-            // Assert — "b" white with the control.
-            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
-            var gap = Mathf.Abs(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r - control);
-            Assert.That((gap < 0.05f, control), Is.EqualTo((true, 1f)));
-        }
-
         [Test]
         public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
         {
@@ -4132,52 +4105,6 @@ namespace Velvet.Tests
             Assert.That((gap < 0.5f, control > 6f && control < 14f), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base hands the element's transitions back as the move lands, before the
-        // translate changes. Running the rotate on past the landing must not keep the translate from transitioning.
-        [Test]
-        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions()
-        {
-            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
-            // second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the move lands.
-            VelvetStyleUtilities.AttachTo(Root);
-            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
-            using var mounted = MountBOverA();
-            for (var i = 0; i < 36; i++) Tick();
-            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
-            RenderShared(mounted);
-            for (var i = 0; i < 30; i++) Tick();
-
-            // Act — both move 40px right by a class while "b"'s turn runs on; some 0.2 s on.
-            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-x-[40px]", s_controlClasses + " translate-x-[40px]");
-            RenderShared(mounted);
-            for (var i = 0; i < 12; i++) Tick();
-
-            // Assert — "b" where the control is, part way along its second.
-            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
-            var gap = Mathf.Abs(Root.Q<VisualElement>("b").resolvedStyle.translate.x - control);
-            Assert.That((gap < 1f, control > 2f && control < 20f), Is.EqualTo((true, true)));
-        }
-
-        [Test]
-        public void Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt()
-        {
-            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
-            // second; "b" takes the id from an unrotated "a" on a one-second tween, and both turn 0.6 s in.
-            VelvetStyleUtilities.AttachTo(Root);
-            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
-            using var mounted = MountBOverA();
-            for (var i = 0; i < 36; i++) Tick();
-            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
-            RenderShared(mounted);
-
-            // Act — past the landing; some 0.6 s into the turn.
-            for (var i = 0; i < 35; i++) Tick();
-
-            // Assert — where the control stands, rather than a fresh second begun from where the move left it.
-            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
-            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
-            Assert.That((Mathf.Abs(b - control) < 1.5f, control > 30f && control < 80f), Is.EqualTo((true, true)));
-        }
 
         [Test]
         public void Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened()
