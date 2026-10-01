@@ -366,8 +366,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
   relegate hands it on, and the child is removed once both its exit has played and that lead has landed;
-  a holder whose key comes back mid-exit takes the lead again. A holder that takes the lead in any of
-  these ways tweens from the box of the lead before it, whether or not its own layout changed. A Motion
+  a holder whose key comes back mid-exit takes the lead again. A holder that takes the lead from another, in
+  any of these ways or by taking the id, tweens from the box of the lead before it whether or not that box
+  differs from its own. A Motion
   whose `layoutId` becomes null stops holding the id and is shown.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch

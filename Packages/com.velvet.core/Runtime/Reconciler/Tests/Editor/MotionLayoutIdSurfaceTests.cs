@@ -142,39 +142,5 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_mounted.Root.Reconciler.Context.LayoutIdFrames, Is.Empty);
         }
-
-        private static StateUpdater<bool> s_setMoved;
-
-        // One layoutId Motion, moved from the second parent to the first at the same box.
-        [Component]
-        private static VNode AcrossParentsBoxRender()
-        {
-            var (moved, setMoved) = Hooks.UseState(false);
-            s_setMoved = setMoved;
-            VNode Box() => V.Motion(name: "shared", layoutId: "shared-box", transition: s_spring,
-                className: "left-[200px] top-[0px] w-[100px] h-[100px]");
-            return V.Div(children: new VNode[]
-            {
-                V.Div(key: "first", children: moved ? new[] { Box() } : Array.Empty<VNode>()),
-                V.Div(key: "second", children: moved ? Array.Empty<VNode>() : new[] { Box() }),
-            });
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_NoProjectionRunsOnTheReplacement()
-        {
-            // Arrange
-            _mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
-            Tick();
-
-            // Act
-            s_setMoved.Invoke(true);
-            _mounted.FlushStateForTest();
-            Tick();
-
-            // Assert
-            var replacement = Root.Q<VisualElement>("shared");
-            Assert.That(_mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(replacement), Is.False);
-        }
     }
 }

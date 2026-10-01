@@ -162,8 +162,9 @@ namespace Velvet
         }
 
         // UI Toolkit reports how long it had run a transition it cancels, which the first write here does to one it
-        // was running for the element's opacity. The carry that takes that transition over runs what was left of it
-        // rather than all of it again.
+        // was running for the element's opacity. The carry that takes that transition over runs what was left of its
+        // duration rather than all of it again, and none of its delay
+        // (Given_AMemberPartWayThroughADelayedFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave).
         private static readonly EventCallback<TransitionCancelEvent> s_onTransitionCancel = OnTransitionCancel;
 
         private static void OnTransitionCancel(TransitionCancelEvent evt)
@@ -172,6 +173,7 @@ namespace Velvet
             if (!evt.AffectsProperty(s_opacityName)) return;
             if (!s_drawing.TryGetValue(element, out var drawing)) return;
             element.UnregisterCallback(s_onTransitionCancel);
+            drawing.DelaySec = 0f;
             drawing.DurationSec = Mathf.Max(0f, drawing.DurationSec - (float)evt.elapsedTime);
         }
 

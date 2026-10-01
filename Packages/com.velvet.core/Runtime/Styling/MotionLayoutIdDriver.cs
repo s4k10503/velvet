@@ -192,13 +192,12 @@ namespace Velvet
             var from = new Rect(drawnFrom.position * readScale, drawnFrom.size * readScale);
             // A lead that took its box from another holder draws the others over its box while it moves. It
             // crossfades with them where more than one holds the id and no ancestor is crossfading already
-            // (setAnimationOrigin's shouldCrossfadeOpacity), and animates that and a promotion however little
-            // they move.
+            // (setAnimationOrigin's shouldCrossfadeOpacity), and animates however little it moves, as Framer starts
+            // a layout animation for a node resuming from another (resumeFrom) whether or not its layout changed.
             var layoutId = ctx.ElementToLayoutId[element];
             var shared = !pending.ReadOffItself;
             var crossfades = shared && ctx.LayoutIdMembers[layoutId].Count > 1 && !Crossfading(parent, ctx);
-            var moves = pending.Timing.Animates() && (pending.Resumes || !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty);
-            if (crossfades) moves = pending.Timing.Animates();
+            var moves = pending.Timing.Animates() && (shared || !ComputeDelta(from, layout, TransformOrigin(element)).IsEmpty);
 
             ctx.LayoutIdProjections.TryGetValue(element, out var projection);
             if (!moves && projection == null && IsUnit(parentScale)) return;
@@ -206,7 +205,7 @@ namespace Velvet
             Share(projection, shared, crossfades, moves, fromBox.Look);
             projection.From = from;
             projection.Moving = moves;
-            projection.Progress = pending.Timing.Start(EdgeTravel(from, layout));
+            projection.Progress = pending.Timing.Start(EdgeTravel(from, layout), shared);
             SyncFollows(layoutId, ctx);
             Project(host, ctx);
             EnsureFrame(host, ctx);
@@ -361,9 +360,8 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): without a tween the projection is not moving, and a flag set without one is
             // read only with one moving, or by the frame that clears it and hides the other members.
             projection.Shared = (shared || carries) && moves;
-            // MUTANT_SURVIVES(equivalent): without a tween the projection is not moving, and a flag set without one is
-            // read only with one moving until the next start sets it again.
-            projection.Crossfade = (crossfades || carries) && moves;
+            // Read only while the projection moves, which only a start with a tween sets.
+            projection.Crossfade = crossfades || carries;
         }
 
         private static bool IsCrossfading(LayoutIdProjection? projection) => projection is { Crossfade: true, Moving: true };
@@ -699,7 +697,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent): Start's own guard ends a member not laid out in a panel, as this does.
                 if (element.panel != null && IsFiniteRect(element.layout))
                 {
-                    Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]) { Resumes = true }, ctx);
+                    Start(element, new LayoutIdPendingSettle(box, element.layout, ctx.LayoutIdTimings[element]), ctx);
                     // Its patch earlier in this render may have moved it, and the layout that shows the move comes after
                     // the next frame's pass
                     // (Given_TwoLiveLayoutIdMotionsAtOneBox_When_TheLeadLeavesAndTheOtherMovesInOneRender_Then_TheOtherTweens).
@@ -922,8 +920,6 @@ namespace Velvet
         // From was read off this same element as it was drawn, rather than off another holder of the id or a
         // fallback box.
         public bool ReadOffItself { get; init; }
-        // A promotion, which tweens however little the member moves.
-        public bool Resumes { get; init; }
         public Rect PatchedLayout { get; }
         public LayoutIdTiming Timing { get; }
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
@@ -977,8 +973,8 @@ namespace Velvet
         // What the holder this lead took its box from looked like, while it moves from that box.
         public LayoutIdLook? FromLook;
 
-        // Each element of a member's subtree whose picking it turned off while drawn over the lead, with its own mode.
-        public Dictionary<VisualElement, PickingMode>? Picking;
+        // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
+        public HashSet<VisualElement>? Picking;
         public bool WritesOpacity;
     }
 
@@ -1023,8 +1019,10 @@ namespace Velvet
                     : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
         }
 
-        // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold.
-        public LayoutIdProgress Start(float travel) => new(this, travel);
+        // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold. fades: the progress
+        // may draw an opacity too, so its rest is held within an opacity spring's however little the edges move
+        // (Given_TwoHoldersAtOneBoxOnASoftSpring_When_TheSecondHasTakenTheIdForTwoFrames_Then_ItIsStillFadingIn).
+        public LayoutIdProgress Start(float travel, bool fades) => new(this, travel, fades);
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
@@ -1040,10 +1038,11 @@ namespace Velvet
         private SpringIntegrator _spring = new(1f);
         private float _elapsedSec;
 
-        public LayoutIdProgress(LayoutIdTiming timing, float travel)
+        public LayoutIdProgress(LayoutIdTiming timing, float travel, bool fades)
         {
             _timing = timing;
             _rest = MotionLayoutIdDriver.RestPixels / Mathf.Max(travel, MotionLayoutIdDriver.RestPixels);
+            if (fades) _rest = Mathf.Min(_rest, MotionSpringDriver.NormalizedRestDelta);
         }
 
         public float Value { get; private set; } = 1f;
