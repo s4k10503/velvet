@@ -5846,10 +5846,12 @@ class CarriedWorkflowTests(unittest.TestCase):
         # where the download leaves them, so anything the step writes into the tree is a path it reads.
         text = self.WORKFLOW.read_text()
         job = text.partition("\n  mutation-plan:")[2].partition("\n  library:")[0]
-        step = next(step for step in job.split("\n      - ") if "--carry-to" in step)
-        script = textwrap.dedent(re.search(r"run: \|\n((?:          .*\n|\n)+)", step + "\n").group(1))
+        step = next((step for step in job.split("\n      - ") if "--carry-to" in step), "")
+        found = re.search(r"run: \|\n((?:          .*\n|\n)+)", step + "\n")
+        script = textwrap.dedent(found.group(1)) if found else "false"
         harness = {"scripts/test_quality/" + name: (REPO_ROOT / "scripts/test_quality" / name).read_text()
-                   for name in ("mutation_check.py", "campaign_carry.py")}
+                   for name in ("mutation_check.py", "campaign_carry.py")
+                   if (REPO_ROOT / "scripts/test_quality" / name).exists()}
         campaign = CarryCampaign(harness)
         campaign.record("previous/Mutation EditMode shard 0")
         campaign.push({TESTS + "/ProbeTests.cs": EDITED})
