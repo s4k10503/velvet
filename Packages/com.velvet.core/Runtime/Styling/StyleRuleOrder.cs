@@ -125,62 +125,6 @@ namespace Velvet
             return ordinals;
         }
 
-        // compare() of Tailwind's utils/compare.ts: character by character, a run of digits against a run of
-        // digits by number, and the shorter string first when one is a prefix of the other.
-        internal static int NaturalCompare(string a, string z)
-        {
-            var minLength = Math.Min(a.Length, z.Length);
-            for (var i = 0; i < minLength; i++)
-            {
-                if (IsDigit(a[i]) && IsDigit(z[i]))
-                {
-                    var aEnd = RunEnd(a, i);
-                    var zEnd = RunEnd(z, i);
-                    var aRun = a.Substring(i, aEnd - i);
-                    var zRun = z.Substring(i, zEnd - i);
-                    var byNumber = CompareDigitRuns(aRun, zRun);
-                    if (byNumber != 0)
-                    {
-                        return byNumber;
-                    }
-                    var byText = string.CompareOrdinal(aRun, zRun);
-                    if (byText != 0)
-                    {
-                        return byText;
-                    }
-                    continue;
-                }
-                if (a[i] != z[i])
-                {
-                    return a[i] - z[i];
-                }
-            }
-            return a.Length - z.Length;
-        }
-
-        private static bool IsDigit(char c) => c >= '0' && c <= '9';
-
-        // Two digit runs by the numbers they spell, of any length: past the leading zeros, the longer run is the
-        // larger number, and runs of one length compare digit by digit.
-        private static int CompareDigitRuns(string a, string z)
-        {
-            var aDigits = a.TrimStart('0');
-            var zDigits = z.TrimStart('0');
-            return aDigits.Length != zDigits.Length
-                ? aDigits.Length.CompareTo(zDigits.Length)
-                : string.CompareOrdinal(aDigits, zDigits);
-        }
-
-        private static int RunEnd(string s, int start)
-        {
-            var end = start + 1;
-            while (end < s.Length && IsDigit(s[end]))
-            {
-                end++;
-            }
-            return end;
-        }
-
         private readonly struct SortKey : IComparable<SortKey>
         {
             private readonly List<(long Rank, string Value)> _values;
@@ -232,7 +176,7 @@ namespace Velvet
                     return byProperty;
                 }
                 var byCount = other._count.CompareTo(_count);
-                return byCount != 0 ? byCount : NaturalCompare(_candidate, other._candidate);
+                return byCount != 0 ? byCount : StyleCandidateOrder.Compare(_candidate, other._candidate);
             }
 
             private static int CompareValues(List<(long Rank, string Value)> a, List<(long Rank, string Value)> z)
