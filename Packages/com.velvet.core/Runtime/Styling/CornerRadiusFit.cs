@@ -252,7 +252,9 @@ namespace Velvet
                 var foreign = slot.keyword != StyleKeyword.Null
                     && (slot.keyword != StyleKeyword.Undefined || slot.value != state.Written[i]);
                 state.Foreign[i] = foreign;
-                if (foreign)
+                // A slot found empty no longer holds what this wrote, as when a layoutId projection hands back the slot it
+                // held over it (Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius).
+                if (foreign || slot.keyword == StyleKeyword.Null)
                 {
                     state.Written[i] = null;
                 }

@@ -678,6 +678,17 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Narrows <paramref name="owner"/> to the longhands of <paramref name="drivenSlots"/> alone, for one that has
+        /// stopped writing some of what it narrowed; a no-op for an owner that narrows nothing.
+        /// </summary>
+        internal static void NarrowTo(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension) || !suspension.Narrowers.ContainsKey(owner)) return;
+            (suspension.Narrowers[owner], suspension.Stale) = (LonghandsOf(drivenSlots), true);
+            WriteNarrowed(element, suspension);
+        }
+
+        /// <summary>
         /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
         /// each pass a layoutId projection draws the element
         /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming).
@@ -688,8 +699,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Whether a driver writes the property frame by frame, suspended or not: either the element's transitions do
-        /// not cover it or the driver has taken it out of a variant tween's list, so UI Toolkit does not transition it.
+        /// Whether a driver writes the property frame by frame. Where the element's transitions cover the property the
+        /// driver suspends them or takes it out of a variant tween's list, so UI Toolkit transitions none of its writes.
         /// </summary>
         internal static bool Drives(VisualElement element, string property)
         {

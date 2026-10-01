@@ -1002,6 +1002,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnArbitrarilyRoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItLandsAtItsOwnRadius()
+        {
+            // Arrange — rounded-[20px], which no rule declares, some way into doubling in place, with a radius written over
+            // a corner.
+            s_resizeOrigin = "rounded-[20px]";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var element = Root.Q<VisualElement>("shared");
+            element.style.borderTopLeftRadius = 30f;
+            Tick();
+
+            // Act — the written radius cleared, and the move landed.
+            element.style.borderTopLeftRadius = StyleKeyword.Null;
+            AdvancePast(3f);
+
+            // Assert — the corner held at its own twenty, as the other corners are.
+            var corner = element.style.borderTopLeftRadius;
+            Assert.That((corner.keyword, corner.value.value), Is.EqualTo((StyleKeyword.Undefined, 20f)));
+        }
+
+        [Test]
         public void Given_ARoundedLayoutIdMotionMidTween_When_ItsRadiusIsWrittenInitial_Then_ItIsDrawnSquare()
         {
             // Arrange — the bundled sheet; rounded-lg, some way into doubling in place.
@@ -3359,8 +3383,8 @@ namespace Velvet.Tests
             return (Mathf.Abs(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r - control), control);
         }
 
-        // GREEN_ON_BASE(characterization): the base never writes the duration, delay or curve slots, so they are the
-        // element's own after a move. A narrowing that began under a pulse's suspension must leave them so.
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration, delay or curve slots, so
+        // they are the element's own after a move. A narrowing that began under a pulse's suspension must leave them so.
         [Test]
         public void Given_APulsingMotionWhoseMoveLands_When_ThePulseEndsAndItsBackgroundChanges_Then_TheBackgroundTransitions()
         {
@@ -3371,8 +3395,9 @@ namespace Velvet.Tests
             Assert.That((gap < 0.05f, control > 0.15f && control < 0.5f), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base never writes the duration, delay or curve slots, so they are the
-        // element's own after a move. A narrowing that began under a spring play's suspension must leave them so.
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration, delay or curve slots, so
+        // they are the element's own after a move. A narrowing that began under a spring play's suspension must leave
+        // them so.
         [Test]
         public void Given_AMotionWhoseSpringPoseSwapIsLiveAsItsMoveStarts_When_BothHaveEndedAndItsBackgroundChanges_Then_TheBackgroundTransitions()
         {
@@ -3428,6 +3453,32 @@ namespace Velvet.Tests
             Assert.That((gap < 0.05f, control > 0.15f && control < 0.5f), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base's hiding suspends every transition until it is handed back. A narrowing
+        // must take the slot back from a pulse that ends meanwhile.
+        [Test]
+        public void Given_AHiddenMemberWhosePulseEnded_When_TheLeadLeaves_Then_ItIsShownAtOnce()
+        {
+            // Arrange — the bundled sheet; "a", transitioning everything over a second, hidden as "b" takes its id without
+            // a tween, and pulsing for a few frames while hidden.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bTransition, s_sharedClasses) = (StyleTransitionConfig.None, "");
+            s_aClasses = "transition-all duration-1000 ease-linear";
+            using var mounted = MountBOverA();
+            s_aClasses = "transition-all duration-1000 ease-linear animate-pulse";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aClasses = "transition-all duration-1000 ease-linear";
+            RenderShared(mounted);
+
+            // Act
+            s_bMounted = false;
+            RenderShared(mounted);
+
+            // Assert — shown with its visibility still taken out of its transitions, which would hold it hidden for half
+            // of its second.
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Visible));
+        }
+
         [Test]
         public void Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming()
         {
@@ -3453,6 +3504,8 @@ namespace Velvet.Tests
             Assert.That((gap < 0.05f, control > 0.3f && control < 0.7f), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base suspends every transition for the move, so the background lands at
+        // once. A narrowing must take the classes turning transitions off.
         [Test]
         public void Given_ANarrowedMotionMidMove_When_ItsClassesTurnItsTransitionsOffAndItsBackgroundChanges_Then_TheBackgroundLandsAtOnce()
         {
@@ -3474,6 +3527,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r, Is.EqualTo(1f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base suspends every transition for the move, so the opacity lands at once.
+        // A narrowing must take the classes' new list, which leaves opacity out.
+        [Test]
+        public void Given_ANarrowedMotionMidMove_When_ItsClassesTakeOpacityOutOfItsTransitionsAndChangeIt_Then_ItsOpacityLandsAtOnce()
+        {
+            // Arrange — the bundled sheet; a three-second move narrowing "a"'s transitions of everything over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            s_aClasses = "transition-all duration-1000 ease-linear";
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — its classes transition colours alone, and halve its opacity.
+            s_aClasses = "transition-colors duration-1000 ease-linear opacity-50";
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.opacity, Is.EqualTo(0.5f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so an enter's stays. A
+        // narrowing that lets go mid-enter must not write over it.
+        [Test]
+        public void Given_ALayoutIdMotionWhoseMoveLandsBeforeItsEnterTweenEnds_When_TheMoveLands_Then_TheEnterKeepsItsTiming()
+        {
+            // Arrange — the bundled sheet; "entering" fading in over a second, and moving 100px right on a fifth of a
+            // second's tween a few frames into the enter.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_enterMounted, s_enterLeft) = (false, 0);
+            s_enterTransition = new StyleTransitionConfig
+            {
+                DurationSec = 1f, EnterFromClass = "opacity-0", EnterToClass = "opacity-100",
+                Layout = new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear },
+            };
+            using var mounted = V.Mount(Root, V.Component(EnteringHolderRender, key: "root"));
+            Tick();
+            s_enterMounted = true;
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 3; i++) Tick();
+            s_enterLeft = 100;
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act — past the move, half way through the enter.
+            for (var i = 0; i < 25; i++) Tick();
+
+            // Assert — the enter's second still inline.
+            var durations = Root.Q<VisualElement>("entering").style.transitionDuration.value;
+            Assert.That(durations != null && durations.Count > 0 && Mathf.Approximately(durations[0].value, 1000f), Is.True);
         }
 
         private static StyleTransitionConfig s_enterTransition;
@@ -3499,8 +3609,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base never writes the duration, delay or curve slots, so nothing is left
-        // of the enter's once it ends. A narrowing that began under the enter must not hand the enter's back.
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration, delay or curve slots, so
+        // nothing is left of the enter's once it ends. A narrowing that began under the enter must not hand the enter's
+        // back.
         [Test]
         public void Given_ALayoutIdMotionWhoseEnterTweenEndsBeforeItsMove_When_TheMoveLands_Then_NoTimingIsLeftInline()
         {
@@ -3570,10 +3681,10 @@ namespace Velvet.Tests
             RenderShared(mounted);
             for (var i = 0; i < 5; i++) Tick();
 
-            // Act — "a" starts spinning; a few frames on.
+            // Act — "a" starts spinning; a third of a second on.
             s_aClasses = "animate-spin";
             RenderShared(mounted);
-            for (var i = 0; i < 4; i++) Tick();
+            for (var i = 0; i < 20; i++) Tick();
 
             // Assert — drawn at the mix from "b"'s rotate to the spin's, which writes "a"'s own rotate.
             var a = Root.Q<VisualElement>("a");
@@ -3697,6 +3808,30 @@ namespace Velvet.Tests
 
             // Assert — within half a pixel of the control, which is half way round.
             Assert.That((gap < 0.5f, control > 6f && control < 14f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the move lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both move 40px right by a class while "b"'s turn runs on; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-x-[40px]", s_controlClasses + " translate-x-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "b" where the control is, part way along its second.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
+            var gap = Mathf.Abs(Root.Q<VisualElement>("b").resolvedStyle.translate.x - control);
+            Assert.That((gap < 1f, control > 2f && control < 20f), Is.EqualTo((true, true)));
         }
 
         [Test]

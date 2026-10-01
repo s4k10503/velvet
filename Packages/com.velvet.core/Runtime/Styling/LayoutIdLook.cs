@@ -288,6 +288,11 @@ namespace Velvet
                 Hand(element, projection);
                 return;
             }
+            // The tail writes the rotate and radii alone, so the translate and scale the projection wrote transition again
+            // (Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions).
+            MotionNativeTransitionGuard.NarrowTo(element, projection,
+                (projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None)
+                | (projection.WritesRadii ? MotionTransitionSlots.Radius : MotionTransitionSlots.None));
             var item = element.schedule.Execute(state => StepTail(element, projection, state.deltaTime / 1000f)).Every(StyleAnimateDriver.TickMs);
             s_tails.AddOrUpdate(element, new Tail(projection, item));
         }
