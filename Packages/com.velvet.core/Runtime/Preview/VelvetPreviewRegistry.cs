@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -21,6 +22,8 @@ namespace Velvet
         /// <exception cref="InvalidOperationException">Two stories share a <c>Group/Name</c> id.</exception>
         public static List<VelvetPreviewStory> DiscoverStories() =>
             s_cachedStories ??= DiscoverStoriesIn(NonTestVelvetAssemblies());
+
+        internal static void InvalidateDiscovery() => s_cachedStories = null;
 
         /// <summary>
         /// Discovers valid stories from <paramref name="assemblies"/>. Invalid discovered signatures are skipped
@@ -54,25 +57,23 @@ namespace Velvet
 
         /// <summary>
         /// Runs every valid <c>[VelvetPreviewSetup]</c> environment <paramref name="assembly"/> declares,
-        /// ordered by declaring type then method name. Returns one handle that tears them down in reverse
-        /// order, or <c>null</c> when none supplied a teardown.
+        /// ordered by declaring type then method name, and takes the <see cref="VelvetStyleHints.PreviewStyleSheet"/>
+        /// each one publishes as it returns. Returns <c>null</c> for a <c>null</c> assembly.
         /// </summary>
-        public static IDisposable? RunSetupFor(Assembly? assembly) => RunSetupsFor(assembly, afterEach: null);
-
-        // afterEach runs once per setup, straight after it, so a host can take a hint each setup publishes
-        // before the next setup overwrites it.
-        internal static IDisposable? RunSetupsFor(Assembly? assembly, Action? afterEach)
+        public static VelvetPreviewEnvironment? RunSetupFor(Assembly? assembly)
         {
             if (assembly == null) return null;
             var teardowns = new List<IDisposable>();
+            var styleSheets = new List<StyleSheet>();
             foreach (var setup in ResolveSetups(assembly))
             {
                 var teardown = Invoke(setup);
                 if (teardown != null) teardowns.Add(teardown);
-                afterEach?.Invoke();
+                var sheet = VelvetStyleHints.Take();
+                if (sheet != null) styleSheets.Add(sheet);
             }
 
-            return teardowns.Count == 0 ? null : new StackedTeardown(teardowns);
+            return new VelvetPreviewEnvironment(teardowns, styleSheets);
         }
 
         private static List<MethodInfo> ResolveSetups(Assembly assembly)
@@ -229,7 +230,8 @@ namespace Velvet
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
-                Debug.LogError($"[VelvetPreview] preview setup '{Describe(setup)}' threw: {ex.InnerException}");
+                Debug.LogError($"[VelvetPreview] preview setup '{Describe(setup)}' threw; the exception follows.");
+                Debug.LogException(ex.InnerException);
                 return null;
             }
 
@@ -282,29 +284,6 @@ namespace Velvet
 
         private static string Describe(MethodInfo method) =>
             (method.DeclaringType?.FullName ?? "?") + "." + method.Name;
-
-        private sealed class StackedTeardown : IDisposable
-        {
-            private readonly List<IDisposable> _teardowns;
-
-            public StackedTeardown(List<IDisposable> teardowns) => _teardowns = teardowns;
-
-            // One teardown throwing must not strand the environments set up before it.
-            public void Dispose()
-            {
-                for (var i = _teardowns.Count - 1; i >= 0; i--)
-                {
-                    try
-                    {
-                        _teardowns[i].Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogException(ex);
-                    }
-                }
-            }
-        }
 
         private sealed class ActionDisposable : IDisposable
         {

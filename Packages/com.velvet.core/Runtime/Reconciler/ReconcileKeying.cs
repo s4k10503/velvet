@@ -58,7 +58,7 @@ namespace Velvet
         // map. On a duplicate key the later writer wins (the new-side lookup only ever resolves to the
         // last entry): the displaced earlier index is recorded as an orphan so the removal pass cleans
         // it up — it is not covered by the usedKeys removal test — and a warning is logged. Shared by
-        // all three keyed-diff map-build sites (synchronous keyed, time-sliced Pass2BuildMap, general).
+        // both flat keyed-diff map-build sites (synchronous keyed, time-sliced Pass2BuildMap).
         internal static void RegisterOldKey(ChildKey key, VNode? node, int index,
             Dictionary<ChildKey, (int index, VNode? node)> map, HashSet<int>? orphaned)
         {

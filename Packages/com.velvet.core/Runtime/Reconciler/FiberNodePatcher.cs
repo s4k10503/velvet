@@ -1051,7 +1051,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.SyncHost(placeholder, target);
+                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1181,7 +1181,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
-            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
@@ -1843,6 +1843,10 @@ namespace Velvet
             {
                 _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
             }
+            if (oldProps.NoDrag != newProps.NoDrag)
+            {
+                _appliers.ApplyNoDrag(element, newProps.NoDrag);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.
@@ -2147,7 +2151,7 @@ namespace Velvet
         #region Variant Manipulator
 
         // Configures (creates / updates / removes) the element's StyleVariantManipulator
-        // from the state-variant tokens (hover:/focus:/active:) found in classNames.
+        // from the state-variant tokens (hover:/focus:/active:/disabled:) found in classNames.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
             var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
@@ -2155,13 +2159,42 @@ namespace Velvet
             var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
             var active = ExtractVariant(classNames, StyleVariantKind.Active, out var activeDecl);
             var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
+            var disabled = ExtractVariant(classNames, StyleVariantKind.Disabled, out var disabledDecl);
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
-                || active.Length > 0 || @checked.Length > 0;
+                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0
+                || StacksElementLocalInner(classNames);
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
                 new VariantOp(
-                    new VariantPayloads(hover, focus, focusVisible, active, @checked),
-                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl)));
+                    new VariantPayloads(hover, focus, focusVisible, active, @checked, disabled),
+                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl,
+                        disabledDecl)));
+        }
+
+        // A stacked element-local inner (dark:hover:, has-[:checked]:hover:) is created when its outer gate opens
+        // and seeds itself from the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element
+        // carrying one keeps that manipulator tracking its state even with no payload of its own. A has- token's
+        // own payload is its first inner, so the chain is read from there.
+        private static bool StacksElementLocalInner(string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                string? rest = null;
+                if (!StyleVariantClass.TryParse(className, out _, out rest)
+                    && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
+                {
+                    continue;
+                }
+                while (StyleVariantClass.TryParse(rest, out var inner, out var next))
+                {
+                    if (StyleStackedVariantManipulator.IsElementLocalInner(inner))
+                    {
+                        return true;
+                    }
+                    rest = next;
+                }
+            }
+            return false;
         }
 
         private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)
@@ -2279,13 +2312,15 @@ namespace Velvet
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked])),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Disabled])),
                     new VariantDeclarations(
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]))));
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Disabled]))));
             }
             return configs;
         }
@@ -2606,7 +2641,7 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Attribute, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.AttributeOf(rule.Ns), _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.AttributeVariants.Remove(element);
@@ -2717,7 +2752,7 @@ namespace Velvet
                     present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
                 }
                 var on = StyleAttributeVariantClass.Matches(rule.ExpectedValue, present, actual);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Attribute, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.AttributeOf(rule.Ns), ctx,
                     declarations: rule.Declarations);
             }
         }
@@ -2779,7 +2814,7 @@ namespace Velvet
             }
         }
 
-        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/[&:nth-child(N)]:)
+        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/nth-N:/[&:nth-child(N)]:)
         // in the context side-table, re-deriving them from classNames. Clears any previously-applied
         // structural payloads first (the rule set may have changed). If the element is already parented (a
         // patch / child-only re-render) it is evaluated immediately against its current position; on initial
@@ -2790,13 +2825,13 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Structural, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, rule.Priority, _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)>? rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)>? rules = null;
             if (classNames != null)
             {
                 for (var i = 0; i < classNames.Length; i++)
@@ -2814,8 +2849,9 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                                int[] Declarations)>())
-                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i }));
+                                int[] Declarations, long Priority)>())
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i },
+                                StyleStructuralVariantClass.PriorityOf(cls, kind)));
                     }
                 }
             }
@@ -2849,12 +2885,12 @@ namespace Velvet
         // Applies / clears each structural rule's payload for an element at the given sibling position.
         private static void EvaluateStructural(
             ReconcilerContext ctx, VisualElement element, int index, int count,
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)> rules)
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> rules)
         {
             foreach (var rule in rules)
             {
                 var on = StyleStructuralVariantClass.Matches(rule.Kind, rule.N, index, count);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Structural, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, rule.Priority, ctx,
                     declarations: rule.Declarations);
             }
         }

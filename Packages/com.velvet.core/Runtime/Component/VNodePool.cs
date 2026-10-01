@@ -177,6 +177,7 @@ namespace Velvet
             props.Draggable = null;
             props.Droppable = null;
             props.DragOverlay = null;
+            props.NoDrag = false;
             props.Slider = null;
             props.ScrollView = null;
             props.TextField = null;
