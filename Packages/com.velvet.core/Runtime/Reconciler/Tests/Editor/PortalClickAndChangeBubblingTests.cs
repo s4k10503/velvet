@@ -265,8 +265,6 @@ namespace Velvet.Tests
             Assert.That(moves, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base's bridge leaves nothing behind on a container either.
-        // This pins that every listener the bridge adds is one it removes when the last portal leaves.
         [Test]
         public void Given_APortalIntoAContainer_When_ItUnmounts_Then_TheContainerKeepsNoBridgeListener()
         {

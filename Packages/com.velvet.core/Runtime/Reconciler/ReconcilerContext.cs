@@ -873,7 +873,7 @@ namespace Velvet
         // detached mount root, a placeholder configured before its declaring tree attaches), each holding
         // a self-removing AttachToPanelEvent hook. Tracked so DetachAll can unregister hooks that never
         // fired.
-        public List<(VisualElement Element, EventCallback<AttachToPanelEvent> Hook)> NavigatorPendingAttachHooks { get; } = new();
+        public List<NavigatorPendingAttach> NavigatorPendingAttachHooks { get; } = new();
 
         // Drag-and-drop registries (V.DndContext / V.Draggable / V.Droppable / V.DragOverlay), keyed by
         // the carrying element. None are pure side-tables: the draggable binding owns a registered
@@ -1079,7 +1079,7 @@ namespace Velvet
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
             // Containment follows portal content into the target's panel, which the navigator must listen on.
-            FiberFocusNavigator.EnsureAttached(target, this);
+            var releaseNavigatorHold = FiberFocusNavigator.HoldAttached(target, this);
             // On the element whose contentContainer target is, where there is one, so that element's own
             // callbacks — a ScrollView's scroll — answer an event from the portal's children before the bridge
             // hands it to the declaring tree, as they answer one from the element's own children.
@@ -1090,10 +1090,30 @@ namespace Velvet
             {
                 detachBridge();
                 sheetWatch.Dispose();
-                // A target with no panel holds the navigator's deferred attach hook, released with the bridge
-                // rather than left on an element the portal has stopped using.
-                FiberFocusNavigator.ReleasePendingAttachHooks(target, this);
+                releaseNavigatorHold?.Invoke();
             }, anchor);
+        }
+
+        // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both
+        // the synthetic-bubbling walk and the focus navigator read. Where ranges nest, the one starting last is
+        // the innermost.
+        internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
+        {
+            var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
+            VisualElement? holder = null;
+            var holderStart = -1;
+            foreach (var entry in PortalState)
+            {
+                var range = entry.Value;
+                if (!ReferenceEquals(range.Target, parent)) continue;
+                if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
+                // MUTANT_SURVIVES(unreachable, boundary): a portal nested in another on one target opens its range at
+                // the target's row count, behind the outer's rows, so no two ranges on one target start at one slot.
+                if (range.SlotStart <= holderStart) continue;
+                holder = entry.Key;
+                holderStart = range.SlotStart;
+            }
+            return holder;
         }
 
         // The ancestor whose contentContainer container is, or null where container is its own.

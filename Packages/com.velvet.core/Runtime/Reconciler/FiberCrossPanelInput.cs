@@ -179,30 +179,8 @@ namespace Velvet
             var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
             var parent = slot.parent;
             if (parent == null) return null;
-            var placeholder = PortalHoldingRow(slot, parent, ctx);
+            var placeholder = ctx.PortalHoldingRow(slot, parent);
             return placeholder != null ? LogicalParent(placeholder, ctx) : parent;
-        }
-
-        // The Portal whose range on parent holds row, or null for a row of parent's own. Where ranges nest, the
-        // one starting last is the innermost.
-        private static VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent, ReconcilerContext ctx)
-        {
-            var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
-            VisualElement? holder = null;
-            var holderStart = -1;
-            foreach (var entry in ctx.PortalState)
-            {
-                var range = entry.Value;
-                if (!ReferenceEquals(range.Target, parent)) continue;
-                if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
-                // MUTANT_SURVIVES(unreachable, boundary): ranges holding one row are a portal nested in another on
-                // one target, and the inner opens at the target's row count, behind the outer's row that holds its
-                // placeholder, so they never start at one slot.
-                if (range.SlotStart <= holderStart) continue;
-                holder = entry.Key;
-                holderStart = range.SlotStart;
-            }
-            return holder;
         }
     }
 

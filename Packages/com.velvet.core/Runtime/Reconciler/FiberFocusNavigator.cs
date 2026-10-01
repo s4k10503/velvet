@@ -83,32 +83,64 @@ namespace Velvet
         // (whatever panel the scope lands in).
         internal static void EnsureAttached(VisualElement? element, ReconcilerContext ctx)
         {
+            var pending = Request(element, ctx);
+            if (pending != null)
+            {
+                pending.Pinned = true;
+            }
+        }
+
+        // EnsureAttached for a caller that stops needing the navigator on the element's panel: the release it
+        // returns unregisters a deferred hook only where no EnsureAttached caller asked for one too. Null where
+        // the element already has a panel and nothing is left pending.
+        internal static Action? HoldAttached(VisualElement element, ReconcilerContext ctx)
+        {
+            var pending = Request(element, ctx);
+            if (pending == null)
+            {
+                return null;
+            }
+            return () =>
+            {
+                if (pending.Pinned)
+                {
+                    return;
+                }
+                pending.Element.UnregisterCallback(pending.Hook);
+                ctx.NavigatorPendingAttachHooks.Remove(pending);
+            };
+        }
+
+        private static NavigatorPendingAttach? Request(VisualElement? element, ReconcilerContext ctx)
+        {
             if (element == null)
             {
-                return;
+                return null;
             }
             var root = element.panel?.visualTree;
             if (root != null)
             {
                 AttachToRoot(root, ctx);
-                return;
+                return null;
             }
-            foreach (var (pendingElement, _) in ctx.NavigatorPendingAttachHooks)
+            foreach (var existing in ctx.NavigatorPendingAttachHooks)
             {
-                if (ReferenceEquals(pendingElement, element))
+                if (ReferenceEquals(existing.Element, element))
                 {
-                    return;
+                    return existing;
                 }
             }
-            EventCallback<AttachToPanelEvent> hook = null!;
-            hook = _ =>
+            NavigatorPendingAttach pending = null!;
+            EventCallback<AttachToPanelEvent> hook = _ =>
             {
-                element.UnregisterCallback(hook);
-                ctx.NavigatorPendingAttachHooks.Remove((element, hook));
+                element.UnregisterCallback(pending.Hook);
+                ctx.NavigatorPendingAttachHooks.Remove(pending);
                 AttachToRoot(element.panel?.visualTree, ctx);
             };
+            pending = new NavigatorPendingAttach(element, hook);
             element.RegisterCallback(hook);
-            ctx.NavigatorPendingAttachHooks.Add((element, hook));
+            ctx.NavigatorPendingAttachHooks.Add(pending);
+            return pending;
         }
 
         // Unregisters and forgets any deferred attach hook still pending on `element`. Part of the
@@ -118,10 +150,10 @@ namespace Velvet
         {
             for (var i = ctx.NavigatorPendingAttachHooks.Count - 1; i >= 0; i--)
             {
-                var (pendingElement, hook) = ctx.NavigatorPendingAttachHooks[i];
-                if (ReferenceEquals(pendingElement, element))
+                var pending = ctx.NavigatorPendingAttachHooks[i];
+                if (ReferenceEquals(pending.Element, element))
                 {
-                    element.UnregisterCallback(hook);
+                    element.UnregisterCallback(pending.Hook);
                     ctx.NavigatorPendingAttachHooks.RemoveAt(i);
                 }
             }
@@ -161,9 +193,9 @@ namespace Velvet
             // and z-layer tables, so a focused element it still finds is one a live context finds as well,
             // or one pulled back from exactly as a reading that finds nothing is.
             s_attachedContexts.Remove(ctx);
-            foreach (var (element, hook) in ctx.NavigatorPendingAttachHooks)
+            foreach (var pending in ctx.NavigatorPendingAttachHooks)
             {
-                element.UnregisterCallback(hook);
+                pending.Element.UnregisterCallback(pending.Hook);
             }
             ctx.NavigatorPendingAttachHooks.Clear();
         }
@@ -954,33 +986,12 @@ namespace Velvet
             }
             foreach (var ctx in s_attachedContexts)
             {
-                if (FindPortalPlaceholderHolding(parent, current, ctx) is { } placeholder)
+                if (ctx.PortalHoldingRow(current, parent) is { } placeholder)
                 {
                     return placeholder;
                 }
             }
             return parent;
-        }
-
-        private static VisualElement? FindPortalPlaceholderHolding(
-            VisualElement target, VisualElement child, ReconcilerContext ctx)
-        {
-            foreach (var (placeholder, info) in ctx.PortalState)
-            {
-                if (!ReferenceEquals(info.Target, target))
-                {
-                    continue;
-                }
-                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
-                {
-                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical)
-                        && ReferenceEquals(target[physical], child))
-                    {
-                        return placeholder;
-                    }
-                }
-            }
-            return null;
         }
 
         // True when any panel this reconciler manages (the main panel, a layer or world-space host, a panel
@@ -1221,5 +1232,22 @@ namespace Velvet
             }
             return null;
         }
+    }
+
+    // A deferred navigator attach on an element with no panel yet. Pinned once an EnsureAttached caller asks
+    // for it, which no release undoes; a HoldAttached release removes an unpinned one.
+    internal sealed class NavigatorPendingAttach
+    {
+        internal NavigatorPendingAttach(VisualElement element, EventCallback<AttachToPanelEvent> hook)
+        {
+            Element = element;
+            Hook = hook;
+        }
+
+        internal VisualElement Element { get; }
+
+        internal EventCallback<AttachToPanelEvent> Hook { get; }
+
+        internal bool Pinned { get; set; }
     }
 }
