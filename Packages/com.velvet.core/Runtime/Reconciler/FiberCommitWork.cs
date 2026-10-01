@@ -278,22 +278,38 @@ namespace Velvet
         // additional VEs — so the delta is measured as the MountPoint's child count before and after the
         // Reconcile, through RowCountWindow. Wrapper-mounted fibers own their entire MountPoint and don't
         // participate in the shift.
-        // A boundary's own render passes catches, and a render error below it comes back caught
-        // (Reconciler.ReconcileCatching) after the rows the failed render left are propagated like any others.
-        internal static BoundaryCaughtSignal? ReconcileOwnRows(
-            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool catches = false)
+        internal static void ReconcileOwnRows(
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs)
+            => ReconcileRows(fiber, oldTree, newTree, frameBudgetMs, catchingBoundary: null);
+
+        // An error boundary's own render: a render error below it comes back caught (Reconciler.ReconcileCatching)
+        // after the rows the failed render left are propagated like any others, with the Suspense and
+        // AnimatePresence records kept against the boundary put back as they were before it. The fallback's own
+        // reconcile reads those records for the rows it replaces, and without them leaves those rows on screen
+        // (BoundaryCatchScopeTests' own-update cases).
+        private static BoundaryCaughtSignal? ReconcileOwnRowsCatching(
+            ComponentFiber boundary, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs)
+        {
+            var context = boundary.Reconciler!.Context;
+            var recordsBefore = context.RecordsOf(boundary);
+            var caught = ReconcileRows(boundary, oldTree, newTree, frameBudgetMs, boundary);
+            if (caught != null) context.RestoreRecordsOf(boundary, recordsBefore);
+            return caught;
+        }
+
+        private static BoundaryCaughtSignal? ReconcileRows(ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree,
+            double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
             var reconciler = fiber.Reconciler!;
-            var catching = catches ? fiber : null;
             if (!fiber.IsInlineMounted)
             {
                 return reconciler.ReconcileCatching(
-                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catching);
+                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catchingBoundary);
             }
             var rows = new RowCountWindow(fiber);
             var slotLimit = NextInlineSiblingSlotStart(fiber);
             var caught = reconciler.ReconcileCatching(
-                fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catching);
+                fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
             PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
             return caught;
         }
@@ -304,8 +320,7 @@ namespace Velvet
         // fiber's slot range — so the FiberRenderer-side bookkeeping is skipped here to avoid using the
         // unexpanded VNode count.
         internal static BoundaryCaughtSignal? ReconcileIntoSlotRange(
-            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile,
-            bool catches)
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
@@ -313,7 +328,10 @@ namespace Velvet
             if (treeContext != null) treeContext.CurrentFiberTree = newTree;
             try
             {
-                return deferReconcile ? null : ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs, catches);
+                if (deferReconcile) return null;
+                if (fiber.IsErrorBoundary) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
+                ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
+                return null;
             }
             finally
             {

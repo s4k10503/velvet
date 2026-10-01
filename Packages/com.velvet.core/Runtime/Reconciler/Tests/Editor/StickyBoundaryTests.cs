@@ -151,6 +151,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABoundaryThatCaughtOnItsOwnUpdate_When_ItsParentsRenderMakesItsFallbacksContentThrowOnce_Then_ItShowsTheFallbackForThatError()
+        {
+            // Arrange — the first catch is the one the boundary's own reconcile takes
+            using var mounted = V.Mount(_root, V.Component(OwnRecoveringHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_setOwnTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var afterOwnUpdate = Texts();
+            s_throws = false;
+            s_fallbackContentThrows = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback after the own update is read with it, since a boundary that never caught there
+            // shows its children and catches the content's error as a first catch
+            Assert.That((afterOwnUpdate, Texts()), Is.EqualTo(("inner-fallback", "content-error-fallback")));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base renders the boundary's children again, the shared node among
+        // them. What this pins is that the node the kept fallback shares with the body stays out of the pool.
+        [Test]
+        public void Given_AFallbackBuiltFromANodeTheBodyAlsoReturns_When_TheNextRenderDropsAPropTheFirstGaveIt_Then_TheElementLosesThatProp()
+        {
+            // Arrange
+            s_throws = true;
+            using var mounted = V.Mount(_root, V.Component(SharedNodeHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = false;
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert — the text is read with the tooltip, since a render that never reached the element leaves both
+            var button = _root.Q<Button>();
+            Assert.That((button?.text, string.IsNullOrEmpty(button?.tooltip)), Is.EqualTo(("shared:2", true)));
+        }
+
+        [Test]
         public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRenderAndTheResourceResolves_Then_ItRendersItsChildren()
         {
             // Arrange — the boundary is memoized, so the retry reaches it only as a render it was asked for
@@ -381,6 +423,43 @@ namespace Velvet.Tests
                 ? V.Label(text: "content-error-fallback")
                 : V.Component(FallbackContentRender, key: "content"));
             return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnRecoveringBoundaryRender(int tick)
+        {
+            var (_, setOwnTick) = Hooks.UseState(0);
+            s_setOwnTick = setOwnTick;
+            Hooks.UseFallback(ex => ex.Message == "Fallback content throw"
+                ? V.Label(text: "content-error-fallback")
+                : V.Component(FallbackContentRender, key: "content"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwnRecoveringHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(OwnRecoveringBoundaryRender, tick, key: "boundary") });
+        }
+
+        // Its fallback is a node its body returns as well, built in the same render, and its first render after the
+        // catch gives that node a tooltip the next one drops.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SharedNodeBoundaryRender(int tick)
+        {
+            var shared = V.Button(text: "shared:" + tick, tooltip: tick == 1 ? "first" : null, onClick: () => { });
+            Hooks.UseFallback(_ => shared);
+            return V.Fragment(new VNode[] { shared, V.Component(ThrowerRender, key: "thrower") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SharedNodeHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(SharedNodeBoundaryRender, tick, key: "boundary") });
         }
 
         [Component(Compiler = false)]

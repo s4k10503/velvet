@@ -1062,7 +1062,7 @@ namespace Velvet
                 {
                     // The fallback's own error went to the boundaries above and none caught it in this walk;
                     // the original error goes after it.
-                    ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
+                    FiberErrorBoundary.PassOnTheCaughtError(boundary, caught);
                     return;
                 }
                 FiberErrorBoundary.RecordCatch(_ctx, boundary, caught.Error, caught.Info);

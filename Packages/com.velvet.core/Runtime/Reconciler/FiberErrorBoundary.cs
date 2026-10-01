@@ -133,8 +133,11 @@ namespace Velvet
             }
             if (fiber.IsDisposed) return;
             if (shown) RecordCatch(fiber.Reconciler!.Context, fiber, caught.Error, caught.Info);
-            else ComponentBoundarySearch.PropagateException(fiber, caught.Thrower, caught.Error, isRenderError: true);
+            else PassOnTheCaughtError(fiber, caught);
         }
+
+        internal static void PassOnTheCaughtError(ComponentFiber boundary, BoundaryCaughtSignal caught)
+            => ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
 
         private static VNode? TryInvokeFactory(ComponentFiber fiber, Exception originalException, ErrorInfo info)
         {
@@ -241,15 +244,11 @@ namespace Velvet
         {
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
             var fallback = TryInvokeFactory(fiber, error, info);
-            if (fallback == null)
-            {
-                FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber);
-                ExceptionDispatchInfo.Capture(error).Throw();
-            }
+            var fallbackTree = fallback == null ? null : new[] { fallback };
             // Retired beside the fallback, which the factory may have built from nodes the body returned too.
-            var fallbackTree = new[] { fallback };
-            FiberTreeReturn.ReturnRetiredTreeBeside(bodyOutput, fiber, fallbackTree);
-            return fallbackTree;
+            FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber, alsoLive: fallbackTree);
+            if (fallbackTree == null) ExceptionDispatchInfo.Capture(error).Throw();
+            return fallbackTree!;
         }
 
         // A throw out of the handler would escape the commit delivering the report.

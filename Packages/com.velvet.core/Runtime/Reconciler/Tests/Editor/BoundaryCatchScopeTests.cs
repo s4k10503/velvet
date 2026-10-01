@@ -60,6 +60,7 @@ namespace Velvet.Tests
             s_setOwnerTick = null;
             s_enterCompletions = 0;
             s_setOwnEnterTick = null;
+            s_setSuspendingOwnTick = null;
             s_setOwnRowsTick = null;
             s_setSiblingCount = null;
             s_outerSaw = null;
@@ -1130,6 +1131,40 @@ namespace Velvet.Tests
                 V.Component(RowsSiblingRender, key: "sibling"),
             });
 
+        // GREEN_ON_BASE(characterization): the merge base records the Suspense this update suspends as well. What
+        // this pins is that the catch armed on the boundary's own reconcile puts no record back when it caught nothing.
+        [Test]
+        public void Given_ABoundaryWhoseOwnUpdateSuspendsItsSuspenseWithoutThrowing_When_ThatUpdateCommits_Then_TheSuspenseIsRecordedAsShowingItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SuspendingOwnUpdateHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setSuspendingOwnTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts() + "|" + mounted.Root.Reconciler.Context.AnyBoundaryShowingFallback,
+                Is.EqualTo("loading|True"));
+        }
+
+        private static Action<int> s_setSuspendingOwnTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SuspendingOwnUpdateBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setSuspendingOwnTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { tick == 0 ? V.Label(text: "ready") : V.Component(PendingReaderRender, key: "reader") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspendingOwnUpdateHostRender()
+            => V.Div(children: new VNode[] { V.Component(SuspendingOwnUpdateBoundaryRender, key: "boundary") });
+
         [Test]
         public void Given_AnEnterWithNothingToPlayInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
         {
@@ -1484,6 +1519,7 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
+
 
         #endregion
     }

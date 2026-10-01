@@ -1480,7 +1480,7 @@ namespace Velvet
         }
 
         // The Suspense and AnimatePresence records kept against a boundary, taken before its own reconcile so that
-        // a catch there can put them back (FiberRenderer.ReconcileRenderedTree).
+        // a catch there can put them back (FiberCommitWork.ReconcileOwnRowsCatching).
         internal BoundaryRecords RecordsOf(ComponentFiber boundary)
         {
             var suspense = _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
