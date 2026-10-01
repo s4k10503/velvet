@@ -25,7 +25,14 @@
 - A component whose render suspends while another component's render reaches it below a `V.Suspense` keeps
   its state while the boundary shows its fallback, as React keeps it offscreen, and the boundary reveals it
   when its resource resolves. That render's pass disposed it, losing its state and the read the reveal
-  waited on.
+  waited on. A component the boundary had shown has its layout effects cleaned up while it is hidden and
+  run again when it is revealed, as React disconnects and reconnects them.
+
+- A render that runs in slices and suspends in a later slice stays parked at the row that suspended, with
+  the rows it has committed, as React keeps a transition that suspends on screen: when the resource resolves,
+  or a further update renders the component first, it resumes from that row and every row appears once. It
+  used to give the pass up while the component still described the rows it never placed, and the next
+  render diffed against them.
 
 - A component that renders its own `V.Suspense` and whose read suspends below an outer boundary reveals
   through that boundary when the resource resolves, as React takes the nearest Suspense above the component

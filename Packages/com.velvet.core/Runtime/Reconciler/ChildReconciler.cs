@@ -52,6 +52,9 @@ namespace Velvet
         // Pool while suspended).
         internal KeyedReconcileState? PendingKeyedState { get; private set; }
 
+        // The row the indexed phases are working on, which a resume that suspends parks at — see ContinueIndexed.
+        private (IndexedReconcilePhase Phase, int Index) _indexedRowAtWork;
+
         // The boundary reproductions the state above still owes a removal pass, carried until the slice
         // that resumes it runs them. Instance state rather than context state like the lists it feeds,
         // because the park it answers for is this instance's own while the context is shared.
@@ -575,6 +578,18 @@ namespace Velvet
                     state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
                 removals = FastPathRemovalOutcome();
             }
+            catch (FiberSuspendSignal)
+            {
+                // A resume that suspends stays parked at the row that suspended, which the phase recorded as it
+                // reached it: the rows before it are committed and the pass's trees still describe them, so the
+                // retry, or a newer render draining the pass, renders that row again — React keeps a transition
+                // that suspends on screen and retries it. Nothing of that row was placed: an element is inserted
+                // only once created, and a patch's children leave their structure until their own commit.
+                PendingIndexedState = new IndexedReconcileState(state.Parent, state.OldNodes, state.NewNodes,
+                    _indexedRowAtWork.Phase, _indexedRowAtWork.Index, slotStart: state.SlotStart,
+                    slotLimit: state.SlotLimit);
+                throw;
+            }
             finally
             {
                 _ctx.SettleBoundaryReproductionsOwedByAPark(removals, _boundaryOwedByThisPark);
@@ -593,7 +608,7 @@ namespace Velvet
             var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
             {
-                ReconcileKeyedFrom(state, frameBudgetMs);
+                ReconcileKeyedFrom(state, frameBudgetMs, resuming: true);
                 removals = FastPathRemovalOutcome();
             }
             finally
@@ -820,6 +835,7 @@ namespace Velvet
             for (var i = startIndex; i < commonLength; i++)
             {
                 if (_ctx.IsAborted) return true;
+                _indexedRowAtWork = (IndexedReconcilePhase.Common, i);
 
                 // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
                 // lookup and DiffProps invocation suppresses outlier GC allocations on the
@@ -919,6 +935,7 @@ namespace Velvet
             for (var i = startIndex; i < newNodes.Length; i++)
             {
                 if (_ctx.IsAborted) return true;
+                _indexedRowAtWork = (IndexedReconcilePhase.Add, i);
 
                 var newElement = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
@@ -1304,7 +1321,7 @@ namespace Velvet
         // Transitions through phases and returns buffers on yield (budget overrun) or bailout (exception).
         // Pass2BuildMap resumes indexing from state.LinearEnd rather than 0: the common prefix Pass1Linear
         // already matched 1:1 by position, so those entries need no key-map lookup in Pass 2.
-        private void ReconcileKeyedFrom(KeyedReconcileState state, double frameBudgetMs)
+        private void ReconcileKeyedFrom(KeyedReconcileState state, double frameBudgetMs, bool resuming = false)
         {
             // DOM-desync recovery at a fresh start (see ReconcileKeyedSync): when the live range is shorter than
             // the keyed baseline, rebuild from the new tree rather than diff by a broken positional invariant.
@@ -1341,6 +1358,13 @@ namespace Velvet
                 }
                 ReleaseKeyedBuffers(state);
             }
+            catch (FiberSuspendSignal) when (resuming)
+            {
+                // Parked at the row that suspended, as ContinueIndexed parks: each rendering phase records the row
+                // it reaches in ResumeIndex.
+                PendingKeyedState = state;
+                throw;
+            }
             catch
             {
                 // On exception, discard pending and ensure buffers are returned.
@@ -1363,6 +1387,7 @@ namespace Velvet
             for (var i = state.ResumeIndex; i < commonLength; i++)
             {
                 if (AbortIfCanceled(state)) return true;
+                state.ResumeIndex = i;
 
                 // Keys first, then the identity skip, as RunLinearPrefixPass orders them.
                 if ((state.OldKeys != null || !ReferenceEquals(oldNodes[i], newNodes[i]))
@@ -1420,6 +1445,7 @@ namespace Velvet
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
             {
                 if (AbortIfCanceled(state)) return true;
+                state.ResumeIndex = i;
 
                 var newElement = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
@@ -1500,8 +1526,23 @@ namespace Velvet
                 // ProcessKeyedNode checks _ctx.IsAborted internally and returns true mid-node on abort; the
                 // time-sliced loop owns the state.Phase = Done transition (what AbortIfCanceled does for the
                 // loop-boundary checks).
+                state.ResumeIndex = i;
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (ProcessKeyedNode(in slot, newNodes[i], in tables))
+                bool aborted;
+                try
+                {
+                    aborted = ProcessKeyedNode(in slot, newNodes[i], in tables);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    // The row's key goes back, so the row rendered again on resume takes its old entry as the
+                    // first sibling claiming it rather than as a duplicate.
+                    var key = _keying.ReconcileKey(newNodes[i], i);
+                    usedKeys.Remove(key);
+                    replacedKeys.Remove(key);
+                    throw;
+                }
+                if (aborted)
                 {
                     state.Phase = KeyedReconcilePhase.Done;
                     return true;

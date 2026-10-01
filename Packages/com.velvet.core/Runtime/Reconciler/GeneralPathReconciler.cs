@@ -1147,7 +1147,6 @@ namespace Velvet
         {
             var result = walk.Result;
             var newFibers = walk.NewFibers;
-            var offscreenPrimaries = walk.OffscreenPrimaries;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
             var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
@@ -1198,18 +1197,13 @@ namespace Velvet
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
                     // their lane flush while suspended (their slot is occupied by the fallback). The
-                    // fallback subtree is expanded below, so this loop never reaches it and this Suspense
+                    // fallback subtree is expanded below, so this marking never reaches it and this Suspense
                     // leaves it flushable; what marks a nested Suspense's fallback subtree is the
                     // enclosing expansion, whose own fallback occupies that slot too.
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
                     // this delta contains them, so its answer stands.
-                    foreach (var f in newFibers)
-                    {
-                        if (fibersBefore.Contains(f)) continue;
-                        if (!offscreenPrimaries.Contains(f)) f.IsOffscreen = suspended;
-                        if (suspended) offscreenPrimaries.Add(f);
-                    }
+                    MarkPrimaryOffscreen(walk, fibersBefore, suspended);
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally
                     // would observe a Cleared / re-rented set, silently breaking the fibersBefore
@@ -1237,6 +1231,21 @@ namespace Velvet
             else if (ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition))
             {
                 _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            }
+        }
+
+        private void MarkPrimaryOffscreen(InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended)
+        {
+            foreach (var f in walk.NewFibers)
+            {
+                if (fibersBefore.Contains(f)) continue;
+                if (!walk.OffscreenPrimaries.Contains(f))
+                {
+                    f.IsOffscreen = suspended;
+                    if (suspended) FiberEffects.HideLayoutEffects(f, walk.OldFibers);
+                    else FiberEffects.ShowLayoutEffects(f, _ctx);
+                }
+                if (suspended) walk.OffscreenPrimaries.Add(f);
             }
         }
 

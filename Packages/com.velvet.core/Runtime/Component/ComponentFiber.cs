@@ -201,6 +201,10 @@ namespace Velvet
         /// </summary>
         internal bool IsOffscreen { get; set; }
 
+        // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
+        // FiberEffects.HideLayoutEffects.
+        internal bool LayoutEffectsHidden { get; set; }
+
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
         // Staging list for the render in progress: context reads land here and are swapped into

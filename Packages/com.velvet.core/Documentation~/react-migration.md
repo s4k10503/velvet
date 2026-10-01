@@ -309,7 +309,8 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 
 Suspense boundaries in separate host elements or Portals keep independent pending state, including
 Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
-resolves, and a component whose render suspended keeps its state meanwhile. Removing the boundary releases that pending state when its displayed children are removed.
+resolves, and a component whose render suspended keeps its state meanwhile, with its layout effects cleaned
+up until the boundary reveals it again, as React disconnects them. Removing the boundary releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced
@@ -320,7 +321,10 @@ waits on renders nothing when it resolves, and the render retried later reads it
 suspends with no boundary above commits none of the props it passed to the component that suspended, so a
 later render passes them again and, while the resource is pending, suspends again, as React keeps the
 previous UI. The boundary is the nearest one above the component whose read suspended, so a component that
-renders its own `V.Suspense` reveals through the boundary above it.
+renders its own `V.Suspense` reveals through the boundary above it. A render that runs in slices keeps
+the rows it has committed when a later slice suspends, and resumes from the row that suspended when the
+resource resolves or a further update renders the component, as React keeps a transition that suspends on
+screen.
 
 > **Note — Error Boundary mapping**  
 > Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper is ideal for a root boundary directly under mount. For cases where the fallback / children values change dynamically, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>

@@ -25,7 +25,8 @@ namespace Velvet.Tests
     /// <item>With a boundary above, that boundary renders again and shows its fallback, a boundary the compiler
     /// memoized included, and the component whose update suspended renders that update inside it, a memoized
     /// one included. The boundary is the nearest above the component whose read suspended, so one that renders
-    /// its own Suspense reveals through the boundary above it.</item>
+    /// its own Suspense reveals through the boundary above it. A component the boundary had shown keeps its
+    /// state offscreen with its layout effects cleaned up, and they run again when the boundary reveals it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -61,6 +62,43 @@ namespace Velvet.Tests
             s_pairSetB = default;
             s_sourceA = null;
             s_sourceB = null;
+            s_effectSetOwn = default;
+            s_layoutSetups = 0;
+            s_layoutCleanups = 0;
+        }
+
+        [Test]
+        public void Given_AComponentTheBoundaryShowedWhoseOwnUpdateSuspends_When_TheBoundaryShowsItsFallback_Then_ItsLayoutEffectIsCleanedUp()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(EffectBoundaryHostRender, key: "effect-host"));
+            s_effectSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the setup count is folded in, since a mount that ran no layout effect cleans up none
+            Assert.That((s_layoutSetups, s_layoutCleanups, Texts()), Is.EqualTo((1, 1, "loading")),
+                "React disconnects the layout effects of a tree a Suspense hides once it has shown it");
+        }
+
+        [Test]
+        public void Given_AComponentTheBoundaryHidAfterShowingIt_When_TheResourceResolves_Then_ItsLayoutEffectRunsAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(EffectBoundaryHostRender, key: "effect-host"));
+            s_effectSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((s_layoutSetups, s_layoutCleanups, Texts()), Is.EqualTo((2, 1, "reader:5")),
+                "React reconnects the layout effects of the tree a Suspense reveals, whatever their dependencies");
         }
 
         [Test]
@@ -108,7 +146,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             using var mounted = V.Mount(_root, V.Component(ShowParentRender, key: "show-parent"));
             s_showSetShow.Invoke(true);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushStateForTest();
 
             // Act
             s_source.TrySetResult(5);
@@ -662,6 +700,35 @@ namespace Velvet.Tests
                 V.Component(PairReaderARender, a, key: "a"),
             });
         }
+
+        private static StateUpdater<int> s_effectSetOwn;
+        private static int s_layoutSetups;
+        private static int s_layoutCleanups;
+
+        [Component]
+        private static VNode EffectReaderRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_effectSetOwn = setOwn;
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_layoutSetups++;
+                return (Action)(() => s_layoutCleanups++);
+            }, Array.Empty<object>());
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_source = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "reader:" + value);
+        }
+
+        [Component]
+        private static VNode EffectBoundaryHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(EffectReaderRender, key: "reader") }),
+            });
 
         [Component]
         private static VNode BoundaryHostRender()

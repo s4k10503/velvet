@@ -1,5 +1,9 @@
 using System;
+using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -35,8 +39,11 @@ namespace Velvet.Tests
     /// resume neither holds: the host's output is committed while the slice is still parked, so a row the
     /// pass never reached is looked up by key alone and answers to whichever container the committed tree
     /// reaches first — the reading recorded here.</item>
-    /// <item>A suspend in a resumed slice asks the boundary above to render, leaves the transition pending, and
-    /// commits the layout effects of a row the parked pass mounted before the resume returns.</item>
+    /// <item>A suspend in a resumed slice asks the boundary above to render and leaves the transition pending,
+    /// and the pass stays parked at the row that suspended, holding back the layout effects of a row it mounted.
+    /// The render the resolve asks for drains it from that row, and so does a further update arriving first,
+    /// so every row appears once — whether the row was being added, patched or reached by the keyed diff's
+    /// second pass, keyed or not.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -67,6 +74,10 @@ namespace Velvet.Tests
             s_slicedSuspendSetCount = default;
             s_slicedSuspendStart = default;
             s_slicedRowLayoutEffects = 0;
+            s_retryFiber = null;
+            s_retrySetVersion = default;
+            s_retryStart = default;
+            s_retrySource = null;
         }
 
         [TearDown]
@@ -1072,21 +1083,188 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParkedPassThatMountedAComponentRow_When_ItsResumedSliceSuspends_Then_ThatRowsLayoutEffectRunsBeforeTheResumeReturns()
+        public void Given_AParkedPassThatMountedAComponentRow_When_ItsResumedSliceSuspends_Then_ThePassStaysParkedHoldingThatRowsLayoutEffect()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
             s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
             s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
-            var ranWhileParked = s_slicedRowLayoutEffects;
 
             // Act
             FiberWorkLoop.ContinueReconcile(s_slicedSuspendFiber);
 
-            // Assert — the count while parked is folded in, since an effect the first slice already ran reads 1 too
-            Assert.That((ranWhileParked, s_slicedRowLayoutEffects), Is.EqualTo((0, 1)),
-                "The parked pass no longer holds the first row back once its resume suspends, and the resume commits it");
+            // Assert — the park is read beside the count, since a pass that ended runs no effect it dropped either
+            Assert.That((s_slicedSuspendFiber.HasPendingReconcileWorkForTest(), s_slicedRowLayoutEffects),
+                Is.EqualTo((true, 0)),
+                "A transition that suspends has not committed, so the row it mounted runs no layout effect yet");
         }
+
+        [Test]
+        public void Given_AKeyedResumeThatSuspendsOnARowItAdds_When_TheResourceResolves_Then_EveryRowAppearsOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: true, order: Array.Empty<int>());
+            SuspendRetryResume(new[] { 0, 1, 2, 3 }, shift: 0);
+
+            // Act
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("0|1|7|7"));
+        }
+
+        [Test]
+        public void Given_AKeyedResumeThatSuspended_When_AFurtherUpdateRendersBeforeTheResourceResolves_Then_ItDiffsFromWhatIsCommitted()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: true, order: Array.Empty<int>());
+            SuspendRetryResume(new[] { 0, 1, 2, 3 }, shift: 0);
+
+            // Act
+            s_retryOrder = new[] { 0, 1, 2, 3, 4 };
+            s_retrySetVersion.Invoke(v => v + 1);
+            mounted.FlushStateForTest();
+            var whileWaiting = LabelTexts();
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert — the screen while waiting is read beside the end, since a further render that threw reads
+            // as the committed rows too
+            Assert.That((whileWaiting, LabelTexts()), Is.EqualTo(("0|1", "0|1|7|7|7")));
+        }
+
+        [Test]
+        public void Given_AKeyedResumeThatSuspendsInItsSecondPass_When_TheResourceResolves_Then_EveryRowAppearsOnce()
+        {
+            // Arrange — the rows swap places, so the diff reaches them by key, and the first one now waits
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: true, order: new[] { 0, 1 });
+            SuspendRetryResume(new[] { 1, 0 }, shift: 1);
+
+            // Act
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("7|1"));
+        }
+
+        [Test]
+        public void Given_AnIndexedResumeThatSuspendsOnARowItAdds_When_TheResourceResolves_Then_EveryRowAppearsOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: false, order: Array.Empty<int>());
+            SuspendRetryResume(new[] { 0, 1, 2, 3 }, shift: 0);
+
+            // Act
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("0|1|7|7"));
+        }
+
+        [Test]
+        public void Given_AnIndexedResumeThatSuspendsOnARowItPatches_When_TheResourceResolves_Then_EveryRowAppearsOnce()
+        {
+            // Arrange — the rows keep their places, and the second one now waits
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: false, order: new[] { 0, 1 });
+            SuspendRetryResume(new[] { 0, 1 }, shift: 1);
+
+            // Act
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("1|7"));
+        }
+
+        [Test]
+        public void Given_AKeyedFirstSliceThatSuspendsOnItsFirstRow_When_TheResourceResolves_Then_EveryRowAppearsOnce()
+        {
+            // Arrange — the slice that starts the pass suspends before it places anything
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = MountRetryList(keyed: true, order: Array.Empty<int>());
+            s_retryOrder = new[] { 2, 0 };
+            s_retryStart.Invoke(() => s_retrySetVersion.Invoke(v => v + 1));
+            s_retryFiber.FlushStateWithTinyBudgetForTest();
+
+            // Act
+            s_retrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo("7|0"));
+        }
+
+        private static ComponentFiber s_retryFiber;
+        private static StateUpdater<int> s_retrySetVersion;
+        private static TransitionStarter s_retryStart;
+        private static VelvetTaskCompletionSource<int> s_retrySource;
+        private static bool s_retryKeyed;
+        private static int[] s_retryOrder;
+        private static int s_retryShift;
+
+        private string LabelTexts() => string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+
+        private MountedTree MountRetryList(bool keyed, int[] order)
+        {
+            s_retrySource = new VelvetTaskCompletionSource<int>();
+            s_retryKeyed = keyed;
+            s_retryOrder = order;
+            s_retryShift = 0;
+            return V.Mount(_root, V.Component(RetryHostRender, key: "retry-host"));
+        }
+
+        // The first slice parks after one row; the resume runs unbudgeted, so it takes more than one row before
+        // the row that suspends — rows a resume parked at its own start would cover by accident.
+        private static void SuspendRetryResume(int[] order, int shift)
+        {
+            s_retryOrder = order;
+            s_retryShift = shift;
+            s_retryStart.Invoke(() => s_retrySetVersion.Invoke(v => v + 1));
+            s_retryFiber.FlushStateWithTinyBudgetForTest();
+            s_retryFiber.PendingReconcileBudgetMs = 0;
+            FiberWorkLoop.ContinueReconcile(s_retryFiber);
+        }
+
+        // Reads its rows from statics, so it stays out of the compiler's memoization.
+        [Component(Compiler = false)]
+        private static VNode RetryListRender()
+        {
+            s_retryFiber = FiberAmbientStack.Current;
+            var (_, setVersion) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_retrySetVersion = setVersion;
+            s_retryStart = start;
+            var children = new VNode[s_retryOrder.Length];
+            for (var i = 0; i < children.Length; i++)
+            {
+                var id = s_retryOrder[i];
+                children[i] = s_retryKeyed
+                    ? V.Div(key: "r" + id, children: new VNode?[] { V.Component(RetryRowRender, id, key: "row") })
+                    : V.Div(children: new VNode?[] { V.Component(RetryRowRender, id, key: "row") });
+            }
+            return V.Fragment(children: children);
+        }
+
+        // A row reads its id shifted, and waits on the shared source from 2 up.
+        [Component]
+        private static VNode RetryRowRender(int id)
+        {
+            var key = id + s_retryShift;
+            var value = Hooks.Use<int>(_ => key < 2 ? VelvetTask.FromResult(key) : s_retrySource.Task, key);
+            return V.Label(text: value.ToString());
+        }
+
+        [Component]
+        private static VNode RetryHostRender() => V.Div(children: new VNode[] { V.Component(RetryListRender, key: "list") });
 
         private static ComponentFiber s_slicedBoundaryFiber;
         private static ComponentFiber s_slicedSuspendFiber;

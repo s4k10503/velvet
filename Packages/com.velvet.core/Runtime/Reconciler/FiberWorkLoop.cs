@@ -559,19 +559,19 @@ namespace Velvet
             }
             catch (Exception ex)
             {
+                if (ex is FiberSuspendSignal)
+                {
+                    // The pass stays parked at the row that suspended (ChildReconciler.ContinueKeyed), its
+                    // baseline and what it holds back with it: the transition this slice belonged to has not
+                    // committed, and the render the suspend asks for drains the pass from that row.
+                    FiberRenderer.SuspendPassOwner(fiber);
+                    return;
+                }
                 fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                 // Detach before retiring — same self-mark hazard as the completion path above.
                 var abortedBaseline = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
                 FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
-                if (ex is FiberSuspendSignal)
-                {
-                    // Same exit as FlushState's: the transition this slice belonged to has not committed.
-                    FiberRenderer.SuspendPassOwner(fiber);
-                    var suspendedContext = fiber.Reconciler?.Context;
-                    if (suspendedContext != null) FiberEffects.CommitStrandedLayoutWork(suspendedContext);
-                    return;
-                }
                 if (fiber.PendingReconcileDrainsTransitionWork)
                 {
                     fiber.SettleTransitionPending();

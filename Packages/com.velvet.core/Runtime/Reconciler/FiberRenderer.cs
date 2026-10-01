@@ -546,7 +546,9 @@ namespace Velvet
             catch (Exception ex)
             {
                 FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
-                if (fiber.PendingOldTree != null)
+                // A drain that suspended left its pass parked at the row that suspended (ChildReconciler.ContinueKeyed),
+                // whose baseline the pass still diffs against.
+                if (fiber.PendingOldTree != null && fiber.Reconciler?.HasPendingWork != true)
                 {
                     fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                     // Detach before retiring: the sweep's own mark treats owner.PendingOldTree as
@@ -786,7 +788,6 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
-                current.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(current);
             }
         }

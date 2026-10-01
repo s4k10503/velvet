@@ -79,6 +79,29 @@ namespace Velvet
         // fallback shown from a frame callback. With a render, a reconcile, a batch drain, an effect commit or a
         // ref-setup drain on the stack it does nothing, and the call at the end of what encloses it does the work.
         // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass.
+        // React disconnects the layout effects of a tree a Suspense hides once it has shown it, keeping its state,
+        // and reconnects them when the tree is revealed. Only a fiber the committed tree held has any to
+        // disconnect: one this render first mounted under the Suspense never ran them.
+        internal static void HideLayoutEffects(ComponentFiber fiber, List<ComponentFiber> committedFibers)
+        {
+            if (fiber.LayoutEffectsHidden || fiber.LayoutEffects == null || !committedFibers.Contains(fiber)) return;
+            fiber.LayoutEffectsHidden = true;
+            HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
+        }
+
+        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps.
+        internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
+        {
+            if (!fiber.LayoutEffectsHidden) return;
+            fiber.LayoutEffectsHidden = false;
+            var pending = fiber.PendingLayoutEffects ??= new List<HookEffectSlot>();
+            foreach (var slot in fiber.LayoutEffects!)
+            {
+                if (!pending.Contains(slot)) pending.Add(slot);
+            }
+            ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
+        }
+
         internal static void CommitStrandedLayoutWork(ReconcilerContext ctx)
         {
             if (IsCommitOnTheStack(ctx)) return;
