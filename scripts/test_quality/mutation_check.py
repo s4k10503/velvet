@@ -57,7 +57,7 @@ from pathlib import Path
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
 # Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
 # report a busy machine forever on an idle one.
-UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
+UNITY_RUNNING = "^/.*/(?:MacOS|Editor)/Unity -runTests"
 
 # At the project root and not in .gitignore, so `git status` names it beside the file it explains.
 # Under Logs/ it would be correct and unread: what a resumed session looks at is `git status`, and a
@@ -70,6 +70,7 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
 HUNG = "killed (the suite hung past --timeout)"
+CRASHED = "killed (the editor crashed)"
 
 HANG_MARGIN = 3
 SURVIVED = "survived"
@@ -86,7 +87,7 @@ BUILD_SYSTEM = "not measured (the build system failed)"
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
 # however it is spelled, fails the decision as one nothing measured.
-DECIDED = (KILLED, HUNG, INAPPLICABLE)
+DECIDED = (KILLED, HUNG, CRASHED, INAPPLICABLE)
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
@@ -131,6 +132,16 @@ LOCK_WAIT = 60
 # The last line `run_suite` writes into a log once `LOCK_ATTEMPTS` launches were refused.
 LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the project lock".format(
     LOCK_ATTEMPTS)
+
+# Lines an editor's log carries once the editor is dying, read off the logs of a mutant that overflowed
+# the stack. A launch is stopped at the first rather than left to its bound.
+FATAL = re.compile(r"Caught fatal signal - signo:|Got a SIG[A-Z]+ while executing native code|"
+                   r"Stack overflow(?: in unmanaged)?: IP:")
+# What reads as a crash once no result was written. A managed stack overflow is among them and stops no
+# launch, so that a run which recovered from one still writes the result it is read by.
+CRASH = re.compile(FATAL.pattern + r"|StackOverflowException:")
+# What the test runner prints as it starts. A crash before it is not laid on the mutant.
+RUNNER_STARTED = "Running tests for ExecutionSettings with details:"
 
 BUILD_SYSTEM_FAILURE = "Internal build system error."
 BUILD_SYSTEM_ATTEMPTS = 2
@@ -1814,6 +1825,8 @@ def launch(command, timeout, holder, env=None, expired=None):
             holder.started()
     reader = threading.Thread(target=relay, args=(child.stdout, said), daemon=True)
     reader.start()
+    log = Path(command[command.index("-logFile") + 1]) if "-logFile" in command else None
+    read = 0
     # Sampled for the run's whole life, not once before it. The campaign waits before its baseline, each
     # session launch and each mutant's own launch, and a neighbour arriving ten seconds in is invisible
     # for the rest of that run -- where it can redden a timing-sensitive case, and the mutant is then
@@ -1830,6 +1843,12 @@ def launch(command, timeout, holder, env=None, expired=None):
                     reap(child)
                     timed_out = True
                     break
+                if log is not None:
+                    fatal, read = fatal_since(log, read)
+                    if fatal:
+                        print("the editor is crashing; stopping it", flush=True)
+                        reap(child)
+                        break
                 peak = max(peak, max(0, unity_busy() - 1))
     finally:
         if child.poll() is None:
@@ -1840,6 +1859,37 @@ def launch(command, timeout, holder, env=None, expired=None):
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
     return wall, timed_out, peak, "".join(said), child.pid
+
+
+def fatal_since(log, offset):
+    """Whether the whole lines `log` gained past `offset` hold a FATAL one, and where to read from
+    next."""
+    try:
+        with open(str(log), "rb") as stream:
+            if os.fstat(stream.fileno()).st_size < offset:
+                offset = 0
+            stream.seek(offset)
+            gained = stream.read()
+    except OSError:
+        return False, offset
+    complete = gained[:gained.rfind(b"\n") + 1]
+    return bool(FATAL.search(complete.decode("utf-8", "replace"))), offset + len(complete)
+
+
+def editor_crash(log):
+    """The first line of `log` past the test runner's start that says the editor crashed, or None."""
+    started = False
+    try:
+        with open(str(log), "rb") as stream:
+            for raw in stream:
+                line = raw.decode("utf-8", "replace")
+                if not started:
+                    started = RUNNER_STARTED in line
+                elif CRASH.search(line):
+                    return line.strip()
+    except OSError:
+        pass
+    return None
 
 
 def lock_refused(log):
@@ -2197,6 +2247,15 @@ def narrowed_kill(results, log, timed_out, dll, baseline_hashes, text_readers):
         return []
     names = failing_names(results)
     return names if killed_by_behaviour(names, text_readers) else []
+
+
+def mutant_crash(results, log, dll, baseline_hashes):
+    """The line saying the editor crashed, where a launch over the mutated assembly left no result and
+    crashed after the test runner started; otherwise None. Its baseline ran the same suite to a green
+    result on this machine, so that crash is the mutation's."""
+    if read_counts(results) is not None or sha(dll) == baseline_hashes.get(dll.name):
+        return None
+    return editor_crash(log)
 
 
 def failing_names(results):
@@ -2770,7 +2829,7 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     A kill that named its failing tests alone: each other verdict turns on something outside that key
     -- a survivor of either kind on the tests, which the test written for it changes; a timed-out or
     hung mutant on `--timeout` and the baseline's wall clock, and on anything else that kept the
-    editor running; uncompilable and not rebuilt on the editor as well as on the mutation. A kill
+    editor running; uncompilable, not rebuilt and crashed on the editor as well as on the mutation. A kill
     turns on the tests too, and is kept across a test removed since for the reason `scope_digest`
     gives for its key; one taken while another editor was up is kept as well, and its detail says so.
     """
@@ -3038,7 +3097,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
-            early, wall, neighbours, late = [], 0.0, 0, False
+            early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
                 narrowed_log = output / "mutant-{:03d}-narrowed.log".format(index)
@@ -3051,16 +3110,19 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     timed_out, late = False, True
                 early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
                                       text_readers)
+                if not early:
+                    crashed = mutant_crash(narrowed, narrowed_log, dll, baseline_hashes)
                 # A complete narrowed pass is no verdict, so the whole suite still runs.
                 late = late and bool(early)
             timed_out = False
-            if not early:
+            if not early and not crashed:
                 since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
                 if timed_out and complete_result(results, since, baseline["total"]):
                     timed_out, late = False, True
+                crashed = mutant_crash(results, log, dll, baseline_hashes)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
                 # next mutation over this one and end by restoring the wrong text.
@@ -3078,6 +3140,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "{} failed in {}: {}".format(
                     len(behavioural), ", ".join(narrowed_to),
                     ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+            elif crashed:
+                mutant.verdict = CRASHED
+                mutant.detail = crashed[:160]
             # Only where no result could be read: a readable one is the suite's own reading, and a
             # kill taken from the wall clock would override it. One short of complete is left to
             # TIMED_OUT.
@@ -3519,11 +3584,12 @@ def main():
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Named, because no failing case stands behind these kills.
-    hung = [m for m in mutants if m.verdict == HUNG]
-    if hung:
-        print("\n--- mutants killed by hanging the suite ---")
-        for mutant in hung:
-            print("{}  {}".format(mutant.describe(project), mutant.detail))
+    for verdict, heading in ((HUNG, "hanging the suite"), (CRASHED, "crashing the editor")):
+        named = [m for m in mutants if m.verdict == verdict]
+        if named:
+            print("\n--- mutants killed by {} ---".format(heading))
+            for mutant in named:
+                print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a
     # different denominator every branch, and a percentage is the part that gets quoted after the

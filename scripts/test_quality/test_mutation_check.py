@@ -6155,5 +6155,168 @@ class SessionConfirmationTests(unittest.TestCase):
         self.assertEqual(confirmed, {})
 
 
+# A launch's log as an editor writes it when the test runner has started and the editor then dies.
+RUNNER_LINE = "Running tests for ExecutionSettings with details:\n"
+FATAL_LINE = "Caught fatal signal - signo:11 code:1 errno:0 addr:0x110\n"
+CRASHED_LOG = "editor log\n" + RUNNER_LINE + "StackOverflowException: The requested operation caused a stack overflow.\n" + FATAL_LINE
+
+
+class CrashingCampaign(StubbedCampaign):
+    """A campaign whose mutant launches leave no result and `log_text` as their log."""
+
+    def __init__(self, log_text, body=None):
+        super().__init__(body)
+        self.log_text = log_text
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+        if self.not_rebuilt:
+            (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
+        Path(log).write_text(self.log_text)
+        return 0.0, False, 0
+
+    def recorded(self):
+        """(exit status, verdict, detail) of a run over the diff."""
+        code = self.run_over_diff("--max", "40")
+        record = json.loads((self.project / "out" / "mutant-001.json").read_text())
+        return code, record.get("verdict"), record.get("detail")
+
+
+class CrashingAreaCampaign(AreaCampaign):
+    """An `AreaCampaign` whose narrowed launch leaves no result and a crashed editor's log."""
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        reading = super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+        if Path(results).name.endswith("-narrowed.xml"):
+            Path(results).unlink()
+            Path(log).write_text(CRASHED_LOG)
+        return reading
+
+
+class CrashedMutantTests(unittest.TestCase):
+    """A mutant whose launch crashed the editor once the tests were running was detected: the baseline
+    ran the same suite green. What cannot be laid on the mutant keeps the verdict it had."""
+
+    def test_Given_AWholeSuiteLaunchThatCrashedOnceTheRunnerStarted_When_Recorded_Then_ItIsKilledByTheCrash(self):
+        # Arrange
+        campaign = CrashingCampaign(CRASHED_LOG)
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert — the detail is the first line saying so, which is what a reader is shown.
+        self.assertEqual(recorded, (0, getattr(mutation_check, "CRASHED", None),
+                                    "StackOverflowException: The requested operation caused a stack "
+                                    "overflow."))
+
+    def test_Given_AMutantThatCrashedTheEditor_When_TheRunIsDecided_Then_ItIsListedWithTheCrash(self):
+        # Arrange — read under its own heading, since the progress line prints the detail as well.
+        campaign = CrashingCampaign(CRASHED_LOG)
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        listed = campaign.printed.partition("--- mutants killed by crashing the editor ---\n")[2]
+        self.assertIn("StackOverflowException", listed.splitlines()[0] if listed else "")
+
+    # GREEN_ON_BASE(characterization): a crash before the runner started stays uncompilable, as on
+    # the base. What reddens this on the branch is reading a crash anywhere in the log.
+    def test_Given_ACrashBeforeTheRunnerStarted_When_Recorded_Then_ItStaysUnmeasured(self):
+        # Arrange — an editor dying in its import or its compile says nothing about the mutant's tests.
+        campaign = CrashingCampaign("editor log\n" + FATAL_LINE + RUNNER_LINE)
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert
+        self.assertEqual(recorded[:2], (1, mutation_check.UNCOMPILABLE))
+
+    # GREEN_ON_BASE(characterization): a crash over an assembly the mutation never reached stays
+    # uncompilable, as on the base. What reddens this on the branch is leaving out the rebuild check.
+    def test_Given_ACrashOverTheUnmutatedAssembly_When_Recorded_Then_ItStaysUnmeasured(self):
+        # Arrange
+        campaign = CrashingCampaign(CRASHED_LOG)
+        campaign.not_rebuilt = True
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert
+        self.assertEqual(recorded[:2], (1, mutation_check.UNCOMPILABLE))
+
+    def test_Given_ANarrowedLaunchThatCrashed_When_Measured_Then_TheCrashIsTheVerdictAndTheWholeSuiteIsNotLaunched(self):
+        # Arrange
+        campaign = CrashingAreaCampaign()
+
+        # Act
+        campaign.run_over_diff()
+
+        # Assert
+        self.assertEqual((campaign.launches[-1], campaign.verdict().get("verdict")),
+                         ("mutant-001-narrowed.xml", getattr(mutation_check, "CRASHED", None)))
+
+    def test_Given_EachLineAnEditorDiesWith_When_ALaunchReadsIt_Then_EachStopsTheLaunch(self):
+        # Arrange — one log per line, each as the CI editors that crashed wrote it.
+        lines = ["Caught fatal signal - signo:11 code:1 errno:0 addr:0x297\n",
+                 "Got a SIGSEGV while executing native code. This usually indicates\n",
+                 "Stack overflow in unmanaged: IP: 0x41566822, fault addr: 0x7fff2b854ff8\n",
+                 "Stack overflow: IP: 0x7fc31086b72e, fault addr: 0x7fff2b84cfec\n"]
+        with tempfile.TemporaryDirectory() as directory:
+            read = []
+            for number, line in enumerate(lines):
+                log = Path(directory) / "{}.log".format(number)
+                log.write_text("editor log\n" + line)
+
+                # Act
+                read.append(mutation_check.fatal_since(log, 0)[0])
+
+        # Assert
+        self.assertEqual(read, [True] * len(lines))
+
+    def test_Given_AManagedStackOverflow_When_ALaunchReadsIt_Then_ItDoesNotStopTheLaunch(self):
+        # Arrange — a run that recovered from one still writes the result it is read by.
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "run.log"
+            log.write_text(CRASHED_LOG.replace(FATAL_LINE, ""))
+
+            # Act
+            fatal = mutation_check.fatal_since(log, 0)[0]
+
+        # Assert
+        self.assertFalse(fatal)
+
+    def test_Given_AnEditorThatCrashesAndDoesNotExit_When_ItIsRun_Then_TheLaunchIsStoppedBeforeItsBound(self):
+        # Arrange — the crash handler loops rather than exiting, as on CI.
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            time.sleep(60)
+            """).format(CRASHED_LOG)
+        with scripted_editor(body) as (editor, project, root, _):
+            # Act
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", 20)
+
+        # Assert — read off the bound rather than the wall clock: a launch left to it timed out.
+        self.assertFalse(reading[1])
+
+
+class EditorCountTests(unittest.TestCase):
+    """The editor the CI image runs is counted as one a macOS install runs is."""
+
+    def test_Given_TheLinuxEditor_When_EditorsAreCounted_Then_ItCounts(self):
+        # Arrange — the command line the CI image's editor runs under.
+        listing = b"/opt/unity/Editor/Unity -runTests -batchmode -projectPath /github/workspace\n"
+
+        # Act
+        with listed_processes(listing):
+            counted = mutation_check.unity_busy()
+
+        # Assert
+        self.assertEqual(counted, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
