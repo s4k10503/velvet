@@ -1158,6 +1158,8 @@ class CampaignsAndCuts(GuardTestCase):
         # Python writes its streams strictly.
         self.index(b"100644 " + self.blob(WHOLE.encode("utf-8")) + b"\t" + RAW_BYTE_NAME + b"\x00")
         self.campaign_holding(os.fsdecode(RAW_BYTE_NAME))
+        shutil.copy(CAMPAIGN.with_name("unity_running.py"),
+                    self.root / CAMPAIGN.relative_to(REPO_ROOT).with_name("unity_running.py"))
         strict = {"PYTHONIOENCODING": "utf-8:strict"}
 
         # Act
@@ -1176,6 +1178,8 @@ class CampaignsAndCuts(GuardTestCase):
         self.committed("Held.cs")
         (self.root / "Held.cs").write_text("class Held {}\n", encoding="utf-8")
         self.campaign_holding("Held.cs")
+        shutil.copy(CAMPAIGN.with_name("unity_running.py"),
+                    self.root / CAMPAIGN.relative_to(REPO_ROOT).with_name("unity_running.py"))
 
         # Act
         code, said = self.judge("git commit -a -m x")

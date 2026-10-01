@@ -86,6 +86,27 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.LayoutIdMembers.ContainsKey("shared-box"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base drops the entry of an id whose last holder is torn down outside a render.
+        // A holder torn down outside a render, as a recycled virtual-list row is, must leave no entry naming it.
+        [Test]
+        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsNoEntry()
+        {
+            // Arrange
+            s_boxMounted = true;
+            _mounted = V.Mount(Root, V.Component(RemovableBoxRender, key: "root"));
+            Tick();
+            var ctx = _mounted.Root.Reconciler.Context;
+
+            // Act — the cleanup a virtual list gives a row it recycles, with no render in progress, and the row taken out
+            // of the tree as the list takes it.
+            var shared = Root.Q<VisualElement>("shared");
+            ((IReconcilerBridge)_mounted.Root.Reconciler).CleanupElementForController(shared);
+            shared.RemoveFromHierarchy();
+
+            // Assert
+            Assert.That(ctx.LayoutIdRegistry.ContainsKey("shared-box"), Is.False);
+        }
+
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
 

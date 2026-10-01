@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -13,10 +14,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Coverage for the filter-* transition tween (<see cref="StyleFilterTransitionDriver"/>), which lerps the
-    /// inline filter's parameters itself whenever the resolved <c>transition-property</c> CONTAINS
-    /// <c>filter</c> and names none of the entries the engine's inline-filter setter is measured animating
-    /// under — the shape under which that setter leaves a write on its plain direct-write path instead of running
-    /// it as its own uncancellable animation.
+    /// inline filter's parameters itself wherever an entry of the resolved transition lists runs for
+    /// <c>filter</c>, except where the engine's inline-filter setter animates the write by that same entry.
     /// Group A drives the pure <see cref="StyleFilterTransitionDriver.ApplyFrame"/> at explicit phases (the
     /// scheduler never ticks in EditMode; filter is geometry-independent, so no panel is needed to interpolate).
     /// Group B mounts a real <see cref="EditorWindow"/> panel with the bundled stylesheet so the transition-*
@@ -158,6 +157,26 @@ namespace Velvet.Tests
         // The float parameter of the element's single PAINTED filter function.
         private static float PaintedFloat(VisualElement element)
             => element.resolvedStyle.filter.First().GetParameter(0).floatValue;
+
+        // The binding the driver keeps for the element, which the write hook creates for a tween on an element
+        // carrying no transition-filter; null where none exists.
+        private static StyleFilterTransitionBinding DriverBinding(VisualElement element)
+        {
+            var table = (ConditionalWeakTable<VisualElement, StyleFilterTransitionBinding>)typeof(StyleFilterTransitionDriver)
+                .GetField("s_bindings", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            return table.TryGetValue(element, out var binding) ? binding : null;
+        }
+
+        // A sized element added to the panel past the reconciler, which the resolver holds no layer for.
+        private VisualElement AddBareElement()
+        {
+            var element = new VisualElement();
+            element.style.width = 100;
+            element.style.height = 40;
+            _window.rootVisualElement.Add(element);
+            ForcePanelUpdate(element.panel);
+            return element;
+        }
 
         #region Group A — pure ApplyFrame
 
@@ -446,44 +465,74 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlurAddedBesideAPairedUserCustom_When_ChannelsBuilt_Then_BothChannelsAlign()
+        public void Given_ABlurAddedBeforeAPairedUserCustom_When_ChannelsBuilt_Then_ItSnaps()
         {
-            // Arrange — base filter-[custom:1], hover blur-4 filter-[custom:2]: the custom pairs on both sides
-            // and only the blur is added. The custom needs no invented identity, and with a single distinct
-            // user custom the canonical ranks stay strictly ordered, so the merge places both correctly.
+            // Arrange — base filter-[custom:1], hover blur-4 filter-[custom:2]: the blur takes the position the
+            // custom held, so the first position pairs a custom with a blur.
             var def = CreateUserDefinition(new FilterParameter(0f));
             var to = new List<FilterFunction>(BlurList(4f));
             to.AddRange(CustomList(def, new FilterParameter(2f)));
 
             // Act
             var built = StyleFilterTransitionDriver.TryBuildChannels(
-                CustomList(def, new FilterParameter(1f)), to, out var channels);
+                CustomList(def, new FilterParameter(1f)), to, out _);
 
-            // Assert — blur first (canonical order), then the custom (RED while any user custom bars the merge).
-            // Joined rather than compared as arrays: a tuple assert compares each slot with Equals, which for
-            // an array is reference identity.
-            Assert.That((built, string.Join(",", channels.Select(c => c.Type))),
-                Is.EqualTo((true, "Blur,Custom")));
+            // Assert — discrete, as a CSS filter list whose shorter side is not the longer side's head.
+            Assert.That(built, Is.False);
         }
 
         [Test]
-        public void Given_TwoDistinctUserCustomsAcrossAnAddOrRemove_When_ChannelsBuilt_Then_ItSnaps()
+        public void Given_ASecondUserCustomAddedAtTheEnd_When_ChannelsBuilt_Then_ItFadesIn()
         {
-            // Arrange — two different user definitions share the same last canonical rank, so the sorted merge
-            // has no tiebreak and would emit them in an order the resolver does not compose in.
+            // Arrange — filter-[a:1] → filter-[a:2] filter-[b:2]: the first custom pairs in place and a second,
+            // different definition is added after it.
             var a = CreateUserDefinition(new FilterParameter(0f));
             var b = CreateUserDefinition(new FilterParameter(0f));
-            var from = new List<FilterFunction>(CustomList(a, new FilterParameter(1f)));
-            from.AddRange(CustomList(b, new FilterParameter(1f)));
-            var to = new List<FilterFunction>(BlurList(4f));
-            to.AddRange(CustomList(a, new FilterParameter(2f)));
+            var to = new List<FilterFunction>(CustomList(a, new FilterParameter(2f)));
             to.AddRange(CustomList(b, new FilterParameter(2f)));
 
             // Act
-            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out _);
+            var built = StyleFilterTransitionDriver.TryBuildChannels(CustomList(a, new FilterParameter(1f)), to, out var channels);
 
-            // Assert
+            // Assert — two channels, the second fading in from b's declared neutral. Joined rather than compared as
+            // arrays: a tuple assert compares each slot with Equals, which for an array is reference identity.
+            Assert.That((built, string.Join(",", channels.Select(c => c.To[0].floatValue + "<-" + c.From[0].floatValue))),
+                Is.EqualTo((true, "2<-1,2<-0")));
+        }
+
+        [Test]
+        public void Given_AGrayscaleWithABlurAddedBeforeIt_When_ChannelsBuilt_Then_ItSnaps()
+        {
+            // Arrange — grayscale → blur grayscale: the blur takes the grayscale's position.
+            var gray = new FilterFunction(FilterFunctionType.Grayscale);
+            gray.AddParameter(new FilterParameter(1f));
+            var to = new List<FilterFunction>(BlurList(4f)) { gray };
+
+            // Act
+            var built = StyleFilterTransitionDriver.TryBuildChannels(new List<FilterFunction> { gray }, to, out _);
+
+            // Assert — discrete, as CSS pads only the end of the shorter list.
             Assert.That(built, Is.False);
+        }
+
+        [Test]
+        public void Given_ARepeatedChannelWithAFilterAddedAtTheEnd_When_ChannelsBuilt_Then_EachPairsByPosition()
+        {
+            // Arrange — blur(2) blur(4) → blur(4) blur(8) grayscale(1): one channel twice, then a filter added.
+            var from = new List<FilterFunction>(BlurList(2f));
+            from.AddRange(BlurList(4f));
+            var gray = new FilterFunction(FilterFunctionType.Grayscale);
+            gray.AddParameter(new FilterParameter(1f));
+            var to = new List<FilterFunction>(BlurList(4f));
+            to.AddRange(BlurList(8f));
+            to.Add(gray);
+
+            // Act
+            var built = StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+
+            // Assert — each blur pairs with the one at its position, and the grayscale fades in from 0.
+            Assert.That((built, string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue))),
+                Is.EqualTo((true, "2->4,4->8,0->1")));
         }
 
         [Test]
@@ -619,6 +668,312 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(12f));
         }
 
+        [Test]
+        public void Given_ARunningTween_When_AChangeThatDoesNotInterpolateIsWritten_Then_TheTickStops()
+        {
+            // Arrange — a blur tweened half way in, then cleared, so the tween fades it out from there.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 0.15;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            var started = binding.Scheduled != null;
+
+            // Act — a grayscale is written into the position the fading blur holds.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterGrayscale, 1f, LengthUnit.Pixel));
+
+            // Assert — the fade ran, and the change, which pairs a grayscale with a blur, stopped it.
+            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ARunningTween_When_ItTicksOffThePanel_Then_NoFrameIsWritten()
+        {
+            // Arrange — a live tween, then the element taken out of the tree past the reconciler.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var panel = element.panel;
+            ApplyBlur(element, 12f);
+            var started = binding.Scheduled != null;
+            element.RemoveFromHierarchy();
+            var written = element.style.filter.value;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert — a tween ran, it is still running, and the tick wrote no new list.
+            Assert.That((started, binding.Scheduled != null, ReferenceEquals(element.style.filter.value, written)),
+                Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): a tween off the panel past its end settles on its target, as on the base.
+        [Test]
+        public void Given_ARunningTweenOffThePanelPastItsEnd_When_ItTicks_Then_ItSettlesOnItsTarget()
+        {
+            // Arrange — a live tween whose element is taken out of the tree, and its whole duration then past.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var panel = element.panel;
+            ApplyBlur(element, 12f);
+            element.RemoveFromHierarchy();
+            binding.StartTime -= 10;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert
+            Assert.That((binding.Scheduled, element.style.filter.value[0].GetParameter(0).floatValue),
+                Is.EqualTo(((IVisualElementScheduledItem)null, 12f)));
+        }
+
+        // GREEN_ON_BASE(characterization): nothing writes a filter onto an element after its pool reset, as on the base.
+        // The base bound no tween on an element without transition-filter, so none could outlive the reset.
+        [Test]
+        public void Given_ARunningTweenTheWriteHookBound_When_ThePoolResetRuns_Then_TheNextTickWritesNoFilter()
+        {
+            // Arrange — a tween on an element no reconciler owns.
+            var element = AddBareElement();
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+
+            // Act — the reset a pooled element gets, with the element still on the panel as the next consumer's.
+            FiberElementPoolReset.ResetCommonState(element);
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert
+            Assert.That(element.style.filter.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnimateHue_When_AFilterChanges_Then_NoTweenStartsAndNoBlurIsWritten()
+        {
+            // Arrange — an animate-hue motion driving the filter of an element carrying transition-filter.
+            var element = MountResolved("transition-filter animate-hue");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert — the animation masks the change, as a CSS animation masks it in both the before- and the
+            // after-change style, so nothing transitions and the animation's value stays.
+            var written = element.style.filter.value;
+            Assert.That((binding.Scheduled == null, written != null && written.Any(f => f.type == FilterFunctionType.Blur)),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnimateHueBesideABlur_When_APatchRemovesIt_Then_TheBlurIsWrittenAtOnce()
+        {
+            // Arrange — the blur under an animate-hue motion, on an element carrying transition-filter.
+            const string animated = "transition-filter animate-hue blur-md";
+            const string plain = "transition-filter blur-md";
+            var element = MountResolved(animated);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+
+            // Assert — the value the ended animation uncovers is written without a transition, as an ended CSS
+            // animation starts none.
+            Assert.That((binding.Scheduled == null, element.style.filter.value[0].GetParameter(0).floatValue),
+                Is.EqualTo((true, 12f)));
+        }
+
+        [Test]
+        public void Given_AnimateHueWithNoFilterUnderIt_When_APatchRemovesIt_Then_NoFilterIsPainted()
+        {
+            // Arrange — an animate-hue frame on an element carrying transition-filter and no filter utility.
+            const string animated = "transition-filter animate-hue";
+            const string plain = "transition-filter";
+            var element = MountResolved(animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.25f);
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+            AdvanceAndPaint(element.panel, 0.05);
+
+            // Assert — cleared at once, as an ended CSS animation starts no transition.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnimateHueOverAHoverBlur_When_APatchRemovesIt_Then_TheBlurIsWrittenAtOnce()
+        {
+            // Arrange — a hover layer's blur applied while animate-hue drove the filter.
+            const string animated = "transition-filter animate-hue";
+            const string plain = "transition-filter";
+            var element = MountResolved(animated);
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.FilterBlur, 12f, LengthUnit.Pixel), StyleLayerPriority.Hover);
+
+            // Act
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: animated) },
+                new VNode[] { V.Div(name: "card", className: plain) });
+
+            // Assert
+            var written = element.style.filter.value;
+            Assert.That(written != null && written.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN,
+                Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ATweenRunningUnderAnimateHue_When_APatchRemovesIt_Then_TheTweenRunsOn()
+        {
+            // Arrange — a blur tween started, then animate-hue added over it.
+            const string before = "transition-filter duration-300 blur-sm";
+            const string tweening = "transition-filter duration-300 blur-md";
+            const string animated = "transition-filter duration-300 animate-hue blur-md";
+            var element = MountResolved(before);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            Reconcile(before, tweening);
+            Reconcile(tweening, animated);
+            var startedAt = binding.StartTime;
+
+            // Act
+            Reconcile(animated, tweening);
+
+            // Assert — the tween the animation hid runs on from where its clock is.
+            Assert.That((binding.Scheduled != null, binding.StartTime == startedAt), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ARunningTween_When_APatchRemovesAnimatePulse_Then_TheTweenRunsOn()
+        {
+            // Arrange — a blur tween started on an element carrying animate-pulse.
+            const string before = "transition-filter duration-300 animate-pulse blur-sm";
+            const string tweening = "transition-filter duration-300 animate-pulse blur-md";
+            const string plain = "transition-filter duration-300 blur-md";
+            var element = MountResolved(before);
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            Reconcile(before, tweening);
+            var startedAt = binding.StartTime;
+
+            // Act
+            Reconcile(tweening, plain);
+
+            // Assert — the loop that ended animated no filter, so the tween runs on untouched.
+            Assert.That((binding.Scheduled != null, binding.StartTime == startedAt), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ATweenRunningUnderAnimateHue_When_APatchRemovesIt_Then_ItsFrameIsWrittenAtOnce()
+        {
+            // Arrange — a blur tween from 4 to 12 started, then an animate-hue frame written over it.
+            const string before = "transition-filter duration-300 blur-sm";
+            const string tweening = "transition-filter duration-300 blur-md";
+            const string animated = "transition-filter duration-300 animate-hue blur-md";
+            var element = MountResolved(before);
+            Reconcile(before, tweening);
+            Reconcile(tweening, animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.25f);
+
+            // Act
+            Reconcile(animated, tweening);
+
+            // Assert — the tween's own frame, near where it started, rather than the hue frame, the target, or a
+            // tween restarted from nothing.
+            var written = element.style.filter.value[0];
+            var amount = written.GetParameter(0).floatValue;
+            Assert.That((written.type, amount > 1f && amount < 11f), Is.EqualTo((FilterFunctionType.Blur, true)));
+        }
+
+        [Test]
+        public void Given_AnimateHue_When_AHueRotateUtilityChanges_Then_NoTweenStarts()
+        {
+            // Arrange — an animate-hue frame on an element carrying transition-filter.
+            var element = MountResolved("transition-filter animate-hue");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.1f);
+
+            // Act — a change the motion's hue-rotate would pair with.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, 90f, LengthUnit.Pixel));
+
+            // Assert
+            Assert.That(binding.Scheduled, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnimateHueOverAHueRotateUtility_When_APatchRemovesIt_Then_TheUtilitysAngleIsWrittenAtOnce()
+        {
+            // Arrange — an animate-hue frame over hue-rotate-90.
+            const string animated = "transition-filter animate-hue hue-rotate-90";
+            const string plain = "transition-filter hue-rotate-90";
+            var element = MountResolved(animated);
+            StyleAnimateDriver.ApplyFrame(element, _mounted.Root.Reconciler.Context.AnimationBindings[element], 0.1f);
+
+            // Act
+            Reconcile(animated, plain);
+
+            // Assert — 90, where a tween from the motion's 36 would still be near 36.
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): a change mid-tween redirects the tween to the new value, as on the base.
+        [Test]
+        public void Given_ARunningTween_When_ADifferentBlurIsWritten_Then_ItHeadsForTheNewValue()
+        {
+            // Arrange — a tween toward blur 12.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+
+            // Act
+            ApplyBlur(element, 6f);
+
+            // Assert
+            Assert.That(binding.Target![0].GetParameter(0).floatValue, Is.EqualTo(6f));
+        }
+
+        // GREEN_ON_BASE(characterization): a filter added at the end mid-tween redirects the tween to it, as on the base.
+        [Test]
+        public void Given_ARunningTween_When_AFilterIsAddedAtTheEnd_Then_ItHeadsForTheLongerList()
+        {
+            // Arrange — a tween toward blur 12.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+
+            // Act — the same blur with a contrast after it.
+            ApplyContrast(element, 1.5f);
+
+            // Assert
+            Assert.That(binding.Target?.Count, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): a running custom tween stops where its argument count changes, as on the base.
+        [Test]
+        public void Given_ARunningCustomTween_When_ItsArgumentCountChanges_Then_TheTweenStops()
+        {
+            // Arrange — a tween fading in a one-argument custom.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var def = CreateUserDefinition(new FilterParameter(0f), new FilterParameter(0f));
+            StyleFilterTransitionDriver.TryStartOrRedirect(element, CustomList(def, new FilterParameter(1f)));
+            var started = binding.Scheduled != null;
+
+            // Act — the same custom with two arguments, which pairs with nothing.
+            StyleFilterTransitionDriver.TryStartOrRedirect(element,
+                CustomList(def, new FilterParameter(1f), new FilterParameter(2f)));
+
+            // Assert
+            Assert.That((started, binding.Scheduled == null), Is.EqualTo((true, true)));
+        }
+
+        private void Reconcile(string from, string to)
+            => _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(name: "card", className: from) },
+                new VNode[] { V.Div(name: "card", className: to) });
+
         // Starts an animate-hue loop on the element, detached again at teardown.
         private void RunHueLoop(VisualElement element)
         {
@@ -708,9 +1063,9 @@ namespace Velvet.Tests
         {
             // CHARACTERIZATION PIN, not a requirement on Velvet: nothing in Velvet animates this, and the
             // asserted midpoint is what THIS editor's inline-filter setter does with a whole-property
-            // transition. It is recorded because the whole design branches on it: the driver stands down under
-            // the entries this case and Group D show the setter animating on, and should that set change, the
-            // right response is to re-measure those rows rather than to patch either side.
+            // transition. It is recorded because the whole design branches on it: the driver stands down where
+            // the setter animates a write by the entry that runs for filter, which is `all` here, and should
+            // that change, nothing would animate these writes at all.
             //
             // Arrange
             var element = MountResolved("transition-all duration-300");
@@ -834,10 +1189,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionPropertyNamingFilterAndABackgroundSizeRunByItsDelay_When_FilterChanges_Then_OnlyTheEngineAnimatesIt()
+        public void Given_TransitionPropertyNamingFilterAndABackgroundSizeRunByItsDelay_When_FilterChanges_Then_TheTweenRunsIt()
         {
             // Arrange — background-size's entry has no duration but a 0.1s delay, so a transition runs for it: the
-            // engine holds the old value through the delay and then writes the target.
+            // engine would hold the old value through the delay and then write the target.
             var element = MountResolved("transition-filter");
             SetInlineTransition(element, new[] { "filter", "background-size" },
                 new[] { new TimeValue(0.3f), new TimeValue(0f) }, new[] { new TimeValue(0f), new TimeValue(0.1f) });
@@ -846,12 +1201,28 @@ namespace Velvet.Tests
             ApplyBlur(element, 12f);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — past the delay the engine has written 12. Were the tween also to take the change, its start
-            // frame (the blur's neutral 0) would be what the engine wrote. NaN without a binding, as above.
-            var painted = _mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element)
-                ? PaintedFloat(element)
-                : float.NaN;
-            Assert.That(painted, Is.EqualTo(12f).Within(1e-3f));
+            // Assert — the tween's start frame. Past its delay the engine would have written 12.
+            Assert.That(PaintedFloat(element), Is.EqualTo(0f).Within(0.05f));
+        }
+
+        [Test]
+        public void Given_TransitionPropertyNamingFilterAndBackgroundSize_When_TheTweenTicks_Then_ThePaintedFilterIsTheTweensFrame()
+        {
+            // Arrange — a tween under a list naming background-size on a duration of its own, started 0.15s of
+            // filter's 0.3s ago.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            SetInlineTransition(element, new[] { "filter", "background-size" },
+                new[] { new TimeValue(0.3f), new TimeValue(0.2f) }, new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 0.15;
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert — about half way to 12, painted as the tick wrote it. Taken by the setter's own animation, the
+            // frame would only start animating from the painted 0.
+            Assert.That(PaintedFloat(element), Is.InRange(1.5f, 11f));
         }
 
         [Test]
@@ -954,6 +1325,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATweenClearingABlur_When_ItSettles_Then_NoEngineTransitionFollows()
+        {
+            // Arrange — a blur tweened in and settled, then cleared, and that tween past its end.
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            binding.StartTime -= 10;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            binding.StartTime -= 10;
+
+            // Act — the tick settles, and the panel paints a frame.
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — nothing is painted. Clearing the inline filter under an entry for filter is a write the
+            // engine animates itself, and that animation would still hold the tween's last frame.
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
+        }
+
+        [Test]
         public void Given_ARunningTween_When_TheTransitionPropertyGainsBackgroundSize_Then_TheTickSettlesAndStops()
         {
             // Arrange — a live tween, then a list that still names filter but also names background-size, from
@@ -1034,20 +1426,15 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Group D — what the inline-filter setter actually gates on
+        #region Group D — elements carrying no transition-filter
 
-        // These three mount WITHOUT transition-filter, so no tween binding exists and the driver returns at its
-        // first line. The resolver's instant write is then the only writer and the engine the only animator,
-        // which makes each row a single-animator, fully deterministic reading of the setter's gate.
-        //
-        // Together with the whole-property case above they pin which lists the setter animates a write under,
-        // the set the driver's probe stands down on. Should that set change, these rows flip — they are the
-        // canary for the whole design.
+        // These mount WITHOUT transition-filter, so the reconciler binds no tween: any tween that runs is one the
+        // write hook bound, and otherwise the resolver's instant write is the only writer.
         private void MountWithInlineTransition(string className, out VisualElement element, params string[] properties)
         {
             element = MountResolved(className);
             Assume.That(_mounted.Root.Reconciler.Context.FilterTransitionBindings.ContainsKey(element), Is.False,
-                "Precondition: no tween binding, so the engine is the only animator");
+                "Precondition: the reconciler bound no tween");
             var names = new List<StylePropertyName>();
             foreach (var property in properties)
             {
@@ -1063,55 +1450,68 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NoBindingAndATransitionNamingFilterAndOpacity_When_FilterChanges_Then_ThePaintIsInstant()
+        public void Given_NoBindingAndATransitionNamingFilterAndOpacity_When_FilterChanges_Then_TheTweenRunsIt()
         {
-            // Arrange — the list names filter and a live duration is resolved, and nothing the setter animates
-            // on. This is the property that makes Velvet's tween able to paint its own frames at all.
+            // Arrange — a hand-authored list naming filter among other properties, on an element without the class.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "filter", "opacity");
 
             // Act
             ApplyBlur(element, 12f);
-            AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — the composed value is painted outright, never animated.
-            Assert.That(PaintedFloat(element), Is.EqualTo(12f));
+            // Assert — the write hook bound a tween and started it.
+            Assert.That(DriverBinding(element)?.Scheduled, Is.Not.Null);
         }
 
         [Test]
-        public void Given_NoBindingAndATransitionNamingBackgroundSize_When_FilterChanges_Then_TheEngineAnimatesIt()
+        public void Given_NoBindingAndATransitionNamingFilter_When_TheFilterIsCleared_Then_TheTweenRunsIt()
         {
-            // Arrange — naming background-size animates the FILTER even though the list says nothing about
-            // filters.
+            // Arrange — a blur written while nothing transitions, then a hand-authored list naming filter.
+            var element = MountResolved("w-[100px] h-[40px]");
+            ApplyBlur(element, 12f);
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+
+            // Assert — the removal is the tween's to run, as adding a filter is.
+            Assert.That(DriverBinding(element)?.Scheduled, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_NoBindingAndATransitionNamingBackgroundSize_When_FilterChanges_Then_ThePaintIsInstant()
+        {
+            // Arrange — the list names background-size, which the inline-filter setter animates a filter write by,
+            // and nothing that covers filter.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "background-size");
 
             // Act
             ApplyBlur(element, 12f);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — exactly half way at the half-way point.
-            Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(1e-3f));
+            // Assert — painted outright, where the setter's animation would be half way.
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f));
         }
 
         [Test]
-        public void Given_NoBindingAndATransitionNamingTheBackgroundScaleModeShorthand_When_FilterChanges_Then_TheEngineAnimatesIt()
+        public void Given_NoBindingAndATransitionNamingTheBackgroundScaleModeShorthand_When_FilterChanges_Then_ThePaintIsInstant()
         {
-            // Arrange — -unity-background-scale-mode is a second way into the engine's filter animation.
+            // Arrange — -unity-background-scale-mode is the shorthand covering background-size.
             MountWithInlineTransition("w-[100px] h-[40px]", out var element, "-unity-background-scale-mode");
 
             // Act
             ApplyBlur(element, 12f);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — exactly half way, same as naming background-size outright.
-            Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(1e-3f));
+            // Assert — painted outright, same as naming background-size.
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f));
         }
 
         #endregion
 
         #region Group E — the contrast an animated instant write pads from
 
-        // Mounted WITHOUT transition-filter, like Group D, so no tween binding exists and the engine is the only
-        // animator.
+        // Mounted WITHOUT transition-filter, like Group D, under lists whose `all` entry the engine animates a filter
+        // write by, so no tween runs and the engine is the only animator.
 
         private static List<FilterFunction> ContrastList(float amount)
         {
@@ -1313,6 +1713,93 @@ namespace Velvet.Tests
             // Assert — half way from 8 back to 12 over the half duration the engine gives a reversal. Restarted
             // over the full duration, it would be a quarter of the way, at 9.
             Assert.That(PaintedFloat(element), Is.EqualTo(10f).Within(0.3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the engine applies a filter added before another at once, as CSS does, which
+        // styling-filters.md states for both animators.
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_ABlurIsAddedBeforeAGrayscale_Then_ThePaintIsInstant()
+        {
+            // Arrange — a grayscale at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.FilterGrayscale, 1f, LengthUnit.Pixel));
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act — the blur composes ahead of the grayscale.
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — the blur is painted at its target.
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_TheElementLeavesThePanelMidFade_Then_NoFilterIsLeft()
+        {
+            // Arrange — a contrast faded in and at rest, then cleared, and part way through the fade to 1.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyContrast(element, 2f);
+            AdvanceAndPaint(element.panel, 1.0);
+            ClearContrast(element);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Act
+            element.RemoveFromHierarchy();
+
+            // Assert — the inline filter is cleared, as the fade's end would have left it, rather than holding the
+            // contrast(1) the fade ran toward.
+            Assert.That(element.style.filter.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_ABrightnessAndAContrastAreAddedInOneWrite_Then_TheContrastFadesInFromOne()
+        {
+            // Arrange — a blur at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 4f);
+            AdvanceAndPaint(element.panel, 1.0);
+            var brightness = new FilterFunction(BuiltInFilterDefinitions.Brightness);
+            brightness.AddParameter(new FilterParameter(1.5f));
+            var to = new List<FilterFunction>(BlurList(4f)) { brightness };
+            to.AddRange(ContrastList(2f));
+
+            // Act — brightness and contrast join the list together, the contrast behind the brightness.
+            StyleFilterEngineWrite.Write(element, to);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from CSS's identity 1 to 2; the engine's own padding would put it at 1.
+            Assert.That(element.resolvedStyle.filter.ElementAt(2).GetParameter(0).floatValue, Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATransitionNamingFilter_When_ABlurSlotIsClearedPastTheLayerMap_Then_TheTweenRunsIt()
+        {
+            // Arrange — a blur at rest on an element the resolver holds no filter layer for, under a list naming filter.
+            var element = AddBareElement();
+            element.style.filter = BlurList(12f);
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            StyleArbitraryValueResolver.ClearInline(element, ArbitraryProperty.FilterBlur);
+
+            // Assert — the removal is the tween's, as a removal through the layer map is.
+            Assert.That(DriverBinding(element)?.Scheduled, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_AWholePropertyTransition_When_AContrastSlotIsClearedPastTheLayerMap_Then_ItFadesOutToOne()
+        {
+            // Arrange — a contrast at rest on an element the resolver holds no filter layer for.
+            var element = AddBareElement();
+            element.style.filter = ContrastList(2f);
+            SetInlineTransition(element, new[] { "all" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
+
+            // Act
+            StyleArbitraryValueResolver.ClearInline(element, ArbitraryProperty.FilterContrast);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert — half way from 2 to CSS's identity 1; the engine's own padding would put it at 1.
+            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
         }
 
         #endregion

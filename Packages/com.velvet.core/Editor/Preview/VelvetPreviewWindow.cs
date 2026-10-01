@@ -15,11 +15,8 @@ namespace Velvet.Editor.Preview
     /// Motion / AnimatePresence timers, so animation runs live — an in-editor live preview with hot-reloading
     /// of edits.
     /// <para>
-    /// Scale caveat: an EditorWindow panel has no <c>PanelSettings</c>, so this preview renders at raw
-    /// editor-panel scale and cannot reproduce the game's <c>ScaleWithScreenSize</c> @ a fixed reference
-    /// resolution. For scale-accurate output use the headless capture path (which sets
-    /// <c>referenceResolution</c> on a real <c>PanelSettings</c>); treat this window as a live layout/behavior
-    /// view, not a pixel-exact one.
+    /// Choosing the game's <c>PanelSettings</c> in the toolbar sizes and scales the canvas the way a runtime panel
+    /// on those settings lays out for the viewport's screen size.
     /// </para>
     /// <para>Open via Window &gt; Velvet &gt; Preview.</para>
     /// <remarks>A standalone workshop for mounting and inspecting one <c>[VelvetPreview]</c> story at a time,
@@ -38,6 +35,7 @@ namespace Velvet.Editor.Preview
         private const string ViewportKey = "Velvet.Preview.Viewport";
         private const string ViewportWidthKey = "Velvet.Preview.ViewportW";
         private const string ViewportHeightKey = "Velvet.Preview.ViewportH";
+        private const string PanelSettingsKey = "Velvet.Preview.PanelSettings";
 
         // Fixed pane sizes for the two TwoPaneSplitViews: the story list sidebar's width, and the addons
         // controls pane's min height in the stage/controls vertical split.
@@ -97,7 +95,7 @@ namespace Velvet.Editor.Preview
         private ListView _list;
         private VisualElement _stage;     // fixed backdrop the scroll view / zoom box center within
         private ScrollView _stageScroll;  // pans/scrolls when the zoom box exceeds the stage viewport
-        private VisualElement _zoomBox;   // layout-sized box (reference * zoom) that makes zoom affect layout, not just paint
+        private VisualElement _zoomBox;   // layout-sized box (reference * panel scale * zoom) that makes zoom affect layout, not just paint
         private VisualElement _canvas;    // the element the story actually mounts onto
         private CheckerboardBackground _checkerboard;
         private PreviewInspectOverlay _overlay;
@@ -111,6 +109,7 @@ namespace Velvet.Editor.Preview
         private ToolbarMenu _viewportMenu;
         private IntegerField _viewportWidthField;
         private IntegerField _viewportHeightField;
+        private ObjectField _panelSettingsField;
 
         // View-addon state, persisted in EditorPrefs so it survives remounts / domain reloads.
         private bool _dark;
@@ -121,6 +120,7 @@ namespace Velvet.Editor.Preview
         private string _viewport = ViewportFull;
         private int _viewportWidth;
         private int _viewportHeight;
+        private PanelSettings _panelSettings;
 
         // The IsDark value the editor (or a running game) had before this window first applied its own, captured
         // once and restored on close so toggling Dark in preview never leaks to whatever else uses the theme.
@@ -176,6 +176,9 @@ namespace Velvet.Editor.Preview
             _viewport = EditorPrefs.GetString(ViewportKey, ViewportFull);
             _viewportWidth = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportWidthKey, DefaultCustomViewportWidth));
             _viewportHeight = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportHeightKey, DefaultCustomViewportHeight));
+            _panelSettings = GlobalObjectId.TryParse(EditorPrefs.GetString(PanelSettingsKey, string.Empty), out var id)
+                ? GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as PanelSettings
+                : null;
 
             if (!IsKnownViewportLabel(_viewport))
             {
@@ -205,7 +208,7 @@ namespace Velvet.Editor.Preview
             var sidebar = new VisualElement { style = { minWidth = 180f } };
 
             var toolbar = new Toolbar();
-            var refreshButton = new ToolbarButton(RefreshStories) { text = "Refresh" };
+            var refreshButton = new ToolbarButton(Rediscover) { text = "Refresh" };
             toolbar.Add(refreshButton);
             toolbar.Add(new ToolbarSpacer { style = { flexGrow = 1f } });
             sidebar.Add(toolbar);
@@ -343,11 +346,12 @@ namespace Velvet.Editor.Preview
             return stageScroll;
         }
 
-        // The zoom box: its LAYOUT size is the reference size times the zoom factor, so the scroll view's
-        // scrollable extent matches what is actually painted. flexShrink 0 keeps it from being compressed by
-        // the flex column above it (the original squeeze bug for a fixed-size story taller than the stage).
-        // The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout size
-        // (reference * factor) in unscaled px, so its border is a crisp 1px bezel around the simulated viewport.
+        // The zoom box: its LAYOUT size is the reference size times the panel scale and the zoom factor, so the
+        // scroll view's scrollable extent matches what is actually painted. flexShrink 0 keeps it from being
+        // compressed by the flex column above it (the original squeeze bug for a fixed-size story taller than the
+        // stage). The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout
+        // size (reference * panel scale * factor) in unscaled px, so its border is a crisp 1px bezel around the
+        // simulated viewport.
         // Border colors are left at their default here and set by ApplyBackground (called once from CreateGUI
         // right after this element tree is built, and again on every background change) so the frame always
         // matches the active backdrop.
@@ -470,6 +474,17 @@ namespace Velvet.Editor.Preview
             _viewportHeightField.RegisterValueChangedCallback(_ => OnViewportFieldChanged());
             toolbar.Add(_viewportHeightField);
 
+            _panelSettingsField = new ObjectField
+            {
+                objectType = typeof(PanelSettings),
+                value = _panelSettings,
+                tooltip = "The game's PanelSettings: the canvas takes the scale a runtime panel on it would for the " +
+                    "viewport's screen size.",
+                style = { width = 160f },
+            };
+            _panelSettingsField.RegisterValueChangedCallback(evt => SetPanelSettings(evt.newValue as PanelSettings));
+            toolbar.Add(_panelSettingsField);
+
             var outlineToggle = new ToolbarToggle { text = "Outline", value = _outline };
             outlineToggle.RegisterValueChangedCallback(evt =>
             {
@@ -563,7 +578,7 @@ namespace Velvet.Editor.Preview
             ApplyZoom();
         }
 
-        // Applies the current zoom factor to BOTH the zoom box's layout size and the canvas's paint scale. Paint
+        // Applies the current zoom factor, times the panel scale, to BOTH the zoom box's layout size and the canvas's paint scale. Paint
         // scale alone only repaints the canvas larger without changing the space it occupies, so the stage would
         // center the UNSCALED box: at 200% the painted content would overflow the stage's Hidden clip with
         // nothing to scroll to, and at 50%/Fit the centered (but unscaled) box would leave dead space below a
@@ -575,13 +590,14 @@ namespace Velvet.Editor.Preview
             if (_canvas == null || _zoomBox == null) return;
             var factor = _zoom == ZoomFit ? ComputeFitFactor() : ZoomFactor(_zoom);
             var (refW, refH, _) = ComputeReferenceSize(_selected);
+            var paint = factor * PanelScale();
 
             if (IsResolved(refW) && IsResolved(refH))
             {
-                _canvas.style.scale = new Scale(new Vector3(factor, factor, 1f));
+                _canvas.style.scale = new Scale(new Vector3(paint, paint, 1f));
 
-                var boxWidth = refW * factor;
-                var boxHeight = refH * factor;
+                var boxWidth = refW * paint;
+                var boxHeight = refH * paint;
                 // Only write when the value actually changed — this handler also runs from the stage's
                 // GeometryChangedEvent, so writing unconditionally could retrigger layout every resize tick even
                 // when nothing here actually moved.
@@ -616,7 +632,8 @@ namespace Velvet.Editor.Preview
             var (refW, refH, _) = ComputeReferenceSize(_selected);
             if (!IsResolved(refW) || !IsResolved(refH)) return 1f;
 
-            return Mathf.Min(1f, Mathf.Min(stageW / refW, stageH / refH));
+            var panelScale = PanelScale();
+            return Mathf.Min(1f, Mathf.Min(stageW / (refW * panelScale), stageH / (refH * panelScale)));
         }
 
         private static float ZoomFactor(string label)
@@ -677,6 +694,34 @@ namespace Velvet.Editor.Preview
             MountWithCurrentArgs(_selected);
         }
 
+        internal void SetPanelSettings(PanelSettings settings)
+        {
+            _panelSettings = settings;
+            // A sub-asset shares its file's GUID, so the id names the object itself.
+            EditorPrefs.SetString(
+                PanelSettingsKey, settings == null ? string.Empty : GlobalObjectId.GetGlobalObjectIdSlow(settings).ToString());
+            _panelSettingsField?.SetValueWithoutNotify(settings);
+            // Remounted as a viewport change is, since the canvas's scope and units both move.
+            ApplyCanvasSize(_selected);
+            MountWithCurrentArgs(_selected);
+        }
+
+        // Screen pixels per layout unit on the chosen PanelSettings, for a screen the size of the Custom viewport
+        // or, without one, of the stage. 1 without PanelSettings, so the canvas keeps the editor panel's scale.
+        private float PanelScale()
+        {
+            if (_panelSettings == null) return 1f;
+            var screen = ViewportSize();
+            if (screen.Width <= 0f) screen = StageSize();
+
+            var unitsPerPixel = PreviewPanelScale.Resolve(
+                _panelSettings, new Vector2(screen.Width, screen.Height), Screen.dpi);
+            return IsResolved(unitsPerPixel) ? 1f / unitsPerPixel : 1f;
+        }
+
+        private (float Width, float Height) StageSize() =>
+            (_stage?.resolvedStyle.width ?? 0f, _stage?.resolvedStyle.height ?? 0f);
+
         private static int ClampCustomViewportSize(int value) =>
             Mathf.Clamp(value, MinCustomViewportSize, MaxCustomViewportSize);
 
@@ -699,7 +744,15 @@ namespace Velvet.Editor.Preview
         #endregion
 
         #region Story lifecycle
-        private void RefreshStories()
+        private void RefreshStories() => RefreshStories(VelvetPreviewRegistry.DiscoverStories);
+
+        internal void Rediscover()
+        {
+            VelvetPreviewRegistry.InvalidateDiscovery();
+            RefreshStories();
+        }
+
+        internal void RefreshStories(Func<List<VelvetPreviewStory>> discover)
         {
             var rememberedId = _selected?.Id ?? EditorPrefs.GetString(LastSelectionKey, null);
 
@@ -707,7 +760,7 @@ namespace Velvet.Editor.Preview
             _indexError = null;
             try
             {
-                _stories.AddRange(VelvetPreviewRegistry.DiscoverStories());
+                _stories.AddRange(discover());
             }
             catch (InvalidOperationException ex)
             {
@@ -801,12 +854,16 @@ namespace Velvet.Editor.Preview
         // <item>Else a fixed viewport (preset or custom) sizes the canvas to that reference W x H and marks it a
         // responsive scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
         // <item>Else ("Full", no explicit size): the canvas fills the stage — its reference size IS the measured
-        // stage size, and it is not a responsive scope (matches the panel root instead).</item>
+        // stage size. It is a responsive scope only with PanelSettings chosen, standing in for the game panel's
+        // root; without them breakpoints match the editor panel root, as that panel is the one shown.</item>
         // </list>
         private (float Width, float Height, bool IsResponsiveScope) ComputeReferenceSize(VelvetPreviewStory story)
         {
-            var stageW = _stage?.resolvedStyle.width ?? 0f;
-            var stageH = _stage?.resolvedStyle.height ?? 0f;
+            // The stage and the viewport measure screen pixels; the canvas is sized in the panel's layout units.
+            var panelScale = PanelScale();
+            var (stageW, stageH) = StageSize();
+            stageW /= panelScale;
+            stageH /= panelScale;
 
             var hasExplicitSize = story != null && (story.Width > 0 || story.Height > 0);
             if (hasExplicitSize)
@@ -817,9 +874,11 @@ namespace Velvet.Editor.Preview
             }
 
             var (viewportW, viewportH) = ViewportSize();
+            viewportW /= panelScale;
+            viewportH /= panelScale;
             if (viewportW > 0f && viewportH > 0f) return (viewportW, viewportH, true);
 
-            return (stageW, stageH, false);
+            return (stageW, stageH, _panelSettings != null);
         }
 
         // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A
@@ -902,7 +961,8 @@ namespace Velvet.Editor.Preview
 
             var hasExplicitSize = _selected != null && (_selected.Width > 0 || _selected.Height > 0);
             var mode = hasExplicitSize ? "Story" : _viewport;
-            return $"{mode}  {size} · {pct}%";
+            var panel = _panelSettings == null ? string.Empty : $" · panel ×{PanelScale():0.##}";
+            return $"{mode}  {size} · {pct}%{panel}";
         }
         #endregion
     }

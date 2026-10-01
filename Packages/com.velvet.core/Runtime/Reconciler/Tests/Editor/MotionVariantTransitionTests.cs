@@ -567,10 +567,10 @@ namespace Velvet.Tests
             // Act
             reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
 
-            // Assert — the overrides name the properties the swap transitions, in place of "all".
+            // Assert — the overrides follow the "all" entry the rest of the swap transitions on.
             var property = Root.Q<VisualElement>("m").style.transitionProperty;
             Assert.That(string.Join(",", property.value?.Select(p => p.ToString()) ?? Enumerable.Empty<string>()),
-                Is.EqualTo("opacity"));
+                Is.EqualTo("all,opacity"));
         }
 
         [Test]

@@ -33,7 +33,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
-UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from unity_running import UNITY_RUNNING  # noqa: E402
 
 CUTS_FILE = "scripts/test_quality/neuter_cuts.json"
 UNCOVERED_FILE = "scripts/test_quality/neuter_uncovered.txt"
