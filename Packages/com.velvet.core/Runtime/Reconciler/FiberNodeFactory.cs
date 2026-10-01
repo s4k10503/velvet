@@ -673,6 +673,10 @@ namespace Velvet
             {
                 _patcher.Appliers.ApplyDragOverlay(element, props.DragOverlay);
             }
+            if (props?.NoDrag == true)
+            {
+                _patcher.Appliers.ApplyNoDrag(element, true);
+            }
         }
 
         // The invisible stand-in a deferred-host node (Portal / WorldSpace) leaves at its own tree

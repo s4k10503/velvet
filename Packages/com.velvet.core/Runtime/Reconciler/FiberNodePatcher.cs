@@ -1839,6 +1839,10 @@ namespace Velvet
             {
                 _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
             }
+            if (oldProps.NoDrag != newProps.NoDrag)
+            {
+                _appliers.ApplyNoDrag(element, newProps.NoDrag);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.

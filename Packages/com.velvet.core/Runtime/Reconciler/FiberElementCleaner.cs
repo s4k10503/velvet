@@ -479,6 +479,7 @@ namespace Velvet
                 DndOverlayDriver.Detach(element, _ctx);
                 _ctx.DragOverlayBindings.Remove(element);
             }
+            _ctx.NoDragElements.Remove(element);
         }
 
         // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.

@@ -844,6 +844,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
+        // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
+        public HashSet<VisualElement> NoDragElements { get; } = new();
 
         // The one live drag session (pending or active) for this tree, owned by DndActiveDrag itself:
         // null = idle. See DndActiveDrag for the state machine.
