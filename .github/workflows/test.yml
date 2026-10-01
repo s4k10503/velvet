@@ -429,6 +429,10 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_ci_mutation_shard.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_campaign_carry.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_previous_campaign.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_licensed_editor.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_neuter_check.py

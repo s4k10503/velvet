@@ -5327,6 +5327,525 @@ class AreaOfTests(unittest.TestCase):
         self.assertEqual(areas, [runtime / "Reconciler", None, None])
 
 
+TESTS = "Packages/com.velvet.core/Runtime/Tests/Editor"
+ELSEWHERE = "Packages/com.velvet.core/Runtime/Other/Tests/Editor"
+
+
+def fixture_source(name, extra=""):
+    return "namespace Velvet.Tests\n{\n    internal sealed class " + name + "\n    {\n" + extra + "    }\n}\n"
+
+
+class CarryCampaign(StubbedCampaign):
+    """A branch whose earlier head was measured, and a push on top of it.
+
+    Four mutants on four lines. The first is killed by `ProbeTests`, the second by `NeighbourTests` in
+    the same test assembly, the third by `ElsewhereTests` in another one, and the fourth survives every
+    suite but the PlayMode one, which only `TwoPlatform` asks. `push` commits a change on top of the
+    measured head, and `carry` and `remeasure` run what the workflow runs at the new head.
+    """
+
+    BODY = TwoPlatformCampaign.BODY
+    KILLERS = {"mutant-001.xml": "Velvet.Tests.ProbeTests.Given_A_When_B_Then_C",
+               "mutant-002.xml": "Velvet.Tests.NeighbourTests.Given_A_When_B_Then_C",
+               "mutant-003.xml": "Velvet.Tests.ElsewhereTests.Given_A_When_B_Then_C"}
+    PLAYMODE_KILLERS = dict(KILLERS, **{"mutant-004.xml": "Velvet.Tests.ElsewhereTests.Given_D_When_E_Then_F"})
+    FILES = {
+        TESTS + "/Velvet.Tests.Probe.Editor.asmdef": '{ "name": "Velvet.Tests.Probe.Editor" }\n',
+        TESTS + "/ProbeTests.cs": fixture_source("ProbeTests"),
+        TESTS + "/NeighbourTests.cs": fixture_source("NeighbourTests"),
+        ELSEWHERE + "/Velvet.Tests.Other.Editor.asmdef": '{ "name": "Velvet.Tests.Other.Editor" }\n',
+        ELSEWHERE + "/ElsewhereTests.cs": fixture_source("ElsewhereTests"),
+    }
+
+    def __init__(self, files=None, body=None):
+        super().__init__(body)
+        self.measured = []
+        self.git("rev-parse", "HEAD")
+        self.base = self.git("rev-parse", "HEAD")
+        (self.project / ".gitignore").write_text("Library/\nout/\nLogs/\n")
+        for relative, text in dict(self.FILES, **(files or {})).items():
+            self.write(relative, text)
+        self.head = self.commit("measured head")
+
+    def git(self, *arguments):
+        return subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@t", "-c", "user.name=t",
+                               *arguments], capture_output=True, text=True).stdout.strip()
+
+    def write(self, relative, text):
+        path = self.project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def commit(self, message):
+        self.git("add", "-A")
+        self.git("commit", "-qm", message)
+        return self.git("rev-parse", "HEAD")
+
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.measured.append((platform, name))
+        Path(log).write_text("")
+        killer = (self.PLAYMODE_KILLERS if platform == "PlayMode" else self.KILLERS).get(name)
+        Path(results).write_text(GREEN_RESULTS if killer is None else (
+            '<test-run total="1" passed="0" failed="1" inconclusive="0">'
+            '<test-case fullname="{}" result="Failed" /></test-run>'.format(killer)))
+        return 0.0, False, 0
+
+    def logs(self, name):
+        return str(self.project / "Logs" / name)
+
+    def on_base(self, *arguments):
+        return self.drive("--base", self.base, *arguments)
+
+    def record(self, directory="previous", *arguments):
+        return self.on_base("--shard", "0/1", "--output", self.logs(directory), *arguments)
+
+    def push(self, changes):
+        for relative, text in changes.items():
+            if text is None:
+                (self.project / relative).unlink()
+            else:
+                self.write(relative, text)
+        return self.commit("push")
+
+    def carry(self, previous=("previous",), *arguments):
+        return self.on_base("--carry-to", self.logs("carried"), "--previous-head", self.head,
+                            "--previous-run", "77", "--previous", *[self.logs(name) for name in previous],
+                            *arguments)
+
+    def remeasure(self, *arguments):
+        self.measured.clear()
+        self.on_base("--shard", "0/1", "--output", self.logs("now"), "--carried-in", self.logs("carried"),
+                     *arguments)
+        return [name for _, name in self.measured if name != "baseline.xml"]
+
+    def carried(self, index, platform="EditMode"):
+        return mutation_check.verdict_path(self.project / "Logs" / "carried" / platform, index).exists()
+
+    def after(self, changes, previous=("previous",)):
+        """The mutants the push's campaign measures, from a measured head through a carry."""
+        self.record()
+        self.push(changes)
+        self.carry(previous)
+        return self.remeasure()
+
+
+EDITED = fixture_source("ProbeTests", "        internal void Added() { }\n")
+
+
+class CarriedKillTests(unittest.TestCase):
+    """A campaign on a later head of the branch takes an earlier head's kills where the push between
+    cannot have changed them, and measures every other mutant as a whole campaign would."""
+
+    def test_Given_APushEditingOneFixture_When_TheNextHeadIsMeasured_Then_AKillRestingOnItIsMeasuredAgain(self):
+        # Arrange
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({TESTS + "/ProbeTests.cs": EDITED})
+
+        # Assert
+        self.assertIn("mutant-001.xml", measured)
+
+    def test_Given_APushEditingOneFixture_When_TheNextHeadIsMeasured_Then_AKillOnAnotherFixtureOfItsAssemblyIsCarried(self):
+        # Arrange — the record and the editor together, so a carry that wrote nothing and a campaign
+        # that measured nothing do not both read as carried.
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({TESTS + "/ProbeTests.cs": EDITED})
+
+        # Assert
+        self.assertEqual((campaign.carried(2), "mutant-002.xml" in measured), (True, False))
+
+    def test_Given_ASurvivorsRecordNamingAStandingCase_When_Carried_Then_NoRecordIsWritten(self):
+        # Arrange — a survivor's record names failing cases only when each is a text reader's, so this
+        # one is written by hand: what refuses it is then the verdict and nothing about its cases.
+        campaign = CarryCampaign()
+        campaign.record()
+        recorded = mutation_check.verdict_path(campaign.project / "Logs" / "previous", 4)
+        recorded.write_text(json.dumps(dict(json.loads(recorded.read_text()), killers=[
+            "Velvet.Tests.ElsewhereTests.Given_A_When_B_Then_C"])))
+        campaign.push({TESTS + "/ProbeTests.cs": EDITED})
+
+        # Act
+        campaign.carry()
+
+        # Assert
+        self.assertFalse(campaign.carried(4))
+
+    def test_Given_ACarriedRecordHoldingASurvivor_When_TheNextHeadIsMeasured_Then_ItIsMeasuredAgain(self):
+        # Arrange — a carried directory is read as data, so a record in it is a kill only by its verdict.
+        campaign = CarryCampaign()
+        campaign.after({TESTS + "/ProbeTests.cs": EDITED})
+        carried = mutation_check.verdict_path(campaign.project / "Logs" / "carried" / "EditMode", 2)
+        carried.write_text(json.dumps(dict(json.loads(carried.read_text()), verdict=mutation_check.SURVIVED)))
+
+        # Act
+        measured = campaign.remeasure()
+
+        # Assert
+        self.assertIn("mutant-002.xml", measured)
+
+    def test_Given_APushEditingTestUtilities_When_TheNextHeadIsMeasured_Then_NoKillIsCarried(self):
+        # Arrange — a shared helper no mutated source holds, so the records' key does not move and only
+        # the path rule can refuse them.
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({"Packages/com.velvet.core/TestUtilities/Helper.cs": fixture_source("Helper")})
+
+        # Assert
+        self.assertEqual(measured, ["mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"])
+
+    def test_Given_APushEditingATestAssemblysDefinition_When_TheNextHeadIsMeasured_Then_NoKillIsCarried(self):
+        # Arrange — under a Tests directory, so only the rule that a test source is C# refuses it.
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({ELSEWHERE + "/Velvet.Tests.Other.Editor.asmdef":
+                                   '{ "name": "Velvet.Tests.Other.Editor", "autoReferenced": false }\n'})
+
+        # Assert
+        self.assertEqual(measured, ["mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"])
+
+    def test_Given_ATestsDirectoryCompilingIntoTheRuntime_When_ASourceThereChanges_Then_NoKillIsCarried(self):
+        # Arrange — no .asmdef of its own, so the runtime's is the nearest and the source is production.
+        campaign = CarryCampaign({"Packages/com.velvet.core/Runtime/Velvet.asmdef": '{ "name": "Velvet" }\n',
+                                  "Packages/com.velvet.core/Runtime/Loose/Tests/Seam.cs": fixture_source("Seam")})
+
+        # Act
+        measured = campaign.after({"Packages/com.velvet.core/Runtime/Loose/Tests/Seam.cs":
+                                   fixture_source("Seam", "        internal void Added() { }\n")})
+
+        # Assert
+        self.assertEqual(measured, ["mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"])
+
+    def test_Given_AnEarlierHeadThatIsNotAnAncestor_When_TheNextHeadIsMeasured_Then_NoKillIsCarried(self):
+        # Arrange — the measured head rewritten away, as a force-push leaves it.
+        campaign = CarryCampaign()
+        campaign.record()
+        campaign.git("commit", "-q", "--amend", "-m", "rewritten")
+
+        # Act
+        campaign.carry()
+        measured = campaign.remeasure()
+
+        # Assert
+        self.assertEqual(measured, ["mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"])
+
+    def test_Given_AKillerATextReaderAddedElsewhereNowCovers_When_TheNextHeadIsMeasured_Then_ItIsMeasuredAgain(self):
+        # Arrange — a fixture reading the tree's text, in the other assembly, named for a namespace the
+        # killer's case runs under: at this head the campaign takes that case out of the run, as
+        # `excluding` and `killed_by_behaviour` read a name, so the kill on it is not this head's.
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({ELSEWHERE + "/CorpusTests.cs": fixture_source(
+            "Tests", "        // reads DocumentationCorpus\n")})
+
+        # Assert
+        self.assertIn("mutant-002.xml", measured)
+
+
+    def test_Given_APushEditingASourceUnderATildeDirectory_When_TheNextHeadIsMeasured_Then_NoKillIsCarried(self):
+        # Arrange — beside a test assembly's own sources, where only the directory's name says Unity
+        # compiles nothing there.
+        campaign = CarryCampaign()
+
+        # Act
+        measured = campaign.after({TESTS + "/Fixtures~/Seam.cs": fixture_source("Seam")})
+
+        # Assert
+        self.assertEqual(measured, ["mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"])
+
+    def test_Given_AFixtureNameTwoTestAssembliesDeclare_When_ItsKillIsCarried_Then_ItIsMeasuredAgain(self):
+        # Arrange — which of the two ran is not in the case's name, so neither assembly's can be ruled out.
+        campaign = CarryCampaign({ELSEWHERE + "/NeighbourTests.cs": fixture_source("NeighbourTests")})
+
+        # Act
+        measured = campaign.after({TESTS + "/ProbeTests.cs": EDITED})
+
+        # Assert
+        self.assertIn("mutant-002.xml", measured)
+
+    def test_Given_APushEditingOnlyAFixturesMeta_When_Measured_Then_ItsKillIsMeasuredAndItsNeighboursCarried(self):
+        # Arrange
+        campaign = CarryCampaign({TESTS + "/ProbeTests.cs.meta": "fileFormatVersion: 2\n"})
+
+        # Act
+        measured = campaign.after({TESTS + "/ProbeTests.cs.meta": "fileFormatVersion: 2\nuserData: x\n"})
+
+        # Assert
+        self.assertEqual(("mutant-001.xml" in measured, "mutant-002.xml" in measured), (True, False))
+
+    def test_Given_ACarriedPlayModeKill_When_ThePlayModePassRuns_Then_ItIsNotMeasuredAgain(self):
+        # Arrange — the fourth mutant survives the EditMode suite at both heads and was killed by the
+        # PlayMode suite at the earlier one, in the assembly the push left alone.
+        campaign = CarryCampaign()
+        campaign.record("edit")
+        campaign.on_base("--platform", "PlayMode", "--survivors-of", campaign.logs("edit"), "--shard", "0/1",
+                         "--output", campaign.logs("play"))
+        campaign.push({TESTS + "/ProbeTests.cs": EDITED})
+        campaign.carry(("play",), "--platform", "PlayMode")
+        campaign.remeasure()
+        campaign.measured.clear()
+
+        # Act
+        campaign.on_base("--platform", "PlayMode", "--survivors-of", campaign.logs("now"), "--carried-in",
+                         campaign.logs("carried"), "--shard", "0/1", "--output", campaign.logs("now-play"))
+
+        # Assert
+        self.assertEqual((campaign.carried(4, "PlayMode"), ("PlayMode", "mutant-004.xml") in campaign.measured),
+                         (True, False))
+
+
+class SharedTestSourceTests(unittest.TestCase):
+    """A changed test source something outside it can reach stops every kill resting on its assembly."""
+
+    def shared(self, changes, files=None):
+        campaign = CarryCampaign(files)
+        measured = campaign.after(changes)
+        return "mutant-002.xml" in measured, campaign.carried(3)
+
+    def test_Given_AChangedFixtureDeclaringAnExtensionMethod_When_Measured_Then_OnlyAnotherAssemblysKillCarries(self):
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": fixture_source("ProbeTests").replace(
+            "internal sealed class ProbeTests\n    {\n",
+            "internal static class ProbeTests\n    {\n        internal static int Twice(this int value) => value;\n")})
+
+        # Assert
+        self.assertEqual(reach, (True, True))
+
+    def test_Given_AChangedFixtureDeclaringATypeAnotherFixtureNames_When_Measured_Then_OnlyAnotherAssemblysKillCarries(self):
+        # Arrange
+        seam = "internal static class ProbeSeam { }\n"
+        files = {TESTS + "/ProbeTests.cs": fixture_source("ProbeTests") + seam,
+                 TESTS + "/NeighbourTests.cs": fixture_source(
+                     "NeighbourTests", "        internal object Seam() => typeof(ProbeSeam);\n")}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED + seam}, files)
+
+        # Assert
+        self.assertEqual(reach, (True, True))
+
+    def test_Given_AChangedFixtureOpeningANamespaceNoOtherSourceOpens_When_Measured_Then_OnlyAnotherAssemblysKillCarries(self):
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED.replace("namespace Velvet.Tests",
+                                                                      "namespace Velvet.Tests.Fresh")})
+
+        # Assert
+        self.assertEqual(reach, (True, True))
+
+    def test_Given_AChangedFixtureOpeningTwoNamespaces_When_Measured_Then_OnlyAnotherAssemblysKillCarries(self):
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED + "namespace Velvet.Tests\n{\n}\n"})
+
+        # Assert
+        self.assertEqual(reach, (True, True))
+
+    def test_Given_AChangedFixtureWhoseImportAnAssetHolds_When_Measured_Then_OnlyAnotherAssemblysKillCarries(self):
+        # Arrange — a scene or prefab holds a component by its script's GUID rather than by its name.
+        guid = "0123456789abcdef0123456789abcdef"
+        files = {TESTS + "/ProbeTests.cs.meta": "fileFormatVersion: 2\nguid: {}\n".format(guid),
+                 TESTS + "/Probe.prefab": "m_Script: {{fileID: 11500000, guid: {}, type: 3}}\n".format(guid)}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED}, files)
+
+        # Assert
+        self.assertEqual(reach, (True, True))
+
+    def test_Given_AChangedFixtureOnlyACommentElsewhereNames_When_Measured_Then_ItsNeighboursKillCarries(self):
+        # Arrange — a comment cannot bind, so naming the type there reaches nothing.
+        files = {TESTS + "/NeighbourTests.cs": fixture_source("NeighbourTests",
+                                                              "        // as ProbeTests does\n")}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED}, files)
+
+        # Assert
+        self.assertEqual(reach, (False, True))
+
+
+    def test_Given_AnAssemblyReferencingOneAChangeReachesWhole_When_Measured_Then_ItsKillIsMeasuredAgain(self):
+        # Arrange — the other assembly references this one by name, so what it declares reaches there.
+        files = {ELSEWHERE + "/Velvet.Tests.Other.Editor.asmdef":
+                 '{ "name": "Velvet.Tests.Other.Editor", "references": ["Velvet.Tests.Probe.Editor"] }\n'}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED + "namespace Velvet.Tests\n{\n}\n"}, files)
+
+        # Assert
+        self.assertEqual(reach, (True, False))
+
+    def test_Given_AnAssemblyReferencingOneByGuid_When_AChangeReachesThatOneWhole_Then_ItsKillIsMeasuredAgain(self):
+        # Arrange
+        guid = "fedcba9876543210fedcba9876543210"
+        files = {TESTS + "/Velvet.Tests.Probe.Editor.asmdef.meta": "fileFormatVersion: 2\nguid: {}\n".format(guid),
+                 ELSEWHERE + "/Velvet.Tests.Other.Editor.asmdef":
+                 '{{ "name": "Velvet.Tests.Other.Editor", "references": ["GUID:{}"] }}\n'.format(guid)}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": EDITED + "namespace Velvet.Tests\n{\n}\n"}, files)
+
+        # Assert
+        self.assertEqual(reach, (True, False))
+
+
+class CarriedPlanTests(unittest.TestCase):
+    def planned(self):
+        campaign = CarryCampaign()
+        campaign.record()
+        campaign.push({TESTS + "/ProbeTests.cs": EDITED})
+        campaign.carry()
+        with mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 1}):
+            campaign.on_base("--plan", "--carried-in", campaign.logs("carried"))
+        return campaign.printed
+
+    def test_Given_KillsCarriedForSomeMutants_When_Planned_Then_TheShardsCountOnlyTheMutantsLeft(self):
+        # Act
+        printed = self.planned()
+
+        # Assert — the first mutant and the survivor are left, one shard each at this size.
+        self.assertEqual(re.findall(r"^shards=.*$", printed, re.MULTILINE), ["shards=[0, 1]"])
+
+    # GREEN_ON_BASE(characterization): the base plans every mutant, so its count is the diff's too. What
+    # this pins is that the count the shards' --max takes stays the whole list once some are carried.
+    def test_Given_KillsCarriedForSomeMutants_When_Planned_Then_TheMutantCountStaysTheWholeList(self):
+        # Act
+        printed = self.planned()
+
+        # Assert
+        self.assertEqual(re.findall(r"^mutants=.*$", printed, re.MULTILINE), ["mutants=4"])
+
+
+def tally(printed):
+    return re.findall(r"^(?:killed|survived)\b.*$", printed, re.MULTILINE)
+
+
+class CarriedDecisionTests(unittest.TestCase):
+    """The decision over carried kills is the one a whole campaign over the same tree takes."""
+
+    # The second line answered for: its mutant is killed, so the declaration is stale either way.
+    DECLARED = TwoPlatformCampaign.BODY.replace(
+        "        internal static bool Other",
+        "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+        "        internal static bool Other")
+
+    def collected(self, body=None):
+        campaign = CarryCampaign(body=body)
+        campaign.after({TESTS + "/ProbeTests.cs": EDITED})
+        code = campaign.on_base("--collect", campaign.logs("now"), "--carried-in", campaign.logs("carried"))
+        return campaign, code
+
+    def whole(self, body=None):
+        campaign = CarryCampaign(body=body)
+        campaign.push({TESTS + "/ProbeTests.cs": EDITED})
+        campaign.record("now")
+        code = campaign.on_base("--collect", campaign.logs("now"))
+        return campaign, code
+
+    @staticmethod
+    def verdict(campaign, code):
+        lines = [line for line in campaign.printed.splitlines()
+                 if line.startswith(("UNANSWERED", "STALE")) or line in tally(campaign.printed)]
+        return code, lines
+
+    def test_Given_KillsCarriedOverADeclaredLine_When_Collected_Then_TheVerdictIsTheWholeCampaigns(self):
+        # Arrange
+        whole = self.verdict(*self.whole(self.DECLARED))
+
+        # Act
+        carried = self.verdict(*self.collected(self.DECLARED))
+
+        # Assert
+        self.assertEqual(carried, whole)
+
+    def test_Given_KillsCarried_When_Collected_Then_EachIsNamedWithTheRunItCameFrom(self):
+        # Act
+        campaign, _ = self.collected()
+
+        # Assert
+        section = campaign.printed.partition("--- kills carried from an earlier campaign ---")[2].split("\n\n")[0]
+        self.assertEqual(re.findall(r":(\d+) \S+ -> \S+ \(boundary\)  carried from run 77 ", section),
+                         ["6", "7"])
+
+    def test_Given_KillsCarried_When_Collected_Then_TheSummaryCountsCarriedAgainstMeasured(self):
+        # Act
+        campaign, _ = self.collected()
+
+        # Assert
+        self.assertEqual(re.findall(r"^carried from run .*$", campaign.printed, re.MULTILINE),
+                         ["carried from run 77: 2; measured by this campaign: 2"])
+
+
+class CarriedTwoPassTests(unittest.TestCase):
+    def test_Given_KillsCarriedOnBothPlatforms_When_BothPassesAreCollected_Then_EveryMutantIsKilled(self):
+        # Arrange — the earlier head's two passes, then the push's: the survivor of both EditMode passes
+        # carries its PlayMode kill, and the EditMode kills carried are no PlayMode survivor.
+        campaign = CarryCampaign()
+        campaign.record("edit")
+        campaign.on_base("--platform", "PlayMode", "--survivors-of", campaign.logs("edit"), "--shard", "0/1",
+                         "--output", campaign.logs("play"))
+        campaign.push({TESTS + "/ProbeTests.cs": EDITED})
+        campaign.carry(("edit",))
+        campaign.carry(("play",), "--platform", "PlayMode")
+        campaign.remeasure()
+        campaign.on_base("--platform", "PlayMode", "--survivors-of", campaign.logs("now"), "--carried-in",
+                         campaign.logs("carried"), "--shard", "0/1", "--output", campaign.logs("now-play"))
+
+        # Act
+        code = campaign.on_base("--platform", "PlayMode", "--survivors-of", campaign.logs("now"),
+                                "--carried-in", campaign.logs("carried"), "--collect", campaign.logs("now-play"))
+
+        # Assert
+        self.assertEqual((code, tally(campaign.printed)), (0, ["killed: 4"]))
+
+
+class CarriedWorkflowTests(unittest.TestCase):
+    """mutation.yml hands every campaign step the kills its plan carried."""
+
+    WORKFLOW = REPO_ROOT / ".github/workflows/mutation.yml"
+
+    def test_Given_TheWorkflow_When_ItsCampaignStepsAreRead_Then_EachReadsTheDirectoryThePlanCarriesInto(self):
+        # Arrange
+        text = self.WORKFLOW.read_text()
+        steps = re.findall(r"scripts/test_quality/(?:mutation_check|ci_mutation_shard)\.py"
+                           r"((?:[^\n]*\\\n)*[^\n]*)", text)
+
+        # Act
+        read = [re.findall(r"--(?:carry-to|carried-in) (\S+)", step) for step in steps]
+
+        # Assert
+        self.assertEqual(sorted({tuple(found) for found in read}), [("Logs/mutation-carried",)])
+
+    def test_Given_EveryMutantCarried_When_TheVerdictJobsConditionIsRead_Then_ItDoesNotWaitOnAShard(self):
+        # Arrange — a plan that carried every mutant starts no shard, and the decision is still owed.
+        text = self.WORKFLOW.read_text()
+        job = text.partition("\n  mutation-verdict:")[2].partition("\n    steps:")[0]
+
+        # Act
+        condition = job.partition("if: >-")[2]
+
+        # Assert
+        self.assertEqual(("shards" in condition, "outputs.mutants != '0'" in condition), (False, True))
+
+    def test_Given_EveryMutantCarried_When_ThePlayModePlansConditionIsRead_Then_ASkippedEditModePassLetsItRun(self):
+        # Arrange
+        text = self.WORKFLOW.read_text()
+        job = text.partition("\n  mutation-playmode-plan:")[2].partition("\n    runs-on:")[0]
+
+        # Act
+        condition = " ".join(job.partition("if: >-")[2].split())
+
+        # Assert
+        self.assertEqual(("!cancelled()" in condition,
+                          "needs.mutation-shard.result == 'skipped' && needs.mutation-plan.outputs.shards == '[]'"
+                          in condition), (True, True))
+
+
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 

@@ -42,6 +42,7 @@ import bisect
 import fcntl
 import functools
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -52,6 +53,17 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+
+def _sibling(name):
+    """Imports a sibling script by path, since scripts/test_quality is not a package."""
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().with_name(name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+campaign_carry = _sibling("campaign_carry")
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
 # Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
@@ -179,6 +191,8 @@ class Mutant:
         self.operator = operator
         self.verdict = None
         self.detail = ""
+        # The run an earlier head's kill was carried from, where the verdict is one.
+        self.carried_from = None
 
     def describe(self, project):
         try:
@@ -2224,17 +2238,98 @@ def recorded(output, index, digest, mutant, project, scope=()):
 
 
 def collected(directories, index, digest, mutant, project, scope=()):
-    """(verdict, detail) a shard recorded for this mutant in one of `directories`.
+    """(verdict, detail, the record) a shard recorded for this mutant in one of `directories`.
 
     Any verdict, where `read_verdict` keeps only a kill: a survivor or an unmeasured verdict turns on
     the tests and the bounds, which the key does not hold, and a resumed run can come after either
-    moved. The workflow hands this the shards of one run, over one commit.
+    moved. The workflow hands this the shards of one run, over one commit, and the kills its plan
+    carried from an earlier one.
     """
     for directory in directories:
         held = recorded(Path(directory), index, digest, mutant, project, scope)
         if held is not None:
-            return held.get("verdict"), held.get("detail") or ""
-    return UNRECORDED, "no shard's output holds a verdict for it"
+            return held.get("verdict"), held.get("detail") or "", held
+    return UNRECORDED, "no shard's output holds a verdict for it", None
+
+
+def carried_run(held):
+    """The run a record's kill was carried from, or None for a verdict a run measured itself."""
+    origin = (held or {}).get("carried_from")
+    return str(origin.get("run")) if isinstance(origin, dict) and origin.get("run") else None
+
+
+def carried_kill(root, platform, index, digest, mutant, project, scope=()):
+    """The record `carry` wrote for this mutant under `root`, where it holds a kill, or None."""
+    if root is None:
+        return None
+    held = recorded(root / platform, index, digest, mutant, project, scope)
+    return held if held is not None and held.get("verdict") == KILLED and carried_run(held) else None
+
+
+def carry(args, project, targets, mutants, base):
+    """Writes under `--carry-to` each kill an earlier head's records hold that this head keeps.
+
+    A record is read under this head's key, which covers the merge base and every mutated source, so
+    one the push could have moved a mutant under is not found. What the key leaves out is the tests:
+    `campaign_carry` says which of them the push reached, and a kill is kept on the cases it rests on
+    that the push did not reach. A survivor is never carried, nor a kill no failing case names.
+    """
+    destination = Path(args.carry_to).resolve() / args.platform
+    destination.mkdir(parents=True, exist_ok=True)
+    origin = "run {} at {}".format(args.previous_run, args.previous_head[:12])
+    if not campaign_carry.ancestor(project, args.previous_head):
+        print("{}: nothing carried, since {} is not an ancestor of HEAD".format(
+            args.platform, args.previous_head))
+        return 0
+    paths = campaign_carry.changed_paths(project, args.previous_head)
+    if paths is None:
+        print("{}: nothing carried, since git could not diff {} against the tree".format(
+            args.platform, args.previous_head))
+        return 0
+    refused, reach = campaign_carry.touched(project, args.previous_head, paths, digestible)
+    if refused:
+        print("{}: nothing carried from {}: {}".format(args.platform, origin, refused))
+        return 0
+    campaign = scope_digest(base, targets, project, args.platform)
+    text_readers = text_reading_fixtures(project)
+    fixtures = campaign_carry.FixtureIndex(project)
+    found = kills = kept = 0
+    for index, mutant in enumerate(mutants, start=1):
+        held = None
+        for directory in args.previous:
+            held = recorded(Path(directory), index, campaign, mutant, project)
+            if held is not None:
+                break
+        if held is None:
+            continue
+        found += 1
+        if held.get("verdict") != KILLED:
+            continue
+        kills += 1
+        standing = [case for case in killed_by_behaviour(held.get("killers") or [], text_readers)
+                    if fixtures.stands(case, reach)]
+        if not standing:
+            continue
+        kept += 1
+        measured = held.get("measured_in") or {
+            "run": args.previous_run, "head": args.previous_head, "detail": held.get("detail") or "-"}
+        since = "" if str(measured.get("run")) == str(args.previous_run) else ", measured in run {} at {}".format(
+            measured.get("run"), str(measured.get("head"))[:12])
+        verdict_path(destination, index).write_text(json.dumps(dict(
+            held,
+            detail="carried from {}{} on {} case(s) the push did not reach: {}".format(
+                origin, since, len(standing), measured.get("detail")),
+            killers=sorted(standing),
+            carried_from={"run": args.previous_run, "head": args.previous_head},
+            measured_in=measured,
+        ), indent=2))
+    if not found:
+        print("{}: nothing carried, since none of {}'s records is keyed on this tree".format(
+            args.platform, origin))
+    else:
+        print("{}: {} of the {} kill(s) {} recorded are carried; {} changed path(s) since".format(
+            args.platform, kept, kills, origin, len(paths)))
+    return 0
 
 
 def parse_shard(text):
@@ -2570,19 +2665,26 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
-def plan_survivors(args, coverage, mutants, chosen, first):
-    """The second pass's plan: the shards its platform needs for the first pass's survivors."""
+def plan_survivors(args, coverage, mutants, chosen, first, carried=0):
+    """The second pass's plan: the shards its platform needs for the first pass's survivors, less the
+    `carried` of them whose kill on this platform came from an earlier campaign."""
     print(coverage)
     per = SHARD_CEILING[args.platform]
-    if len(chosen) > MAX_SHARDS * per:
+    remaining = len(chosen) - carried
+    if remaining > MAX_SHARDS * per:
         print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
               "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
-              .format(len(chosen), first, MAX_SHARDS, per, args.platform))
+              .format(remaining, first, MAX_SHARDS, per, args.platform))
         return CEILING_REFUSAL
-    print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
-        len(chosen), len(mutants), first, args.platform))
-    print("mutants={}".format(len(chosen)))
-    print("shards={}".format(json.dumps(list(range(shard_count(len(chosen), args.platform))))))
+    if carried:
+        print("{} of {} mutant(s) survived the {} suite; {} of them carry a kill on {} from an earlier "
+              "campaign, and {} are measured there".format(len(chosen), len(mutants), first, carried,
+                                                           args.platform, remaining))
+    else:
+        print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
+            len(chosen), len(mutants), first, args.platform))
+    print("mutants={}".format(remaining))
+    print("shards={}".format(json.dumps(list(range(shard_count(remaining, args.platform))))))
     return 0
 
 
@@ -2650,9 +2752,25 @@ def main():
                         help="take each mutant's verdict from the run on the other platform that "
                              "recorded it in these directories, and measure, plan or collect on "
                              "--platform only the mutants that run left surviving")
+    parser.add_argument("--carry-to", metavar="DIR",
+                        help="write under DIR/<platform> each kill the --previous records hold that "
+                             "this head keeps, and stop; CONTRIBUTING.md says which those are")
+    parser.add_argument("--previous-head", metavar="SHA", help="the head --previous was recorded on")
+    parser.add_argument("--previous-run", metavar="ID", help="the run that recorded --previous")
+    parser.add_argument("--previous", nargs="+", metavar="DIR",
+                        help="the records an earlier head's campaign left for --platform")
+    parser.add_argument("--carried-in", metavar="DIR",
+                        help="the directory --carry-to wrote: its kills are taken as this run's "
+                             "verdicts, and those mutants are not measured, planned or collected")
     args = parser.parse_args()
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
+    if args.carry_to is not None:
+        if not (args.previous_head and args.previous_run and args.previous):
+            parser.error("--carry-to needs --previous-head, --previous-run and --previous")
+        if (args.files or args.filter or args.assemblies or args.plan or args.shard or args.collect
+                or args.survivors_of):
+            parser.error("--carry-to reads a whole-suite campaign's records and does nothing else")
     if args.survivors_of is not None:
         # One file name per mutant index in either pass, so a pass writing where the other's records
         # are overwrites the verdicts it was chosen by.
@@ -2813,11 +2931,23 @@ def main():
             unreached[path] = left
     coverage = reach(mutants, unreached, project)
 
+    if args.carry_to is not None:
+        return carry(args, project, targets, mutants, merge_base_of(project, args.base))
+
+    carried_root = Path(args.carried_in).resolve() if args.carried_in else None
     if args.plan and args.survivors_of is None:
-        if len(mutants) > MAX_SHARDS * SHARD_CEILING[args.platform]:
+        # Counted against this head's key, so what is planned is exactly what the shards will skip.
+        carried = 0
+        if carried_root is not None and mutants:
+            planned = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
+            carried = sum(1 for index, mutant in enumerate(mutants, start=1)
+                          if carried_kill(carried_root, args.platform, index, planned, mutant, project,
+                                          scope))
+        remaining = len(mutants) - carried
+        if remaining > MAX_SHARDS * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(len(mutants), MAX_SHARDS,
+                  "timeout.\nSplit the pull request.".format(remaining, MAX_SHARDS,
                                                              SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
@@ -2827,8 +2957,11 @@ def main():
             print("No operator reaches any of the changed code lines above, so nothing is measured "
                   "and the\ncampaign passes. Say in the pull request why the change is not something "
                   "a mutation\ncan ask about.")
+        if carried:
+            print("{} of the {} mutant(s) carry a kill from an earlier campaign, so {} are measured"
+                  .format(carried, len(mutants), remaining))
         print("mutants={}".format(len(mutants)))
-        print("shards={}".format(json.dumps(list(range(shard_count(len(mutants), args.platform))))))
+        print("shards={}".format(json.dumps(list(range(shard_count(remaining, args.platform))))))
         return 0
 
     if not mutants:
@@ -2868,22 +3001,35 @@ def main():
         # about again here.
         first = OTHER_PLATFORM[args.platform]
         earlier = scope_digest(base, targets, project, first)
+        firsts_from = list(args.survivors_of) + ([carried_root / first] if carried_root else [])
         for index, mutant in enumerate(mutants, start=1):
-            mutant.verdict, mutant.detail = collected(args.survivors_of, index, earlier, mutant,
-                                                      project, scope)
+            mutant.verdict, mutant.detail, held = collected(firsts_from, index, earlier, mutant,
+                                                            project, scope)
+            mutant.carried_from = carried_run(held)
         chosen = [index for index, mutant in enumerate(mutants, start=1)
                   if mutant.verdict in SURVIVING]
-        if args.plan:
-            return plan_survivors(args, coverage, mutants, chosen, first)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
+    # A carried kill is this platform's verdict for its mutant, so nothing below asks the suite again.
+    kept = {}
+    for index in chosen:
+        held = carried_kill(carried_root, args.platform, index, campaign, mutants[index - 1], project,
+                            scope)
+        if held is not None:
+            kept[index] = held
+            mutant = mutants[index - 1]
+            mutant.verdict, mutant.detail = held.get("verdict"), held.get("detail") or ""
+            mutant.carried_from = carried_run(held)
+    pending = [index for index in chosen if index not in kept]
+    if args.survivors_of is not None and args.plan:
+        return plan_survivors(args, coverage, mutants, chosen, first, len(kept))
     if args.collect is not None:
         print(coverage)
-        for index in chosen:
+        for index in pending:
             mutant = mutants[index - 1]
-            mutant.verdict, mutant.detail = collected(args.collect, index, campaign, mutant, project,
-                                                      scope)
+            mutant.verdict, mutant.detail, _ = collected(args.collect, index, campaign, mutant, project,
+                                                         scope)
     else:
-        selected = sharded(chosen, args.shard)
+        selected = sharded(pending, args.shard)
         if selected:
             measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
                     set(selected))
@@ -2929,6 +3075,13 @@ def main():
         for mutant in hung:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
+    # Named, because no editor of this run measured them.
+    carried = [m for m in mutants if m.carried_from]
+    if carried:
+        print("\n--- kills carried from an earlier campaign ---")
+        for mutant in carried:
+            print("{}  {}".format(mutant.describe(project), mutant.detail))
+
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a
     # different denominator every branch, and a percentage is the part that gets quoted after the
     # run it came from is forgotten. The survivors above are the output; this is the count.
@@ -2936,6 +3089,10 @@ def main():
     for mutant in mutants:
         tally[mutant.verdict] = tally.get(mutant.verdict, 0) + 1
     print("\n" + ", ".join("{}: {}".format(key, value) for key, value in sorted(tally.items())))
+    if carried_root is not None:
+        print("carried from run {}: {}; measured by this campaign: {}".format(
+            ", ".join(sorted({m.carried_from for m in carried})) or "-", len(carried),
+            sum(1 for m in mutants if not m.carried_from and m.verdict in DECIDED + SURVIVING)))
     # Repeated under the tally, not only before the run: the tally is what gets quoted, and quoted
     # alone it reads as a statement about the diff rather than about the lines an operator reached.
     print(coverage)

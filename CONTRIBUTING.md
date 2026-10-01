@@ -217,13 +217,39 @@ unmeasured mutant by line, with the verdict each pass gave it, and each shard's 
 files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. The check named
 `Mutation campaign` is the workflow's `campaign` job, which asks for the merge once every job above
 passed or was skipped; what a merge reads is the run's own conclusion. A push to a labelled pull
-request runs them all again and cancels the run still measuring the head before it, so a review round
-that changes production code after the label is measured by the push that carries it. The run is the
+request runs them all again, carrying only the kills the paragraph below allows, and cancels the run
+still measuring the head before it, so a review round that changes production code after the label is
+measured by the push that carries it. The run is the
 branch's own copy of the workflow and of `mutation_check.py`, as the `pull_request` run it replaces
 ran the test merge's copy: a dispatch records its runs and checks against the commit of the ref it
 names, so a campaign dispatched from the default branch would be recorded against that branch's tip
 rather than the head it measured. Running the campaign locally is optional: it answers the same question before
 a push, and before the label.
+
+**A campaign on a later head carries the kills the push cannot have changed.** Before it plans,
+`Mutation campaign ▸ mutation-plan` takes the newest campaign on the branch that completed without being
+cancelled, measured a head this one descends from, and left records — `scripts/ci/previous_campaign.py`
+picks it — and downloads those records; `mutation_check.py --carry-to` writes each kill it keeps to the
+`Mutation carried` artifact, and every later job reads that through `--carried-in`. The plan sizes the
+shards by the mutants left, the shards measure only those, and the PlayMode pass skips a survivor of
+the EditMode one whose PlayMode kill carried. A kill carries when all three hold:
+
+- the merge base and every mutated source are what that campaign measured: a record is read under this
+  head's key, which covers both;
+- every path the push changed is C# compiled into a test assembly. Anything else carries nothing —
+  a production source, a comment in one included, the tooling under `scripts/`, a workflow,
+  `TestUtilities/`, an `.asmdef` or `csc.rsp`, a stylesheet, markdown, anything under a `~` directory;
+- a case that failed on it there is still not a text reader's at this head, and runs under a fixture
+  declared in one test assembly that no changed source declares and no changed source reaches whole.
+  A changed source reaches its assembly, and every assembly referencing that one, where another file
+  names a type it declares, where it opens a namespace no other source opens or opens more than one,
+  where an asset holds its GUID, and where it declares an extension method, an assembly or module
+  attribute, a `global using`, a `[SetUpFixture]` or a hook Unity or its test runner calls on its own.
+
+Only a kill a failing case named carries; every other verdict is measured again. What a test does to
+shared state while it runs is not read, the same as for a kill an area's own assemblies took. The
+verdict lists each carried kill with the run it came from and counts carried against measured, and it
+reads declarations over the result as it does over a whole campaign's.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
