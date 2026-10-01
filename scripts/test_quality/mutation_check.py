@@ -55,9 +55,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
-# Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
-# report a busy machine forever on an idle one.
-UNITY_RUNNING = "^/.*/(?:MacOS|Editor)/Unity -runTests"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from unity_running import UNITY_RUNNING  # noqa: E402
 
 # At the project root and not in .gitignore, so `git status` names it beside the file it explains.
 # Under Logs/ it would be correct and unread: what a resumed session looks at is `git status`, and a
@@ -136,10 +135,10 @@ LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the proj
 # Lines an editor's log carries once the editor is dying, read off the logs of a mutant that overflowed
 # the stack. A launch is stopped at the first rather than left to its bound.
 FATAL = re.compile(r"Caught fatal signal - signo:|Got a SIG[A-Z]+ while executing native code|"
-                   r"Stack overflow(?: in unmanaged)?: IP:")
-# What reads as a crash once no result was written. A managed stack overflow is among them and stops no
-# launch, so that a run which recovered from one still writes the result it is read by.
-CRASH = re.compile(FATAL.pattern + r"|StackOverflowException:")
+                   r"Stack overflow: IP:")
+# What reads as a crash once no result was written. The two overflows added here stop no launch, so that
+# a run which goes on past either still writes the result it is read by.
+CRASH = re.compile(FATAL.pattern + r"|Stack overflow in unmanaged: IP:|StackOverflowException:")
 # What the test runner prints as it starts. A crash before it is not laid on the mutant.
 RUNNER_STARTED = "Running tests for ExecutionSettings with details:"
 
@@ -2286,8 +2285,7 @@ def read_counts(results):
 # --------------------------------------------------------------------------------------------------
 
 # A session is launched with this rather than `-runTests`, which starts the test framework's own run
-# and quits after it. The prefix keeps a session inside UNITY_RUNNING, the pattern neuter_check.py's and
-# base_red_check.py's busy counts spell too.
+# and quits after it. The prefix keeps a session inside UNITY_RUNNING, which every busy count imports.
 # `Assets/MutantSchemata/Editor/SchemataRunner.cs` takes the launch over from the plan it is handed.
 SESSION_FLAG = "-runTestsSchemata"
 SESSION_PLAN = "VELVET_SCHEMATA_PLAN"

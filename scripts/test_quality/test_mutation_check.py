@@ -6158,6 +6158,7 @@ class SessionConfirmationTests(unittest.TestCase):
 # A launch's log as an editor writes it when the test runner has started and the editor then dies.
 RUNNER_LINE = "Running tests for ExecutionSettings with details:\n"
 FATAL_LINE = "Caught fatal signal - signo:11 code:1 errno:0 addr:0x110\n"
+SOFT_OVERFLOW_LINE = "Stack overflow in unmanaged: IP: 0x41566822, fault addr: 0x7fff2b854ff8\n"
 CRASHED_LOG = "editor log\n" + RUNNER_LINE + "StackOverflowException: The requested operation caused a stack overflow.\n" + FATAL_LINE
 
 
@@ -6167,6 +6168,7 @@ class CrashingCampaign(StubbedCampaign):
     def __init__(self, log_text, body=None):
         super().__init__(body)
         self.log_text = log_text
+        self.results_text = None
 
     def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
         if Path(results).name == "baseline.xml":
@@ -6174,6 +6176,8 @@ class CrashingCampaign(StubbedCampaign):
         if self.not_rebuilt:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         Path(log).write_text(self.log_text)
+        if self.results_text is not None:
+            Path(results).write_text(self.results_text)
         return 0.0, False, 0
 
     def recorded(self):
@@ -6221,6 +6225,38 @@ class CrashedMutantTests(unittest.TestCase):
         listed = campaign.printed.partition("--- mutants killed by crashing the editor ---\n")[2]
         self.assertIn("StackOverflowException", listed.splitlines()[0] if listed else "")
 
+    # GREEN_ON_BASE(characterization): a launch that wrote a passing result is read by it, as on the
+    # base. What reddens this on the branch is reading the crash ahead of the result.
+    def test_Given_ALaunchThatWroteAPassingResultAndThenCrashed_When_Recorded_Then_ItSurvived(self):
+        # Arrange
+        campaign = CrashingCampaign(CRASHED_LOG)
+        campaign.results_text = GREEN_RESULTS
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert
+        self.assertEqual(recorded[:2], (1, mutation_check.SURVIVED))
+
+    def test_Given_EachLineThatReadsAsACrash_When_TheLogIsRead_Then_ItIsTheCrash(self):
+        # Arrange
+        lines = ["Caught fatal signal - signo:11 code:1 errno:0 addr:0x297",
+                 "Got a SIGSEGV while executing native code. This usually indicates",
+                 SOFT_OVERFLOW_LINE.strip(),
+                 "Stack overflow: IP: 0x7fc31086b72e, fault addr: 0x7fff2b84cfec",
+                 "StackOverflowException: The requested operation caused a stack overflow."]
+        with tempfile.TemporaryDirectory() as directory:
+            read = []
+            for number, line in enumerate(lines):
+                log = Path(directory) / "{}.log".format(number)
+                log.write_text("editor log\n" + RUNNER_LINE + line + "\n")
+
+                # Act
+                read.append(mutation_check.editor_crash(log))
+
+        # Assert
+        self.assertEqual(read, lines)
+
     # GREEN_ON_BASE(characterization): a crash before the runner started stays uncompilable, as on
     # the base. What reddens this on the branch is reading a crash anywhere in the log.
     def test_Given_ACrashBeforeTheRunnerStarted_When_Recorded_Then_ItStaysUnmeasured(self):
@@ -6261,7 +6297,6 @@ class CrashedMutantTests(unittest.TestCase):
         # Arrange — one log per line, each as the CI editors that crashed wrote it.
         lines = ["Caught fatal signal - signo:11 code:1 errno:0 addr:0x297\n",
                  "Got a SIGSEGV while executing native code. This usually indicates\n",
-                 "Stack overflow in unmanaged: IP: 0x41566822, fault addr: 0x7fff2b854ff8\n",
                  "Stack overflow: IP: 0x7fc31086b72e, fault addr: 0x7fff2b84cfec\n"]
         with tempfile.TemporaryDirectory() as directory:
             read = []
@@ -6275,11 +6310,12 @@ class CrashedMutantTests(unittest.TestCase):
         # Assert
         self.assertEqual(read, [True] * len(lines))
 
-    def test_Given_AManagedStackOverflow_When_ALaunchReadsIt_Then_ItDoesNotStopTheLaunch(self):
-        # Arrange — a run that recovered from one still writes the result it is read by.
+    def test_Given_AStackOverflowARunCanGoOnPast_When_ALaunchReadsIt_Then_ItDoesNotStopTheLaunch(self):
+        # Arrange — the managed overflow and the unmanaged one, either of which a run that goes on past
+        # still writes the result it is read by.
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "run.log"
-            log.write_text(CRASHED_LOG.replace(FATAL_LINE, ""))
+            log.write_text(CRASHED_LOG.replace(FATAL_LINE, SOFT_OVERFLOW_LINE))
 
             # Act
             fatal = mutation_check.fatal_since(log, 0)[0]
@@ -6316,6 +6352,42 @@ class EditorCountTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(counted, 1)
+
+    def test_Given_LinesThatOnlyNameAnEditor_When_EditorsAreCounted_Then_OnlyTheEditorsCount(self):
+        # Arrange — the watchdog's line as `ps` prints it, its script on one line ahead of the editor's
+        # command, and a shell spelling the editor's path; each beside an editor of the same platform.
+        mac = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
+        linux = "/opt/unity/Editor/Unity -runTests -batchmode"
+        lines = [mac, linux]
+        for editor, newline in ((mac, "\\012"), (linux, "?")):
+            lines.append("{} -c {} 4242 {}".format(sys.executable, mutation_check.WATCHDOG.replace("\n", newline),
+                                                   editor))
+            lines.append("/bin/zsh -c {}".format(editor))
+        listing = "\n".join(lines).encode() + b"\n"
+
+        # Act
+        with listed_processes(listing):
+            counted = mutation_check.unity_busy()
+
+        # Assert
+        self.assertEqual(counted, 2)
+
+    # GREEN_ON_BASE(construction): the base's three copies agreed too. Give neuter_check.py a copy of
+    # its own spelled `"^/Applications/.*/MacOS/Unity -runTest"` and this is what reddens.
+    def test_Given_TheThreeBusyCounts_When_TheirPatternsAreRead_Then_TheyAreOne(self):
+        # Arrange
+        modules = []
+        for name in ("neuter_check", "base_red_check"):
+            spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + ".py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            modules.append(module)
+
+        # Act
+        patterns = {module.UNITY_RUNNING for module in [mutation_check, *modules]}
+
+        # Assert
+        self.assertEqual(patterns, {mutation_check.UNITY_RUNNING})
 
 
 if __name__ == "__main__":
