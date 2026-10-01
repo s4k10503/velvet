@@ -4,6 +4,9 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // A same-panel target's synthetic-bubbling bridge: what releases it, and the element it listens on.
+    internal readonly record struct SamePanelBridge(System.Action Release, VisualElement Anchor);
+
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
     // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
@@ -1068,7 +1071,7 @@ namespace Velvet
         // reconciler, so callbacks left attached past disposal would hold a closure over a dead
         // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
         // roots... can outlive this reconciler" teardown rationale.
-        public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
+        public Dictionary<VisualElement, SamePanelBridge> SamePanelPortalBridges { get; } = new();
 
         // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
         // deferred-mount drain and FiberNodePatcher's retarget or heal of a portal mounted before its id was
@@ -1076,13 +1079,28 @@ namespace Velvet
         internal void BindPortalTarget(VisualElement target)
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
-            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
+            // On the element whose contentContainer target is, where there is one, so that element's own
+            // callbacks — a ScrollView's scroll — answer an event from the portal's children before the bridge
+            // hands it to the declaring tree, as they answer one from the element's own children.
+            var anchor = ContentOwnerOf(target) ?? target;
+            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(anchor, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
-            SamePanelPortalBridges[target] = () =>
+            SamePanelPortalBridges[target] = new SamePanelBridge(() =>
             {
                 detachBridge();
                 sheetWatch.Dispose();
-            };
+            }, anchor);
+        }
+
+        // The ancestor whose contentContainer container is, or null where container is its own.
+        private static VisualElement? ContentOwnerOf(VisualElement container)
+        {
+            var ancestor = container.hierarchy.parent;
+            while (ancestor != null && !ReferenceEquals(ancestor.contentContainer, container))
+            {
+                ancestor = ancestor.hierarchy.parent;
+            }
+            return ancestor;
         }
 
         // The declaring panel's driving UIDocument per panel, filled by

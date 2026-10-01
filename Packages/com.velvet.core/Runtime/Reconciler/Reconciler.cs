@@ -795,9 +795,9 @@ namespace Velvet
             _ctx.PendingZLayerTeardownChecks.Clear();
             // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
             // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
-            foreach (var unbind in _ctx.SamePanelPortalBridges.Values)
+            foreach (var bridge in _ctx.SamePanelPortalBridges.Values)
             {
-                unbind();
+                bridge.Release();
             }
             _ctx.SamePanelPortalBridges.Clear();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created

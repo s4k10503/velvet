@@ -45,6 +45,9 @@ namespace Velvet.Tests
             s_registerScrollContent = false;
             s_scrollRowsFromComponent = false;
             s_scrollHostRenders = 0;
+            s_portalShownLater = false;
+            s_portalHoldsScroll = false;
+            s_setPortalShown = null;
             s_setFirstPortalRows = null;
             s_setSecondPortalChild = null;
             s_registerSelfOnRef = true;
@@ -555,12 +558,140 @@ namespace Velvet.Tests
             VNode portalContent = s_portalChildIsComponent
                 ? V.Component(PortalComponentRender, key: "portal-component")
                 : V.Div(name: portalChild);
+            // Shown once registered (a later render's create), or handed the ScrollView itself.
+            var (shown, setShown) = Hooks.UseState(!s_portalShownLater);
+            s_setPortalShown = setShown;
+            var (held, setHeld) = Hooks.UseState((VisualElement?)null);
+            VNode? portal = s_portalHoldsScroll
+                ? held == null ? null : V.Portal(held, children: new VNode?[] { portalContent })
+                : shown ? V.Portal("scroll-target", children: new VNode?[] { portalContent }) : null;
             return V.Fragment(children: new VNode?[]
             {
-                V.ScrollView(name: "scroll", refCallback: element => Register(
-                    "scroll-target", s_registerScrollContent ? element.contentContainer : element), children: ownChildren),
-                V.Portal("scroll-target", children: new VNode?[] { portalContent }),
+                V.ScrollView(name: "scroll", refCallback: element =>
+                {
+                    if (s_portalHoldsScroll)
+                    {
+                        setHeld.Invoke(element);
+                        return () => { };
+                    }
+                    return Register("scroll-target", s_registerScrollContent ? element.contentContainer : element);
+                }, children: ownChildren),
+                portal,
             });
+        }
+
+        private static bool s_portalShownLater;
+        private static bool s_portalHoldsScroll;
+        private static Action<bool>? s_setPortalShown;
+
+        [Test]
+        public void Given_APortalCreatedOnceItsScrollViewIsRegistered_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalsComponentRerendersAlone_Then_ItPatchesItsOwnElement()
+        {
+            // Arrange — the portal is created by a render after the registration, so its creation resolves the id.
+            s_initialOwn = new[] { "a" };
+            s_scrollRowsFromComponent = true;
+            s_portalChildIsComponent = true;
+            s_portalShownLater = true;
+            var content = MountScroll();
+            s_setPortalShown!.Invoke(true);
+            Flush();
+            s_setComponentRows!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_changePortalComponent!.Invoke(1);
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|changed"));
+        }
+
+        [Test]
+        public void Given_APortalHandedTheScrollViewItself_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalsComponentRerendersAlone_Then_ItPatchesItsOwnElement()
+        {
+            // Arrange
+            s_initialOwn = new[] { "a" };
+            s_scrollRowsFromComponent = true;
+            s_portalChildIsComponent = true;
+            s_portalHoldsScroll = true;
+            var content = MountScroll();
+            s_setComponentRows!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_changePortalComponent!.Invoke(1);
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|changed"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a ScrollView portal's child across its host's renders too.
+        // This pins that the recorded content container is not taken for a different element at each patch.
+        [Test]
+        public void Given_APortalIntoAScrollView_When_ItsHostRendersAgain_Then_ThePortalsChildIsTheSameElement()
+        {
+            // Arrange
+            var content = MountScroll();
+            var child = content.Q<VisualElement>("p");
+
+            // Act
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Assert
+            Assert.That(content.Q<VisualElement>("p"), Is.SameAs(child));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a held ScrollView portal's child across renders too.
+        // This pins that the held element's content container counts as the one the portal recorded.
+        [Test]
+        public void Given_APortalHandedTheScrollViewItself_When_ItsHostRendersAgain_Then_ThePortalsChildIsTheSameElement()
+        {
+            // Arrange
+            s_portalHoldsScroll = true;
+            var content = MountScroll();
+            var child = content.Q<VisualElement>("p");
+
+            // Act
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Assert
+            Assert.That(content.Q<VisualElement>("p"), Is.SameAs(child));
+        }
+
+        // An element whose contentContainer the test switches, as a custom element may.
+        private sealed class SwitchableContent : VisualElement
+        {
+            public VisualElement? Content;
+
+            public override VisualElement contentContainer => Content ?? this;
+        }
+
+        [Test]
+        public void Given_APortalHandedAnElement_When_ThatElementsContentContainerChanges_Then_TheChildrenMoveToTheNewOne()
+        {
+            // Arrange
+            var reconciler = new Reconciler();
+            var holder = new SwitchableContent();
+            var first = new VisualElement();
+            var second = new VisualElement();
+            holder.hierarchy.Add(first);
+            holder.hierarchy.Add(second);
+            holder.Content = first;
+            var tree = new VNode[] { V.Portal(holder, children: new VNode?[] { V.Div(name: "p") }) };
+            var root = new VisualElement();
+            reconciler.Reconcile(root, Array.Empty<VNode>(), tree);
+            holder.Content = second;
+
+            // Act
+            reconciler.Reconcile(root, tree, new VNode[] { V.Portal(holder, children: new VNode?[] { V.Div(name: "p") }) });
+            var counts = (first.childCount, second.childCount);
+            reconciler.Dispose();
+
+            // Assert
+            Assert.That(counts, Is.EqualTo((0, 1)));
         }
 
         private VisualElement MountScroll()

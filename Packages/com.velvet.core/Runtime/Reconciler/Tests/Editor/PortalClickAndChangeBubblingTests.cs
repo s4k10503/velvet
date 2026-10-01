@@ -290,6 +290,28 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base's dispose releases a mounted portal's bridge as well.
+        // This pins that disposing with the portal still mounted removes every listener the bridge added.
+        [Test]
+        public void Given_APortalIntoAContainer_When_TheReconcilerIsDisposedWithItMounted_Then_TheContainerKeepsNoBridgeListener()
+        {
+            // Arrange
+            var reconciler = new Reconciler();
+            var container = new VisualElement();
+            var listenersBefore = BubbleUpListenerCount(container);
+            reconciler.Reconcile(new VisualElement(), Array.Empty<VNode>(),
+                new VNode[] { V.Portal(container, children: new VNode?[] { V.Div(name: "portal-child") }) });
+            var listenersWhileMounted = BubbleUpListenerCount(container);
+
+            // Act
+            reconciler.Dispose();
+
+            // Assert — the mounted count is folded in, since a bridge that never attached leaves nothing either.
+            Assert.That(
+                (listenersWhileMounted > listenersBefore, BubbleUpListenerCount(container) == listenersBefore),
+                Is.EqualTo((true, true)));
+        }
+
         private static int BubbleUpListenerCount(VisualElement element)
         {
             var registry = typeof(CallbackEventHandler)

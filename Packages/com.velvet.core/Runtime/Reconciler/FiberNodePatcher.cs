@@ -965,62 +965,25 @@ namespace Velvet
         // the rows it placed (FiberCommitWork.OpenOwnRows).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
-            var (target, isHeal) = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
+            var target = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
             if (target == null)
             {
                 return;
             }
 
-            // Non-null only when this call is healing a target that just registered (isHeal, set by
-            // ResolvePortalTarget's heal case). DrainPendingPortalMounts stamps DetachedMountContext on a
-            // normal mount's newly-created top-level children so FiberCrossPanelEventDispatcher.Continue
-            // can find its way from the target back to the logical chain; a heal instead creates those
-            // children through this ordinary synchronous patch, which never runs that stamp. Snapshotting
-            // here (before the shared PatchPortalChildren call below) and stamping after lets the heal
-            // apply the same marker to whatever it just created, without touching the drain path or any
-            // other patch of an already-healthy Portal. Every OTHER path through this method
-            // (ResolvePortalTarget's layer case, and its already-resolved registry case) needs the
-            // identical marker for the identical reason — see steadyStateDeclaringFiber further down,
-            // after target resolves either way. This one stays split out because it is the rare branch:
-            // PatchPortalChildren records the resolved target, so a placeholder re-enters here only when
-            // a re-registration moves it off that element again.
-            ComponentFiber? healingDeclaringFiber = null;
-            HashSet<ComponentFiber>? healingChildFibersBefore = null;
-            if (isHeal)
-            {
-                // FiberStack.Current is the declaring fiber here (RenderAndReconcile keeps it pushed for
-                // the whole patch of its own returned tree), so it doubles as both the ComponentRegistry
-                // parent new children below will actually register under AND the logical ancestor
-                // FiberCrossPanelEventDispatcher.Continue needs. The deferred mount arrives at the same
-                // fiber by pushing it explicitly — DrainPendingPortalMounts owns why it has to.
-                healingDeclaringFiber = CaptureDeclaringChildFibers(pooled: false, out healingChildFibersBefore);
-            }
-
-            // Every patch that reaches here WITHOUT healing (ResolvePortalTarget's layer case, or its
-            // already-resolved registry case) still needs the same DetachedMountContext marker: a
-            // Portal can drain its first mount with ZERO top-level children (e.g. `V.Portal(id,
-            // children: isOpen ? real : Array.Empty<VNode>())`) and gain its first ones on a LATER
-            // patch — long after DrainPendingPortalMounts' own one-time stamp already ran with nothing
-            // to mark. Unlike the heal branch above (at most once per placeholder, ever), this runs on
-            // EVERY patch of an already-mounted Portal, so the "before" snapshot is rented from the
-            // shared pool instead of freshly allocated — the walk itself is already cheap (a declaring
-            // fiber's own direct children are typically a handful at most); pooling removes the one part
-            // of it that would otherwise cost real GC pressure across many patches per frame.
-            ComponentFiber? steadyStateDeclaringFiber = null;
-            HashSet<ComponentFiber>? steadyStateChildFibersBefore = null;
-            if (healingDeclaringFiber == null)
-            {
-                steadyStateDeclaringFiber = CaptureDeclaringChildFibers(pooled: true, out steadyStateChildFibersBefore);
-            }
+            // Every patch stamps DetachedMountContext on the top-level children it creates, as
+            // DrainPendingPortalMounts stamps a mount's: a Portal can drain its first mount with ZERO top-level
+            // children (e.g. `V.Portal(id, children: isOpen ? real : Array.Empty<VNode>())`) and gain its first
+            // ones on a LATER patch, and a Portal that heals onto a target registered after it mounted creates
+            // them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it pushed for the
+            // whole patch of its own returned tree), the parent those children register under. The "before"
+            // snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal.
+            var steadyStateDeclaringFiber = CaptureDeclaringChildFibers(out var steadyStateChildFibersBefore);
             try
             {
                 PatchPortalChildren(placeholder, target, oldNode.Children, newNode.Children, describe);
 
-                if (healingDeclaringFiber != null)
-                {
-                    StampNewTopLevelChildren(healingDeclaringFiber, healingChildFibersBefore!, newNode.Children);
-                }
-                else if (steadyStateDeclaringFiber != null)
+                if (steadyStateDeclaringFiber != null)
                 {
                     StampNewTopLevelChildren(steadyStateDeclaringFiber, steadyStateChildFibersBefore!, newNode.Children);
                 }
@@ -1043,10 +1006,8 @@ namespace Velvet
         // re-registration just moved this Portal off the element it had. Both of those go through the
         // same tail, which also attaches the same-panel synthetic-bubbling bridge the mount-time drain
         // never got to run for this target. Returns a null target when
-        // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
-        // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
-        // before this call for the DetachedMountContext stamp (see PatchPortal).
-        private (VisualElement? Target, bool IsHeal) ResolvePortalTarget(
+        // resolution fails (already warned); the caller bails without patching.
+        private VisualElement? ResolvePortalTarget(
             VisualElement placeholder, PortalNode oldNode, PortalNode newNode, out string describe)
         {
             if (newNode.Layer is { } layer)
@@ -1058,7 +1019,7 @@ namespace Velvet
                 if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
                 {
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
-                    return (null, false);
+                    return null;
                 }
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
@@ -1069,13 +1030,23 @@ namespace Velvet
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
                         newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
                 }
-                return (target, false);
+                return target;
             }
 
             if (newNode.TargetElement is { } held)
             {
                 describe = "an element the caller holds";
-                return (PortalContainerOf(held), false);
+                var container = GetChildContainer(held);
+                var heldRange = default(PortalSlotInfo);
+                if (!_ctx.PortalState.TryGetValue(placeholder, out heldRange)
+                    || ReferenceEquals(heldRange.Target, container))
+                {
+                    return container;
+                }
+                // The element the caller holds now puts its children elsewhere — its contentContainer changed —
+                // which moves the children as a different container would.
+                _host.ReleasePortalRangeForRetarget(placeholder);
+                return RebaseOnto(placeholder, container);
             }
 
             describe = newNode.TargetId!;
@@ -1086,7 +1057,7 @@ namespace Velvet
                 {
                     // Nothing to follow: an unregistered id names no element to move to, so the children
                     // keep being patched where they live rather than being stranded.
-                    return (recorded.Target, false);
+                    return recorded.Target;
                 }
                 // The id now names a different element. The children leave the old one and are created
                 // into the new one rather than being reparented into it, which is what createPortal does
@@ -1105,13 +1076,18 @@ namespace Velvet
             if (resolvedTarget == null)
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
-                return (null, false);
+                return null;
             }
-            // Both entrances reach here holding a range that addresses nothing on this target — the
-            // unregistered mount recorded slot 0 against no element at all, the retarget emptied the range
-            // it held on a different one — so the range is rebased to the end of whatever this target
-            // already holds, the slot ChildReconciler's deferred-mount pass would have taken. Patching from
-            // an unrebased slot 0 instead diffs this Portal's first child against the container's own.
+            return RebaseOnto(placeholder, resolvedTarget);
+        }
+
+        private VisualElement RebaseOnto(VisualElement placeholder, VisualElement resolvedTarget)
+        {
+            // Each caller hands this a range that addresses nothing on resolvedTarget — the unregistered mount
+            // recorded slot 0 against no element at all, a retarget emptied the range it held on a different
+            // one — so the range is rebased to the end of whatever resolvedTarget already holds, the slot
+            // ChildReconciler's deferred-mount pass would have taken. Patching from an unrebased slot 0 instead
+            // diffs this Portal's first child against the container's own.
             if (_ctx.PortalState.TryGetValue(placeholder, out var released))
             {
                 _ctx.PortalState[placeholder] = released with
@@ -1125,21 +1101,18 @@ namespace Velvet
             // retarget resolves an element that mount never saw — so this patch is where the same-panel
             // synthetic-bubbling bridge gets attached.
             _ctx.BindPortalTarget(resolvedTarget);
-            return (resolvedTarget, true);
+            return resolvedTarget;
         }
 
-        // Captures declaringFiber's current direct children so a later diff against its children after
-        // a patch can tell which ones are new (see StampNewTopLevelChildren's own comment). pooled
-        // selects a rented set for the steady-state caller, which runs this on every patch of an
-        // already-mounted Portal/WorldSpace; the heal caller runs at most once per placeholder ever and
-        // never returns its set to the pool, so it takes a fresh allocation instead.
-        private ComponentFiber? CaptureDeclaringChildFibers(bool pooled, out HashSet<ComponentFiber>? childFibersBefore)
+        // Captures declaringFiber's current direct children, in a set rented from the shared pool, so a later
+        // diff against its children after a patch can tell which ones are new (see StampNewTopLevelChildren).
+        private ComponentFiber? CaptureDeclaringChildFibers(out HashSet<ComponentFiber>? childFibersBefore)
         {
             var declaringFiber = _ctx.FiberStack.Current;
             childFibersBefore = null;
             if (declaringFiber != null)
             {
-                childFibersBefore = pooled ? _ctx.BufferPool.RentFiberSet() : new HashSet<ComponentFiber>();
+                childFibersBefore = _ctx.BufferPool.RentFiberSet();
                 for (var f = declaringFiber.Child; f != null; f = f.Sibling)
                 {
                     childFibersBefore.Add(f);
@@ -1149,12 +1122,9 @@ namespace Velvet
         }
 
         // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
-        // childFibersBefore — the fibers this specific PatchPortalChildren call just created — so
-        // FiberCrossPanelEventDispatcher.Continue can resolve the logical ancestor for a pointer/focus
-        // event landing on them. Shared by PatchPortal's one-time heal and every steady-state patch of
-        // an already-mounted Portal/WorldSpace (see each call site for why its "before" set comes from a
-        // different source); the diff itself — walk the current list, skip anything already in the
-        // "before" set, lazily create one DetachedMountContext for the rest — is identical either way.
+        // childFibersBefore — the fibers this specific PatchPortalChildren call just created — with what an
+        // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
+        // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
             ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes)
         {
@@ -1209,14 +1179,10 @@ namespace Velvet
                     newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
             }
 
-            // Every patch reaches here already resolved — a world-space host has no "late
-            // registration" heal path the way a registry Portal does (DrainPendingPortalMounts creates
-            // it outright on first mount, never leaving it to a later patch to resolve) — so this
-            // always stamps through the same steady-state mechanism PatchPortal's own already-resolved
-            // path uses (see its own comment): a world-space panel can likewise mount with zero
-            // children and gain its first ones on a later patch, after the one-time drain stamp already
-            // ran with nothing to mark.
-            var declaringFiber = CaptureDeclaringChildFibers(pooled: true, out var childFibersBefore);
+            // Stamped as PatchPortal stamps (see its comment): a world-space panel can likewise mount with
+            // zero children and gain its first ones on a later patch, after the drain's stamp ran with
+            // nothing to mark.
+            var declaringFiber = CaptureDeclaringChildFibers(out var childFibersBefore);
             try
             {
                 PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
@@ -3369,15 +3335,16 @@ namespace Velvet
         // A null contentContainer (the collection views, which build their rows themselves) answers with the
         // element. Not a crash guard: VisualElement is null-safe throughout — childCount reads 0, the indexer
         // yields nothing. Insert quietly does nothing there, so nothing should be reconciled into one.
-        // The element a Portal handed target puts its children in. They sit in target's contentContainer, so
-        // every range, own-row frame and component of the portal keys on that element rather than on target.
-        internal static VisualElement? PortalContainerOf(VisualElement? target) => target?.contentContainer ?? target;
-
         internal static VisualElement GetChildContainer(VisualElement element)
         {
             var content = element.contentContainer;
             return content ?? element;
         }
+
+        // The element a Portal handed target puts its children in, so every range, own-row frame and component
+        // of the portal keys on it rather than on target.
+        internal static VisualElement? PortalContainerOf(VisualElement? target)
+            => target == null ? null : GetChildContainer(target);
 
         #endregion
     }

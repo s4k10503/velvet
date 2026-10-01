@@ -255,5 +255,41 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_fires, Is.EqualTo(0));
         }
+        private static Action RegisterWheelTarget(VisualElement element)
+        {
+            FiberPortalRegistry.Register("wheel-target", element);
+            return () => FiberPortalRegistry.Unregister("wheel-target");
+        }
+
+        [Component]
+        private static VNode WheelHostRender() => V.Fragment(children: new VNode[]
+        {
+            V.Motion(
+                name: "scroll",
+                elementType: typeof(ScrollView),
+                events: new FiberEventBinding[] { new WheelBinding { Handler = _ => s_fires++ } },
+                refCallback: RegisterWheelTarget),
+            V.Motion(
+                events: new FiberEventBinding[] { new WheelBinding { Handler = evt => evt.StopPropagation() } },
+                children: new VNode[] { V.Portal("wheel-target", children: new VNode[] { V.Div(name: "wheel-child") }) }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base's bridge listens on the ScrollView itself, behind its own callbacks.
+        // This pins that a portal into a ScrollView still lets the ScrollView answer first.
+        [Test]
+        public void Given_APortalIntoAScrollViewDeclaredUnderAHandlerThatStopsWheel_When_AWheelIsDispatchedOnItsChild_Then_TheScrollViewsOwnHandlerStillRuns()
+        {
+            // Arrange — the handler that stops the wheel is the portal's logical ancestor alone, not the
+            // ScrollView's, so only the bridge carries the wheel to it.
+            _mounted = V.Mount(_root, V.Component(WheelHostRender, key: "host"));
+            _mounted.FlushStateForTest();
+            var child = _root.Q<VisualElement>("scroll").contentContainer.Q<VisualElement>("wheel-child");
+
+            // Act
+            Dispatch(WheelEvent.GetPooled(), child);
+
+            // Assert
+            Assert.That(s_fires, Is.EqualTo(1));
+        }
     }
 }

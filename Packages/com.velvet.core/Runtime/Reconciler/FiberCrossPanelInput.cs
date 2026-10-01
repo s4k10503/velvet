@@ -53,8 +53,8 @@ namespace Velvet
     {
         // Registers one BubbleUp listener per synthetic-bubbling-eligible event type on bridgeAnchor —
         // either a newly created host panel's root (called once, from PanelHostFactory) or a resolved
-        // same-panel target element (called once per target, from ChildReconciler's same-panel drain
-        // branch — see ReconcilerContext.SamePanelPortalBridges for the attach-once guard).
+        // same-panel target (once per target, from ReconcilerContext.BindPortalTarget, which owns the
+        // attach-once guard and which element it listens on).
         // Each listener fires only after UI Toolkit's own native dispatch has already bubbled the event
         // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
         // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
@@ -154,7 +154,10 @@ namespace Velvet
         {
             for (var element = target; !ReferenceEquals(element, bridgeAnchor); element = element.hierarchy.parent!)
             {
-                if (ctx.SamePanelPortalBridges.ContainsKey(element)) return true;
+                foreach (var bridge in ctx.SamePanelPortalBridges.Values)
+                {
+                    if (ReferenceEquals(bridge.Anchor, element)) return true;
+                }
             }
             return false;
         }
