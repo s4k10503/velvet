@@ -2848,8 +2848,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_AModalAtTheCardsBoxWithAShortExitRelegatingTheCard_When_ItsExitEnds_Then_ItStaysUntilTheCardLands()
         {
-            // Arrange / Act — the modal over the card's own box, on a tenth of a second; half way through the card's
-            // one-second tween, which a promotion plays however little it moves.
+            // Arrange / Act — the bundled sheet, without which `absolute` leaves the modal in flow below the card; the
+            // modal over the card's own box, on a tenth of a second; half way through the card's one-second tween,
+            // which a promotion plays however little it moves.
+            VelvetStyleUtilities.AttachTo(Root);
             (s_modalLeft, s_modalTransition) = (0, s_quickTween);
             using var mounted = CloseTheModalFor(30);
 
