@@ -206,22 +206,34 @@ namespace Velvet
         }
 
         // The drag channels' share of ReconcilerContext.ExpectGatePayload, for a create path that applies the drag
-        // bindings after it resolves its paints.
+        // bindings after it resolves its paints. A patch reaches the same calls through ApplyDraggable and
+        // ApplyDroppable, ahead of the passes that resolve its paints.
         internal void ExpectDragGates(VisualElement element, FiberElementProps? props)
         {
-            if (props?.Draggable != null)
+            ExpectDragGates(element, props?.Draggable);
+            ExpectDragGates(element, props?.Droppable);
+        }
+
+        private void ExpectDragGates(VisualElement element, DraggableSettings? settings)
+        {
+            if (settings != null)
             {
-                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Draggable.WhileDraggingClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDraggingClass));
             }
-            if (props?.Droppable != null)
+        }
+
+        private void ExpectDragGates(VisualElement element, DroppableSettings? settings)
+        {
+            if (settings != null)
             {
-                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Droppable.WhileOverClass));
-                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Droppable.WhileDragActiveClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileOverClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileDragActiveClass));
             }
         }
 
         internal void ApplyDraggable(VisualElement element, DraggableSettings? settings)
         {
+            ExpectDragGates(element, settings);
             if (_ctx.DraggableBindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)
@@ -240,6 +252,7 @@ namespace Velvet
 
         internal void ApplyDroppable(VisualElement element, DroppableSettings? settings)
         {
+            ExpectDragGates(element, settings);
             if (_ctx.DroppableBindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)

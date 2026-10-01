@@ -216,8 +216,6 @@ namespace Velvet
                     return true;
                 }
             }
-            // MUTANT_SURVIVES(equivalent, literal): an element recorded without a gate token reads its reconciled
-            // array unchanged, as one that declares a gated payload with none applied does.
             return false;
         }
 

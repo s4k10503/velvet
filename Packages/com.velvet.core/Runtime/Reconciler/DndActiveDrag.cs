@@ -710,6 +710,17 @@ namespace Velvet
             }
         }
 
+        // Takes this session's classes off element without ending the session, for a teardown that drops the
+        // element's class projection before it cancels the session.
+        internal void ReleaseClassesOf(VisualElement element)
+        {
+            if (ReferenceEquals(element, _source) && _activeDraggingClasses.Length > 0)
+            {
+                Toggle(_source, _activeDraggingClasses, false);
+            }
+            OnDroppableInvalidated(element);
+        }
+
         // A droppable leaving mid-drag (unmount, or a settings flip to disabled) must drop out of this
         // session's bookkeeping: its applied classes die with it, the over slot clears silently (the next
         // move recomputes and fires OnDragOver as usual — no user callback from mid-flush here).

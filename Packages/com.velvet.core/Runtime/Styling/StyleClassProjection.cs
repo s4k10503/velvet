@@ -80,6 +80,17 @@ namespace Velvet
             }
         }
 
+        // A class its own writer (StyleAnimationClassUtils) puts on and takes off the live list, rather than a
+        // payload. The model ranks it at priority while it is on, so a payload above still outranks it, and never
+        // keeps it on: the writer's removal takes it off whatever else wants it.
+        public static void RawAdded(VisualElement element, string cls, long priority)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawAdded(element, cls, priority);
+
+        // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
+        // if the model was built while the class was on.
+        public static void RawRemoved(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(cls);
+
         // Whether element's className declares cls while the projection keeps it off the live class list.
         internal static bool SuppressesDeclared(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
@@ -115,7 +126,7 @@ namespace Velvet
             private readonly List<Entry> _entries = new();
             private readonly StyleLonghandSet[] _claimed = new StyleLonghandSet[s_gateCount];
             // Classes this model took off the element. Nothing else may be re-added: a class another
-            // subsystem removed from the live list (the animation scheduler, a gesture manipulator) must stay
+            // subsystem removed from the live list (the animation scheduler, the presence exit) must stay
             // gone even while the model still records the layer that asked for it.
             private HashSet<string>? _suppressed;
             private List<InlineLayer>? _inline;
@@ -164,6 +175,10 @@ namespace Velvet
                 {
                     _entries.RemoveAt(index);
                 }
+                if (!Holds(cls))
+                {
+                    DropRaw(cls);
+                }
                 Recompute(element);
                 // The last layer wanting this class is gone, so it leaves whether or not it was suppressed —
                 // and the suppression marker leaves with it, or a re-add would find the class already
@@ -172,6 +187,44 @@ namespace Velvet
                 {
                     element.RemoveFromClassList(cls);
                     _suppressed?.Remove(cls);
+                }
+            }
+
+            // A ranking-only entry: it neither puts its class on the live list nor keeps it there (Holds skips
+            // it). It lives only while the class is on that list or suppressed by this model: RawRemoved drops
+            // it, and so does Remove once nothing else holds the class.
+            public void RawAdded(VisualElement element, string cls, long priority)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): IndexOf answers -1 or an index, and at index 0 the mutant adds
+                // a second ranking-only entry to the same slot, which ranks as the first does and is dropped with it.
+                if (IndexOf(cls, priority) < 0)
+                {
+                    StyleUtilityProperties.TryGet(cls, out var rule);
+                    _entries.Add(new Entry(cls, priority, rule.Properties, (int)rule.Gate, rankOnly: true));
+                }
+                Recompute(element);
+            }
+
+            // The writer's removal stands whatever else wants the class, so its suppression goes with it: a raw
+            // add that finds the class still marked suppressed would leave it on the list however it ranks.
+            // Nothing is recomputed, because what it drops sits at the base priority, which outranks nothing.
+            public void RawRemoved(string cls)
+            {
+                DropRaw(cls);
+                _suppressed?.Remove(cls);
+            }
+
+            // Drops cls's ranking-only entries and its base one: a seed adopts a raw class there if the model is
+            // built while the class is on.
+            private void DropRaw(string cls)
+            {
+                for (var i = _entries.Count - 1; i >= 0; i--)
+                {
+                    var entry = _entries[i];
+                    if (entry.Class == cls && (entry.RankOnly || entry.Priority == StyleLayerPriority.Base))
+                    {
+                        _entries.RemoveAt(i);
+                    }
                 }
             }
 
@@ -351,7 +404,7 @@ namespace Velvet
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
-                    if (_entries[i].Class == cls)
+                    if (_entries[i].Class == cls && !_entries[i].RankOnly)
                     {
                         return i;
                     }
@@ -378,13 +431,15 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent): every entry is added on a path that recomputes before anything reads
             // it, and Recompute writes each entry's Dead.
-            public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false)
+            public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false,
+                bool rankOnly = false)
             {
                 Class = cls;
                 Priority = priority;
                 Properties = properties;
                 Gate = gate;
                 Dead = dead;
+                RankOnly = rankOnly;
             }
 
             public string Class { get; }
@@ -399,7 +454,10 @@ namespace Velvet
 
             public bool Dead { get; }
 
-            public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead);
+            // Added by Model.RawAdded: see there.
+            public bool RankOnly { get; }
+
+            public Entry WithDead(bool dead) => new Entry(Class, Priority, Properties, Gate, dead, RankOnly);
         }
 
         // One registered arbitrary-value layer, as the projection sees it.

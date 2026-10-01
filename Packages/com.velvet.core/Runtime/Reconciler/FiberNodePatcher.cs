@@ -3017,8 +3017,8 @@ namespace Velvet
             // Font and text effects run only from a RECORDED array, never from the live-list stand-in the
             // layout gates accept above. Both resolvers rewrite unconditionally, and the live list is not a
             // narrower version of their source but a different one: the reconciler keeps a DECLARED font-[…]
-            // / leading-[…] off it, since those two are resolver-owned, and the channels that raise no
-            // signal (whileHoverClass and its siblings) put utilities on it that no reconcile ever saw.
+            // / leading-[…] off it, since those two are resolver-owned, and the writers that raise no signal
+            // (the animation scheduler, the presence exit) put utilities on it that no reconcile ever saw.
             // Handing it over would not lose the payload, it would resolve some other answer over the
             // element's correct one with nothing left to put it back.
             // Their order is the reconcile path's own (SyncClassDrivenStyling ahead of
@@ -3178,10 +3178,9 @@ namespace Velvet
         // family these passes read, they are already ranked by the priority each payload was applied at, and
         // reading them costs no enumerator — where walking the live list costs one per element per patch,
         // plus a membership test per class on it. The narrowing that buys is real and deliberate: a bare utility
-        // written by a subsystem that raises no signal (whileHoverClass / whileTapClass / whileFocusClass,
-        // the animation scheduler, the drag layer) is on the live list but never in this source, so it drives
-        // no gate. Only a signalling writer can, and a writer with no signal could not keep a pass correct
-        // across the toggle back off anyway.
+        // written by a subsystem that raises no signal (the animation scheduler, the presence exit) is on the
+        // live list but never in this source, so it drives no gate. Only a signalling writer can, and a writer
+        // with no signal could not keep a pass correct across the toggle back off anyway.
         //
         // A token the reconciled array ALREADY names is appended again rather than left where it sits.
         // Declaring one literally and behind a variant is legal (gap-4 md:gap-4), and the duplicate is inert

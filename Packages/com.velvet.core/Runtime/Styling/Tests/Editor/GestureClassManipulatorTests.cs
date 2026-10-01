@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -787,6 +788,106 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(Color.red));
+        }
+
+        private static StateUpdater<bool> s_setLit;
+
+        // A Motion entering from bg-blue-500 to bg-red-500 on a 0.2 s tween, carrying className and hover, beside a
+        // reference carrying bg-red-500, on a panel whose scheduler runs on the fake clock.
+        private (VisualElement Child, VisualElement Reference) MountEnteringMotion(string className, string? hover)
+        {
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
+            var poses = new Dictionary<string, MotionVariant> { ["hidden"] = "bg-blue-500", ["visible"] = "bg-red-500" };
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Motion(name: "b", className: "w-[20px] h-[20px] " + className, variants: poses, initial: "hidden",
+                    animate: "visible", transition: new StyleTransitionConfig { DurationSec = 0.2f }, whileHoverClass: hover),
+                V.Div(name: "ref", className: "border bg-red-500"),
+            }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            return (child, _window.rootVisualElement.Q("ref"));
+        }
+
+        // The play's class swap, then its completion, each a second later on the fake clock.
+        private static void PlayOut(VisualElement child)
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                UseFrameFakeClockHost.Ms += 1000;
+                EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            }
+            ForcePanelUpdate(child.panel);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's gesture class builds no class projection, so nothing adopts the
+        // play's starting class. What reddens it is a play's removal leaving that class adopted at the base layer.
+        [Test]
+        public void Given_AnEnteringMotionHoveredBeforeItsSwap_When_ThePlayEndsAndThePointerLeaves_Then_ItShowsTheEnteredColor()
+        {
+            // Arrange
+            var (child, reference) = MountEnteringMotion("", "bg-green-500");
+            Hover(child, true);
+
+            // Act
+            PlayOut(child);
+            Hover(child, false);
+
+            // Assert
+            Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
+        }
+
+        [Test]
+        public void Given_AnEnteringMotionWithAHoverRuleHoveredBeforeItsSwap_When_ThePlayEndsAndThePointerLeaves_Then_ItShowsTheEnteredColor()
+        {
+            // Arrange
+            var (child, reference) = MountEnteringMotion("hover:bg-green-500", null);
+            Hover(child, true);
+
+            // Act
+            PlayOut(child);
+            Hover(child, false);
+
+            // Assert
+            Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
+        }
+
+        // A Motion that swaps from bg-white to bg-blue-500 on a 0.2 s tween when s_setLit says so, and is red while
+        // hovered, beside a reference carrying bg-red-500.
+        [Component]
+        private static VNode SwappingMotion()
+        {
+            var (lit, setLit) = Hooks.UseState(false);
+            s_setLit = setLit;
+            var poses = new Dictionary<string, MotionVariant> { ["a"] = "bg-white", ["b"] = "bg-blue-500" };
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, animate: lit ? "b" : "a",
+                    transition: new StyleTransitionConfig { DurationSec = 0.2f }, whileHoverClass: "bg-red-500"),
+                V.Div(name: "ref", className: "border bg-red-500"),
+            });
+        }
+
+        [Test]
+        public void Given_AHoveredMotion_When_AVariantSwapPlaysOut_Then_TheHoverClassStillWins()
+        {
+            // Arrange
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(SwappingMotion));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            Hover(child, true);
+
+            // Act
+            s_setLit.Invoke(true);
+            _mounted.FlushStateForTest();
+            PlayOut(child);
+
+            // Assert
+            Assert.That(child.resolvedStyle.backgroundColor,
+                Is.EqualTo(_window.rootVisualElement.Q("ref").resolvedStyle.backgroundColor));
         }
     }
 }

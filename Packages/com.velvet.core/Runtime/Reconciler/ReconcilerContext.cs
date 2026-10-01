@@ -192,10 +192,11 @@ namespace Velvet
 
     // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
-    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), or the
-    // payload toggle itself for an element whose own class list declares none — which only a [&>*]: rule on
-    // its PARENT produces, since every other family (first: and has-[.class]: included) spells its payload on
-    // the subject's own class list. It outlives an emptied token set, because the array it holds is what the
+    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
+    // patch that sees a gesture or drag channel carry one (ReconcilerContext.ExpectGatePayload), or the
+    // payload toggle itself for an element that declares none — which only a [&>*]: rule on its PARENT
+    // produces, since every other family (first: and has-[.class]: included) spells its payload on the
+    // subject's own class list. It outlives an emptied token set, because the array it holds is what the
     // NEXT toggle will need and no reconcile need ever run again to re-record it.
     internal sealed class VariantGateState
     {

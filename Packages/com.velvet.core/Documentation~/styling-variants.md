@@ -391,20 +391,24 @@ outset one is wholly outside the padding box and a clip takes all of it; `ring-i
 and would have survived, but one hosting has to serve both.
 
 **Class channels that are not variants.** `whileHoverClass`, `whileTapClass` and `whileFocusClass` apply
-their utilities the way `hover:`, `active:` and `focus:` apply a payload, after every rule the className
-declares at that rank, and the drag-and-drop channels (`whileDraggingClass`, `whileOverClass`,
-`whileDragActiveClass`) apply theirs the same way at `data-[…]:`'s rank. While the state is on, a utility
-outranks the element's own one for the same property — a rule the stylesheet declares later, a bracket value
-such as `bg-[#00f]`, a divider's color, and for the gesture channels a `hover:` rule of the className itself
-— and the element's own value comes back when the state goes off. Bracket values apply through them, and so
-do `shadow-*`, `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
-`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The transient enter / exit classes an
-`AnimatePresence` play applies for the duration of an animation write their utilities straight onto the live
-class list without telling the reconciler, and carry only a utility backed by a plain USS rule —
-`bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that as the list in the
-first paragraph above versus everything else, not as whole categories: `gap-4` is spacing and `skew-x-6` is
-a transform, yet both are in that list and neither works there. A `V.Motion`'s resting `variants` classes go
-through the reconciler and are unaffected.
+their utilities the way `hover:`, `active:` and `focus:` apply a payload, ranked after every rule the
+className declares with that variant alone, and the drag-and-drop channels (`whileDraggingClass`,
+`whileOverClass`, `whileDragActiveClass`) apply theirs the same way at `data-[…]:`'s rank. So while the
+state is on, a gesture class outranks the element's utilities that carry no variant or `!` for the same
+property — a rule the stylesheet declares later, a bracket value such as `bg-[#00f]`, a divider's color —
+and its own variant's rule in the className, such as `hover:` against `whileHoverClass`. It loses to what
+Tailwind ranks above that: `focus:` or `active:` against `whileHoverClass`, `disabled:` or `data-[…]:`
+against any of the three, a stacked rule such as `dark:hover:`, and an important utility. The element's
+own value comes back when the state goes off. Bracket values apply through them, and on an element so do
+`shadow-*`, `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
+`whileHoverClass: "shadow-lg"` paints a shadow while hovered. A `V.Motion` draws no `shadow-*`, `skew-*`
+or `border-dashed` / `border-dotted`, through these channels or through its className. The transient enter
+/ exit classes an `AnimatePresence` play applies for the duration of an animation write their utilities
+straight onto the live class list without telling the reconciler, and carry only a utility backed by a
+plain USS rule — `bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that
+as the list in the first paragraph above versus everything else, not as whole categories: `gap-4` is
+spacing and `skew-x-6` is a transform, yet both are in that list and neither works there. A `V.Motion`'s
+resting `variants` classes go through the reconciler and are unaffected.
 
 **`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
 container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
