@@ -96,6 +96,11 @@ namespace Velvet
         // priority, placed after every rule a className declares at that rank.
         public static long AfterEveryRule(long priority) => priority | RuleMask;
 
+        // A class a running play puts on the element: CSS ranks an animation's declarations above every
+        // normal-origin one, inline included, and below an important one. Above any specificity a stack of
+        // variants sums to, so it outranks every rule that is not important.
+        public const long Animation = 1L << 61;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats

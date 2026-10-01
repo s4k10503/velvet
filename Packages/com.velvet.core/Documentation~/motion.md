@@ -11,7 +11,11 @@ The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …)
 `whileHoverClass` / `whileTapClass` gestures are covered in the README; everything below uses
 **variants**. The gesture channels apply their classes as `hover:`, `active:` and `focus:` payloads, after
 the className's own rules at those ranks, and the classes a play applies while it runs carry ordinary USS
-utilities only — see [styling-variants.md](styling-variants.md#payloads-velvet-realises-itself).
+utilities only — see [styling-variants.md](styling-variants.md#payloads-velvet-realises-itself). While a
+tween play shows its classes, they outrank the element's own utilities and bracket values, a divider's or
+space margin's value on the same edge, variant payloads and the gesture channels, as a CSS animation's
+declarations do, and lose to an important utility, behind a variant or not. A variant's classes rank as
+the element's own once its enter ends.
 
 ## Variants & labels
 

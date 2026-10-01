@@ -224,7 +224,7 @@ namespace Velvet
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
             }
-            StyleAnimationClassUtils.AddClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation);
 
             // Step 2: swap classes on the next frame (fires the CSS transition).
             var pending = new PendingAnimation
@@ -331,7 +331,7 @@ namespace Velvet
 
             pending.SwapAhead = false;
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-            StyleAnimationClassUtils.AddClasses(element, toClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses, StyleLayerPriority.Animation);
             RunOnSwap(pending);
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
             // ring band fades in lockstep with it.
@@ -353,6 +353,10 @@ namespace Velvet
                     if (!variantMode)
                     {
                         StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                    }
+                    else
+                    {
+                        StyleAnimationClassUtils.Rest(element, toClasses);
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
@@ -436,7 +440,7 @@ namespace Velvet
             var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
                 config.DelaySec, allProperties: restoreFromOnCancel,
                 propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null);
-            StyleAnimationClassUtils.AddClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation);
 
             // Step 2: swap classes on the next frame.
             var pending = new PendingAnimation
@@ -526,7 +530,7 @@ namespace Velvet
             }
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!);
+            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!, StyleLayerPriority.Animation);
             RunOnSwap(pending);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
             // stable host so its ring band fades out in lockstep (and keeps ticking through any

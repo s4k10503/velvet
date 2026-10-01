@@ -81,15 +81,28 @@ namespace Velvet
         }
 
         // A class its own writer (StyleAnimationClassUtils) puts on and takes off the live list, rather than a
-        // payload. The model ranks it at priority while it is on, so a payload above still outranks it, and never
-        // keeps it on: the writer's removal takes it off whatever else wants it.
+        // payload. The model ranks it at priority while it is on, so a payload above still outranks it and a
+        // play's class outranks the element's own, and never keeps it on: the writer's removal takes it off
+        // whatever else wants it. The base priority takes the model-free path, as Add's does.
         public static void RawAdded(VisualElement element, string cls, long priority)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawAdded(element, cls, priority);
+        {
+            var model = StyleArbitraryValueResolver.TryGetProjection(element);
+            if (model == null)
+            {
+                if (priority == StyleLayerPriority.Base)
+                {
+                    return;
+                }
+                model = StyleArbitraryValueResolver.GetOrCreateProjection(element);
+                model.SeedBaseLayer(element);
+            }
+            model.RawAdded(element, cls, priority);
+        }
 
         // The removal half of RawAdded. It also forgets the class at the base priority, where a seed adopted it
         // if the model was built while the class was on.
         public static void RawRemoved(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(cls);
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRemoved(element, cls);
 
         // Whether element's className declares cls while the projection keeps it off the live class list.
         internal static bool SuppressesDeclared(VisualElement element, string cls)
@@ -195,6 +208,17 @@ namespace Velvet
             // it, and so does Remove once nothing else holds the class.
             public void RawAdded(VisualElement element, string cls, long priority)
             {
+                // A class put on at the base priority rests there, so a play that ranked it higher has ended.
+                if (priority == StyleLayerPriority.Base)
+                {
+                    for (var i = _entries.Count - 1; i >= 0; i--)
+                    {
+                        if (_entries[i].Class == cls && _entries[i].RankOnly && _entries[i].Priority != priority)
+                        {
+                            _entries.RemoveAt(i);
+                        }
+                    }
+                }
                 // MUTANT_SURVIVES(equivalent, boundary): IndexOf answers -1 or an index, and at index 0 the mutant adds
                 // a second ranking-only entry to the same slot, which ranks as the first does and is dropped with it.
                 if (IndexOf(cls, priority) < 0)
@@ -207,11 +231,11 @@ namespace Velvet
 
             // The writer's removal stands whatever else wants the class, so its suppression goes with it: a raw
             // add that finds the class still marked suppressed would leave it on the list however it ranks.
-            // Nothing is recomputed, because what it drops sits at the base priority, which outranks nothing.
-            public void RawRemoved(string cls)
+            public void RawRemoved(VisualElement element, string cls)
             {
                 DropRaw(cls);
                 _suppressed?.Remove(cls);
+                Recompute(element);
             }
 
             // Drops cls's ranking-only entries and its base one: a seed adopts a raw class there if the model is
