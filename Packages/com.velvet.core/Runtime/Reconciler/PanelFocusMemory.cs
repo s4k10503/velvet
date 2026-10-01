@@ -6,8 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Drops what a panel's FocusController still holds of a subtree leaving it, so an element Velvet releases
-    // from that panel carries no focus into its next mount. PooledFocusMemoryTests pins what each held
-    // reference does to a Button the pool hands out again.
+    // from that panel carries no focus into its next mount. PooledFocusMemoryTests pins what each held focus
+    // reference does to a Button the pool hands out again, and that the selected text element is dropped.
     //
     // Reflection rather than a public call: Blur() reaches these only while the departing element holds or is
     // about to take focus, and a panel the event system blurred keeps its last focused element with nothing
@@ -32,6 +32,12 @@ namespace Velvet
         private static readonly FieldInfo? s_pendingFocusedElement =
             ReferenceField(s_controllerType, "m_LastPendingFocusedElement", Instance);
 
+        // Written through the property, as the engine's own writers are.
+        private static readonly PropertyInfo? s_selectedTextElement =
+            s_controllerType.GetProperty("selectedTextElement", Instance) is { CanWrite: true } selected
+                ? selected
+                : null;
+
         private static readonly FieldInfo? s_focusedElements =
             s_controllerType.GetField("m_FocusedElements", Instance) is { FieldType: { IsGenericType: true } } list
                 ? list
@@ -52,6 +58,10 @@ namespace Velvet
                 ? Convert.ToInt64(focus)
                 : 0;
 
+        // A tree disposed after its root left its panel is released with no panel to scrub, so the scrub runs
+        // when the root leaves instead.
+        public static IDisposable ForgetWhenLeaving(VisualElement root) => new LeaveScrub(root);
+
         public static void Forget(IPanel? panel, VisualElement departing)
         {
             var controller = panel?.focusController;
@@ -66,6 +76,13 @@ namespace Velvet
             if (s_lastFocusedElement?.GetValue(controller) is VisualElement last && IsWithin(last, departing))
             {
                 s_lastFocusedElement.SetValue(controller, null);
+            }
+            if (s_selectedTextElement?.GetValue(controller) is VisualElement selected)
+            {
+                if (IsWithin(selected, departing))
+                {
+                    s_selectedTextElement.SetValue(controller, null);
+                }
             }
             // A focus change still being dispatched lands on its target after this has run: a handler on the
             // element losing focus can release the one gaining it, and the engine then records that target as
@@ -118,6 +135,21 @@ namespace Velvet
 
         private static FieldInfo? ReferenceField(Type type, string name, BindingFlags flags)
             => type.GetField(name, flags) is { FieldType: { IsValueType: false } } field ? field : null;
+
+        private sealed class LeaveScrub : IDisposable
+        {
+            private readonly VisualElement _root;
+
+            public LeaveScrub(VisualElement root)
+            {
+                _root = root;
+                _root.RegisterCallback<DetachFromPanelEvent>(OnDetached);
+            }
+
+            public void Dispose() => _root.UnregisterCallback<DetachFromPanelEvent>(OnDetached);
+
+            private void OnDetached(DetachFromPanelEvent evt) => Forget(evt.originPanel, _root);
+        }
 
         private sealed class ReturnScrub
         {
