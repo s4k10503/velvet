@@ -100,6 +100,9 @@ namespace Velvet.Tests
             Assert.That((widthAboveMd, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the floored top and writes no shorthand back over it.
+        // What reddens it is dropping `ClearClaimedLonghands(element, map, style.Property, key, writers)` from
+        // ResolveSharedLonghands, which lets p-[12px] write the top again.
         [Test]
         public void Given_AnArbitraryPaddingShorthandAndLonghandBesideAnMdClass_When_WiderThanMd_Then_TheClassKeepsTheTop()
         {

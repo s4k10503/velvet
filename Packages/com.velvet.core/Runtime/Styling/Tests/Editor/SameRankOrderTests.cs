@@ -277,6 +277,9 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the floored top and writes no shorthand back over it.
+        // What reddens it is dropping `ClearClaimedLonghands(element, map, style.Property, key, writers)` from
+        // ResolveSharedLonghands, which lets m-[4px] write the top again.
         [Test]
         public void Given_AShorthandAndALonghandBesideAHoverClass_When_Hovered_Then_TheClassKeepsItsSide()
         {
