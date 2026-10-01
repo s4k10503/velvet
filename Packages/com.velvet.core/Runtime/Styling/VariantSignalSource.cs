@@ -1,13 +1,13 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // The element-local interaction signals a variant manipulator reacts to. FocusVisible is the CSS
-    // :focus-visible distinction (keyboard/programmatic focus, not pointer focus); Checked is the element's
-    // own toggle state.
+    // :focus-visible distinction (InputModality); Checked is the element's own toggle state.
     internal enum VariantSignal
     {
         Hover,
@@ -117,6 +117,9 @@ namespace Velvet
         // it suppresses.
         private bool _pointerFocus;
 
+        // Whether this element's ring follows InputModality.Announced, which it does while it holds focus.
+        private bool _following;
+
         public ElementLocalVariantSignals(Action<VariantSignal, bool> emit) => _emit = emit;
 
         // Registers the detection callbacks on target. When registerChecked is false the ChangeEvent path is
@@ -169,6 +172,7 @@ namespace Velvet
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
             }
 
+            Unfollow();
             _target = null;
             _pointerFocus = false;
         }
@@ -235,6 +239,7 @@ namespace Velvet
         // per-state dedup makes a redundant call a no-op.
         public void SettleFocusLoss()
         {
+            Unfollow();
             _pointerFocus = false;
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
@@ -243,17 +248,53 @@ namespace Velvet
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);
-            // focus-visible lights up only when the focus was NOT driven by a pointer-down on this element
-            // (keyboard navigation or a programmatic Focus()), mirroring CSS :focus-visible.
-            if (!_pointerFocus)
+            if (!_pointerFocus && !InputModality.LastInputWasPointer(_target?.panel))
             {
                 _emit(VariantSignal.FocusVisible, true);
             }
             _pointerFocus = false;
+            if (!_following)
+            {
+                _following = true;
+                InputModality.Announced += OnModalityChanged;
+            }
+        }
+
+        // React Aria's isKeyboardFocusEvent: a key typed into a text input leaves the ring as it was, except
+        // Tab and Escape.
+        private void OnModalityChanged(bool pointer, EventBase cause)
+        {
+            if (!IsTypedIntoATextInput(cause))
+            {
+                _emit(VariantSignal.FocusVisible, !pointer);
+            }
+        }
+
+        private static bool IsTypedIntoATextInput(EventBase cause)
+        {
+            if (cause is not IKeyboardEvent key)
+            {
+                return false;
+            }
+            if (key.keyCode is KeyCode.Tab or KeyCode.Escape)
+            {
+                return false;
+            }
+            return cause.target is ITextEdition { isReadOnly: false };
+        }
+
+        private void Unfollow()
+        {
+            if (_following)
+            {
+                _following = false;
+                InputModality.Announced -= OnModalityChanged;
+            }
         }
 
         private void OnBlur(BlurEvent evt)
         {
+            Unfollow();
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
         }
@@ -448,6 +489,162 @@ namespace Velvet
             if (_registerChecked && ReferenceEquals(_source, source))
             {
                 _emit(RelationalVariantSignal.Checked, value);
+            }
+        }
+    }
+    // Hooks every source a relational binding matched and reports a state lit while ANY of them holds it:
+    // `.peer:hover ~ x` matches whichever preceding peer is hovered, and `.group:hover x` whichever ancestor
+    // group is. An on edge is forwarded as it arrives and the consumer dedups it; an off edge is forwarded
+    // only once no hooked source still holds the state.
+    //
+    // The set follows the tree the way a selector does: Retarget hooks sources that joined and releases the
+    // ones that left, keeping each source that stayed with the state it holds, and a source the cleaner
+    // takes out of the tree is released at once (DropDeparted), before its element can be pooled and rented
+    // elsewhere. ReconcilerContext.RelationalVariantSources indexes the sets by the source elements they hook.
+    internal sealed class RelationalSourceSet
+    {
+        private readonly ReconcilerContext _ctx;
+        private readonly Action<RelationalVariantSignal, bool> _emit;
+        private readonly List<Source> _sources = new();
+        private readonly int[] _holding = new int[RelationalSignalCount];
+
+        private static readonly int RelationalSignalCount = Enum.GetValues(typeof(RelationalVariantSignal)).Length;
+
+        public RelationalSourceSet(ReconcilerContext ctx, Action<RelationalVariantSignal, bool> emit)
+        {
+            _ctx = ctx;
+            _emit = emit;
+        }
+
+        // Hooks every element of sources not hooked yet and releases every hooked one sources no longer names.
+        public void Retarget(List<VisualElement> sources, bool seedChecked, bool registerChecked, bool trackDisabled)
+        {
+            for (var i = _sources.Count - 1; i >= 0; i--)
+            {
+                if (!sources.Contains(_sources[i].Element))
+                {
+                    Release(i);
+                }
+            }
+            foreach (var element in sources)
+            {
+                if (IndexOf(element) < 0)
+                {
+                    var source = new Source(this, element);
+                    _sources.Add(source);
+                    Index(element).Add(this);
+                    source.Signals.Hook(element, seedChecked, registerChecked, trackDisabled);
+                }
+            }
+        }
+
+        // Unhooks every source without reporting an edge: the consumer resets its own applied state around this.
+        public void Unhook()
+        {
+            foreach (var source in _sources)
+            {
+                source.Signals.Unhook();
+                Unindex(source.Element);
+            }
+            _sources.Clear();
+            Array.Clear(_holding, 0, _holding.Length);
+        }
+
+        public void SettleChecked(VisualElement source, bool value)
+        {
+            foreach (var hooked in _sources)
+            {
+                hooked.Signals.SettleChecked(source, value);
+            }
+        }
+
+        // Releases element from every set that hooks it, reporting the off edges only it was holding.
+        public static void DropDeparted(ReconcilerContext ctx, VisualElement element)
+        {
+            if (!ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            foreach (var set in sets.ToArray())
+            {
+                set.Release(set.IndexOf(element));
+            }
+        }
+
+        private int IndexOf(VisualElement element)
+        {
+            for (var i = 0; i < _sources.Count; i++)
+            {
+                if (ReferenceEquals(_sources[i].Element, element))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private void Release(int index)
+        {
+            var source = _sources[index];
+            _sources.RemoveAt(index);
+            source.Signals.Unhook();
+            Unindex(source.Element);
+            for (var slot = 0; slot < RelationalSignalCount; slot++)
+            {
+                if (source.Holding[slot] && --_holding[slot] == 0)
+                {
+                    _emit((RelationalVariantSignal)slot, false);
+                }
+            }
+        }
+
+        private List<RelationalSourceSet> Index(VisualElement element)
+        {
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                sets = new List<RelationalSourceSet>();
+                _ctx.RelationalVariantSources[element] = sets;
+            }
+            return sets;
+        }
+
+        private void Unindex(VisualElement element)
+        {
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            sets.Remove(this);
+            if (sets.Count == 0)
+            {
+                _ctx.RelationalVariantSources.Remove(element);
+            }
+        }
+
+        private void OnSourceSignal(Source source, RelationalVariantSignal signal, bool on)
+        {
+            var slot = (int)signal;
+            if (source.Holding[slot] != on)
+            {
+                source.Holding[slot] = on;
+                _holding[slot] += on ? 1 : -1;
+            }
+            if (on || _holding[slot] == 0)
+            {
+                _emit(signal, on);
+            }
+        }
+
+        private sealed class Source
+        {
+            public readonly bool[] Holding = new bool[RelationalSignalCount];
+            public readonly RelationalVariantSignals Signals;
+            public readonly VisualElement Element;
+
+            public Source(RelationalSourceSet set, VisualElement element)
+            {
+                Element = element;
+                Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));
             }
         }
     }

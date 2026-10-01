@@ -122,9 +122,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
-# Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
-# report a busy machine forever on an idle one.
-UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from unity_running import UNITY_RUNNING  # noqa: E402
 
 PASSED_ON_BASE = "passed on the base"
 RED_ON_BASE = "red on the base"

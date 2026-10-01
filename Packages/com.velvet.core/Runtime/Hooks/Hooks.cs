@@ -1260,6 +1260,21 @@ namespace Velvet
 
         #endregion
 
+        #region UseFocusManager
+
+        /// <summary>
+        /// Returns the <see cref="FocusManager"/> of the focus scope around this component — React Aria's
+        /// <c>useFocusManager</c>. The manager is reference-stable across renders and resolves the scope each
+        /// time a method is called, so call its methods from an event handler or an effect, not during render.
+        /// </summary>
+        public static FocusManager UseFocusManager()
+        {
+            var fiber = Resolve("UseFocusManager");
+            return UseRef(() => new FocusManager(fiber)).Current!;
+        }
+
+        #endregion
+
         #region Refs
 
         /// <summary>

@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// <item>A neighbouring Portal on the same target growing — whether that Portal's own children changed, a
     /// component inside it grew, or its patch drained a parked component — or unmounting; and a Portal whose
     /// component grew removes every row it added when it goes.</item>
-    /// <item>A pass that meant to move it and aborted, which leaves it where the container still holds it.</item>
+    /// <item>A pass that moves it and in which a boundary behind it catches, which commits the move.</item>
     /// <item>A walk that drains a parked component ahead of a boundary it has not reached yet, whose catch
     /// then lands on the boundary's own rows.</item>
     /// <item>A fallback holding more or fewer rows than its boundary did, which moves what comes after it
@@ -55,6 +55,8 @@ namespace Velvet.Tests
             s_parkedRows = 1;
             s_parkedFiber = null;
             s_setParkOrder = null;
+            s_parkedBoundaryFiber = null;
+            s_setParkedBoundaryHostTick = null;
             s_unmountedRow = null;
             s_setOwnRows = null;
             s_setOwnChildTick = null;
@@ -660,7 +662,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region A pass that aborts before placing
+        #region A pass that catches after moving a component
 
         private static Action<int> s_setMoverTick;
         private static Action<int> s_setMoveOrder;
@@ -689,7 +691,7 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode AbortedMoveHostRender()
+        private static VNode CatchingMoveHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
             s_setMoveOrder = setOrder;
@@ -709,11 +711,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APassThatMovedAComponentAborted_When_TheComponentRerenders_Then_ItRewritesTheRowItStillHolds()
+        public void Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt()
         {
-            // Arrange — the pass puts the mover behind "ahead", and a catch later in the same pass stops it
-            // from placing anything.
-            using var mounted = V.Mount(_root, V.Component(AbortedMoveHostRender, key: "host"), CaughtErrors.Unlogged);
+            // Arrange — the pass puts the mover behind "ahead", and a catch later in the same pass leaves the rest
+            // of it to commit.
+            using var mounted = V.Mount(_root, V.Component(CatchingMoveHostRender, key: "host"), CaughtErrors.Unlogged);
             s_bombThrows = true;
             s_setMoveOrder.Invoke(1);
             mounted.FlushStateForTest();
@@ -723,7 +725,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("mover-1,ahead,guard-fallback"));
+            Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("ahead,mover-1,guard-fallback"));
         }
 
         #endregion
@@ -779,7 +781,63 @@ namespace Velvet.Tests
 
             // Assert — parked is folded in: a g that never parked leaves no drain inside the walk to ask about.
             var rows = string.Join(",", Enumerable.Range(0, 20).Select(i => "g" + i));
-            Assert.That((parked, Names(_root.Q(name: "box"))), Is.EqualTo((true, "s-fallback," + rows)));
+            Assert.That((parked, Names(_root.Q(name: "box"))), Is.EqualTo((true, rows + ",s-fallback")));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base ends no abort where a component's reconcile returns.
+        // Its parent's pass stops at the boundary as well; what this pins is that a boundary its parent's pass
+        // subsumes keeps the abort its parked pass raised.
+        [Test]
+        public void Given_AParkedBoundaryWhoseResumeThrows_When_ItsParentsPassDrainsIt_Then_ItsFallbackIsShownOnce()
+        {
+            // Arrange — the boundary parks re-rendering its rows on the Transition lane, the last of which holds a
+            // component that throws once the resume reaches it; the rows keep their number, so the parked pass
+            // has patched rows in place and the fallback takes the ones that are there.
+            using var mounted = V.Mount(
+                _root, V.Component(ParkedBoundaryHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_bombThrows = true;
+            s_parkedBoundaryFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_parkedBoundaryFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_parkedBoundaryFiber.HasPendingReconcileWorkForTest();
+
+            // Act — the parent's pass renders the boundary again, which drains the parked pass first
+            s_setParkedBoundaryHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — parked is folded in: a boundary that never parked catches in the parent's walk instead.
+            Assert.That((parked, _root.Query<Label>(name: "pb-fallback").ToList().Count), Is.EqualTo((true, 1)));
+        }
+
+        private const int ParkedBoundaryRows = 20;
+        private static ComponentFiber s_parkedBoundaryFiber;
+        private static Action<int> s_setParkedBoundaryHostTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ParkedBoundaryRender()
+        {
+            s_parkedBoundaryFiber = FiberAmbientStack.Current;
+            Hooks.UseFallback(_ => V.Label(name: "pb-fallback", key: "fallback"));
+            var rows = new VNode[ParkedBoundaryRows];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                rows[i] = i == rows.Length - 1
+                    ? V.Div(name: "pb" + i, key: "pb" + i,
+                        children: new VNode[] { V.Component(BombRender, key: "bomb") })
+                    : V.Label(name: "pb" + i, key: "pb" + i);
+            }
+            return V.Fragment(children: rows);
+        }
+
+        [Component]
+        private static VNode ParkedBoundaryHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setParkedBoundaryHostTick = setTick;
+            return V.Div(name: "box", children: new VNode[]
+            {
+                V.Component(ParkedBoundaryRender, key: "pb"),
+                V.Label(name: "tail-" + tick, key: "tail"),
+            });
         }
 
         #endregion
@@ -1849,7 +1907,7 @@ namespace Velvet.Tests
             s_setMidWalkOrder.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — what the aborted walk places is ErrorBoundaryTests' subject; this pins the boundary's rows.
+            // Assert — what the rest of the walk places is ErrorBoundaryTests' subject; this pins the boundary's rows.
             Assert.That(
                 Names(_root.Q(name: "box")).Split(','),
                 Has.Member("g-fallback").And.No.Member("ga").And.No.Member("gb"));
