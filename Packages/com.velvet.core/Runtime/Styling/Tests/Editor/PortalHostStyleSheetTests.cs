@@ -9,8 +9,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins that a panel Velvet creates for a portal carries the bundled utility stylesheet exactly where the
-    /// panel the portal was declared on reaches it, so the portal's children resolve the utilities their
-    /// declaring side does.
+    /// element its tree was mounted on reaches it, so the portal's children resolve the utilities the rest of their
+    /// tree does.
     /// </summary>
     [TestFixture]
     internal sealed class PortalHostStyleSheetTests
@@ -217,6 +217,8 @@ namespace Velvet.Tests
             Assert.That(IsDarkAtOrAbove(Rendered("overlaid")), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): the base takes the sheet off at its patch-time sync as well; this case now reaches
+        // that sync through the one entry point the mount and patch sites share.
         [Test]
         public void Given_AHostCarryingTheSheet_When_ItComesToReachTheUtilitiesThroughAnImport_Then_TheSheetComesOff()
         {
@@ -231,7 +233,7 @@ namespace Velvet.Tests
             hostPanel.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(ImportingSheetPath));
 
             // Act
-            VelvetStyleUtilities.SyncHost(declaredAt, hostRoot);
+            VelvetStyleUtilities.CarryToHost(declaredAt, hostRoot);
 
             // Assert — carried first, so an absence now says it came off.
             Assert.That(hostRoot.styleSheets.Contains(VelvetStyleUtilities.Sheet), Is.False);

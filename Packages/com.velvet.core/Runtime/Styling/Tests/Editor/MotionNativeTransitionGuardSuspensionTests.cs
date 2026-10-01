@@ -146,25 +146,24 @@ namespace Velvet.Tests
             Assert.That(suspended, Is.True);
         }
 
-        [TestCase(MotionTransitionSlots.Opacity, "filter,opacity")]
-        [TestCase(MotionTransitionSlots.Translate, "filter,translate")]
-        [TestCase(MotionTransitionSlots.Scale, "filter,scale")]
-        [TestCase(MotionTransitionSlots.Rotate, "filter,rotate")]
+        [TestCase(MotionTransitionSlots.Opacity, "opacity")]
+        [TestCase(MotionTransitionSlots.Translate, "translate")]
+        [TestCase(MotionTransitionSlots.Scale, "scale")]
+        [TestCase(MotionTransitionSlots.Rotate, "rotate")]
         [TestCase(MotionTransitionSlots.Color,
-            "background-color,border-bottom-color,border-left-color,border-right-color,border-top-color,color,filter")]
+            "background-color,border-bottom-color,border-left-color,border-right-color,border-top-color,color")]
         [TestCase(MotionTransitionSlots.Length,
             "border-bottom-left-radius,border-bottom-right-radius,border-bottom-width,border-left-width,"
             + "border-right-width,border-top-left-radius,border-top-right-radius,border-top-width,bottom,"
-            + "filter,flex-basis,font-size,height,left,letter-spacing,margin-bottom,margin-left,margin-right,margin-top,"
+            + "flex-basis,font-size,height,left,letter-spacing,margin-bottom,margin-left,margin-right,margin-top,"
             + "max-height,max-width,min-height,min-width,padding-bottom,padding-left,padding-right,padding-top,"
             + "right,top,width")]
         [TestCase(MotionTransitionSlots.Filter, "filter")]
-        [TestCase(MotionTransitionSlots.BackgroundPosition, "background-position-x,background-position-y,filter")]
+        [TestCase(MotionTransitionSlots.BackgroundPosition, "background-position-x,background-position-y")]
         public void Given_ATweenHoldingTransitionPropertyAll_When_APlayStarts_Then_WhatThePlayDrivesIsLeftOutOfTheList(
             MotionTransitionSlots drivenSlots, string expectedLeftOut)
         {
-            // Arrange — the list a variant tween writes. Filter is left out of every expansion, whatever the
-            // play drives.
+            // Arrange — the list a variant tween writes.
             var element = new VisualElement();
             element.style.transitionProperty = new List<StylePropertyName> { new("all") };
             element.style.transitionDuration = new List<TimeValue> { new(350, TimeUnit.Millisecond) };

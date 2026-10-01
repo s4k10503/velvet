@@ -4,125 +4,131 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Priorities for arbitrary-value layers (see StyleArbitraryValueResolver). When several
-    // sources set the same property (e.g. w-[80px] hover:w-[200px] active:w-[100px]), the highest
-    // priority wins; when it is cleared (the state turns off) the next-highest is re-applied — mirroring the
-    // CSS cascade where a state rule layers over the base rather than replacing it.
+    // Priorities for arbitrary-value layers (see StyleArbitraryValueResolver) and for the class projection.
+    // When several sources set the same property (e.g. w-[80px] hover:w-[200px] active:w-[100px]), the
+    // highest priority wins; when it is cleared (the state turns off) the next-highest is re-applied —
+    // mirroring the CSS cascade where a state rule layers over the base rather than replacing it.
+    //
+    // A priority is the rank Tailwind's generated CSS gives the rule, packed so that comparing two longs
+    // compares the ranks: an important flag, then the rule's specificity, then the set of variants it carries
+    // compared highest bit first — compile.ts's sort. Each bit is a variant's place in Tailwind's variant
+    // order among the ones Velvet supports; only the relative order of the bits matters to that comparison.
+    // The lowest bits are left clear here for the rule's own position in the className
+    // (StyleArbitraryValueResolver keys an arbitrary layer by both). StyleLayerOrderTests pins the order.
     internal static class StyleLayerPriority
     {
-        public const int Base = 0;
-        // [&>*]: child-combinator variant — an ambient blanket rule the PARENT imposes on every direct child.
-        // Ranked just above the base utility and below every self-condition (even mere sibling position): the
-        // file orders layers by how strong / intentional the activating condition is, and a rule the CHILD
-        // itself declares is a more intentional signal than one inherited from the container, so the child's
-        // own layers win. A distinct priority is also required for correctness — the arbitrary-value LayerMap
-        // is a per-property SortedList set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would
-        // let a child's own base arbitrary utility and this inherited one clobber the same slot.
-        public const int ChildVariant = 5;
+        // The rule's position in the className, in an arbitrary layer's key (see WithRule).
+        private const int RuleBits = 12;
+        private const long RuleMask = (1L << RuleBits) - 1;
+        // The variant bit set: bit n is at 1L << (RuleBits + n).
+        private const long SetMask = ((1L << 44) - 1) << RuleBits;
+        // Pseudo-class and attribute selectors the rule adds beyond the utility's own class.
+        private const int ClassShift = 56;
+        private const long OneClass = 1L << ClassShift;
 
-        #region Structural
-        // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. Velvet orders these inline
-        // layers by how strong / intentional the activating condition is; a position in the sibling list is
-        // the WEAKEST condition, so it sits just above the base utility and yields to every layer below it
-        // (the context gates, the element's own has-/attribute conditions, and its interaction state).
-        public const int Structural = 10;
-        #endregion
+        public const long Base = 0;
 
-        #region Responsive and Supports
+        #region One selector the utility carries alone: a media or feature query adds nothing
+        // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
+        // so this layer never toggles off at runtime; the priority only orders it against other layers.
+        public const long Supports = 1L << 39;
         // Responsive breakpoints: a larger min-width wins while active.
-        public const int ResponsiveSm = 11;
-        public const int ResponsiveMd = 12;
-        public const int ResponsiveLg = 13;
-        public const int ResponsiveXl = 14;
-        public const int Responsive2xl = 15;
-        // supports-[prop:value] feature query. A feature query and a media query are sibling conditional
-        // group rules in CSS (the wrapper adds no specificity), so it sits in the same band as the
-        // responsive breakpoints — just above them, below theme/state. In UI Toolkit it is STATIC
-        // (always-applied when well-formed; see StyleSupportsVariantClass), so this layer never toggles
-        // off at runtime; the priority only orders it against other layers on the same property.
-        public const int Supports = 16;
+        public const long ResponsiveSm = 1L << 40;
+        public const long ResponsiveMd = 1L << 41;
+        public const long ResponsiveLg = 1L << 42;
+        public const long ResponsiveXl = 1L << 43;
+        public const long Responsive2xl = 1L << 44;
+        public const long Dark = 1L << 45;
+        // [&>*]: — `.x > *` on the child, one class, and an arbitrary variant, which Tailwind orders after every
+        // named one: it wins over the child's base utility and its md:/dark:, and loses to any pseudo-class
+        // variant the child declares. Its selector sorts after [&:…]:'s, ':' before '>'.
+        public const long ChildVariant = 1L << 47;
         #endregion
 
-        #region Theme and Context
-        public const int Dark = 20;
+        #region One pseudo-class or attribute selector on top of the utility's class
+        public const long GroupFocusWithin = OneClass | 1L << 12;
+        public const long GroupHover = OneClass | 1L << 13;
+        public const long GroupFocus = OneClass | 1L << 14;
+        public const long GroupActive = OneClass | 1L << 15;
+        public const long GroupDisabled = OneClass | 1L << 16;
+        public const long PeerChecked = OneClass | 1L << 17;
+        public const long PeerFocusWithin = OneClass | 1L << 18;
+        public const long PeerHover = OneClass | 1L << 19;
+        public const long PeerFocus = OneClass | 1L << 20;
+        public const long PeerActive = OneClass | 1L << 21;
+        public const long PeerDisabled = OneClass | 1L << 22;
+        public const long First = OneClass | 1L << 23;
+        public const long Last = OneClass | 1L << 24;
+        public const long Only = OneClass | 1L << 25;
+        public const long Odd = OneClass | 1L << 26;
+        public const long Even = OneClass | 1L << 27;
+        public const long Checked = OneClass | 1L << 28;
+        public const long Hover = OneClass | 1L << 29;
+        public const long Focus = OneClass | 1L << 30;
+        public const long FocusVisible = OneClass | 1L << 31;
+        public const long Active = OneClass | 1L << 32;
+        public const long Disabled = OneClass | 1L << 33;
+        // has-[.class]: / has-[:checked]: — `:has()` takes its argument's specificity, one class here.
+        public const long Has = OneClass | 1L << 34;
+        public const long Aria = OneClass | 1L << 35;
+        public const long Data = OneClass | 1L << 36;
+        public const long Nth = OneClass | 1L << 37;
+        public const long NthLast = OneClass | 1L << 38;
+        // [&:nth-child(N)]: and the other [&:…]: structural forms: an arbitrary variant.
+        public const long ArbitrarySelector = OneClass | 1L << 46;
         #endregion
 
-        #region Has and Attribute
-        // has-[...] (the element styled by a DESCENDANT condition — a descendant is checked / focused or
-        // carries a class). A semantic condition on the element's own subtree, treated as a stronger intent
-        // than the ambient context, so it wins over the base utility, the positional structural layer, and
-        // the responsive / supports / theme context gates. It yields to the relational group-/peer- layers
-        // (styled by ANOTHER element's interaction) and to the element's own interaction state below.
-        public const int Has = 25;
-        // data-[...] / aria-[...] (the element styled by its OWN carried attribute). The most direct element
-        // condition — its own declared state — so it sits just above the has- (descendant) layer and
-        // likewise wins over the context gates, while still yielding to the relational group-/peer- and the
-        // element's interaction state layers below.
-        public const int Attribute = 26;
-        #endregion
+        public static long AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
 
-        #region Relational
-        // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
-        // group-active) occupy separate layers — clearing one must not remove the other.
-        public const int GroupHover = 30;
-        public const int GroupFocus = 31;
-        public const int GroupActive = 32;
-        public const int PeerHover = 33;
-        public const int PeerFocus = 34;
-        public const int PeerActive = 35;
-        public const int GroupFocusWithin = 36;
-        public const int PeerFocusWithin = 37;
-        public const int PeerChecked = 38;
-        #endregion
+        // A stacked variant (dark:hover:, hover:focus:) is one rule carrying every part: the selectors its parts
+        // add sum, and its variant set is the union of theirs.
+        public static long Stack(long outer, long inner)
+            => ((outer >> ClassShift) + (inner >> ClassShift) << ClassShift) | ((outer | inner) & SetMask);
 
-        #region Element state
-        // Element-local interaction states. checked: ranks BELOW hover/focus/active on a same-property tie
-        // — the reference cascade emits checked before the interaction states, and later-emitted wins a
-        // tie — so a checked control's `checked:` value never beats a concurrent `hover:` / `focus:` /
-        // `active:` value (but still above the relational group-/peer- layers).
-        public const int Checked = 39;
-        public const int Hover = 40;
-        public const int Focus = 50;
-        public const int FocusVisible = 55;
-        public const int Active = 60;
-        #endregion
+        // The key of an arbitrary layer: the rank, then the rule's className position, so two rules at one rank
+        // hold separate slots and the one written later wins. A position past the field's range shares its top.
+        public static long WithRule(long priority, int declaration)
+            => priority | System.Math.Min(System.Math.Max(declaration + 1, 0), RuleMask);
+
+        // The rank an arbitrary layer's key carries, without its rule position.
+        public static long RankOf(long key) => key & ~RuleMask;
 
         #region Important
-        // Floor of the important band (!utility / utility!). An important payload layers at Important plus
-        // its own variant priority, so the whole band sits above every ordinary layer (Active, the highest,
-        // is 60) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
-        // !w-[20px], the same way dark:w-[10px] beats w-[20px].
-        public const int Important = 100;
+        // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
+        // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
+        // w-[20px].
+        public const long Important = 1L << 62;
 
         // The layer an important payload occupies given the priority it would otherwise have had.
-        public static int ImportantOf(int priority) => Important + priority;
+        public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
-#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
-        internal static int ForVariant(StyleVariantKind kind) => kind switch
-        {
-            StyleVariantKind.Hover => Hover,
-            StyleVariantKind.Sm => ResponsiveSm,
-            StyleVariantKind.Md => ResponsiveMd,
-            StyleVariantKind.Lg => ResponsiveLg,
-            StyleVariantKind.Xl => ResponsiveXl,
-            StyleVariantKind.Xxl => Responsive2xl,
-            StyleVariantKind.Dark => Dark,
-            StyleVariantKind.GroupHover => GroupHover,
-            StyleVariantKind.GroupFocus => GroupFocus,
-            StyleVariantKind.GroupFocusWithin => GroupFocusWithin,
-            StyleVariantKind.GroupActive => GroupActive,
-            StyleVariantKind.PeerHover => PeerHover,
-            StyleVariantKind.PeerFocus => PeerFocus,
-            StyleVariantKind.PeerFocusWithin => PeerFocusWithin,
-            StyleVariantKind.PeerActive => PeerActive,
-            StyleVariantKind.PeerChecked => PeerChecked,
-            StyleVariantKind.Focus => Focus,
-            StyleVariantKind.FocusVisible => FocusVisible,
-            StyleVariantKind.Active => Active,
-            StyleVariantKind.Checked => Checked,
-        };
-#pragma warning restore CS8524
+        internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
+
+        private static readonly VariantKindTable<long> s_forVariant = new(
+            (StyleVariantKind.Hover, Hover),
+            (StyleVariantKind.Sm, ResponsiveSm),
+            (StyleVariantKind.Md, ResponsiveMd),
+            (StyleVariantKind.Lg, ResponsiveLg),
+            (StyleVariantKind.Xl, ResponsiveXl),
+            (StyleVariantKind.Xxl, Responsive2xl),
+            (StyleVariantKind.Dark, Dark),
+            (StyleVariantKind.GroupHover, GroupHover),
+            (StyleVariantKind.GroupFocus, GroupFocus),
+            (StyleVariantKind.GroupFocusWithin, GroupFocusWithin),
+            (StyleVariantKind.GroupActive, GroupActive),
+            (StyleVariantKind.PeerHover, PeerHover),
+            (StyleVariantKind.PeerFocus, PeerFocus),
+            (StyleVariantKind.PeerFocusWithin, PeerFocusWithin),
+            (StyleVariantKind.PeerActive, PeerActive),
+            (StyleVariantKind.PeerChecked, PeerChecked),
+            (StyleVariantKind.Focus, Focus),
+            (StyleVariantKind.FocusVisible, FocusVisible),
+            (StyleVariantKind.Active, Active),
+            (StyleVariantKind.Checked, Checked),
+            (StyleVariantKind.Disabled, Disabled),
+            (StyleVariantKind.GroupDisabled, GroupDisabled),
+            (StyleVariantKind.PeerDisabled, PeerDisabled));
     }
     // The style property an arbitrary-value utility targets (e.g. w-[120px] → Width,
     // bg-[#fff] → background color, rotate-[45deg] → rotation). Shorthand members fan out to

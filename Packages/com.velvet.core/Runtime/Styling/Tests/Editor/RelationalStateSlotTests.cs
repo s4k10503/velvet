@@ -23,7 +23,8 @@ namespace Velvet.Tests
     internal sealed class RelationalStateSlotTests
     {
         private const string ClassName =
-            "peer-hover:h-on peer-focus:f-on peer-focus-within:w-on peer-active:a-on peer-checked:c-on";
+            "peer-hover:h-on peer-focus:f-on peer-focus-within:w-on peer-active:a-on peer-checked:c-on "
+            + "peer-disabled:d-on";
 
         // The binding is a private nested type of the manipulator, and its payload store is a private field:
         // production types carry no test-only members, so both are reached by reflection. A missing member
@@ -66,7 +67,7 @@ namespace Velvet.Tests
             var perState = PayloadsPerState(manipulator);
 
             // Assert — one slot per state, each holding the payload declared for it.
-            Assert.That(perState, Is.EqualTo(new[] { "h-on", "f-on", "w-on", "a-on", "c-on" }));
+            Assert.That(perState, Is.EqualTo(new[] { "h-on", "f-on", "w-on", "a-on", "c-on", "d-on" }));
         }
     }
 }
