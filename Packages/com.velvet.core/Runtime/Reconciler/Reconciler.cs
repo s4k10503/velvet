@@ -245,6 +245,8 @@ namespace Velvet
                 // batch drain the drain's end expires them instead: its passes are one render, and a box one
                 // fiber's pass leaves is claimed by a later fiber's.
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
+                // After the portal drain, whose reconciles insert elements of their own.
+                StyleRelationalVariantManipulator.RetargetAll(_ctx);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -272,6 +274,7 @@ namespace Velvet
                 // Which pass ends last is not this one's to know, so the call is unconditional and
                 // DrainRefAttaches asks each entry's own pass instead.
                 _ctx.DrainRefAttaches();
+                _ctx.RunPendingEnterCompletions();
             }
         }
 

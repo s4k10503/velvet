@@ -51,6 +51,7 @@ namespace Velvet.Tests
             Assert.That(has, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the z-0 parse that giving TryParse a nullable result for z-auto must not move.
         [Test]
         public void Given_ZZero_When_Parsed_Then_ItResolvesToZero()
         {
@@ -58,7 +59,7 @@ namespace Velvet.Tests
             var ok = StyleZIndexClass.TryParse("z-0", out var z);
 
             // Assert
-            Assert.That((ok, z), Is.EqualTo((true, 0)));
+            Assert.That((ok, (int?)z), Is.EqualTo((true, (int?)0)));
         }
 
         [Test]
@@ -132,13 +133,39 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ZAuto_When_Parsed_Then_ItIsRejected()
+        public void Given_ZAuto_When_Parsed_Then_ItParsesAsAuto()
         {
-            // Arrange — z-auto is not part of Velvet's simplified two-layer numeric scale.
-            var ok = StyleZIndexClass.TryParse("z-auto", out _);
+            // Act
+            var ok = StyleZIndexClass.TryParse("z-auto", out var z);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, z), Is.EqualTo((true, (int?)null)));
+        }
+
+        [Test]
+        public void Given_ANamedLevelFollowedByZAuto_When_Extracted_Then_NoZValueIsFound()
+        {
+            // Arrange — Tailwind's z-auto resets z-index to auto, so the element is left unstacked.
+            var classes = new[] { "z-10", "z-auto" };
+
+            // Act
+            var found = StyleZIndexClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(found, Is.False);
+        }
+
+        [Test]
+        public void Given_AnImportantZAutoBeforeALaterPlainLevel_When_Extracted_Then_NoZValueIsFound()
+        {
+            // Arrange
+            var classes = new[] { "!z-auto", "z-10" };
+
+            // Act
+            var found = StyleZIndexClass.TryExtract(classes, out _);
+
+            // Assert
+            Assert.That(found, Is.False);
         }
 
         [Test]

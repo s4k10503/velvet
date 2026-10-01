@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -41,7 +42,8 @@ namespace Velvet
         private bool _applied;
         private ElementLocalVariantSignals _elementSignals = null!;
         private ResponsiveWidthSource _widthSource = null!;
-        private RelationalVariantSignals _relSignals = null!;
+        private RelationalSourceSet _relSignals = null!;
+        private readonly List<VisualElement> _relSources = new();
         private DisabledVariantSignal _disabledSignal = null!;
 
         public StyleStackedVariantManipulator(
@@ -284,21 +286,29 @@ namespace Velvet
         private void ResolveRelational()
         {
             UnhookRelational();
+            if (_relational == null)
+            {
+                return;
+            }
+            RetargetRelational();
+        }
+
+        // Hooks the relational sources the tree now holds, keeping the state of each one already hooked.
+        internal void RetargetRelational()
+        {
             if (_relational is not { } rel)
+            {
+                return;
+            }
+            if (target?.panel == null)
             {
                 return;
             }
             // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
             var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
-            var source = rel.IsPeer
-                ? StyleRelationalVariantManipulator.FindPrevSiblingWithClass(target, sourceClass, _ctx)
-                : StyleRelationalVariantManipulator.FindAncestorWithClass(target, sourceClass);
-            if (source == null)
-            {
-                return;
-            }
-            _relSignals ??= new RelationalVariantSignals(OnRelSignal);
-            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked,
+            StyleRelationalVariantManipulator.FindSources(target, rel.IsPeer, sourceClass, _ctx, _relSources);
+            _relSignals ??= new RelationalSourceSet(_ctx, OnRelSignal);
+            _relSignals.Retarget(_relSources, seedChecked: TracksChecked, registerChecked: TracksChecked,
                 trackDisabled: TracksRelationalDisabled);
         }
 

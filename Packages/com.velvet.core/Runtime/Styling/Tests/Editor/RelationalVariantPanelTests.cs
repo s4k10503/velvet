@@ -8,9 +8,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Behavioural regression coverage for the relational (<c>group-*</c> / <c>peer-*</c>) variants. Unlike the
-    /// element-local variants, a relational manipulator resolves its SOURCE — the nearest <c>group</c> ancestor or
+    /// element-local variants, a relational manipulator resolves its SOURCES — every <c>group</c> ancestor and every
     /// preceding <c>peer</c> sibling — only once it is attached to a panel (<c>AttachToPanelEvent</c>), then listens
-    /// to that source's pointer/focus events. These tests mount inside a real <see cref="UnityEditor.EditorWindow"/> panel so the
+    /// to those sources' pointer/focus events. These tests mount inside a real <see cref="UnityEditor.EditorWindow"/> panel so the
     /// source resolves, then fire a real event on the source and assert the payload toggles on the consuming child.
     /// This also covers the harder-to-reach edges: the bubbling <c>PointerOut</c> bounds gate (clearing active
     /// when the pointer leaves the source vs. keeping hover while crossing the source's descendants), the

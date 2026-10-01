@@ -424,6 +424,21 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
+        // A boundary whose own reconcile runs inside another component's pass — a VirtualList row mounting
+        // during that pass — catches on the aborting path, and the abort it raises belongs to this reconcile
+        // alone: the enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what
+        // tells that abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of
+        // the body, so only a fallback this render swapped in has set it. A deferred render keeps its abort even
+        // so: it swaps one in only in the drain of a parked pass ahead of this call, into rows the walk around it
+        // is diffing, and that walk must stop.
+        private static void ReconcileRenderedTree(
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
+        {
+            var passContext = fiber.Reconciler?.Context;
+            FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
+        }
+
         internal static void RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
             if (fiber.IsRendering)
@@ -503,7 +518,7 @@ namespace Velvet
                     fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                 }
 
-                FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+                ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
                 // (e.g. an ErrorBoundary unmount cascade that re-enters this fiber's owner).
@@ -562,6 +577,9 @@ namespace Velvet
                 // mount effect. Truncate this render's additions only, mirroring the render-phase
                 // retry discipline, instead of discarding earlier commits' still-pending work.
                 FiberHookCommit.TruncateTo(fiber.PendingEffects, committedPendingEffectCount);
+                // A boundary above caught a render below this one, inside a walk this render encloses: a drain
+                // of this fiber's parked work, or a VirtualList item mounting.
+                if (ex is BoundaryCaughtSignal) throw;
                 if (ex is FiberSuspendSignal)
                 {
                     if (fiber.Parent != null)

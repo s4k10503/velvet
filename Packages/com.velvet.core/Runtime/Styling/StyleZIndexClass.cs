@@ -4,7 +4,7 @@ namespace Velvet
 {
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
-    // Supports the fixed named scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, the
+    // Supports z-auto, the fixed named scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, the
     // sign prefixes the whole class), and the arbitrary bracket form (z-[999],
     // z-[-5] — the bracket already carries a signed integer, so no outer "-" is recognized for it: z-index has
     // no separate magnitude/direction split the way a length utility does).
@@ -42,7 +42,8 @@ namespace Velvet
 
         // Resolves the z-* value the cascade would: an important token (!z-10 / z-10!) beats every plain one
         // wherever it sits, and within either group the later class wins. Returns false when no z utility is
-        // present or every z-looking token failed to parse (e.g. a user class that merely starts with "z-").
+        // present, when every z-looking token failed to parse (e.g. a user class that merely starts with
+        // "z-"), or when the winner is z-auto, which leaves the element unstacked.
         public static bool TryExtract(string[] classNames, out int z)
         {
             z = 0;
@@ -51,8 +52,10 @@ namespace Velvet
                 return false;
             }
 
+            // A null value is z-auto, so whether an important token was seen is tracked apart from its value.
             int? plain = null;
             int? important = null;
+            var anyImportant = false;
             foreach (var cls in classNames)
             {
                 if (!TryParse(cls, out var parsed, out var bang))
@@ -62,26 +65,28 @@ namespace Velvet
                 if (bang)
                 {
                     important = parsed;
+                    anyImportant = true;
                 }
                 else
                 {
                     plain = parsed;
                 }
             }
-            var winner = important ?? plain;
+            var winner = anyImportant ? important : plain;
             z = winner.GetValueOrDefault();
             return winner.HasValue;
         }
 
-        public static bool TryParse(string cls, out int z) => TryParse(cls, out z, out _);
+        // A null z is z-auto.
+        public static bool TryParse(string cls, out int? z) => TryParse(cls, out z, out _);
 
-        // z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
+        // z-auto, z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
         // z-[<int>] (arbitrary, the bracket's own sign — z-[-5] is how a negative arbitrary value is spelled,
         // not -z-[5]). Anything else (including a non-numeric bracket, or a bare "z-" prefix that is not one
-        // of these three shapes) returns false.
-        private static bool TryParse(string cls, out int z, out bool important)
+        // of these shapes) returns false.
+        private static bool TryParse(string cls, out int? z, out bool important)
         {
-            z = 0;
+            z = null;
             // A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant recognizes (it
             // only strips a bang at the very first or very last character), so that stays rejected.
             cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
@@ -89,13 +94,19 @@ namespace Velvet
             {
                 return false;
             }
+            if (cls == "z-auto")
+            {
+                return true;
+            }
 
             // TryStripBrackets goes first (it self-guards on length, so it is safe to evaluate against any
             // cls) and its success implies cls.Length >= 5, which is what makes the cls[0]/cls[1] reads below
             // safe without a separate bounds check.
             if (StyleArbitraryValueResolver.TryStripBrackets(cls, 2, out var inner) && cls[0] == 'z' && cls[1] == '-')
             {
-                return int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out z);
+                var parsed = int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value);
+                z = value;
+                return parsed;
             }
 
             var negate = cls[0] == '-';
@@ -112,8 +123,8 @@ namespace Velvet
             return true;
         }
 
-        // The fixed non-arbitrary levels the z-index utility scale defines. Anything outside this set needs
-        // the z-[N] bracket form (z-15 is not a thing, z-[15] is).
+        // Tailwind v3's fixed levels, the same fixed-scale choice rotate-* and the spacing utilities make; any
+        // other integer is spelled z-[N].
         private static bool TryNamedLevel(string suffix, out int level)
         {
             switch (suffix)

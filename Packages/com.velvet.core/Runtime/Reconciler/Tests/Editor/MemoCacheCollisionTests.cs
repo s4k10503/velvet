@@ -692,7 +692,7 @@ namespace Velvet.Tests
         }
 
         // As TwoContainersOneUnderAProvider, with a Provider of its own around the second container and a boundary
-        // between the two, which the render it catches in does not get past.
+        // between the two, which catches in the host's render.
         [Component(Compiler = false)]
         private static VNode TwoContainersAroundABoundary()
         {
