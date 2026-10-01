@@ -114,6 +114,7 @@
 70b56d08fa2f	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 754f81c8ffdf	Runtime/Styling/StyleConditionalVariantManipulator.cs,Runtime/Styling/StyleRelationalVariantManipulator.cs
 755ccb98ff54	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs,Runtime/Styling/StyleTextBalanceManipulator.cs
+76267b27eb7f	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleFilterEngineWrite.cs
 77226595c553	Runtime/Styling/StyleVariantClass.cs,Runtime/Styling/VariantSignalSource.cs
 7c884bc8107f	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleShadowClass.cs
 7cbae1161c72	Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/StyleClassProjection.cs
@@ -125,7 +126,6 @@
 804a1a765abb	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 830b4a5b18ea	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 845c505f58f9	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleShadowClass.cs
-8486406c6258	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleAnimationScheduler.cs
 850c29b9e905	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 85380b9b0309	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/FiberGradientApplier.cs
 85e8f54602de	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
@@ -234,6 +234,7 @@ e68ecfa189d7	Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/Reconcile
 e7851b6e8106	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 e8c8cc40f992	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 e9496f62f5ef	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
+ea3601e9193e	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleFilterEngineWrite.cs
 ea693aa2adb4	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 ec6548d7ecce	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 edce332736e4	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs

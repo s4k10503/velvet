@@ -47,16 +47,21 @@ namespace Velvet
         }
 
         // The transition the element runs a property by (Lists). None where the cached style cannot be read or names no
-        // entry for the property.
+        // entry for the property, and none while a driver holds the element's transitions suspended
+        // (MotionNativeTransitionGuard.DriverSuspends), so that a value the driver writes is taken at once
+        // (Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce).
         public static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, string property,
             string? shorthand) =>
             Style(element) is { } style ? Transition(element, style, property, shorthand) : (0f, 0f, EasingMode.Ease);
 
         private static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, object style,
-            string property, string? shorthand) =>
-            StyleFilterTransitionDriver.TryFindTransition(Lists(element, style), property, shorthand, out var durationMs, out var delayMs, out var easing)
+            string property, string? shorthand)
+        {
+            if (MotionNativeTransitionGuard.DriverSuspends(element)) return (0f, 0f, EasingMode.Ease);
+            return StyleFilterTransitionDriver.TryFindTransition(Lists(element, style), property, shorthand, out var durationMs, out var delayMs, out var easing)
                 ? (durationMs / 1000f, delayMs / 1000f, easing)
                 : (0f, 0f, EasingMode.Ease);
+        }
 
         // The lists the element runs its transitions by: the rules' transition-property with the element's own inline
         // duration, delay and curve lists wherever it holds them, as UI Toolkit combines the two, the inline

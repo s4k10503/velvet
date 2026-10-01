@@ -7,8 +7,8 @@ namespace Velvet
 {
     // The transitions UI Toolkit is running for an element, which its panel's StylePropertyAnimationSystem keeps in a
     // running set per value type internal to it, and so are read by reflection: when one started, how long it runs, its
-    // curve, its start and end, and what a reversal of it would run back to. Where that cannot be read, a carry taking
-    // the element's value over starts again from where it stands.
+    // curve, its eased progress, its start and end, and what a reversal of it would run back to. Where that cannot be
+    // read, a carry taking the element's value over starts again from where it stands.
     // Given_AMemberInsideTheDelayOfAFade_When_ANewLeadTakesTheId_Then_ItsOwnRunsAsTheEngineRunsIt fails when the read
     // stops giving the running transition.
     internal static class RunningStyleTransition
@@ -20,17 +20,18 @@ namespace Velvet
             {
                 Values = s_systemType?.GetField(valuesField, BindingFlags.NonPublic | BindingFlags.Instance);
                 Running = Values?.FieldType.GetField("running");
-                IndexOf = Running?.FieldType.GetMethod("IndexOf");
+                IndexOf = s_propertyId == null ? null
+                    : Running?.FieldType.GetMethod("IndexOf", new[] { typeof(VisualElement), s_propertyId, typeof(int).MakeByRefType() });
                 Timings = Running?.FieldType.GetField("timing");
                 Styles = Running?.FieldType.GetField("style");
                 var timing = Timings?.FieldType.GetElementType();
                 var style = Styles?.FieldType.GetElementType();
-                (StartTime, Duration, Curve, Shortening) = (timing?.GetField("startTime"), timing?.GetField("duration"),
-                    timing?.GetField("easingCurve"), timing?.GetField("reversingShorteningFactor"));
+                (StartTime, Duration, Curve, Shortening, Eased) = (timing?.GetField("startTime"), timing?.GetField("duration"),
+                    timing?.GetField("easingCurve"), timing?.GetField("reversingShorteningFactor"), timing?.GetField("easedProgress"));
                 (From, To, ReversingStart) = (style?.GetField("startValue"), style?.GetField("endValue"),
                     style?.GetField("reversingAdjustedStartValue"));
                 Readable = Array.TrueForAll(
-                    new MemberInfo?[] { Values, Running, IndexOf, Timings, Styles, StartTime, Duration, Curve, Shortening, From, To, ReversingStart },
+                    new MemberInfo?[] { Values, Running, IndexOf, Timings, Styles, StartTime, Duration, Curve, Shortening, Eased, From, To, ReversingStart },
                     m => m != null);
             }
 
@@ -43,6 +44,7 @@ namespace Velvet
             public readonly FieldInfo? Duration;
             public readonly FieldInfo? Curve;
             public readonly FieldInfo? Shortening;
+            public readonly FieldInfo? Eased;
             public readonly FieldInfo? From;
             public readonly FieldInfo? To;
             public readonly FieldInfo? ReversingStart;
@@ -76,24 +78,32 @@ namespace Velvet
 
         private static void TakeOver(VisualElement element, LayoutIdCarry carry, RunningSet set, string property, Func<object, float> read)
         {
-            var system = set.Readable && s_now != null && s_propertyId != null ? s_system?.GetValue(element.panel) : null;
+            var system = set.Readable && s_now != null ? s_system?.GetValue(element.panel) : null;
             // MUTANT_SURVIVES(unreachable): the panels the tests mount run a StylePropertyAnimationSystem, whose members
             // all resolve on the editor this package declares.
             if (s_systemType?.IsInstanceOfType(system) != true) return;
+            if (!Enum.TryParse(s_propertyId!, property, out var id)) return;
             var values = set.Values!.GetValue(system);
             // None until the panel first runs a transition of that value type.
             if (values == null) return;
-            var running = set.Running!.GetValue(values);
-            (s_args[0], s_args[1], s_args[2]) = (element, Enum.Parse(s_propertyId!, property), null);
-            if (set.IndexOf!.Invoke(running, s_args) is not true) return;
-            var index = (int)s_args[2]!;
-            var timing = ((Array)set.Timings!.GetValue(running)).GetValue(index);
-            var style = ((Array)set.Styles!.GetValue(running)).GetValue(index);
-            var (from, to, reversingStart) = (read(set.From!.GetValue(style)), read(set.To!.GetValue(style)), read(set.ReversingStart!.GetValue(style)));
-            if (float.IsNaN(from + to + reversingStart)) return;
-            var elapsedSec = (double)s_now!.GetValue(system) - (double)set.StartTime!.GetValue(timing);
-            carry.TakeOver((from, to, (float)set.Duration!.GetValue(timing), (float)elapsedSec), (Func<float, float>)set.Curve!.GetValue(timing),
-                (reversingStart, (float)set.Shortening!.GetValue(timing)));
+            // A member whose type or shape has changed under the read fails it as one gone does.
+            try
+            {
+                var running = set.Running!.GetValue(values);
+                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
+                if (set.IndexOf!.Invoke(running, s_args) is not true) return;
+                var index = (int)s_args[2]!;
+                var timing = ((Array)set.Timings!.GetValue(running)).GetValue(index);
+                var style = ((Array)set.Styles!.GetValue(running)).GetValue(index);
+                var (from, to, reversingStart) = (read(set.From!.GetValue(style)), read(set.To!.GetValue(style)), read(set.ReversingStart!.GetValue(style)));
+                if (float.IsNaN(from + to + reversingStart)) return;
+                var elapsedSec = (double)s_now!.GetValue(system) - (double)set.StartTime!.GetValue(timing);
+                carry.TakeOver((from, to, (float)set.Duration!.GetValue(timing), (float)elapsedSec), (Func<float, float>)set.Curve!.GetValue(timing),
+                    (reversingStart, (float)set.Shortening!.GetValue(timing), (float)set.Eased!.GetValue(timing)));
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }

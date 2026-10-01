@@ -40,6 +40,14 @@ namespace Velvet
     }
 
     /// <summary>
+    /// An owner whose values are carried on the element's own transitions rather than written frame by frame (a
+    /// layoutId projection, MotionOpacity's crossfade), whose suspension therefore stands for no driver.
+    /// </summary>
+    internal interface ICarryingOwner
+    {
+    }
+
+    /// <summary>
     /// Suspends an element's native USS transitions for as long as a per-frame driver is writing a style slot
     /// those transitions would otherwise intercept.
     /// </summary>
@@ -297,6 +305,13 @@ namespace Velvet
             s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null
                 ? (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve)
                 : (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
+
+        /// <summary>
+        /// Whether an owner other than an <see cref="ICarryingOwner"/> — a per-frame driver — holds a suspension of the
+        /// element's transitions.
+        /// </summary>
+        internal static bool DriverSuspends(VisualElement element) =>
+            s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Any(owner => owner is not ICarryingOwner);
 
         /// <summary>
         /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the

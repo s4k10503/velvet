@@ -391,10 +391,13 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
   the stretch as for any change of size. A scaled Motion's pixel border radius is divided by the scale
-  it is drawn at, by the geometric mean of the two axes where they differ, since a style takes one length
-  per corner; a percent radius, which scales with the box, is left as it is. A radius or rotate the
-  Motion is given meanwhile is drawn as it is given, on the transition it changes by, such as a variant
-  swap's. The scale holds the element's transform origin still (its
+  it is drawn at; a percent radius, which scales with the box, is left as it is. Where the two axes scale
+  differently Velvet deviates from Framer, which writes each corner's radius per axis (`x% y%`): a style
+  takes one length per corner, so the radius is divided by the geometric mean of the two scales and the
+  corner is drawn slightly elliptical. A radius or rotate the Motion is given meanwhile is drawn as it is
+  given, on the transition it changes by, such as a variant swap's, and at once while a Spring or Bezier
+  play or an `animate-*` loop writes it. The scale holds the
+  element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
