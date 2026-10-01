@@ -40,19 +40,18 @@ worth knowing, both when several variants name one such utility:
   way source order settles a tie between equal-specificity CSS rules. Only rules that actually apply
   take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
   lands on the children) rank nothing on this element, so adding one never moves what it paints.
-  A stacked variant is ranked by its own position too: `dark:hover:` layers at the stronger of its two
-  parts, which is the plain `hover:` layer, so `"dark:hover:shadow-lg hover:shadow-sm"` resolves to the
-  later-written `shadow-sm` while both are active.
+  A stacked variant is ranked by its own position too, which the precedence table below gives: so
+  `"dark:hover:shadow-lg hover:shadow-sm"` resolves to `shadow-lg` while dark and hover both hold.
 
 ## The variant set
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
-| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
+| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.
@@ -148,26 +147,34 @@ form of the class, as there is none in Tailwind either; a minus goes inside the 
 
 ### Precedence order
 
-Lowest first. Families are ordered by how strong and how deliberate the condition that activates them
-is: a position among siblings is the weakest signal, the element's own interaction state the
-strongest. Where members of one row also rank against each other, `<` shows that order; where they do
-not, each still occupies a layer of its own, so turning one off never disturbs another.
+A tie on one property resolves the way Tailwind's generated CSS resolves it: the rule with the higher
+specificity wins, and between rules of equal specificity the one Tailwind emits later does. A media or
+feature query adds no specificity, so `md:w-[10px] hover:w-[20px]` on a hovered element wider than `md`
+is 20 px wide; an attribute selector carries a pseudo-class's and is emitted after the states, so
+`disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves to 0.75.
 
-| | Layer |
-|---|---|
-| 1 | The base utility |
-| 2 | `[&>*]:` — a rule the container imposes on its children |
-| 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
-| 4 | Responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < `supports-[…]:` |
-| 5 | Theme — `dark:` |
-| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
-| 7 | Relational — the `group-*` and `peer-*` states |
-| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
-| 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
+Lowest first, each row in the order `<` shows. Two rules of one rank that write an arbitrary value —
+`nth-1:bg-[#f00]` beside `nth-2:bg-[#0f0]`, two `data-[…]:w-[…]` rules — keep a value each, so turning
+one off leaves the other's standing.
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
-layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
-with the stronger one; *Same family, different values* above settles such a tie.
+| | Specificity | Layer |
+|---|---|---|
+| 1 | (0,1,0) | The base utility |
+| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
+| 3 | (0,1,0) | Theme — `dark:` |
+| 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
+| 5 | (0,2,0) | Relational — the `group-*` states < the `peer-*` states |
+| 6 | (0,2,0) | Structural — `first:` < `last:` < `only:` < `odd:` < `even:` |
+| 7 | (0,2,0) | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 8 | (0,2,0) | `has-[…]:` < `aria-[…]:` < `data-[…]:` < `nth-N:` < `nth-last-N:` |
+| 9 | (0,2,0) | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
+| 10 | | The important band — rows 1–9 again, one level each, for anything carrying `!` |
+
+A **stacked** variant is one rule carrying every part: their specificities add, and it sorts by the
+latest-emitted part, then the next, and so on. So `hover:focus:` is (0,3,0) and outranks every row
+above; `dark:hover:` keeps hover's (0,2,0), outranks plain `hover:` and row 8 because `dark` is emitted
+after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus` is emitted after
+`hover`; and `[&>*]:hover:` outranks the child's own `hover:`, the arbitrary variant being emitted last.
 
 ### The important modifier
 
@@ -216,10 +223,6 @@ V.Div(className: "group ...",
 V.Div(className: "group/sidebar ...",
     children: new[] { V.Label(className: "group-hover/sidebar:text-on", text: "Item") });
 ```
-
-> Note — there is no `disabled:` variant. UI Toolkit has no reliable "enabled changed" event
-> to drive a manipulator, so disabled-state styling stays on the USS `:disabled` pseudo-class
-> (the curated `disabled-*` utilities).
 
 ### Stacked variants
 
@@ -320,8 +323,7 @@ and so:
   fit, the fitted class radius replaces yours.
 - A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
   there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
-- A change of size refits at once rather than running a transition, and a change of class under
-  `transition-all` animates between the fitted radii rather than the declared ones.
+- A change of class under `transition-all` animates between the fitted radii rather than the declared ones.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.

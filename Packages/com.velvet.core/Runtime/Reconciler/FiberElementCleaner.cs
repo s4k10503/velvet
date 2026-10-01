@@ -247,12 +247,12 @@ namespace Velvet
             // process-wide VelvetTheme.DarkModeChanged) so they do not leak past unmount.
             if (_ctx.StackedVariantManipulators.Count > 0)
             {
-                List<(VisualElement, object, int, StyleVariantKind, string, string?)>? stale = null;
+                List<(VisualElement, object, long, StyleVariantKind, string, string?)>? stale = null;
                 foreach (var kv in _ctx.StackedVariantManipulators)
                 {
                     if (kv.Key.target == element)
                     {
-                        (stale ??= new List<(VisualElement, object, int, StyleVariantKind, string, string?)>()).Add(kv.Key);
+                        (stale ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
                     }
                 }
                 if (stale != null)
@@ -480,6 +480,7 @@ namespace Velvet
                 DndOverlayDriver.Detach(element, _ctx);
                 _ctx.DragOverlayBindings.Remove(element);
             }
+            _ctx.NoDragElements.Remove(element);
         }
 
         // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.

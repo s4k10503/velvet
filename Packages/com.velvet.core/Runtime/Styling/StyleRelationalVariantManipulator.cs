@@ -30,7 +30,7 @@ namespace Velvet
     // Toggles relational variant payloads — the group/peer variants:
     // group-hover: / group-focus: / group-active: react to every ANCESTOR marked with the group class.
     // peer-hover: / peer-focus: / peer-active: / peer-checked: react to every preceding SIBLING marked
-    // with the peer class.
+    // with the peer class. group-disabled: / peer-disabled: react to such a source being disabled.
     // The NAMED forms are supported too: group-hover/sidebar: reacts to ancestors marked
     // `group/sidebar`, peer-checked/email: to preceding siblings marked `peer/email`. One element
     // may consume several distinct named (and the unnamed) sources at once, so the manipulator holds a LIST of
@@ -193,7 +193,7 @@ namespace Velvet
         // the owner, and the per-state priority is shared across names — so two named bindings of the same
         // state + same inner leaf must use DISTINCT owners or one's exit would tear down the gate the other
         // still needs. Per-binding owners keep their nested manipulators independent.
-        private void ApplyPayloads(object owner, string[] payloads, int[] declarations, bool on, int priority)
+        private void ApplyPayloads(object owner, string[] payloads, int[] declarations, bool on, long priority)
             => StyleVariantPayload.Apply(target, payloads, on, priority, _ctx, owner, declarations);
 
         internal static VisualElement? FindAncestorWithClass(VisualElement element, string cls)
@@ -325,12 +325,6 @@ namespace Velvet
             {
                 Unhook();
 
-                // peer-checked is the one state seeded by Resolve itself (the initial-checked read below), not
-                // purely by events. Clear any prior application up front so each Resolve re-derives it from
-                // scratch against the (possibly changed) source.
-                var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
-                if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
-
                 Retarget(target);
             }
 
@@ -344,7 +338,10 @@ namespace Velvet
                 }
                 FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
                 _signals ??= new RelationalSourceSet(_owner._ctx, OnSignal);
-                _signals.Retarget(_found, seedChecked: _isPeer, registerChecked: _isPeer);
+                // MUTANT_SURVIVES(equivalent, boundary): tracking with no disabled payload applies an empty
+                // payload list on each disabled edge.
+                var trackDisabled = _payloads[(int)StyleVariantClass.RelationalState.Disabled].Length > 0;
+                _signals.Retarget(_found, seedChecked: _isPeer, registerChecked: _isPeer, trackDisabled);
             }
 
             public void Unhook()
@@ -397,6 +394,7 @@ namespace Velvet
                     StyleVariantClass.RelationalState.FocusWithin => payloads.FocusVisible,
                     StyleVariantClass.RelationalState.Active => payloads.Active,
                     StyleVariantClass.RelationalState.Checked => payloads.Checked,
+                    StyleVariantClass.RelationalState.Disabled => payloads.Disabled,
                 }) ?? Array.Empty<string>();
 
             private static int[] DeclarationFor(VariantDeclarations declarations, StyleVariantClass.RelationalState state)
@@ -407,6 +405,7 @@ namespace Velvet
                     StyleVariantClass.RelationalState.FocusWithin => declarations.FocusVisible,
                     StyleVariantClass.RelationalState.Active => declarations.Active,
                     StyleVariantClass.RelationalState.Checked => declarations.Checked,
+                    StyleVariantClass.RelationalState.Disabled => declarations.Disabled,
                 }) ?? Array.Empty<int>();
 
             // Each sub-state gets its OWN priority so two active on the same property layer independently and
@@ -418,7 +417,7 @@ namespace Velvet
             // plain USS class collide likewise (USS class toggling is not ref-counted) — the same pre-existing
             // behavior any two variants sharing a class already have (hover:bg-on focus:bg-on). Give distinct
             // names distinct payloads to avoid it. The stacked-inner case is kept independent via per-binding owners.
-            private int PriorityFor(StyleVariantClass.RelationalState state) => state switch
+            private long PriorityFor(StyleVariantClass.RelationalState state) => state switch
             {
                 StyleVariantClass.RelationalState.Hover
                     => _isPeer ? StyleLayerPriority.PeerHover : StyleLayerPriority.GroupHover,
@@ -429,6 +428,8 @@ namespace Velvet
                 StyleVariantClass.RelationalState.Active
                     => _isPeer ? StyleLayerPriority.PeerActive : StyleLayerPriority.GroupActive,
                 StyleVariantClass.RelationalState.Checked => StyleLayerPriority.PeerChecked,
+                StyleVariantClass.RelationalState.Disabled
+                    => _isPeer ? StyleLayerPriority.PeerDisabled : StyleLayerPriority.GroupDisabled,
             };
 #pragma warning restore CS8524
         }

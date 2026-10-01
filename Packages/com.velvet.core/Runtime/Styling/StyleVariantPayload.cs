@@ -15,11 +15,8 @@ namespace Velvet
         // PARENT's class list and so cannot be compared with the child's own.
         //
         // Deliberately the WEAKEST value rather than the strongest, so an unrankable payload loses a tie
-        // instead of winning it. A [&>*]:hover: payload is promoted out of the child-variant layer onto the
-        // hover layer (see ReconcilerContext.GateStackedVariant), where the child's own hover: payload sits;
-        // ranking it strongest would let a container's blanket rule beat a rule the child declares for
-        // itself, which is the opposite of what the child-variant layer exists to encode. Two unrankable
-        // payloads tie and fall back to arrival, which within one swept array is that array's own order.
+        // instead of winning it. Two unrankable payloads tie and fall back to arrival, which within one swept
+        // array is that array's own order.
         public const int NoDeclaration = int.MinValue;
 
         // Applies (when on is true) or clears each payload on target.
@@ -38,7 +35,7 @@ namespace Velvet
         // by them anyway. A caller that supplies none leaves its payloads ranked behind every declared one in
         // their band, tied among themselves and so ordered by arrival.
         public static void Apply(VisualElement target, string?[] payloads, bool on,
-            int priority = StyleLayerPriority.Base,
+            long priority = StyleLayerPriority.Base,
             ReconcilerContext? ctx = null, object? owner = null, int[]? declarations = null)
         {
             if (target == null || payloads == null)
@@ -120,20 +117,23 @@ namespace Velvet
         // caller must re-sync once the whole array is through: whether a gate token moved, and whether a
         // USS-spelled width payload did.
         private static (bool GateChanged, bool ReSyncOnly) ToggleResolvedPayload(
-            VisualElement target, string payload, bool on, int effectivePriority,
+            VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
             var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+            // An inline layer is keyed by the rule as well as its rank, so a rule turning off clears its own value
+            // and not that of another rule on the same rank (nth-1: beside nth-2:). Both inline paths below take it.
+            var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
                 && StyleArbitraryValueResolver.TryParse(core, out var style))
             {
                 if (on)
                 {
-                    StyleArbitraryValueResolver.Apply(target, in style, effectivePriority);
+                    StyleArbitraryValueResolver.Apply(target, in style, key);
                 }
                 else
                 {
-                    StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
+                    StyleArbitraryValueResolver.Clear(target, in style, key);
                 }
                 return (false, false);
             }
@@ -153,7 +153,7 @@ namespace Velvet
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
             // active — the shared clear resolves the name syntactically and removes the mirrored class (see
             // TryClearUnregisteredFilterToken).
-            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, effectivePriority))
+            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
             {
                 return (false, false);
             }
@@ -212,7 +212,7 @@ namespace Velvet
         // token keeps its bang, which is what lets it outrank the element's own important base token in the
         // composed source; the other gate families read the bare core.
         private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string payload,
-            int priority, int declaration, bool on)
+            long priority, int declaration, bool on)
         {
             var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
             return ctx != null && IsVariantGateToken(core)

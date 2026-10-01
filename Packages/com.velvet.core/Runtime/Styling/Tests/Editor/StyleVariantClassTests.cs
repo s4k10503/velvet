@@ -115,10 +115,12 @@ namespace Velvet.Tests
             Assert.That(StyleVariantClass.IsVariant("bg-[addr:icon]"), Is.False);
         }
 
+        // GREEN_ON_BASE(refactor): disabled: is a variant now, so the case names a prefix Velvet still does not
+        // parse; the base refuses it too.
         [Test]
         public void Given_UnknownPrefix_When_Parsed_Then_Fails()
         {
-            Assert.That(StyleVariantClass.TryParse("disabled:opacity-50", out _, out _), Is.False);
+            Assert.That(StyleVariantClass.TryParse("visited:opacity-50", out _, out _), Is.False);
         }
 
         [Test]

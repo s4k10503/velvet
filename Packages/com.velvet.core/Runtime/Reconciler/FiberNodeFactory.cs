@@ -171,9 +171,7 @@ namespace Velvet
             // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
             // after the gradient so a pan mode sees the baked gradient already applied.
             _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
-            // transition-filter: register the tween binding so a later filter change animates.
-            // The mount's own filter is already applied instantly above (the binding is not enabled
-            // yet), matching CSS's no-transition-on-initial-value.
+            // transition-filter: bind the filter tween so teardown can pause its tick (FiberFilterTransitionApplier).
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
             // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
             // element's own content, bleeding outside the box) — a non-structural paint like CSS
@@ -267,6 +265,7 @@ namespace Velvet
             if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
             {
                 _ctx.PresenceAnchorMotionElement = element;
+                _ctx.PresenceAnchorCreated = true;
             }
             // See CreateForElementNode's comment on this same assignment (reserved userData
             // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
@@ -340,8 +339,7 @@ namespace Velvet
                 element, appliedClasses, paintTail: false);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
-            // transition-filter on a Motion host: a Motion can carry filter utilities + that class
-            // just like a plain element, so register the tween binding here too.
+            // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
             // The patch-time entry rather than ApplyRingOnCreate, whose clip-path gate would suppress the band
             // for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch passes no
@@ -669,6 +667,10 @@ namespace Velvet
             {
                 _patcher.Appliers.ApplyDragOverlay(element, props.DragOverlay);
             }
+            if (props?.NoDrag == true)
+            {
+                _patcher.Appliers.ApplyNoDrag(element, true);
+            }
         }
 
         // The invisible stand-in a deferred-host node (Portal / WorldSpace) leaves at its own tree
@@ -720,19 +722,9 @@ namespace Velvet
                 var autoIndex = 0;
                 foreach (var child in children)
                 {
-                    switch (child)
+                    if (child == null)
                     {
-                        case null:
-                            continue;
-                        // By design: AnimatePresence's direct children must each be a
-                        // keyable element so enter/exit can be tracked per key. A FragmentNode has no key and
-                        // is intentionally NOT auto-expanded here — silently flattening it would let its items
-                        // share the Fragment's (absent) key and break exit tracking. Surface a clear LogError
-                        // pointing at the fix (use MotionNode directly) rather than guessing.
-                        case FragmentNode:
-                            FiberLogger.LogError("FiberNodeFactory",
-                                "FragmentNode is not supported as a direct child of AnimatePresence. Fragment children will not be expanded. Use MotionNode directly.");
-                            continue;
+                        continue;
                     }
 
                     if (child.Key != null && child.Key.StartsWith(AutoKeyPrefix))
