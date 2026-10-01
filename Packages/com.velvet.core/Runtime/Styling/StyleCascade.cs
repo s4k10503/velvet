@@ -47,8 +47,7 @@ namespace Velvet
         }
 
         // The transition the element runs a property by: the rules' transition-property with the inline duration,
-        // delay and curve lists wherever the element holds them, as UI Toolkit combines the two, the inline
-        // transition-property being a suspension's (MotionNativeTransitionGuard). None where the cached style cannot
+        // delay and curve lists wherever the element holds them. None where the cached style cannot
         // be read or names no entry for the property, and none while a driver holds the element's transitions
         // suspended (MotionNativeTransitionGuard.DriverSuspends), so that a value the driver writes is taken at once
         // (Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce).
