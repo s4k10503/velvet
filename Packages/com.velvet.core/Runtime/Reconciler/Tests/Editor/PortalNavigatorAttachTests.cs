@@ -49,6 +49,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base never releases the navigator's hook on a portal target, so
+        // the second bind finds the first's still waiting.
         [Test]
         public void Given_APortalLeftAContainerWithNoPanel_When_ItBindsTheContainerAgainAndTheContainerReachesAPanel_Then_TheNavigatorAttachesThere()
         {
