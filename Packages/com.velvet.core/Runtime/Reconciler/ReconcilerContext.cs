@@ -1250,8 +1250,12 @@ namespace Velvet
         internal static void ContainUserCallbackFailure(ComponentFiber? owner, System.Exception exception)
             => ComponentBoundarySearch.PropagateException(owner, exception);
 
-        // Cycles the ref installed on an element to match the node being committed: the old cleanup now,
-        // the new setup at the pass boundary. A patch carrying the SAME callback delegate is a no-op —
+        // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
+        // the new setup at the pass boundary, the old first, as React detaches and attaches refs together in
+        // its commit. Run mid-pass, the cleanup took away whatever the old setup published — a portal id —
+        // from the patches still to come in that pass, which an inline lambda, a new delegate at every render,
+        // turned into a render that re-published the id and asked for the next. A ref removed outright is
+        // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
         // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
         // forcing consumers into deferred-correction workarounds.
         internal void SyncRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
@@ -1261,9 +1265,9 @@ namespace Velvet
             {
                 return;
             }
-            DetachRefCallback(element);
             if (refCallback == null)
             {
+                DetachRefCallback(element);
                 DropPendingRefAttach(element);
                 return;
             }
@@ -1315,13 +1319,23 @@ namespace Velvet
             // the point where every removal of that pass is behind them.
             if (SharedReconcileDepth > 0) return;
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
-            // re-reads the count; draining them from inside would run the ones already run a second time.
+            // re-reads the count and takes them as a batch of their own; draining them from inside would
+            // run the ones already run a second time.
             if (_drainingRefAttaches) return;
             _drainingRefAttaches = true;
             try
             {
+                var batchEnd = 0;
                 for (var i = 0; i < _pendingRefAttaches.Count; i++)
                 {
+                    // Every cleanup a batch replaces runs ahead of every setup in it, as React detaches the
+                    // old refs of a commit before it attaches the new: one element's new setup registering
+                    // an id must not be followed by another element's old cleanup unregistering it.
+                    if (i == batchEnd)
+                    {
+                        batchEnd = _pendingRefAttaches.Count;
+                        RunReplacedRefCleanups(i, batchEnd);
+                    }
                     var (element, callback, owner, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
                     // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
@@ -1382,6 +1396,34 @@ namespace Velvet
                 // it. Dropping it would rest on that catch being the only raise a setup can reach, which
                 // nothing here establishes.
                 IsAborted = false;
+            }
+        }
+
+        private void RunReplacedRefCleanups(int start, int end)
+        {
+            for (var i = start; i < end; i++)
+            {
+                var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): the two are null together for the reason DrainRefAttaches's own
+                // skip gives, so this reaches the same entries either way.
+                if (element == null || callback == null) continue;
+                // The batch's own setup loop skips this entry too, so its old ref stays as it is.
+                if (pass is { HasPendingWork: true }) continue;
+                if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
+                var replaced = installed.Cleanup;
+                if (replaced == null) continue;
+                // Ahead of the cleanup: a boundary catching its failure can take the element out, and
+                // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
+                RefCallbacks[element] = (callback, null);
+                // Its failure goes where a setup's does, and the setup still runs.
+                try
+                {
+                    replaced();
+                }
+                catch (System.Exception exception)
+                {
+                    ContainUserCallbackFailure(owner, exception);
+                }
             }
         }
 

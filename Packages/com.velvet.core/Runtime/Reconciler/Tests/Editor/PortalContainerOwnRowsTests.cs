@@ -634,8 +634,6 @@ namespace Velvet.Tests
             Assert.That(Names(content), Is.EqualTo("a|b|changed"));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps a ScrollView portal's child across its host's renders too.
-        // This pins that the recorded content container is not taken for a different element at each patch.
         [Test]
         public void Given_APortalIntoAScrollView_When_ItsHostRendersAgain_Then_ThePortalsChildIsTheSameElement()
         {
@@ -651,8 +649,6 @@ namespace Velvet.Tests
             Assert.That((child != null, ReferenceEquals(content.Q<VisualElement>("p"), child)), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps a held ScrollView portal's child across renders too.
-        // This pins that the held element's content container counts as the one the portal recorded.
         [Test]
         public void Given_APortalHandedTheScrollViewItself_When_ItsHostRendersAgain_Then_ThePortalsChildIsTheSameElement()
         {

@@ -19,7 +19,8 @@ namespace Velvet.Tests
     /// the same callback does not try it again — the entry records the identity whether or not the setup
     /// completed.</item>
     /// <item>A ref whose cleanup throws when its identity changes still has its replacement attached —
-    /// the two halves are independent, as they are in React.</item>
+    /// the two halves are independent, as they are in React. Both run at the pass boundary, so a boundary
+    /// catching the cleanup's failure leaves the rest of the tree that render produced to commit.</item>
     /// <item>An <c>onCreated</c> that throws leaves the element it was handed occupying its slot.</item>
     /// <item>A <c>wrapElement</c> that throws leaves the element itself in the slot, so the ref points at
     /// something the tree holds rather than at an orphan.</item>
@@ -569,5 +570,59 @@ namespace Velvet.Tests
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
             return string.Join(",", names);
         }
+
+        #region A replaced ref whose cleanup throws beneath a boundary, with a second boundary's setup behind it
+
+        [Test]
+        public void Given_AReplacedRefsCleanupThrewIntoABoundary_When_ASecondBoundarysSetupThrowsBehindIt_Then_BothFallbacksReachTheDom()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(SwapThenFailHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setAttempt.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the first is read beside the second, because a replaced cleanup that never ran reads
+            // the same second fallback as one that ran and was caught.
+            Assert.That((Root!.Q<Label>("swap-fallback") != null, Root.Q<Label>("fallback") != null),
+                Is.EqualTo((true, true)));
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode SwapFailingBoundary(int attempt)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "swap-fallback", text: "caught"));
+            return V.Component(SwappingRefChild, attempt, key: "child");
+        }
+
+        // The closure over attempt makes each render's callback a new identity, and only the cleanup the
+        // first render's setup returned throws.
+        [Component]
+        private static VNode SwappingRefChild(int attempt)
+            => V.Div(name: "swapping", refCallback: _ => () =>
+            {
+                if (attempt == 0) throw new InvalidOperationException(FailureMessage);
+            });
+
+        [Component]
+        private static VNode SwapThenFailHost()
+        {
+            var (attempt, setAttempt) = Hooks.UseState(0);
+            s_setAttempt = setAttempt;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(name: "left", children: new VNode[]
+                {
+                    V.Component(SwapFailingBoundary, attempt, key: "swap"),
+                }),
+                V.Div(name: "right", children: new VNode[]
+                {
+                    V.Component(PropDrivenFailingBoundary, attempt, key: "failing"),
+                }),
+            });
+        }
+
+        #endregion
     }
 }

@@ -15,3 +15,13 @@
 
 - A logical ancestor's `events:` handler fires once for an event raised inside a portal whose target sits in
   another portal's content. The event reached it through both portals.
+
+- A portal whose id is registered from a `refCallback` written as an inline lambda, a new delegate at every
+  render, mounts its children. The old callback's cleanup ran where the element was patched, unregistering
+  the id ahead of the portal's patch in that render, and the registration that followed asked for another
+  render, which did the same again. A callback whose identity changes now has its old cleanup run at the end
+  of the pass, ahead of every setup the pass runs, as React detaches and attaches refs in its commit.
+
+- A ref cleanup that throws into an error boundary when its callback's identity changes leaves the rest of
+  that render to commit. It ran inside the render, where the boundary's catch stopped the components after it
+  from rendering.
