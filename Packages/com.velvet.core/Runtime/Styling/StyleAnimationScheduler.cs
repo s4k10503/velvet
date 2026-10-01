@@ -1398,6 +1398,7 @@ namespace Velvet
             }
 
             element.style.transitionProperty = propertyNames;
+            MotionNativeTransitionGuard.TweenTiming(element, true);
             element.style.transitionDuration = durationList;
             element.style.transitionTimingFunction = easingList;
 

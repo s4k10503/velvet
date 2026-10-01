@@ -3611,6 +3611,75 @@ namespace Velvet.Tests
             });
         }
 
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose on a tenth of a second's tween, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseArbitraryDurationChangesMidVariantTween_When_TheTweenEnds_Then_TheNewDurationIsItsOwn()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants, swapping to its hidden pose on a second's
+            // tween.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_slowTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act — its duration class changes mid-tween; past the tween's end.
+            s_aClasses = "duration-[700ms]";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+
+            // Assert
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.7f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWroteItsDelay_When_ItsPresetExitIsCancelled_Then_ItsDelayIsItsOwnAgain()
+        {
+            // Arrange — "entering" mounted inside its V.AnimatePresence, its enter over, and a delay its code writes.
+            (s_enterMounted, s_enterLeft) = (true, 0);
+            s_enterTransition = new StyleTransitionConfig { DurationSec = 0.3f, ExitFromClass = "opacity-0" };
+            using var mounted = V.Mount(Root, V.Component(EnteringHolderRender, key: "root"));
+            AdvancePast(0.3f);
+            var entering = Root.Q<VisualElement>("entering");
+            entering.style.transitionDelay = new List<TimeValue> { new(0.1f, TimeUnit.Second) };
+
+            // Act — its exit plays on the preset's own timing, and is cancelled as it comes back mid-exit.
+            s_enterMounted = false;
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            s_enterMounted = true;
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            AdvancePast(0.5f);
+
+            // Assert
+            var delay = entering.style.transitionDelay;
+            Assert.That((delay.keyword, delay.value?.Count == 1 && Mathf.Approximately(delay.value[0].value, 0.1f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
         // GREEN_ON_BASE(characterization): the base's suspension never writes the duration, delay or curve slots, so
         // nothing is left of the enter's once it ends. A narrowing that began under the enter must not hand the enter's
         // back.

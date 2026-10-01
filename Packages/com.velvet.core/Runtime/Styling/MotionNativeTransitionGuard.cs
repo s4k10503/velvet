@@ -369,17 +369,39 @@ namespace Velvet
         }
 
         // The elements a tween holds the inline duration, delay and curve of (TweenTiming).
-        private static readonly ConditionalWeakTable<VisualElement, object> s_tweenTimings = new();
+        private static readonly ConditionalWeakTable<VisualElement, TweenHold> s_tweenTimings = new();
+
+        // The duration, delay and curve lists the element held as a tween first wrote its own over them.
+        private sealed class TweenHold
+        {
+            public StyleList<TimeValue> Duration;
+            public StyleList<TimeValue> Delay;
+            public StyleList<EasingFunction> Curve;
+        }
 
         /// <summary>
         /// Called by <see cref="StyleAnimationScheduler"/> as it writes a tween's duration, delay and curve inline and as
         /// it clears them: none of them is the element's own, to be handed back after a narrowing
-        /// (Given_ALayoutIdMotionWhoseEnterTweenEndsBeforeItsMove_When_TheMoveLands_Then_NoTimingIsLeftInline).
+        /// (Given_ALayoutIdMotionWhoseEnterTweenEndsBeforeItsMove_When_TheMoveLands_Then_NoTimingIsLeftInline). What the
+        /// element held before the tween's first write is put back as the tween clears its own
+        /// (Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain).
         /// </summary>
         internal static void TweenTiming(VisualElement element, bool held)
         {
-            if (held) s_tweenTimings.AddOrUpdate(element, s_tweenTimings);
-            else s_tweenTimings.Remove(element);
+            var style = element.style;
+            var holding = s_tweenTimings.TryGetValue(element, out var hold);
+            if (held && !holding)
+            {
+                s_tweenTimings.Add(element, new TweenHold
+                {
+                    Duration = Copy(style.transitionDuration), Delay = Copy(style.transitionDelay), Curve = Copy(style.transitionTimingFunction),
+                });
+            }
+            else if (!held && holding)
+            {
+                s_tweenTimings.Remove(element);
+                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) = (hold.Duration, hold.Delay, hold.Curve);
+            }
             // What the tween cleared is not a write of the element's own.
             if (s_suspensions.TryGetValue(element, out var suspension)) Rebaseline(element, suspension);
         }
@@ -393,13 +415,20 @@ namespace Velvet
         internal static void WriteOwnDuration(VisualElement element, StyleList<TimeValue> duration)
         {
             var narrowing = s_suspensions.TryGetValue(element, out var suspension);
-            if (!narrowing || !suspension.WroteTiming)
+            if (narrowing && suspension.WroteTiming)
+            {
+                (suspension.OwnDuration, suspension.Stale) = (Copy(duration), true);
+                WriteNarrowed(element, suspension);
+            }
+            // A tween holding the slot keeps it, and puts this back as it ends.
+            else if (s_tweenTimings.TryGetValue(element, out var hold))
+            {
+                hold.Duration = Copy(duration);
+            }
+            else
             {
                 element.style.transitionDuration = duration;
-                return;
             }
-            (suspension.OwnDuration, suspension.Stale) = (Copy(duration), true);
-            WriteNarrowed(element, suspension);
         }
 
         /// <summary>
@@ -821,6 +850,7 @@ namespace Velvet
             if (element != null)
             {
                 s_suspensions.Remove(element);
+                s_tweenTimings.Remove(element);
             }
         }
     }
