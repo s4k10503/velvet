@@ -26,8 +26,10 @@ namespace Velvet.Tests
     /// memoized included, and the component whose update suspended renders that update inside it, a memoized
     /// one included. The boundary is the nearest above the component whose read suspended, so one that renders
     /// its own Suspense reveals through the boundary above it. A component the boundary had shown keeps its
-    /// state offscreen with its layout effects and imperative handle taken down, none of the layout work of the
-    /// render that hid it committing, and they come back when the boundary reveals it.</item>
+    /// state offscreen with its layout effects and imperative handle taken down in the commit that shows the
+    /// fallback — a pass that never commits it leaves them connected — none of the layout work of the render
+    /// that hid it committing, and they come back, the handle created again, when the boundary reveals it; one
+    /// first mounted under the fallback sets nothing up until then.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -70,10 +72,50 @@ namespace Velvet.Tests
             s_siblingSetups = 0;
             s_siblingCleanups = 0;
             s_siblingHostSetTick = default;
+            s_handleCreates = 0;
+            s_otherHostSetTick = default;
+            s_otherSource = null;
+            s_mountEffectSetups = 0;
+            s_mountHostSetShown = default;
         }
 
         [Test]
-        public void Given_AComponentTheBoundaryShowedWithAnImperativeHandle_When_TheBoundaryHidesAndRevealsIt_Then_TheHandleIsTakenDownAndPutBack()
+        public void Given_AShownComponentWithAHandle_When_TheUpdateThatSuspendsItsBoundarySuspendsASiblingOutsideItToo_Then_ItStaysConnected()
+        {
+            // Arrange — the sibling outside the Suspense has no boundary above, so the update's pass is given up
+            // and what the Suspense showed stays on screen
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OtherSuspendsHostRender, key: "other-host"));
+
+            // Act
+            s_otherHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the handle is read beside the cleanups, since a disconnect that left the handle reads 1 too
+            Assert.That((s_siblingCleanups, s_readerHandle.Current), Is.EqualTo((0, "handle")),
+                "A Suspense whose fallback never committed hid nothing, so nothing is disconnected");
+        }
+
+        [Test]
+        public void Given_AComponentFirstMountedBesideAReaderThatSuspends_When_TheBoundaryShowsItsFallbackAndThenReveals_Then_ItsLayoutEffectRunsOnlyOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MountInSuspenseHostRender, key: "mount-host"));
+            s_mountHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            var whileHidden = s_mountEffectSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_mountEffectSetups, Texts()), Is.EqualTo((0, 1, "mounted|reader:5")),
+                "React mounts nothing of a tree a Suspense shows its fallback for, and mounts it on reveal");
+        }
+
+        [Test]
+        public void Given_AComponentTheBoundaryShowedWithAnImperativeHandle_When_TheBoundaryHidesAndRevealsIt_Then_TheHandleIsTakenDownAndCreatedAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(EffectBoundaryHostRender, key: "effect-host"));
@@ -86,9 +128,9 @@ namespace Velvet.Tests
             s_source.TrySetResult(5);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            Assert.That((whileHidden, s_readerHandle.Current), Is.EqualTo(((string)null, "handle")),
-                "An imperative handle is a layout effect, which React disconnects while the tree is hidden");
+            // Assert — the creations are read beside the handle, since writing the old handle back sets it as well
+            Assert.That((whileHidden, s_readerHandle.Current, s_handleCreates), Is.EqualTo(((string)null, "handle", 2)),
+                "An imperative handle is a layout effect, which React disconnects while hidden and creates again on reveal");
         }
 
         [Test]
@@ -743,6 +785,88 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_effectSetOwn;
         private static readonly Ref<string> s_readerHandle = new();
+        private static int s_handleCreates;
+        private static StateUpdater<int> s_otherHostSetTick;
+        private static int s_mountEffectSetups;
+        private static StateUpdater<bool> s_mountHostSetShown;
+
+        // Keeps a handle up beside its layout effect, so a disconnect shows on either.
+        [Component]
+        private static VNode HandleSiblingRender(int tick)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_siblingSetups++;
+                return (Action)(() => s_siblingCleanups++);
+            }, Array.Empty<object>());
+            Hooks.UseImperativeHandle(s_readerHandle, () => "handle", Array.Empty<object>());
+            return V.Label(text: "sibling:" + tick);
+        }
+
+        [Component]
+        private static VNode OtherReaderRender(int tick)
+        {
+            var value = Hooks.Use<int>(_ => tick == 0
+                ? VelvetTask.FromResult(0)
+                : (s_otherSource = new VelvetTaskCompletionSource<int>()).Task, tick);
+            return V.Label(text: "other:" + value);
+        }
+
+        // The Suspense and the reader outside it share one container, whose walk the outside reader stops.
+        [Component]
+        private static VNode OtherSuspendsHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_otherHostSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(HandleSiblingRender, tick, key: "sibling"),
+                        V.Component(KeyedChildRender, tick, key: "reader"),
+                    }),
+                V.Component(OtherReaderRender, tick, key: "other"),
+            });
+        }
+
+        [Component]
+        private static VNode MountEffectRender()
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_mountEffectSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "mounted");
+        }
+
+        [Component]
+        private static VNode MountReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "mount-reader");
+            return V.Label(text: "reader:" + value);
+        }
+
+        [Component]
+        private static VNode MountInSuspenseHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_mountHostSetShown = setShown;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: shown
+                        ? new VNode[]
+                        {
+                            V.Component(MountEffectRender, key: "effect"),
+                            V.Component(MountReaderRender, key: "reader"),
+                        }
+                        : Array.Empty<VNode>()),
+            });
+        }
         private static int s_siblingSetups;
         private static int s_siblingCleanups;
         private static StateUpdater<int> s_siblingHostSetTick;
@@ -775,6 +899,7 @@ namespace Velvet.Tests
                     }),
             });
         }
+
         private static int s_layoutSetups;
         private static int s_layoutCleanups;
 
@@ -788,7 +913,11 @@ namespace Velvet.Tests
                 s_layoutSetups++;
                 return (Action)(() => s_layoutCleanups++);
             }, Array.Empty<object>());
-            Hooks.UseImperativeHandle(s_readerHandle, () => "handle", Array.Empty<object>());
+            Hooks.UseImperativeHandle(s_readerHandle, () =>
+            {
+                s_handleCreates++;
+                return "handle";
+            }, Array.Empty<object>());
             var value = Hooks.Use<int>(_ => own == 0
                 ? VelvetTask.FromResult(0)
                 : (s_source = new VelvetTaskCompletionSource<int>()).Task, own);

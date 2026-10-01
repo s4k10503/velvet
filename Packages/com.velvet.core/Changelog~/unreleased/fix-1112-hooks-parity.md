@@ -27,8 +27,10 @@
   React keeps it offscreen, and the boundary reveals it when its resource resolves. That render's pass
   disposed it, losing its state and the read the reveal waited on; one inside a host element of the
   boundary's children is still disposed with that element. A component the boundary had shown has its layout
-  effects and imperative handles taken down while it is hidden, none of the layout work of the render that
-  hid it commits, and they are set up again when it is revealed, as React disconnects and reconnects them.
+  effects and imperative handles taken down in the commit that shows the fallback, none of the layout work of
+  the render that hid it commits, and one that render first mounted sets nothing up; on reveal the layout
+  effects run again and the handles are created again, or put back where the reveal does not render the
+  component, as React disconnects and reconnects them.
 
 - A component that renders its own `V.Suspense` and whose read suspends below an outer boundary reveals
   through that boundary when the resource resolves, as React takes the nearest Suspense above the component

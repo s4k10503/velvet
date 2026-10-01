@@ -72,21 +72,24 @@ namespace Velvet
             CommitStrandedLayoutWork(ctx);
         }
 
-        // React disconnects the layout effects of a tree a Suspense hides once it has shown it — its imperative
-        // handles among them — keeping its state, and reconnects them when the tree is revealed. Only a fiber the
-        // committed tree held has any to disconnect: one this render first mounted under the Suspense never ran
-        // them. While hidden, the fiber's layout work this pass queued is dropped from the commit (TakeBatch).
+        // React disconnects the layout effects of a tree a Suspense hides — its imperative handles among them —
+        // keeping its state, and reconnects them when the tree is revealed. While hidden, the fiber's layout work
+        // is dropped from the commit (TakeBatch), a mount's included: one this render first mounted under the
+        // Suspense is marked without a cleanup, having set nothing up, and the reveal sets it up.
         internal static void HideLayoutEffects(ComponentFiber fiber, List<ComponentFiber> committedFibers)
         {
-            if (fiber.LayoutEffectsHidden || !committedFibers.Contains(fiber)) return;
+            if (fiber.LayoutEffectsHidden) return;
             fiber.LayoutEffectsHidden = true;
+            if (!committedFibers.Contains(fiber)) return;
             HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
             if (fiber.ImperativeHandleSlots == null) return;
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
         }
 
-        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, and puts
-        // its committed imperative handles back.
+        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, and has
+        // that commit create every imperative handle again, as React calls create() on reconnect: the hidden
+        // elements were removed, and a handle built over one would outlive it. The committed handle stands in
+        // until then.
         internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
         {
             if (!fiber.LayoutEffectsHidden) return;
@@ -101,7 +104,11 @@ namespace Velvet
             }
             if (fiber.ImperativeHandleSlots != null)
             {
-                foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(slot.Handle);
+                foreach (var slot in fiber.ImperativeHandleSlots)
+                {
+                    slot.HandleRef?.Set(slot.Handle);
+                    slot.NextNeedsRecompute = true;
+                }
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
         }

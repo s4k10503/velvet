@@ -76,6 +76,10 @@ namespace Velvet
             public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
+            // The fibers a Suspense of this walk hid (true) or revealed (false), applied once FinalizeGeneralCommit
+            // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
+            // that rolls back or stops leaves on screen what was there.
+            public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
         }
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear);
@@ -206,7 +210,11 @@ namespace Velvet
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
                 var removalsRan = !_ctx.IsAborted;
-                if (removalsRan) FinalizeGeneralCommit(commit);
+                if (removalsRan)
+                {
+                    FinalizeGeneralCommit(commit);
+                    ApplyOffscreenChanges(commit, oldFibers);
+                }
                 else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
                 SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
@@ -1242,10 +1250,20 @@ namespace Velvet
                 if (!walk.OffscreenPrimaries.Contains(f))
                 {
                     f.IsOffscreen = suspended;
-                    if (suspended) FiberEffects.HideLayoutEffects(f, walk.OldFibers);
-                    else FiberEffects.ShowLayoutEffects(f, _ctx);
+                    // A new-side walk always carries a commit: only ReconcileGeneral starts one.
+                    (walk.Commit!.OffscreenChanges ??= new()).Add((f, suspended));
                 }
                 if (suspended) walk.OffscreenPrimaries.Add(f);
+            }
+        }
+
+        private void ApplyOffscreenChanges(GeneralCommitState commit, List<ComponentFiber> oldFibers)
+        {
+            if (commit.OffscreenChanges == null) return;
+            foreach (var (fiber, hidden) in commit.OffscreenChanges)
+            {
+                if (hidden) FiberEffects.HideLayoutEffects(fiber, oldFibers);
+                else FiberEffects.ShowLayoutEffects(fiber, _ctx);
             }
         }
 
