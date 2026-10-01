@@ -12,7 +12,9 @@ namespace Velvet
     public sealed class VelvetPreviewHost : IDisposable
     {
         private readonly VisualElement _target;
-        private IDisposable? _environment;
+        private readonly MountOptions _options;
+        private const int SettleRounds = 100;
+        private VelvetPreviewEnvironment? _environment;
         private MountedTree? _mounted;
         private readonly List<StyleSheet> _appliedStyleSheets = new();
         private bool _disposed;
@@ -26,9 +28,14 @@ namespace Velvet
         /// </summary>
         public Exception? MountError { get; private set; }
 
-        public VelvetPreviewHost(VisualElement target)
+        public VelvetPreviewHost(VisualElement target) : this(target, new MountOptions())
+        {
+        }
+
+        internal VelvetPreviewHost(VisualElement target, MountOptions options)
         {
             _target = target ?? throw new ArgumentNullException(nameof(target));
+            _options = options;
         }
 
         /// <summary>
@@ -85,9 +92,14 @@ namespace Velvet
 
             try
             {
-                _environment = VelvetPreviewRegistry.RunSetupsFor(story.Assembly, ApplyStyleHint);
+                _environment = VelvetPreviewRegistry.RunSetupFor(story.Assembly);
+                if (_environment != null)
+                {
+                    foreach (var sheet in _environment.StyleSheets) Attach(sheet);
+                }
+
                 // A hint published outside any setup is still this mount's to take, setups or none.
-                ApplyStyleHint();
+                Attach(VelvetStyleHints.Take());
                 var tree = useArgs ? story.Build(args) : story.Build();
                 if (tree == null)
                 {
@@ -96,7 +108,7 @@ namespace Velvet
                     return;
                 }
 
-                _mounted = V.Mount(_target, tree);
+                _mounted = V.Mount(_target, tree, _options);
                 // Publish Story only after V.Mount succeeds so failure remains distinguishable from a live mount.
                 Story = story;
             }
@@ -107,12 +119,24 @@ namespace Velvet
             }
         }
 
-        // Consume the static hint before attaching it so it cannot leak to a later host. Track only a sheet
-        // this host added; Unmount must not remove a sheet the target already owned.
-        private void ApplyStyleHint()
+        // Runs pending passive effects, then the renders and transitions they scheduled, round after round, so a
+        // smoke run sees an error any of them raises without waiting for the panel scheduler. A fixed count rather
+        // than a pending check: a round with nothing queued renders nothing, and the count bounds a story whose
+        // effects keep scheduling one another.
+        internal void Settle()
         {
-            var sheet = VelvetStyleHints.PreviewStyleSheet;
-            VelvetStyleHints.PreviewStyleSheet = null;
+            var scheduler = _mounted?.Root.Reconciler?.Context.BatchScheduler;
+            for (var round = 0; round != SettleRounds; round++)
+            {
+                scheduler?.FlushPendingPassiveEffects();
+                scheduler?.FlushImmediate();
+                scheduler?.DrainDelayed();
+            }
+        }
+
+        // Track only a sheet this host added; Unmount must not remove a sheet the target already owned.
+        private void Attach(StyleSheet? sheet)
+        {
             if (sheet == null || _target.styleSheets.Contains(sheet)) return;
             _target.styleSheets.Add(sheet);
             _appliedStyleSheets.Add(sheet);

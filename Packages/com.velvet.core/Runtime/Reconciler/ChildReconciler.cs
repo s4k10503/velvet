@@ -508,7 +508,7 @@ namespace Velvet
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
             }
             var target = layerHost.Document.rootVisualElement;
-            VelvetStyleUtilities.CarryToHost(placeholder, target);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = layerPortal.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
                 layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
@@ -521,7 +521,7 @@ namespace Velvet
             var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
             _ctx.WorldSpaceBindings[placeholder] = record;
             var target = record.Document.rootVisualElement;
-            VelvetStyleUtilities.CarryToHost(placeholder, target);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
             var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
             FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
                 worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
