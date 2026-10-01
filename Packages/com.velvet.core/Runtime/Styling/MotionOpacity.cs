@@ -41,36 +41,19 @@ namespace Velvet
             // The element's own inline opacity, or Null where its classes give it.
             public StyleFloat OwnInline;
             public StyleFloat Written;
-            // The element's own opacity, carried from From towards Target by the transition it declares for opacity.
-            public float Value;
-            public float From;
-            public float Target;
-            public float ElapsedSec;
-            public float DelaySec;
-            public float DurationSec;
-            public EasingMode Easing;
-            // The timing the list a variant swap holds inline gave opacity, before this took opacity out of it; NaN
-            // duration while the slot holds no such list.
-            public float HeldDurationSec = float.NaN;
-            public float HeldDelaySec;
-            public EasingMode HeldEasing;
+            // The element's own opacity, carried by the transition it declares for opacity.
+            public readonly LayoutIdCarry Own = new();
             // Steps the element's own opacity once the crossfade has ended, until it lands.
             public IVisualElementScheduledItem? Tail;
             // What the element's rules give its opacity beneath the inline values, NaN where that cannot be read, and
-            // the transition it runs opacity by, as last read (ReadCascade).
+            // how long they transition it, as last read (ReadCascade).
             public float CascadeOpacity = float.NaN;
             public float CascadeDurationSec;
-            public float CascadeDelaySec;
-            public EasingMode CascadeEasing;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Drawing> s_drawing = new();
         // The owner of the transition suspension an element holds while a crossfade draws it.
         private static readonly object s_owner = new();
-        private static readonly StylePropertyName s_opacityName = new("opacity");
-        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands in
-        // the call that sees it, as the engine applies it.
-        private const float MinDurationSec = 1e-4f;
 
         // Writes the element's own inline opacity for a driver that writes it every frame, Null handing it back to its
         // classes. Under a crossfade it lands at once, and the slot holds the crossfade applied to it.
@@ -105,7 +88,7 @@ namespace Velvet
         // carried it while one draws the element.
         public static float Own(VisualElement element)
         {
-            if (s_drawing.TryGetValue(element, out var drawing)) return drawing.Value;
+            if (s_drawing.TryGetValue(element, out var drawing)) return drawing.Own.Value;
             var inline = element.style.opacity;
             return inline.keyword == StyleKeyword.Undefined ? inline.value : element.resolvedStyle.opacity;
         }
@@ -116,10 +99,10 @@ namespace Velvet
         {
             if (!s_drawing.TryGetValue(element, out var drawing))
             {
-                var resolved = element.resolvedStyle.opacity;
-                drawing = new Drawing { OwnInline = element.style.opacity, Written = element.style.opacity, Value = resolved, Target = resolved };
+                drawing = new Drawing { OwnInline = element.style.opacity, Written = element.style.opacity };
+                drawing.Own.Land(element.resolvedStyle.opacity);
+                RunningStyleTransition.TakeOverOpacity(element, drawing.Own);
                 s_drawing.Add(element, drawing);
-                element.RegisterCallback(s_onTransitionCancel);
             }
             drawing.Tail?.Pause();
             drawing.Tail = null;
@@ -133,7 +116,7 @@ namespace Velvet
         {
             if (!s_drawing.TryGetValue(element, out var drawing)) return;
             drawing.Fade = LayoutIdFade.None;
-            if (Landed(drawing))
+            if (drawing.Own.Landed)
             {
                 Finish(element, drawing);
                 return;
@@ -147,7 +130,6 @@ namespace Velvet
         public static void Forget(VisualElement element)
         {
             if (!s_drawing.TryGetValue(element, out var drawing)) return;
-            element.UnregisterCallback(s_onTransitionCancel);
             drawing.Tail?.Pause();
             s_drawing.Remove(element);
         }
@@ -155,28 +137,11 @@ namespace Velvet
         private static void StepTail(VisualElement element, Drawing drawing, float dtSec)
         {
             Step(element, drawing, dtSec);
-            if (Landed(drawing)) Finish(element, drawing);
-        }
-
-        // UI Toolkit reports how long it had run a transition it cancels, which the first write here does to one it
-        // was running for the element's opacity. The carry that takes that transition over runs what was left of its
-        // duration rather than all of it again, and none of its delay
-        // (Given_AMemberPartWayThroughADelayedFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave).
-        private static readonly EventCallback<TransitionCancelEvent> s_onTransitionCancel = OnTransitionCancel;
-
-        private static void OnTransitionCancel(TransitionCancelEvent evt)
-        {
-            var element = (VisualElement)evt.currentTarget;
-            if (!evt.AffectsProperty(s_opacityName)) return;
-            if (!s_drawing.TryGetValue(element, out var drawing)) return;
-            element.UnregisterCallback(s_onTransitionCancel);
-            drawing.DelaySec = 0f;
-            drawing.DurationSec = Mathf.Max(0f, drawing.DurationSec - (float)evt.elapsedTime);
+            if (drawing.Own.Landed) Finish(element, drawing);
         }
 
         private static void Finish(VisualElement element, Drawing drawing)
         {
-            element.UnregisterCallback(s_onTransitionCancel);
             drawing.Tail?.Pause();
             s_drawing.Remove(element);
             element.style.opacity = drawing.OwnInline;
@@ -198,23 +163,19 @@ namespace Velvet
             Apply(element, drawing);
         }
 
-        private static bool Landed(Drawing drawing) => drawing.ElapsedSec >= drawing.DelaySec + drawing.DurationSec;
-
         private static float OwnTarget(Drawing drawing) =>
             drawing.OwnInline.keyword == StyleKeyword.Undefined ? drawing.OwnInline.value : drawing.CascadeOpacity;
 
         private static void Land(Drawing drawing)
         {
             var target = OwnTarget(drawing);
-            if (float.IsNaN(target)) return;
-            drawing.Value = drawing.From = drawing.Target = target;
-            drawing.ElapsedSec = drawing.DelaySec = drawing.DurationSec = 0f;
+            if (!float.IsNaN(target)) drawing.Own.Land(target);
         }
 
         private static void Apply(VisualElement element, Drawing drawing)
         {
             var fade = drawing.Fade;
-            element.style.opacity = Mathf.Clamp01(Mathf.LerpUnclamped(fade.From, drawing.Value, fade.Mix) * fade.Scale);
+            element.style.opacity = Mathf.Clamp01(Mathf.LerpUnclamped(fade.From, drawing.Own.Value, fade.Mix) * fade.Scale);
             drawing.Written = element.style.opacity;
         }
 
@@ -226,44 +187,18 @@ namespace Velvet
             var durations = element.style.transitionDuration;
             var lists = new TransitionLists(element.style.transitionProperty.value, durations.value,
                 element.style.transitionDelay.value, element.style.transitionTimingFunction.value);
-            if (durations.keyword != StyleKeyword.Undefined)
-            {
-                drawing.HeldDurationSec = float.NaN;
-            }
-            else if (StyleFilterTransitionDriver.TryFindTransition(lists, "opacity", null, out var durationMs, out var delayMs, out var easing))
-            {
-                drawing.HeldDurationSec = durationMs / 1000f;
-                drawing.HeldDelaySec = delayMs / 1000f;
-                drawing.HeldEasing = easing;
-            }
+            drawing.Own.Hold(lists, durations.keyword == StyleKeyword.Undefined, "opacity", null);
         }
 
         private static void ReadCascade(VisualElement element, Drawing drawing) =>
-            (drawing.CascadeOpacity, drawing.CascadeDurationSec, drawing.CascadeDelaySec, drawing.CascadeEasing) =
-                StyleCascade.Opacity(element);
+            (drawing.CascadeOpacity, drawing.CascadeDurationSec, _, _) = StyleCascade.Opacity(element);
 
-        // Carries the element's own opacity towards what it is given now, starting over from where it stands whenever
-        // that changes, on the timing a held list gave opacity or else the one UI Toolkit runs it by (ReadCascade).
+        // Carries the element's own opacity towards what it is given now; where the classes' value cannot be read, towards
+        // the one it was carried to.
         private static void Carry(VisualElement element, Drawing drawing, float dtSec)
         {
             var target = OwnTarget(drawing);
-            if (!float.IsNaN(target) && target != drawing.Target)
-            {
-                drawing.From = drawing.Value;
-                drawing.Target = target;
-                drawing.ElapsedSec = 0f;
-                if (!float.IsNaN(drawing.HeldDurationSec))
-                {
-                    (drawing.DurationSec, drawing.DelaySec, drawing.Easing) = (drawing.HeldDurationSec, drawing.HeldDelaySec, drawing.HeldEasing);
-                }
-                else
-                {
-                    (drawing.DurationSec, drawing.DelaySec, drawing.Easing) = (drawing.CascadeDurationSec, drawing.CascadeDelaySec, drawing.CascadeEasing);
-                }
-            }
-            drawing.ElapsedSec += dtSec;
-            var t = Mathf.Clamp01((drawing.ElapsedSec - drawing.DelaySec + MinDurationSec) / Mathf.Max(drawing.DurationSec, MinDurationSec));
-            drawing.Value = Mathf.LerpUnclamped(drawing.From, drawing.Target, UssEasing.Evaluate(drawing.Easing, t));
+            drawing.Own.Step(float.IsNaN(target) ? drawing.Own.Target : target, dtSec, element, "opacity", null);
         }
     }
 }

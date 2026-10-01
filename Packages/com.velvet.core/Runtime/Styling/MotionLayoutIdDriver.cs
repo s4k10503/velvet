@@ -370,12 +370,12 @@ namespace Velvet
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
         }
 
-        // Read before the projection takes its new tween. A move of the lead's own that interrupts its crossfade holds
-        // the opacities the crossfade had reached until that move lands, as Framer's stop() leaves the mixed values
-        // in place.
+        // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
+        // holds the values its crossfade and mix had reached until that move lands, as Framer's stop() leaves the
+        // mixed values in place.
         private static void Share(LayoutIdProjection projection, bool shared, bool crossfades, bool moves, LayoutIdLook? from)
         {
-            var carries = !shared && IsCrossfading(projection);
+            var carries = !shared && projection is { Shared: true, Moving: true };
             projection.FadeAt = carries ? CrossfadeProgress(projection) : float.NaN;
             // MUTANT_SURVIVES(equivalent): the look is read only while Shared is set, which a start reaching this line
             // leaves clear unless it is shared and has a tween.
@@ -384,7 +384,7 @@ namespace Velvet
             // read only with one moving, or by the frame that clears it and hides the other members.
             projection.Shared = (shared || carries) && moves;
             // Read only while the projection moves, which only a start with a tween sets.
-            projection.Crossfade = crossfades || carries;
+            projection.Crossfade = crossfades || carries && projection.Crossfade;
         }
 
         private static bool IsCrossfading(LayoutIdProjection? projection) => projection is { Crossfade: true, Moving: true };
@@ -1112,8 +1112,9 @@ namespace Velvet
         }
     }
 
-    // One of a projection's own values carried towards what gives it now, as MotionOpacity carries opacity: from where
-    // it stands, on the timing a variant swap's held list gave the property, else the one UI Toolkit runs it by.
+    // One of a projection's own values carried towards what gives it now, as UI Toolkit carries it by a transition:
+    // from where it stands, on the timing a variant swap's held list gave the property, else the one UI Toolkit runs it
+    // by. MotionOpacity carries an element's own opacity under a crossfade with one too.
     internal sealed class LayoutIdCarry
     {
         // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands
@@ -1121,22 +1122,39 @@ namespace Velvet
         private const float MinDurationSec = 1e-4f;
 
         private float _from;
-        private float _target;
         private float _elapsedSec;
         private float _delaySec;
         private float _durationSec;
         private EasingMode _easing;
+        // The curve of a transition taken over from UI Toolkit (TakeOver), in place of _easing until the target changes.
+        private System.Func<float, float>? _curve;
+        private float _eased;
+        // Where a change back runs to, and how far the transition running now was shortened, which UI Toolkit keeps per
+        // transition to shorten one that reverses the transition it interrupts.
+        private float _reversingStart;
+        private float _shortening = 1f;
         // The timing the list a variant swap holds inline gave the property; NaN duration while it holds none.
         private float _heldDurationSec = float.NaN;
         private float _heldDelaySec;
         private EasingMode _heldEasing;
 
         public float Value { get; private set; }
+        public float Target { get; private set; }
+        public bool Landed => _elapsedSec >= _delaySec + _durationSec;
 
         public void Land(float value)
         {
-            Value = _from = _target = value;
+            Value = _from = Target = value;
             _elapsedSec = _delaySec = _durationSec = 0f;
+        }
+
+        // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve and its
+        // shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
+        public void TakeOver((float From, float Target, float DurationSec, float ElapsedSec) run, System.Func<float, float> curve,
+            (float Start, float Shortening) reversing)
+        {
+            (_from, Target, _durationSec, _elapsedSec, _delaySec, _curve) = (run.From, run.Target, run.DurationSec, run.ElapsedSec, 0f, curve);
+            (_reversingStart, _shortening) = reversing;
         }
 
         // Read as the swap writes the list, before the projection takes the property out of it. The swap writes the
@@ -1154,19 +1172,27 @@ namespace Velvet
         }
 
         // Carries the value towards target, starting over from where it stands whenever target changes, over dtSec more.
+        // A change back to where the running transition started is shortened by how far that one had got, as UI Toolkit
+        // shortens a reversing transition
+        // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
         public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
         {
-            if (target != _target)
+            if (target != Target)
             {
-                (_from, _target, _elapsedSec) = (Value, target, 0f);
+                var reverses = !Landed && Mathf.Approximately(target, _reversingStart);
+                _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
+                _reversingStart = reverses ? Target : Value;
+                (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
                 (_durationSec, _delaySec, _easing) = float.IsNaN(_heldDurationSec)
                     ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
+                _durationSec *= _shortening;
             }
             _elapsedSec += dtSec;
             var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
+            _eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);
             // Landed exactly, which the curve need not give at its end.
-            Value = t < 1f ? Mathf.LerpUnclamped(_from, _target, UssEasing.Evaluate(_easing, t)) : _target;
+            Value = t < 1f ? Mathf.LerpUnclamped(_from, Target, _eased) : Target;
             return Value;
         }
     }

@@ -358,16 +358,17 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   variants and drivers give it. While it is written, an element whose transitions cover opacity has them
   suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
   unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
-  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
-  opacity stands, with the duration, delay and easing the element declares for it, running one that
-  outlasts the move on to its end. The others fade from
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the transition the
+  element declares for opacity, as UI Toolkit runs it: one already running when the fade starts runs on
+  from where it had got, inside its delay or past it, and a change back towards where a running one
+  started is shortened by how far that one had got. One that outlasts the move runs on to its end. The others fade from
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
   the same way. The lead also mixes its rotate and border radius from that holder's to its own, a radius
   not below zero and a pixel radius not mixing with a percent one, the lead's being taken, and the others
-  are drawn with the lead's. A move of the lead's own that interrupts the crossfade holds the
-  opacities it had reached until that move lands.
+  are drawn with the lead's. A move of the lead's own that interrupts its crossfade or its mix holds the
+  values they had reached until that move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
