@@ -93,6 +93,7 @@ namespace Velvet.Tests
             s_crossParkKeyedBFiber = null;
             s_drainZManaged = false;
             s_drainFiber = null;
+            s_motionStore = null;
         }
 
         // Finds the front (z >= 0) or back (negative z) layer container directly under parent, or null when
@@ -533,12 +534,13 @@ namespace Velvet.Tests
             var consumer = root.Q<VisualElement>("consumer");
 
             // Act
-            var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(consumer, "peer", ctx);
+            var found = new List<VisualElement>();
+            StyleRelationalVariantManipulator.FindSources(consumer, isPeer: true, "peer", ctx, found);
 
             // Assert — the consumer's relocation is a term: left at its ordinary slot it is "source"'s own
             // physical next sibling, and the search resolves without ever consulting a placeholder.
             Assert.That(
-                (IsZManaged(ctx, consumer), ReferenceEquals(found, root.Q<VisualElement>("source"))),
+                (IsZManaged(ctx, consumer), found.Count == 1 && ReferenceEquals(found[0], root.Q<VisualElement>("source"))),
                 Is.EqualTo((true, true)));
         }
 
@@ -557,12 +559,14 @@ namespace Velvet.Tests
             var source = root.Q<VisualElement>("source");
 
             // Act
-            var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(
-                root.Q<VisualElement>("consumer"), "peer", ctx);
+            var found = new List<VisualElement>();
+            StyleRelationalVariantManipulator.FindSources(root.Q<VisualElement>("consumer"), isPeer: true, "peer", ctx, found);
 
             // Assert — the source's relocation is a term: left at its ordinary slot it is the consumer's own
             // physical preceding sibling, and the search finds it without ever reading a placeholder.
-            Assert.That((IsZManaged(ctx, source), ReferenceEquals(found, source)), Is.EqualTo((true, true)));
+            Assert.That(
+                (IsZManaged(ctx, source), found.Count == 1 && ReferenceEquals(found[0], source)),
+                Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -706,24 +710,107 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Motion incompatibility
+        #region Motion
+
+        private static ToggleStore<string> s_motionStore;
+
+        [Component]
+        private static VNode MotionHost()
+        {
+            var className = Hooks.UseStore(s_motionStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Motion(name: "m", className: className),
+                V.Div(name: "peer20", className: "absolute z-20"),
+            });
+        }
+
+        private (MountedTree Mounted, VisualElement Root) MountMotion(ToggleStore<string> store)
+        {
+            s_motionStore = store;
+            var root = new VisualElement();
+            return (V.Mount(root, V.Component(MotionHost, key: "root")), root);
+        }
 
         [Test]
-        public void Given_AMotionWithAnAbsoluteAndZClass_When_Mounted_Then_ItWarnsThatZIsIgnored()
+        public void Given_AMotionWithAnAbsoluteAndZClass_When_Mounted_Then_ItIsRelocatedIntoTheFrontLayer()
         {
-            // Arrange — the warning is expected (LogAssert fails the test if it never fires). A plain Regex
-            // (no IgnoreCase) mirrors PaintBindingPatchTests / ClipPathWrapTests' own Motion-incompatibility pins.
-            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
-                new System.Text.RegularExpressions.Regex(@"z-\* utility on a Motion is ignored"));
-
-            // Act — z-* + absolute would classify as z-managed on a plain element; on a Motion it must not (the
-            // MotionNode create path never consults the z classifier at all).
+            // Arrange
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Motion(name: "m", className: "absolute z-10"));
 
-            // Assert — the element mounted ordinary and unrelocated; the expected warning above is enforced by
-            // LogAssert at test end (an Assert.Pass would bypass that unmatched-expectation check).
-            Assert.That(mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(root.Q<VisualElement>("m")), Is.False);
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                V.Motion(name: "m", className: "absolute z-10"),
+            }));
+
+            // Assert
+            var m = root.Q<VisualElement>("m");
+            Assert.That(
+                (IsZManaged(mounted.Root.Reconciler.Context, m),
+                    ReferenceEquals(m?.parent, FindLayerContainer(root.Q<VisualElement>("parent"), front: true))),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnOrdinaryAbsoluteMotion_When_ItGainsAZClass_Then_TheSameElementRelocatesIntoTheLayer()
+        {
+            // Arrange
+            using var store = new ToggleStore<string>("absolute");
+            var (mounted, root) = MountMotion(store);
+            using var _ = mounted;
+            var m = root.Q<VisualElement>("m");
+            var startedAsAnOrdinaryDirectChild = ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), m);
+
+            // Act
+            store.Set("absolute z-10");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (startedAsAnOrdinaryDirectChild, IsZManaged(mounted.Root.Reconciler.Context, m)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AZManagedMotion_When_ItsZClassIsDropped_Then_TheSameElementReturnsToItsOrdinarySlot()
+        {
+            // Arrange
+            using var store = new ToggleStore<string>("absolute z-10");
+            var (mounted, root) = MountMotion(store);
+            using var _ = mounted;
+            var m = root.Q<VisualElement>("m");
+            var zManagedBeforeTheChange = IsZManaged(mounted.Root.Reconciler.Context, m);
+
+            // Act
+            store.Set("absolute");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (zManagedBeforeTheChange, ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), m)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AZManagedMotionBelowAZ20Sibling_When_ItsZRisesAboveIt_Then_ItIsResortedAfterTheSibling()
+        {
+            // Arrange
+            using var store = new ToggleStore<string>("absolute z-10");
+            var (mounted, root) = MountMotion(store);
+            using var _ = mounted;
+            var m = root.Q<VisualElement>("m");
+            var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
+            var firstBeforeTheChange = ReferenceEquals(front?.ElementAt(0), m);
+
+            // Act
+            store.Set("absolute z-30");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (firstBeforeTheChange, ReferenceEquals(front?.ElementAt(front.childCount - 1), m)),
+                Is.EqualTo((true, true)));
         }
 
         #endregion

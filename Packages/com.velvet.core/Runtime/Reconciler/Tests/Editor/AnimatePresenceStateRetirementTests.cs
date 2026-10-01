@@ -39,10 +39,14 @@ namespace Velvet.Tests
     /// <item>Both suspended states are read, since a presence with committed children puts their keys on
     /// the container's old side and one with none does not — the two park in different strategies, and
     /// each strategy's resume settles what its own park left owed.</item>
-    /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
-    /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
-    /// even though a later container's did not. The reading covers the fast path too, where the removals
-    /// are the time-sliced diff's rather than the general walk's finalize.</item>
+    /// <item>A boundary catching a render in the same pass leaves each container's removals to run, so an
+    /// entry whose container emptied its slots retires, whether the boundary comes after that container
+    /// or sits inside a leaf of it that the fast path's time-sliced diff creates.</item>
+    /// <item>An element callback's error, which a boundary takes on the aborting path, stops the removal pass
+    /// of the container it reaches and holds for the rest of the pass, so whether an entry may retire is read
+    /// per container: one whose own removals ran retires even though a later container's did not. The reading
+    /// covers the fast path too, where the removals are the time-sliced diff's rather than the general walk's
+    /// finalize.</item>
     /// <item>An abort and an exhausted frame budget both leave those removals unrun, and part there. The
     /// next pass expands both sides again, so an abort's reading is retaken; a park is resumed from the
     /// old side this pass already expanded, so nothing retakes it and the reading is carried to the slice
@@ -217,7 +221,7 @@ namespace Velvet.Tests
         }
 
         // A presence beside a boundary that catches on the same update. Its own container finalizes
-        // before the boundary aborts the pass.
+        // before the boundary catches.
         [Component]
         private static VNode PresenceBesideAThrowingBoundary()
         {
@@ -229,12 +233,11 @@ namespace Velvet.Tests
             });
         }
 
-        // The presence's own container takes the fast path on the new side. The leaf replacing the
-        // presence's FIRST sibling raises the abort while being created, which stops the diff between
-        // phases — before the one that would take the presence's own leaf out of the tail. So the
-        // container's removals do not run, whatever returning from the strategy suggests.
+        // The presence's own container takes the fast path on the new side. The boundary inside the leaf
+        // replacing the presence's FIRST sibling catches while that leaf is created, ahead of the phase that
+        // takes the presence's own leaf out of the tail.
         [Component]
-        private static VNode FastPathHostAbortingBeforeItsRemovalPhase()
+        private static VNode FastPathHostCatchingInsideItsReplacement()
         {
             var state = Hooks.UseStore(s_store, s => s);
             return V.Div(name: "host", children: state.Shown
@@ -244,6 +247,45 @@ namespace Velvet.Tests
                     V.Div(name: "replacement", children: new VNode[] { V.Component(CatchingBoundary, key: "boundary") }),
                 });
         }
+
+        // As PresenceBesideAThrowingBoundary, with the boundary aborting the pass.
+        [Component]
+        private static VNode PresenceBesideAnAbortingBoundary()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "outer", children: new VNode[]
+            {
+                V.Div(name: "host", children: new VNode[] { state.Shown ? Presence(state.ChildKey) : null }),
+                state.Shown ? null : V.Component(AbortingBoundary, key: "boundary"),
+            });
+        }
+
+        // As FastPathHostCatchingInsideItsReplacement, with the boundary raising the abort while that leaf is
+        // created, which stops the diff between phases — before the one that would take the presence's own
+        // leaf out of the tail. So the container's removals do not run, whatever returning from the strategy
+        // suggests.
+        [Component]
+        private static VNode FastPathHostAbortingBeforeItsRemovalPhase()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "host", children: state.Shown
+                ? new VNode[] { V.Label(text: "first"), Presence(state.ChildKey) }
+                : new VNode[]
+                {
+                    V.Div(name: "replacement", children: new VNode[] { V.Component(AbortingBoundary, key: "boundary") }),
+                });
+        }
+
+        // An element callback's error below it, which it catches on the aborting path.
+        [Component(IsErrorBoundary = true)]
+        private static VNode AbortingBoundary()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "caught"));
+            return V.Component(CallbackThrower, key: "thrower");
+        }
+
+        [Component]
+        private static VNode CallbackThrower() => V.ScrollView(onCreated: _ => throw new InvalidOperationException("boom"));
 
         [Component(IsErrorBoundary = true)]
         private static VNode CatchingBoundary()
@@ -530,11 +572,12 @@ namespace Velvet.Tests
             Assert.That((shared, NamesOf(s_overlay)), Is.EqualTo((1, "item-a")));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base retires this entry although the catch aborts the pass.
+        // The catch taken in the walk leaves the pass to complete, and the entry retiring there is what this pins.
         [Test]
-        public void Given_APresenceContainerThatFinalized_When_ALaterBoundaryAbortsTheSamePass_Then_ItsBoundaryStateStillRetires()
+        public void Given_APresenceContainerThatFinalized_When_ALaterBoundaryCatchesInTheSamePass_Then_ItsBoundaryStateStillRetires()
         {
-            // Arrange — an abort holds for the rest of the pass, so a reading taken per pass would spare
-            // this entry; the container it names emptied its own slots before the abort was raised.
+            // Arrange — the container the entry names empties its own slots before the boundary catches.
             using var store = new PresenceStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(PresenceBesideAThrowingBoundary, key: "host"), CaughtErrors.Unlogged);
@@ -547,6 +590,48 @@ namespace Velvet.Tests
 
             // Assert — same fold as the sibling case above. Nothing reproduces this presence again, so a
             // pass that skipped it is the last one this route can act on.
+            Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_APresenceOnAFastPathContainer_When_ALeafReplacingItsSiblingCatchesInside_Then_ItsBoundaryStateRetires()
+        {
+            // Arrange — the fast path interleaves its removals with the diff, and the catch inside the
+            // replacing leaf leaves the diff to reach the phase that takes the presence's leaf out.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(FastPathHostCatchingInsideItsReplacement, key: "host"), CaughtErrors.Unlogged);
+            var ctx = mounted.Root.Reconciler.Context;
+            var host = _root.Q<VisualElement>("host");
+
+            // Act — the presence leaves and the leaf replacing its first sibling catches, in one update.
+            store.Set(false, "a");
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — the presence's leaf is read with the entry, as React removes the leaf and its state with
+            // it around the boundary's fallback.
+            Assert.That((host.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((false, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base retires this entry although the catch aborts the pass.
+        // An element callback's error still aborts it, and this keeps the per-container reading driven.
+        [Test]
+        public void Given_APresenceContainerThatFinalized_When_ALaterBoundaryAbortsTheSamePass_Then_ItsBoundaryStateStillRetires()
+        {
+            // Arrange — an abort holds for the rest of the pass, so a reading taken per pass would spare
+            // this entry; the container it names emptied its own slots before the abort was raised.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PresenceBesideAnAbortingBoundary, key: "host"), CaughtErrors.Unlogged);
+            var ctx = mounted.Root.Reconciler.Context;
+            var recorded = ctx.PresenceStates.Count;
+
+            // Act — the presence leaves and the boundary aborts, in one update.
+            store.Set(false, "a");
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — same fold as the sibling case above.
             Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
         }
 

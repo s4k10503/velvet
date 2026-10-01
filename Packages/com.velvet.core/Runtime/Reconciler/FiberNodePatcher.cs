@@ -91,7 +91,7 @@ namespace Velvet
                     }
                     break;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
-                    PatchMotion(element, oldMotion, newMotion);
+                    PatchMotionSlot(element, oldMotion, newMotion);
                     break;
                 // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
                 // patchable leaf — no case here.
@@ -306,6 +306,32 @@ namespace Velvet
             else
             {
                 FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, real);
+            }
+        }
+
+        // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
+        // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
+        private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        {
+            var wasZ = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real);
+            var motion = wasZ ? real : element;
+            PatchMotion(motion, oldNode, newNode);
+            var isZ = FiberZLayerCoordinator.TryClassify(
+                RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
+            if (!wasZ)
+            {
+                if (isZ)
+                {
+                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, motion, resolvedZ);
+                }
+            }
+            else if (isZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, element, motion, resolvedZ);
+            }
+            else
+            {
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, motion);
             }
         }
 
@@ -616,6 +642,10 @@ namespace Velvet
             if (newNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
+            }
+            else
+            {
+                MotionLayoutIdDriver.Forget(element, _ctx);
             }
         }
 
@@ -1268,7 +1298,17 @@ namespace Velvet
             {
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
+                // suspend — leaves on the target what it inserted before the throw, and the range recorded is
+                // what the Portal's cleanup removes.
+                RecordPatchedPortalRange(placeholder, target, prevState, beforeTailCount, tenancy, shiftedBefore);
             }
+        }
+
+        private void RecordPatchedPortalRange(
+            VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
+            InlineTenancy? tenancy, int shiftedBefore)
+        {
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.

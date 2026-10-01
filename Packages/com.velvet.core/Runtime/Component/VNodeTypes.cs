@@ -213,8 +213,9 @@ namespace Velvet
         /// carry that inverse back to zero on the layout transition) instead of jump-cutting. Independent of <see cref="Variants"/>/
         /// <see cref="Animate"/>: a layoutId tween runs from the ACTUAL rect delta, not a class-defined
         /// from/to pair. Null = no layout animation (ordinary jump-cut on a rect change, matching every other
-        /// element). Two Motions in the same tree must never share a live layoutId simultaneously — the
-        /// second one to patch silently steals the registration (see MotionLayoutIdDriver).
+        /// element). Several Motions may hold one id at once: the one that took it last leads and the others are
+        /// hidden; when the lead leaves, the holder of those left that took the id most recently leads in its place,
+        /// tweening from the lead's box.
         /// </summary>
         public string? LayoutId { get; init; }
     }

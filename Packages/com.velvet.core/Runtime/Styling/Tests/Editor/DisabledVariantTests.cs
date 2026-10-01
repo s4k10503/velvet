@@ -476,8 +476,8 @@ namespace Velvet.Tests
             Assert.That((withHoverOnly, AnnouncementCallbackCount(group) > withHoverOnly), Is.EqualTo((0, true)));
         }
 
-        // The leaf sits behind peer a; moving it after a new peer b re-resolves it, which re-points its one
-        // disabled watch from a to b.
+        // The leaf sits behind peer a; moving it after a new peer b re-resolves it against both, each watched
+        // for disabled on its own.
         private (VisualElement Parent, VisualElement FormerPeer, VisualElement NewPeer, VisualElement Leaf) MountReResolvedToNewPeer()
         {
             _mounted = V.Mount(_window.rootVisualElement,
@@ -514,7 +514,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_APeerDisabledLeafWhoseNewPeerLeftAndWasDisabled_When_ItsFormerPeerIsMoved_Then_ThePayloadStaysOff()
         {
-            // Arrange — the applied half shows the watch had moved to the new peer.
+            // Arrange — the applied half shows the new peer is watched.
             var (parent, formerPeer, newPeer, leaf) = MountReResolvedToNewPeer();
             newPeer.SetEnabled(false);
             var appliedWhileNewPeerDisabled = leaf.ClassListContains("bg-hot");
@@ -522,7 +522,7 @@ namespace Velvet.Tests
             parent.Remove(newPeer);
             newPeer.SetEnabled(false);
 
-            // Act — the former peer, enabled, is again the leaf's nearest peer.
+            // Act — the former peer, enabled, moves; the new peer was disabled only after it left the tree.
             parent.Remove(formerPeer);
             parent.Insert(0, formerPeer);
 

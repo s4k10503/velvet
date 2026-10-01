@@ -440,8 +440,11 @@ namespace Velvet.Tests
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert
-            Assert.That(Container(scope.Root)[2].style.marginLeft.value.value, Is.EqualTo(5f));
+            // Assert — the gapped child's margin rides along: the space margin landing on the gap edge and adding
+            // to the gap there is the situation the name sets up.
+            var container = Container(scope.Root);
+            Assert.That((container[1].style.marginLeft.value.value, container[2].style.marginLeft.value.value),
+                Is.EqualTo((Space4 + Space2, 5f)));
         }
 
         [Test]

@@ -18,8 +18,8 @@ namespace Velvet.Tests
     /// <item>Because the value resolves, the consumer does not throw, so the boundary's fallback never fires
     /// and the consumer's own label renders.</item>
     /// <item>A consumer that is a SIBLING of the boundary rather than inside it keeps its Provider across a
-    /// render the boundary caught in: the host's render is discarded, so the consumer's own re-render after
-    /// it rebuilds its context from the tree the host committed before the throw.</item>
+    /// render the boundary caught in: that render commits around the fallback, and the consumer's own
+    /// re-render after it rebuilds its context from the Provider that render committed.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -189,11 +189,8 @@ namespace Velvet.Tests
         }
 
         // The consumer and the boundary are siblings under one host, so the host's render reaches the
-        // consumer BEFORE the boundary catches. The host's output for that render is discarded, and what
-        // the consumer's own re-render afterwards has to rebuild its context from is the tree the host
-        // committed before the throw. This arrangement also drives the boundary through the subsumed
-        // render whose disposal clears the reconciler, so an unhandled NullReferenceException from that
-        // path fails this case as well.
+        // consumer BEFORE the boundary catches, and what the consumer's own re-render afterwards has to
+        // rebuild its context from is the tree that render committed.
         [Component]
         private static VNode SiblingBoundaryHostRender()
         {
@@ -211,7 +208,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItStillReadsItsProvider()
+        public void Given_AConsumerBesideAnErrorBoundary_When_TheHostsRenderIsCaughtAndTheConsumerThenReRendersAlone_Then_ItReadsTheProviderThatRenderCommitted()
         {
             // Arrange
             s_siblingThrows = false;
@@ -231,7 +228,7 @@ namespace Velvet.Tests
             // below is not a Provider this position never had.
             Assert.That(
                 (atMount, s_siblingSeen, s_siblingCount),
-                Is.EqualTo(("v0", "v0", 1)));
+                Is.EqualTo(("v0", "v1", 1)));
         }
 
         #endregion

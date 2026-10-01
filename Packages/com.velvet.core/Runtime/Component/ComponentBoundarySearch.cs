@@ -36,8 +36,16 @@ namespace Velvet
         // fiber is nullable: a caller with no owning component fiber (e.g. AnimatePresence reconciled onto
         // a bare element) has nothing to walk from and falls straight through to the log.
         internal static void PropagateException(ComponentFiber? fiber, Exception exception)
+            => PropagateException(fiber, exception, isRenderError: false);
+
+        internal static void PropagateException(ComponentFiber? fiber, Exception exception, bool isRenderError)
+            => PropagateException(fiber, fiber, exception, isRenderError);
+
+        // The search starts above from; the component stack a catch reports starts at throwingFiber.
+        internal static void PropagateException(
+            ComponentFiber? from, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
         {
-            var current = fiber?.Parent;
+            var current = from?.Parent;
             while (current != null)
             {
                 // Captured before TryCatch runs: a boundary whose own fallback content fails can cascade
@@ -46,7 +54,7 @@ namespace Velvet
                 // AFTER TryCatch returns would follow that now-severed link and stop short of any candidate
                 // beyond current, even though this walk's own job is to keep searching past current.
                 var next = current.Parent;
-                if (current.IsErrorBoundary && FiberErrorBoundary.TryCatch(current, fiber, exception))
+                if (current.IsErrorBoundary && FiberErrorBoundary.TryCatch(current, throwingFiber, exception, isRenderError))
                 {
                     return;
                 }

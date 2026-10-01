@@ -20,10 +20,10 @@ namespace Velvet
         // StyleFlexDirectionResolver / StyleGapManipulator.IsWrap already use for flex-direction / flex-wrap.
         internal static bool IsOutOfFlow(VisualElement child)
         {
-            // The filter bounds-spacer and the ring overlay are always out of flow (position:absolute) and must
-            // never occupy a gap / grid / divide slot; recognize them by their markers so they do not need the
-            // "absolute" utility class (which would leak into a user's has-[.absolute]: selector).
-            if (IsInserted(child))
+            // The filter bounds-spacer is always out of flow (position:absolute) and must never occupy a
+            // gap / grid / divide slot; recognize it by its marker so it does not need the "absolute" utility
+            // class (which would leak into a user's has-[.absolute]: selector).
+            if (SilhouetteBoundsSpacer.IsSpacer(child))
             {
                 return true;
             }
@@ -78,27 +78,21 @@ namespace Velvet
 
         // The index of container's last child that is the author's, -1 when there is none — the child the
         // manipulators following Tailwind's `> :not(:last-child)` exempt. `:last-child` counts an absolutely
-        // positioned child, so only the children Velvet inserts itself (the filter bounds-spacer and the ring
-        // overlay) are passed over.
+        // positioned child, so only the children Velvet inserts itself, which SilhouetteBoundsSpacer.IsSpacer
+        // names, are passed over.
         internal static int LastSpacedIndex(VisualElement container)
         {
             var last = -1;
             var count = container.childCount;
             for (var i = 0; i < count; i++)
             {
-                if (!IsInserted(container[i]))
+                if (!SilhouetteBoundsSpacer.IsSpacer(container[i]))
                 {
                     last = i;
                 }
             }
             return last;
         }
-
-        // A child Velvet inserts itself rather than one the author wrote: the filter bounds-spacer, a ring
-        // overlay or a dashed divider's color probe. Each is absolutely positioned, which IsOutOfFlow's off-panel
-        // class check cannot see.
-        private static bool IsInserted(VisualElement child)
-            => SilhouetteBoundsSpacer.IsSpacer(child) || child.ClassListContains(RingOverlay.MarkerClass);
 
         // Whether child is display:none — through the hidden utility or an inline display — and so has no box
         // for CSS gap to space or to count as the first.
