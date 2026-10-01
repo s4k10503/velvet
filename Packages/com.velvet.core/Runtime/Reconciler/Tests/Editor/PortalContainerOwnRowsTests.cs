@@ -48,6 +48,7 @@ namespace Velvet.Tests
             s_portalShownLater = false;
             s_portalHoldsScroll = false;
             s_setPortalShown = null;
+            s_setHeldScroll = null;
             s_setFirstPortalRows = null;
             s_setSecondPortalChild = null;
             s_registerSelfOnRef = true;
@@ -562,24 +563,31 @@ namespace Velvet.Tests
             var (shown, setShown) = Hooks.UseState(!s_portalShownLater);
             s_setPortalShown = setShown;
             var (held, setHeld) = Hooks.UseState((VisualElement?)null);
+            s_setHeldScroll = setHeld;
             VNode? portal = s_portalHoldsScroll
                 ? held == null ? null : V.Portal(held, children: new VNode?[] { portalContent })
                 : shown ? V.Portal("scroll-target", children: new VNode?[] { portalContent }) : null;
             return V.Fragment(children: new VNode?[]
             {
-                V.ScrollView(name: "scroll", refCallback: element =>
-                {
-                    if (s_portalHoldsScroll)
-                    {
-                        setHeld.Invoke(element);
-                        return () => { };
-                    }
-                    return Register("scroll-target", s_registerScrollContent ? element.contentContainer : element);
-                }, children: ownChildren),
+                V.ScrollView(name: "scroll", refCallback: AttachScroll, children: ownChildren),
                 portal,
             });
         }
 
+        // A method group, so every render hands the ScrollView the same callback: a callback that differs
+        // between renders is detached and attached again at each, and detaching unregisters the id the
+        // portal is patched against in that render.
+        private static Action AttachScroll(VisualElement element)
+        {
+            if (s_portalHoldsScroll)
+            {
+                s_setHeldScroll!.Invoke(element);
+                return () => { };
+            }
+            return Register("scroll-target", s_registerScrollContent ? element.contentContainer : element);
+        }
+
+        private static Action<VisualElement?>? s_setHeldScroll;
         private static bool s_portalShownLater;
         private static bool s_portalHoldsScroll;
         private static Action<bool>? s_setPortalShown;
