@@ -99,6 +99,7 @@ namespace Velvet
 
         // Extracts the column gap and row gap (px) a grid owns from the gap-*/gap-x-*/gap-y-* classes (last
         // wins per axis, matching CSS cascade): gap-N sets both, gap-x-N the column gap, gap-y-N the row gap.
+        // space-* is not a gap.
         // A grid routes its gap through StyleGridManipulator, so the values are read here rather than left to
         // the (suppressed) gap manipulator. Defaults to 0 when no gap class is present.
         public static void ExtractGaps(string[] classNames, out float columnGap, out float rowGap)
@@ -112,6 +113,11 @@ namespace Velvet
 
             foreach (var cls in classNames)
             {
+                // A space-* token is a margin on the children, which the grid adds on its own.
+                if (StyleGapClass.IsSpaceToken(cls))
+                {
+                    continue;
+                }
                 if (!StyleGapClass.TryParse(cls, out var g, out var axis))
                 {
                     continue;

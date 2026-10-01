@@ -192,35 +192,48 @@ namespace Velvet.Tests
             // Arrange
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (first, second, moving) = TwoRows(scope, Divide4Row, Divide8Row);
-            var dividedByFirst = Inline(moving.style.borderLeftWidth);
-            ReRent(first, second, moving, () => ctx.DivideManipulators[second].Apply());
+            var (first, second, _) = TwoRows(scope, Divide4Row, Divide8Row);
+            // A divider sits on every child but the last, so the moving child is the first in both rows.
+            var moving = first[0];
+            var dividedByFirst = Inline(moving.style.borderRightWidth);
+            first.Remove(moving);
+            second.Insert(0, moving);
+            ctx.DivideManipulators[second].Apply();
 
             // Act
             ctx.DivideManipulators[first].Apply();
 
             // Assert — the first row's own divider rides along.
-            Assert.That((dividedByFirst, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("4", "8")));
+            Assert.That((dividedByFirst, Inline(moving.style.borderRightWidth)), Is.EqualTo(("4", "8")));
         }
 
-        // GREEN_ON_BASE(characterization): the reparent sweep the ownership claim must leave standing for
-        // the divider border too.
+        // GREEN_ON_BASE(characterization): the reparent sweep the ownership claim must leave standing for the
+        // divider border too. The middle child is divided under the base's rule and this branch's alike, on
+        // different edges, so both edges are read.
         [Test]
         public void Given_AChildThatLeftAndWasNotReRented_When_TheDivideRowRunsAfterwards_Then_TheDividerIsRemoved()
         {
             // Arrange
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (first, _, moving) = TwoRows(scope, Divide4Row, Divide8Row);
-            var dividedByFirst = Inline(moving.style.borderLeftWidth);
+            var tree = new VNode[]
+            {
+                V.Div(className: Divide4Row, children: new VNode[] { V.Text("a"), V.Text("b"), V.Text("c") }),
+                V.Div(className: Divide8Row, children: new VNode[] { V.Text("d") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var first = scope.Root[0];
+            var moving = first[1];
+            var divided = Math.Max(moving.style.borderLeftWidth.value, moving.style.borderRightWidth.value);
             first.Remove(moving);
             new VisualElement().Add(moving);
 
             // Act
             ctx.DivideManipulators[first].Apply();
 
-            // Assert — the precondition rides along, as above.
-            Assert.That((dividedByFirst, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("4", "null")));
+            // Assert — the divider it carried rides along.
+            Assert.That((divided, Inline(moving.style.borderLeftWidth), Inline(moving.style.borderRightWidth)),
+                Is.EqualTo((4f, "null", "null")));
         }
 
         [Test]
@@ -260,8 +273,9 @@ namespace Velvet.Tests
             Assert.That((sizedByFirst, Inline(moving.style.marginLeft)), Is.EqualTo(("16", "null")));
         }
 
-        // GREEN_ON_BASE(characterization): the divider a departing child already loses on the base, which
-        // is what a divide row sharing the box table would stop happening.
+        // GREEN_ON_BASE(characterization): the divider a departing child already loses on the base, which is
+        // what a divide row sharing the box table would stop happening. The middle child is divided under the
+        // base's rule and this branch's alike, on different edges, so both edges are read.
         [Test]
         public void Given_ADivideChildReRentedByAGapRow_When_TheDivideRowRunsAfterwards_Then_TheDividerIsRemoved()
         {
@@ -270,8 +284,16 @@ namespace Velvet.Tests
             // the divider: the child now sits in a row carrying no divide class at all.
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (divide, row, moving) = TwoRows(scope, Divide4Row, Gap8Row);
-            var dividedByFirst = Inline(moving.style.borderLeftWidth);
+            var tree = new VNode[]
+            {
+                V.Div(className: Divide4Row, children: new VNode[] { V.Text("a"), V.Text("b"), V.Text("c") }),
+                V.Div(className: Gap8Row, children: new VNode[] { V.Text("d") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var divide = scope.Root[0];
+            var row = scope.Root[1];
+            var moving = divide[1];
+            var divided = Math.Max(moving.style.borderLeftWidth.value, moving.style.borderRightWidth.value);
             ReRent(divide, row, moving, () => ctx.GapManipulators[row].Apply());
 
             // Act
@@ -279,7 +301,8 @@ namespace Velvet.Tests
 
             // Assert — the divide row's own border rides along, since a child that never carried one and
             // one the sweep cleared leave the same inline slot.
-            Assert.That((dividedByFirst, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("4", "null")));
+            Assert.That((divided, Inline(moving.style.borderLeftWidth), Inline(moving.style.borderRightWidth)),
+                Is.EqualTo((4f, "null", "null")));
         }
 
         // GREEN_ON_BASE(characterization): the wrap path's four-side margins a departing child already
