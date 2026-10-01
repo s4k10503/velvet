@@ -366,6 +366,37 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base shows the fallback in a reconcile of its own, whose
+        // key set holds none of the failed output's keys. What this pins is that the catch taken in the walk
+        // takes the failed output's keys back before the fallback commits.
+        [Test]
+        public void Given_AFallbackRowKeyedLikeARowTheFailedOutputCommitted_When_TheBoundaryCatchesOnAnUpdate_Then_NoDuplicateKeyIsReported()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SamePositionHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            var duplicateWarnings = 0;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains("Duplicate key detected")) duplicateWarnings++;
+            }
+
+            // Act
+            Application.logMessageReceived += OnLog;
+            try
+            {
+                s_setTick.Invoke(1);
+                mounted.FlushStateForTest();
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+
+            // Assert — the fallback is read beside the count, since a pass that never caught reports nothing either
+            Assert.That((Texts(), duplicateWarnings), Is.EqualTo(("fallback", 0)));
+        }
+
         [Test]
         public void Given_AFallbackRowKeyedLikeARowTheFailedOutputNeverReached_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
         {

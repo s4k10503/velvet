@@ -78,7 +78,7 @@ namespace Velvet
             public HashSet<ComponentFiber>? SkippedByAbort;
         }
 
-        internal readonly record struct CommittedLeaf(int OldIndex, bool Linear);
+        internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
 
         // Runs effect cleanups for fibers present on the old side but absent on the new side
         // (orphans), before any DOM removal. Scoped to this reconcile call's expansion.
@@ -315,7 +315,7 @@ namespace Velvet
                 var newElement = _factory.CreateElement(node);
                 commit.NewElements.Add((newElement, false));
             }
-            commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal));
+            commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal, key));
         }
 
         // React's reconcileChildrenArray: while each leaf so far took the old leaf at its own index, a leaf
@@ -411,12 +411,14 @@ namespace Velvet
                 }
                 _ctx.ComponentRegistry.DisposeFibersUnder(orphanContainers);
             }
-            // What the rolled-back leaves put in UsedOldIndices and NewKeys stays there: a Suspense primary's
-            // leaves are keyed under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of the walk
-            // carries, a boundary's catch marks every old row of its output taken anyway (ForgetOldRowsOf), and the
-            // other rollbacks end the walk.
+            // The rolled-back leaves' keys leave NewKeys, so a boundary's fallback leaf carrying one of them is not
+            // reported as a duplicate. What they put in UsedOldIndices stays: a Suspense primary's leaves are keyed
+            // under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of the walk carries, a
+            // boundary's catch marks every old row of its output taken anyway (ForgetOldRowsOf), and the other
+            // rollbacks end the walk.
             for (var i = commit.NewElements.Count - 1; i >= preCount; i--)
             {
+                commit.NewKeys.Remove(commit.Committed[i].Key);
                 var (element, isExisting) = commit.NewElements[i];
                 if (!isExisting)
                 {
