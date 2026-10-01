@@ -2383,18 +2383,21 @@ def run_session(args, project, plan, directory, holder):
                 if stale.exists():
                     stale.unlink()
             log = directory / "session-{:03d}.log".format(position)
+            # As run_suite removes its own: a stale build-system line would read as this launch's.
+            if log.is_file():
+                log.unlink()
             command = [args.unity, SESSION_FLAG, "-batchmode", "-debugCodeOptimization", "-projectPath",
                        str(project), "-logFile", str(log)]
             env = dict(os.environ, **{SESSION_PLAN: str(plan_path)})
             env.pop(SESSION_SWITCH, None)
-            launched = time.time()
+            launched = [0.0]
             where, peaks, stuck = {}, {}, []
 
             def expired():
                 try:
                     current = json.loads(progress.read_text())
                 except (OSError, ValueError):
-                    return time.time() - launched > args.timeout
+                    return time.time() - launched[0] > args.timeout
                 where.update(current)
                 now = current["position"]
                 peaks[now] = max(peaks.get(now, 0), max(0, unity_busy() - 1))
@@ -2408,11 +2411,14 @@ def run_session(args, project, plan, directory, holder):
 
             if not wait_for_quiet(args.busy_timeout):
                 return runs, lost, "another Unity test run was still in flight after {}s".format(args.busy_timeout)
-            # The lock and the build system are retried as run_suite retries them; a session the build
-            # system stopped every time is given up, and its mutants' own launches retry for themselves.
+            # The lock and the build system are retried as run_suite retries them: a lock refusal up to
+            # LOCK_ATTEMPTS, a launch the build system stopped up to BUILD_SYSTEM_ATTEMPTS and never after
+            # one that outlived its bound. Past either the session is given up, and its mutants' own
+            # launches retry for themselves.
             refused = stopped = 0
             while True:
                 wait_for_release(project, LOCK_WAIT)
+                launched[0] = time.time()
                 _, timed_out, _, printed, group = launch(command, sum(
                     stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
                     for stage in item["stages"]) + args.timeout, holder, env, expired)

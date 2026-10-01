@@ -5807,12 +5807,18 @@ class SessionLaunchTests(unittest.TestCase):
         (self.directory / "runner-progress.json").write_text(json.dumps(
             {"position": position, "id": 0, "stage": 0, "phase": phase, "since": time.time() - age}))
 
+    # A group no process holds, so a settle over it returns at once.
+    GROUP = 2 ** 22 + 7
+
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
         self.log = Path(command[command.index("-logFile") + 1])
-        self.scripts.pop(0)(expired)
-        # A group no process holds, so a settle over it returns at once.
-        return 0.0, False, 0, "", 2 ** 22 + 7
+        # A script returns (timed out, what the editor printed) where the launch was not a plain one.
+        timed_out, printed = self.scripts.pop(0)(expired) or (False, "")
+        return 0.0, timed_out, 0, printed, self.GROUP
+
+    def stopped(self, expired):
+        self.log.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
 
     def finishes(self, expired):
         self.progress(len(self.plan["items"]))
@@ -5919,15 +5925,97 @@ class SessionLaunchTests(unittest.TestCase):
 
     def test_Given_ALaunchTheBuildSystemStopped_When_TheSessionGoesOn_Then_ItIsLaunchedAgain(self):
         # Arrange — stopped before the runner wrote anything, as run_suite's own launches can be.
-        def stopped(expired):
-            self.log.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
-        self.scripts = [stopped, self.finishes]
+        self.scripts = [self.stopped, self.finishes]
 
         # Act
         runs, _, failure = self.session()
 
         # Assert
         self.assertEqual((len(self.commands), failure, sorted(runs)), (2, None, [0, 1, 2, 3]))
+
+    def test_Given_ABuildSystemStopThatAlsoTimedOut_When_TheLaunchEnds_Then_TheSessionIsGivenUpUnrelaunched(self):
+        # Arrange — a relaunch after a timeout would charge the session a second full bound.
+        def stopped_late(expired):
+            self.stopped(expired)
+            return True, ""
+        self.scripts = [stopped_late, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "build system" in (failure or "")), (1, True))
+
+    def test_Given_TheBuildSystemStoppingEveryLaunch_When_TheSessionRetries_Then_ItStopsAtTheAttempts(self):
+        # Arrange
+        self.scripts = [self.stopped] * (mutation_check.BUILD_SYSTEM_ATTEMPTS + 1)
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "build system" in (failure or "")),
+                         (mutation_check.BUILD_SYSTEM_ATTEMPTS, True))
+
+    def test_Given_ALaunchTheBuildSystemStopped_When_ItIsRelaunched_Then_ItsGroupIsSettledFirst(self):
+        # Arrange — what the stopped launch left running would hold the project against the relaunch.
+        settled = []
+        saved = mutation_check.settle
+        mutation_check.settle = lambda group, seconds: settled.append((group, seconds))
+        self.addCleanup(setattr, mutation_check, "settle", saved)
+        self.scripts = [self.stopped, self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(settled, [(self.GROUP, mutation_check.BUILD_SYSTEM_SETTLE)])
+
+    def test_Given_ALaunchRefusedForTheLock_When_TheSessionGoesOn_Then_ItIsLaunchedAgain(self):
+        # Arrange
+        def refused(expired):
+            return False, mutation_check.LOCK_REFUSAL
+        self.scripts = [refused, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), failure), (2, None))
+
+    def test_Given_ARelaunchAfterABuildSystemStop_When_ItHasNotYetWrittenProgress_Then_ItHasItsOwnFullBound(self):
+        # Arrange — the first launch used most of the bound before the build system stopped it.
+        clock = [1000.0]
+        saved = mutation_check.time
+        mutation_check.time = argparse.Namespace(time=lambda: clock[0], sleep=lambda _seconds: None,
+                                                 strftime=saved.strftime)
+        self.addCleanup(setattr, mutation_check, "time", saved)
+        def stopped_late(expired):
+            clock[0] += self.args.timeout - 10
+            self.stopped(expired)
+        def still_compiling(expired):
+            clock[0] += 20
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [stopped_late, still_compiling]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [False])
+
+    def test_Given_AStaleSessionLogFromAnEarlierRun_When_TheLaunchWritesNone_Then_ItIsNotReadAsThisLaunchs(self):
+        # Arrange — an earlier campaign over the same output left a build-system line in the log.
+        stale = self.directory / "session-000.log"
+        stale.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
+        self.scripts = [lambda expired: None, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert — read as a launch that never started, not as one the build system stopped.
+        self.assertEqual((len(self.commands), "first stage" in (failure or "")), (1, True))
 
     def test_Given_TheSessionsOwnLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
         # Arrange — a session the campaign's own wait could not see would share the machine with the next.
