@@ -432,7 +432,7 @@ namespace Velvet
         // TextRawText holds the untransformed text captured at the text-set seams so the effect re-applies
         // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
         // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
-        // itself, so a later resolve that is no longer PreLine clears only what the resolver owns — never a
+        // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
         // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
         // — see RefCallbacks below). All three are pure (teardown = Remove(element)).
         public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();
@@ -477,6 +477,11 @@ namespace Velvet
         // FiberElementCleaner detaches the callback explicitly before an element is torn down or returned to
         // the pool, mirroring exactly how those three paint bindings are swept.
         public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
+
+        // Elements declaring an em or percentage leading-[…], each with the probe reading its font size. Not
+        // pure for the reason TextOverlineBindings is not: an entry owns live callbacks, which
+        // FiberElementCleaner detaches.
+        public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
 
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
@@ -1071,7 +1076,18 @@ namespace Velvet
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
-        public Stack<(ComponentFiber Fiber, bool IsMount)> DeferredInlineLayoutEffectFibers { get; } = new();
+        // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
+        public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
+
+        // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
+        // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // NextCaughtErrorSequence at the catch.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
+        internal long NextCaughtErrorSequence;
+
+        // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
+        // it (FiberEffects.CommitStrandedLayoutWork).
+        internal int EffectCommitDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
@@ -1146,6 +1162,10 @@ namespace Velvet
         private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
 
         private bool _drainingRefAttaches;
+
+        // A boundary catching a ref setup's failure mid-drain must not commit layout effects ahead of the setups
+        // still queued behind it (FiberEffects.IsCommitOnTheStack reads this).
+        internal bool IsDrainingRefAttaches => _drainingRefAttaches;
 
         // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
         // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue

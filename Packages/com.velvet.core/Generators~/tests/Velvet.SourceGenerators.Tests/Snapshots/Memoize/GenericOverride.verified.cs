@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class HomePage
     {
         public sealed override partial global::Velvet.VNode Header<T>(T title)
-            => global::Velvet.V.Memoized(() => Header_Impl<T>(title), new object?[] { title, typeof(T) });
+            => global::Velvet.V.Memoized(() => Header_Impl<T>(title), new object?[] { title, typeof(T), this });
     }
 }

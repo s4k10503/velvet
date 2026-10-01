@@ -29,9 +29,6 @@ namespace Velvet
     public sealed class MemoizeMethodAttribute : global::System.Attribute { }
 
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
-    public sealed class PureAttribute : global::System.Attribute { }
-
-    [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
     public sealed class ComponentAttribute : global::System.Attribute
     {
         public bool IsErrorBoundary { get; init; } = false;

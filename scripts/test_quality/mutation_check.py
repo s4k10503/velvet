@@ -80,6 +80,7 @@ INAPPLICABLE = "not a mutant (the operator does not apply)"
 NOT_BUILT = "not rebuilt"
 UNRECORDED = "not measured (no shard recorded it)"
 LOCKED = "not measured (the project lock was held)"
+BUILD_SYSTEM = "not measured (the build system failed)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
@@ -126,8 +127,16 @@ LOCK_REFUSAL = "another Unity instance is running with this project open"
 # way, so what decides that the lock was held is the editor's refusal and not this reading of it.
 LOCK_ATTEMPTS = 3
 LOCK_WAIT = 60
-# The last line `run_suite` writes into a log whose every launch was refused.
-LOCK_REFUSED_LINE = "mutation_check: the editor refused every launch for the project lock"
+# The last line `run_suite` writes into a log once `LOCK_ATTEMPTS` launches were refused.
+LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the project lock".format(
+    LOCK_ATTEMPTS)
+
+BUILD_SYSTEM_FAILURE = "Internal build system error."
+BUILD_SYSTEM_ATTEMPTS = 2
+# How long a build-system relaunch waits for what the failed launch left running before killing it.
+BUILD_SYSTEM_SETTLE = 60
+SETTLE_AFTER_KILL = 5
+BUILD_SYSTEM_FAILED_LINE = "mutation_check: the build system stopped the last launch before any diagnostic"
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -1710,8 +1719,8 @@ def relay(stream, said):
 
 def launch(command, timeout, holder, env=None, expired=None):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
-    once, and what it printed. `expired`, where given, is asked every few seconds as well, and a true
-    answer kills the editor as the bound does."""
+    once, what it printed, and the process group it ran in. `expired`, where given, is asked every few
+    seconds as well, and a true answer kills the editor as the bound does."""
     start = time.time()
     said = []
     if holder is not None:
@@ -1753,11 +1762,12 @@ def launch(command, timeout, holder, env=None, expired=None):
     wall = time.time() - start
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
-    return wall, timed_out, peak, "".join(said)
+    return wall, timed_out, peak, "".join(said), child.pid
 
 
 def lock_refused(log):
-    """Whether `run_suite` gave up on the launch that wrote `log` because every one was refused."""
+    """Whether `run_suite` gave up on the launch that wrote `log` because `LOCK_ATTEMPTS` launches were
+    refused."""
     try:
         lines = Path(log).read_text(errors="replace").rstrip().splitlines()
     except OSError:
@@ -1777,7 +1787,14 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     for a mutant that is no longer on disk.
 
     A launch the editor refused because the project was locked is made again, after the lock is
-    waited on. Where every one was refused, `log` ends with `LOCK_REFUSED_LINE`.
+    waited on. Once `LOCK_ATTEMPTS` were refused, `log` ends with `LOCK_REFUSED_LINE`. A launch whose
+    log `build_system_failure` reads is made again too, once `settle` has seen what it left running
+    exit or killed it, up to `BUILD_SYSTEM_ATTEMPTS` in all and never after one that outlived its
+    bound; where the last launch ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`.
+
+    `log` holds what the last launch wrote, and the closing line where there is one: what an earlier
+    run left there is removed before the first launch, and each earlier launch's is moved to
+    `launch_log(log, n)`.
     """
     command = [
         # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
@@ -1785,16 +1802,89 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
     ]
     command += scope
-    for _ in range(LOCK_ATTEMPTS):
+    log = Path(log)
+    if log.is_file():
+        log.unlink()
+    refused = failed = launches = 0
+    while True:
+        if launches and log.is_file():
+            os.replace(str(log), str(launch_log(log, launches)))
         wait_for_release(project, LOCK_WAIT)
-        wall, timed_out, peak, printed = launch(command, timeout, holder)
-        if LOCK_REFUSAL not in printed:
+        wall, timed_out, peak, printed, group = launch(command, timeout, holder)
+        launches += 1
+        if LOCK_REFUSAL in printed:
+            refused += 1
+            if refused < LOCK_ATTEMPTS:
+                continue
+            closing = LOCK_REFUSED_LINE
+        elif build_system_failure(log):
+            failed += 1
+            # Not after a timeout, which would charge the mutant a second full bound.
+            if failed < BUILD_SYSTEM_ATTEMPTS and not timed_out:
+                print("{}; launching again".format(build_system_failure(log)), flush=True)
+                settle(group, BUILD_SYSTEM_SETTLE)
+                continue
+            closing = BUILD_SYSTEM_FAILED_LINE
+        else:
             return wall, timed_out, peak
-    with open(str(log), "a") as written:
-        written.write("\n{}\n".format(LOCK_REFUSED_LINE))
-    # Not timed out, whatever the last launch did after refusing: a caller reads a timeout with no
-    # result as a hang, which is a kill.
-    return wall, False, peak
+        with open(str(log), "a") as written:
+            written.write("\n{}\n".format(closing))
+        # Not timed out, whatever the last launch did: a caller reads a timeout with no result as a
+        # hang, which is a kill.
+        return wall, False, peak
+
+
+def launch_log(log, number):
+    """Where `run_suite` moves the log of launch `number`, counted from one, before the next launch."""
+    return log.with_name("{}-launch{}{}".format(log.stem, number, log.suffix))
+
+
+def settle(group, seconds):
+    """Waits up to `seconds` for process group `group` to empty, then kills what is left in it and
+    waits, up to `SETTLE_AFTER_KILL`, for it to go."""
+    deadline = time.time() + seconds
+    killed = False
+    while True:
+        try:
+            os.killpg(group, 0)
+        except (ProcessLookupError, PermissionError):
+            return
+        if time.time() > deadline:
+            if killed:
+                return
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                return
+            killed = True
+            deadline = time.time() + SETTLE_AFTER_KILL
+        time.sleep(0.2)
+
+
+def build_system_failure(log):
+    """The line `log`'s build-system failure opens with, where it has one and no compiler diagnostic.
+
+    `: error ` rather than `error CS`, so that an analyzer's own error, which carries no CS code, keeps
+    the launch a build the code stopped.
+    """
+    try:
+        lines = Path(log).read_text(errors="replace").splitlines()
+    except OSError:
+        return None
+    if any(": error " in line for line in lines):
+        return None
+    return next((line.strip() for line in lines if line.strip().startswith(BUILD_SYSTEM_FAILURE)), None)
+
+
+def build_system_failed(log):
+    """The build-system line of a log `run_suite` gave up on because its last launch ended on one."""
+    try:
+        lines = Path(log).read_text(errors="replace").rstrip().splitlines()
+    except OSError:
+        return None
+    if not lines or lines[-1] != BUILD_SYSTEM_FAILED_LINE:
+        return None
+    return next((line.strip() for line in lines if line.strip().startswith(BUILD_SYSTEM_FAILURE)), None)
 
 
 # Anchored on a source path and a position, so an assertion message quoting the words "error CS" is
@@ -2318,17 +2408,30 @@ def run_session(args, project, plan, directory, holder):
 
             if not wait_for_quiet(args.busy_timeout):
                 return runs, lost, "another Unity test run was still in flight after {}s".format(args.busy_timeout)
-            printed = ""
-            for _ in range(LOCK_ATTEMPTS):
+            # The lock and the build system are retried as run_suite retries them; a session the build
+            # system stopped every time is given up, and its mutants' own launches retry for themselves.
+            refused = stopped = 0
+            while True:
                 wait_for_release(project, LOCK_WAIT)
-                _, _, _, printed = launch(command, sum(
+                _, timed_out, _, printed, group = launch(command, sum(
                     stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
                     for stage in item["stages"]) + args.timeout, holder, env, expired)
-                if LOCK_REFUSAL not in printed:
-                    break
-            else:
-                return runs, lost, "the editor refused each of {} session launches for the project lock".format(
-                    LOCK_ATTEMPTS)
+                if LOCK_REFUSAL in printed:
+                    refused += 1
+                    if refused < LOCK_ATTEMPTS:
+                        continue
+                    return runs, lost, "the editor refused {} session launches for the project lock".format(
+                        LOCK_ATTEMPTS)
+                failure = build_system_failure(log) if not where else None
+                if failure:
+                    stopped += 1
+                    if stopped < BUILD_SYSTEM_ATTEMPTS and not timed_out:
+                        print("{}; launching the session again".format(failure), flush=True)
+                        os.replace(str(log), str(launch_log(log, stopped)))
+                        settle(group, BUILD_SYSTEM_SETTLE)
+                        continue
+                    return runs, lost, "the build system stopped the session's launch: {}".format(failure)
+                break
             # Read again rather than taken from the last `expired`, which the editor can outlive by a sample.
             try:
                 where.update(json.loads(progress.read_text()))
@@ -2742,6 +2845,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
+    if baseline_results.exists():
+        baseline_results.unlink()
     # Derived once: which fixtures redden on the edit rather than on what it does.
     text_readers = text_reading_fixtures(project)
     # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
@@ -2882,6 +2987,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             counts = read_counts(results)
             killers = ()
             blamed = build_error(log)
+            stalled = build_system_failed(log)
             if early:
                 killers = early
                 behavioural = killed_by_behaviour(early, text_readers)
@@ -2917,8 +3023,12 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "the build stopped in {}".format(blamed)
             elif counts is None and lock_refused(log):
                 mutant.verdict = LOCKED
-                mutant.detail = ("the editor refused each of {} launches because another held the "
+                mutant.detail = ("the editor refused {} launches because another held the "
                                  "project; read the log".format(LOCK_ATTEMPTS))
+            elif counts is None and stalled:
+                mutant.verdict = BUILD_SYSTEM
+                mutant.detail = ("the last launch ended on \"{}\" with no compiler diagnostic; read "
+                                 "the log".format(stalled))
             elif counts is None:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the runner wrote no result"

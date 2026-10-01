@@ -343,6 +343,7 @@ namespace Velvet
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
                 FlushCompletedTransitionIndicator(fiber);
             }
+            FiberEffects.CommitStrandedLayoutWork(context!);
         }
 
         private static void SettleCompletedTransition(ComponentFiber fiber)
@@ -483,6 +484,7 @@ namespace Velvet
                     // work) and the reconcile-active bracket was exited by ContinueReconcile above.
                     fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
                 }
+                FiberEffects.CommitStrandedLayoutWork(resumeContext);
             }
             catch (Exception ex)
             {

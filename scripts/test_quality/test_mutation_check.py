@@ -3793,9 +3793,12 @@ class ProjectLockTests(unittest.TestCase):
         self.assertEqual(last, getattr(mutation_check, "LOCK_REFUSED_LINE", None))
 
 
+    # GREEN_ON_BASE(refactor): the base passes this too, since only the editor's bound changed here,
+    # from one second to ten; what the case pins is unchanged.
     def test_Given_AnEditorRefusedTheLockThatOutlivesItsBoundEachTime_When_ItIsRun_Then_ItIsNotReadAsHung(self):
         # Arrange — a refusal followed by an editor that does not exit, so each launch ends at the
-        # bound rather than at the refusal.
+        # bound rather than at the refusal. The editor is given ten seconds rather than one: at one,
+        # this case errored on a loaded machine.
         body = textwrap.dedent("""\
             open(log, "w").write("editor log\\n")
             sys.stdout.write({!r})
@@ -3806,7 +3809,7 @@ class ProjectLockTests(unittest.TestCase):
             # Act
             with contextlib.redirect_stdout(io.StringIO()):
                 reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
-                                                   root / "results.xml", root / "run.log", 1)
+                                                   root / "results.xml", root / "run.log", 10)
             last = (root / "run.log").read_text().rstrip().splitlines()[-1]
 
         # Assert
@@ -3975,6 +3978,312 @@ class LockVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, 1)
+
+
+# Lines of the editor log a CI campaign recorded for a mutant launch the build system stopped: no
+# compiler diagnostic, and the banner a compile error also ends with.
+BUILD_SYSTEM_LOG = textwrap.dedent("""\
+    [ScriptCompilation] Requested script compilation because: Assetdatabase observed changes in script compilation related files
+    Starting: /opt/unity/Editor/Data/Tools/BuildPipeline/bee_backend --ipc --defer-dag-verification --dagfile="Library/Bee/2400b0aEDbg.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+    WorkingDir: /github/workspace
+    DisplayProgressbar: Compiling Scripts
+    Internal build system error. Request cancelled while reading the binlog.
+    The backend process appears to still be running.
+    Caught exception:
+    Cannot access a closed pipe.
+    AssetDatabase: script compilation time: 0.765877s
+    Total cache size 753824
+    Total cache size after purge 753824, took 00:00:00.0119856
+    Scripts have compiler errors.
+
+    SDL leaked 2 allocations
+    """)
+
+ANALYZER_ERROR = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
+
+
+class BuildSystemFailureTests(unittest.TestCase):
+    """A launch the build system stopped with no diagnostic in its log measured nothing about the
+    mutation, and is made again."""
+
+    # An editor below that outlives its bound is given ten seconds rather than one: at one, these cases
+    # errored on a loaded machine.
+    def launched(self, body, timeout=30):
+        """How many launches `run_suite` made of an editor running `body`, the counts it left, the
+        log's last line, what `run_suite` returned, and what the editor wrote to `seen`. `launch` in
+        `body` is which launch this is, from zero."""
+        prelude = textwrap.dedent("""\
+            launches = os.path.join(project, "launches")
+            launch = len(open(launches).read()) if os.path.exists(launches) else 0
+            open(launches, "a").write("x")
+            seen = os.path.join(project, "seen")
+            """)
+        with scripted_editor(prelude + body) as (editor, project, root, _):
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", timeout)
+            made = len((project / "launches").read_text())
+            counts = mutation_check.read_counts(root / "results.xml")
+            last = (root / "run.log").read_text().rstrip().splitlines()[-1]
+            seen = (project / "seen").read_text() if (project / "seen").exists() else None
+        return made, counts, last, reading, seen
+
+    def test_Given_ABuildSystemFailureOnTheFirstLaunchOnly_When_ItIsRun_Then_TheNextLaunchsResultStands(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, counts, _, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(counts, {"total": 1, "passed": 1, "failed": 0, "inconclusive": 0})
+
+    def test_Given_ABuildSystemFailureOnEveryLaunch_When_ItIsRun_Then_ItIsLaunchedTwiceAndItsLogEndsSayingSo(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            sys.exit(1)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        made, _, last, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual((made, last),
+                         (2, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", None)))
+
+    def test_Given_ABuildSystemFailureThatOutlivesItsBound_When_ItIsRun_Then_ItIsNotReadAsHung(self):
+        # Arrange -- the failure followed by an editor that does not exit, so the launch ends at the
+        # bound rather than at the failure.
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+        with scripted_editor(body) as (editor, project, root, _):
+            # Act
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", 10)
+            last = (root / "run.log").read_text().rstrip().splitlines()[-1]
+
+        # Assert
+        self.assertEqual((reading[1], last),
+                         (False, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", None)))
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever it does after;
+    # this pins that the relaunch it now gets is not made after the bound has already been spent.
+    def test_Given_ABuildSystemFailureThatOutlivesItsBound_When_ItIsRun_Then_ItIsNotLaunchedAgain(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        made, _, _, _, _ = self.launched(body, timeout=10)
+
+        # Assert
+        self.assertEqual(made, 1)
+
+    def test_Given_AnEditorAppendingToItsLog_When_TheRelaunchHangs_Then_ItIsReadAsTimedOut(self):
+        # Arrange -- the relaunch leaves the first launch's build-system line in the log it appends to.
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "a").write({!r})
+                sys.exit(1)
+            open(log, "a").write("tests started\\n")
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        _, _, _, reading, _ = self.launched(body, timeout=10)
+
+        # Assert
+        self.assertTrue(reading[1])
+
+    def test_Given_AFailedLaunchLeavingAProcessThatFinishes_When_ItIsRelaunched_Then_TheRelaunchStartsAfterIt(self):
+        # Arrange -- launch 0 leaves a process in its group that marks `finished` two seconds later.
+        body = textwrap.dedent("""\
+            finished = os.path.join(project, "finished")
+            if launch == 0:
+                lingering = subprocess.Popen(
+                    [sys.executable, "-c",
+                     "import sys, time; time.sleep(2); open(sys.argv[1], 'w').write('')", finished],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                open(os.path.join(holders, "lingering"), "w").write(str(lingering.pid))
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            open(seen, "w").write("finished" if os.path.exists(finished) else "running")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, _, _, _, seen = self.launched(body)
+
+        # Assert
+        self.assertEqual(seen, "finished")
+
+    def test_Given_AFailedLaunchLeavingAProcessThatOutlivesTheWait_When_ItIsRelaunched_Then_ThatProcessIsGone(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            record = os.path.join(project, "lingering")
+            if launch == 0:
+                lingering = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"],
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                open(os.path.join(holders, "lingering"), "w").write(str(lingering.pid))
+                open(record, "w").write(str(lingering.pid))
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            try:
+                os.kill(int(open(record).read()), 0)
+                open(seen, "w").write("running")
+            except ProcessLookupError:
+                open(seen, "w").write("gone")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        with mock.patch.object(mutation_check, "BUILD_SYSTEM_SETTLE", 1):
+            _, _, _, _, seen = self.launched(body)
+
+        # Assert
+        self.assertEqual(seen, "gone")
+
+    def test_Given_AnEditorAppendingToItsLog_When_TheRelaunchWritesAResult_Then_TheLogHoldsTheRelaunchAlone(self):
+        # Arrange -- the relaunch appends to whatever log it finds.
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "a").write({!r})
+                sys.exit(1)
+            open(log, "a").write("editor log\\n")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, _, last, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(last, "editor log")
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever its log holds;
+    # this pins that a build-system line an earlier run left in the log is not read as this launch's.
+    def test_Given_ABuildSystemLineAnEarlierRunLeftInTheLog_When_TheLaunchAppendsAndWritesNoResult_Then_ItIsLaunchedOnce(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(os.path.join(project, "launches"), "a").write("x")
+            open(log, "a").write("editor log\\n")
+            sys.exit(1)
+            """)
+        with scripted_editor(body) as (editor, project, root, _):
+            (root / "run.log").write_text(BUILD_SYSTEM_LOG)
+
+            # Act
+            run_scripted(editor, project, root)
+            made = len((project / "launches").read_text())
+
+        # Assert
+        self.assertEqual(made, 1)
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever its log says;
+    # this pins that an analyzer's error, which carries no CS code, still keeps it to one launch.
+    def test_Given_ABuildSystemLineBesideAnAnalyzerError_When_ItIsRun_Then_ItIsLaunchedOnce(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            sys.exit(1)
+            """).format(BUILD_SYSTEM_LOG + ANALYZER_ERROR)
+
+        # Act
+        made, _, _, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(made, 1)
+
+
+class BuildSystemFailedCampaign(StubbedCampaign):
+    """A campaign whose mutant launch leaves no result and a log `run_suite` ended as it ends one whose
+    last launch the build system stopped."""
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+        Path(log).write_text("{}\n{}\n".format(
+            BUILD_SYSTEM_LOG, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", "")))
+        return 0.0, False, 0
+
+
+class BuildSystemVerdictTests(unittest.TestCase):
+    """A mutant the build system stopped on its last launch was never measured, and says so rather than
+    reading as code that does not compile."""
+
+    def recorded(self):
+        campaign = BuildSystemFailedCampaign()
+        code = campaign.run_over_diff()
+        record = json.loads((campaign.project / "out" / "mutant-001.json").read_text())
+        return code, record, campaign.printed
+
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Recorded_Then_ItIsNotMeasured(self):
+        # Act
+        _, record, _ = self.recorded()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), getattr(mutation_check, "BUILD_SYSTEM", None))
+
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Recorded_Then_ItsDetailNamesTheLine(self):
+        # Act
+        _, record, _ = self.recorded()
+
+        # Assert
+        self.assertIn("Internal build system error. Request cancelled while reading the binlog.",
+                      record.get("detail"))
+
+    # GREEN_ON_BASE(characterization): the base fails this campaign too, reading the mutant as
+    # uncompilable; this pins that the verdict replacing that one still fails it as unmeasured.
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Decided_Then_TheCampaignFailsNamingItUnmeasured(self):
+        # Act
+        code, _, printed = self.recorded()
+
+        # Assert
+        self.assertEqual((code, "--- mutants nothing was asked of the suite about ---" in printed),
+                         (1, True))
+
+
+class SilentBaselineCampaign(StubbedCampaign):
+    """A campaign whose baseline launch writes no result, over an output an earlier campaign left a
+    green baseline in."""
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        (self.project / "out").mkdir()
+        (self.project / "out" / "baseline.xml").write_text(GREEN_RESULTS)
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            Path(log).write_text("")
+            return 0.0, False, 0
+        return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+
+
+class StaleBaselineTests(unittest.TestCase):
+    """A baseline launch that wrote nothing is not read off an earlier campaign's result."""
+
+    def test_Given_AnEarlierGreenBaselineInTheOutput_When_TheBaselineWritesNoResult_Then_TheRunStopsSayingSo(self):
+        # Arrange
+        campaign = SilentBaselineCampaign()
+
+        # Act
+        code = campaign.run_over_diff()
+
+        # Assert
+        self.assertIn("the baseline run wrote no result", str(code))
 
 
 class ParityKilledCampaign(StubbedCampaign):
@@ -5500,8 +5809,10 @@ class SessionLaunchTests(unittest.TestCase):
 
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
+        self.log = Path(command[command.index("-logFile") + 1])
         self.scripts.pop(0)(expired)
-        return 0.0, False, 0, ""
+        # A group no process holds, so a settle over it returns at once.
+        return 0.0, False, 0, "", 2 ** 22 + 7
 
     def finishes(self, expired):
         self.progress(len(self.plan["items"]))
@@ -5605,6 +5916,18 @@ class SessionLaunchTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((self.commands, "still in flight" in (stopped or "")), ([], True))
+
+    def test_Given_ALaunchTheBuildSystemStopped_When_TheSessionGoesOn_Then_ItIsLaunchedAgain(self):
+        # Arrange — stopped before the runner wrote anything, as run_suite's own launches can be.
+        def stopped(expired):
+            self.log.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
+        self.scripts = [stopped, self.finishes]
+
+        # Act
+        runs, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), failure, sorted(runs)), (2, None, [0, 1, 2, 3]))
 
     def test_Given_TheSessionsOwnLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
         # Arrange — a session the campaign's own wait could not see would share the machine with the next.

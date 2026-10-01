@@ -70,6 +70,12 @@ namespace Velvet.SourceGenerators.Diagnostics
             "Method '{0}' is an instance member of '{1}'; [MemoizeMethod] supports a struct instance member only when it is readonly and the struct is not a ref struct",
             "A lambda in a struct cannot capture this, so the generated factory calls _Impl on a copy of it: a write _Impl makes to the struct would reach the copy and be lost, so the member must be readonly. A ref struct cannot be copied into anything the factory can capture at all.");
 
+        public static readonly DiagnosticDescriptor Vel012ImplReadsUnkeyedInstanceMember = Warn(
+            "VEL012",
+            "[MemoizeMethod] _Impl reads an instance member the memo does not key on",
+            "'{0}' reads '{1}', which the memo generated for '{2}' does not key on; pass it to '{2}' as a parameter",
+            "The generated wrapper keys the memo on its parameters, its type arguments and the instance it is called on, so a field or property that can change while the instance stays the same leaves the cached node stale. A static, const or readonly field and a static, init-only or get-only auto-property are fixed for the instance and are not reported, and nor is a read in a lambda or local function that runs after _Impl returns.");
+
         public static readonly DiagnosticDescriptor Vel100UseEffectMissingDep = HookWarn(
             "VEL100",
             "Hook lambda captures a local that is not in the deps array",

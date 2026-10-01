@@ -62,6 +62,8 @@ namespace Velvet.Tests
         }
 #endif
 
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmNavigateAsyncSteadyState_When_Navigated_Then_AllocationMatchesPinnedExpectation()
         {
@@ -72,13 +74,15 @@ namespace Velvet.Tests
             }
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
 
             // Assert
             Assert.That(blocks, Is.EqualTo(88));
         }
 
 #if UNITY_EDITOR
+        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
+        // This change reads it over three windows.
         [Test]
         public void Given_WarmYieldAwaitBeforeNavigate_When_Navigated_Then_AllocationMatchesPinnedExpectation()
         {
@@ -94,7 +98,7 @@ namespace Velvet.Tests
             }
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
+            var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
 
             // Assert
             Assert.That(blocks, Is.EqualTo(88));

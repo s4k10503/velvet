@@ -283,7 +283,7 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            var hookPipedLocals = new List<VariableDefinition>();
+            var hookPipedLocals = new List<(VariableDefinition Local, Instruction Stored)>();
             var hookCalls = new List<Instruction>();
             if (!TryScanHookSection(body, transitiveHookCache, hookPipedLocals, hookCalls,
                     out var lastHookBoundary))
@@ -304,7 +304,7 @@ namespace Velvet.CodeGen
                 // No hook call: the gate keys on the parameters alone and goes ahead of the first instruction, so
                 // it precedes every return and every protected region, and a hit's early return skips no hook
                 // call. The checks below have nothing to find.
-                analysis = new HookAnalysis(hookPipedLocals, null, returns);
+                analysis = new HookAnalysis(hookPipedLocals, null, returns, 0);
                 return !RequestsPropsBail(method);
             }
 
@@ -340,8 +340,107 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns);
+            analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns,
+                StackDepthAfter(body, lastHookBoundary));
             return true;
+        }
+
+        // One walk in instruction order is enough because ECMA-335 III.1.7.5 requires it to be: valid IL lets a
+        // single forward pass infer the stack at every instruction, and leaves it empty where an instruction
+        // after an unconditional branch is reached by no earlier branch. No handler's entry depth is seeded:
+        // TryAnalyze has refused a boundary inside a protected region or a handler before this runs, and
+        // control leaves one only through `leave`, which empties the stack, or through `endfinally`,
+        // `endfilter`, `throw` or `rethrow`, after each of which the walk restarts at zero.
+        private static int StackDepthAfter(MethodBody body, Instruction boundary)
+        {
+            var depthAtTarget = new Dictionary<Instruction, int>();
+            var depth = 0;
+            foreach (var instr in body.Instructions)
+            {
+                if (depthAtTarget.TryGetValue(instr, out var reached)) depth = reached;
+                depth = instr.OpCode.StackBehaviourPop == StackBehaviour.PopAll
+                    ? 0
+                    : depth + Pushes(instr) - Pops(instr);
+                if (instr == boundary) break;
+
+                switch (instr.Operand)
+                {
+                    case Instruction target:
+                        depthAtTarget[target] = depth;
+                        break;
+                    case Instruction[] targets:
+                        foreach (var t in targets) depthAtTarget[t] = depth;
+                        break;
+                }
+                switch (instr.OpCode.FlowControl)
+                {
+                    case FlowControl.Branch:
+                    case FlowControl.Throw:
+                    case FlowControl.Return:
+                        depth = 0;
+                        break;
+                }
+            }
+            return depth;
+        }
+
+        private static int Pushes(Instruction instr)
+        {
+            switch (instr.OpCode.StackBehaviourPush)
+            {
+                case StackBehaviour.Push0:
+                    return 0;
+                case StackBehaviour.Push1_push1:
+                    return 2;
+                case StackBehaviour.Varpush:
+                    return instr.Operand is IMethodSignature signature ? CallPushes(signature) : 1;
+                default:
+                    return 1;
+            }
+        }
+
+        // An init accessor returns `void modreq(IsExternalInit)`, which pushes nothing either.
+        private static int CallPushes(IMethodSignature signature)
+        {
+            var type = signature.ReturnType;
+            while (type is IModifierType modified) type = modified.ElementType;
+            return type.MetadataType == MetadataType.Void ? 0 : 1;
+        }
+
+        private static int Pops(Instruction instr)
+        {
+            switch (instr.OpCode.StackBehaviourPop)
+            {
+                case StackBehaviour.Pop0:
+                case StackBehaviour.PopAll:
+                    return 0;
+                case StackBehaviour.Varpop:
+                    // `ret` is the one Varpop carrying no signature, and the walk restarts at zero after it.
+                    return instr.Operand is IMethodSignature signature ? CallPops(instr.OpCode.Code, signature) : 0;
+                case StackBehaviour.Pop1:
+                case StackBehaviour.Popi:
+                case StackBehaviour.Popref:
+                    return 1;
+                case StackBehaviour.Popi_popi_popi:
+                case StackBehaviour.Popref_popi_popi:
+                case StackBehaviour.Popref_popi_popi8:
+                case StackBehaviour.Popref_popi_popr4:
+                case StackBehaviour.Popref_popi_popr8:
+                case StackBehaviour.Popref_popi_popref:
+                    return 3;
+                default:
+                    return 2;
+            }
+        }
+
+        private static int CallPops(Code code, IMethodSignature signature)
+        {
+            var pops = signature.Parameters.Count;
+            // MUTANT_SURVIVES(unreachable): C# declares no explicit-this method, and Roslyn's reference to one declared
+            // in IL elsewhere carries HasThis without ExplicitThis, so no call a C# body makes sets it.
+            if (signature.HasThis && !signature.ExplicitThis && code != Code.Newobj) pops++;
+            if (code == Code.Calli) pops++;
+            return pops;
         }
 
         private static List<Instruction> CollectReturns(Collection<Instruction> instructions)
@@ -381,7 +480,7 @@ namespace Velvet.CodeGen
         // into. False means the shape is unweavable and the whole method bails; a true result with a null
         // boundary means the body reached no hook at all.
         private static bool TryScanHookSection(MethodBody body, Dictionary<string, bool> transitiveHookCache,
-            List<VariableDefinition> hookPipedLocals, List<Instruction> hookCalls,
+            List<(VariableDefinition Local, Instruction Stored)> hookPipedLocals, List<Instruction> hookCalls,
             out Instruction? lastHookBoundary)
         {
             lastHookBoundary = null;
@@ -421,7 +520,7 @@ namespace Velvet.CodeGen
                 }
                 if (capture == HookCaptureMatch.Matched)
                 {
-                    hookPipedLocals.Add(local!);
+                    hookPipedLocals.Add((local!, boundary!));
                     lastHookBoundary = boundary;
                     continue;
                 }
@@ -956,12 +1055,23 @@ namespace Velvet.CodeGen
             body.Variables.Add(cachedLocal);
             body.Variables.Add(resultLocal);
 
+            // Each hook value is copied into a local of the weaver's own where it is stored, and the deps array
+            // reads the copies: Roslyn gives two nested hooks' results one temp, and a statement's local can be
+            // assigned again before the gate, so the local a hook stored into need not hold its value there.
+            var copies = new List<(VariableDefinition Local, Instruction Stored, VariableDefinition Copy)>();
+            foreach (var (local, stored) in analysis.HookCaptures)
+            {
+                var copy = new VariableDefinition(local.VariableType);
+                body.Variables.Add(copy);
+                copies.Add((local, stored, copy));
+            }
+
             var insertAfter = analysis.LastHookBoundary;
             // Deps layout: each component parameter (a reactive prop) first, then every value flowing out of a
             // hook call. A prop change is therefore a miss under the same Object.is comparison as a hook input.
             var parameters = method.Parameters;
             var paramCount = parameters.Count;
-            var depsCount = paramCount + analysis.HookPipedLocals.Count;
+            var depsCount = paramCount + copies.Count;
 
             var injected = new List<Instruction>();
             injected.Add(Instruction.Create(OpCodes.Ldc_I4, depsCount));
@@ -979,11 +1089,11 @@ namespace Velvet.CodeGen
                 }
                 injected.Add(Instruction.Create(OpCodes.Stelem_Ref));
             }
-            for (var i = 0; i < analysis.HookPipedLocals.Count; i++)
+            var depIndex = paramCount;
+            foreach (var (_, _, local) in copies)
             {
-                var local = analysis.HookPipedLocals[i];
                 injected.Add(Instruction.Create(OpCodes.Dup));
-                injected.Add(Instruction.Create(OpCodes.Ldc_I4, paramCount + i));
+                injected.Add(Instruction.Create(OpCodes.Ldc_I4, depIndex++));
                 injected.Add(Instruction.Create(OpCodes.Ldloc, local));
                 if (local.VariableType.IsValueType || local.VariableType.IsGenericParameter)
                 {
@@ -1001,6 +1111,12 @@ namespace Velvet.CodeGen
 
             var afterHitBranch = Instruction.Create(OpCodes.Nop);
             injected.Add(Instruction.Create(OpCodes.Brfalse, afterHitBranch));
+            // A hook nested in an argument list (`V.Label(text: Hooks.UseStore(...).ToString())`) leaves the
+            // arguments evaluated ahead of it on the stack at the gate, and a `ret` over them is invalid IL.
+            for (var i = 0; i < analysis.StackDepthAtGate; i++)
+            {
+                injected.Add(Instruction.Create(OpCodes.Pop));
+            }
             injected.Add(Instruction.Create(OpCodes.Ldloc, cachedLocal));
             injected.Add(Instruction.Create(OpCodes.Ret));
             injected.Add(afterHitBranch);
@@ -1021,6 +1137,13 @@ namespace Velvet.CodeGen
                 {
                     il.InsertBefore(entry, ins);
                 }
+            }
+
+            // After the gate, so that a copy lands between its store and the gate where that store is the boundary.
+            foreach (var (local, stored, copy) in copies)
+            {
+                il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
+                il.InsertAfter(stored, Instruction.Create(OpCodes.Ldloc, local));
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
@@ -1105,17 +1228,20 @@ namespace Velvet.CodeGen
 
         private readonly struct HookAnalysis
         {
-            public HookAnalysis(IReadOnlyList<VariableDefinition> hookPipedLocals,
+            public HookAnalysis(IReadOnlyList<(VariableDefinition Local, Instruction Stored)> hookCaptures,
                 Instruction? lastHookBoundary,
-                IReadOnlyList<Instruction> returns)
+                IReadOnlyList<Instruction> returns,
+                int stackDepthAtGate)
             {
-                HookPipedLocals = hookPipedLocals;
+                HookCaptures = hookCaptures;
                 LastHookBoundary = lastHookBoundary;
                 Returns = returns;
+                StackDepthAtGate = stackDepthAtGate;
             }
-            public IReadOnlyList<VariableDefinition> HookPipedLocals { get; }
+            public IReadOnlyList<(VariableDefinition Local, Instruction Stored)> HookCaptures { get; }
             public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
+            public int StackDepthAtGate { get; }
         }
     }
 

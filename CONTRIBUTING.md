@@ -182,8 +182,8 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 says when it does which.
 
 **A pull request's CI runs the campaign once review has settled, and that run is the one the pull
-request answers to.** The `Mutation campaign` workflow runs on the pull request's head when the
-`automerge` label is added, and again on each push while it is on — once per labelled head;
+request answers to.** The `Mutation campaign` workflow runs on the pull request's head once it carries
+the `automerge` label and its `Test` run has passed — once per labelled head;
 [Merging a pull request](#merging-a-pull-request) owns when it is dispatched and what a merge requires
 of it. `Mutation campaign ▸ mutation-plan` generates the mutants of the head's diff against its merge
 base with the pull request's base, taking the readings `--list` takes, and stops there when there are none — because no mutable package source
@@ -892,7 +892,8 @@ the real jobs, and pass when every dependency is `success` **or** `skipped` — 
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
 The mutation campaign has no row: `.github/workflows/mutation.yml` starts on a dispatch alone, once a
-pull request carries the `automerge` label, and no branch-protection rule requires its check.
+pull request carries the `automerge` label and its `Test` run has passed, and no branch-protection rule
+requires its check.
 [Merging a pull request](#merging-a-pull-request) says what requires it instead.
 
 In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
@@ -954,11 +955,19 @@ above, so only an account holding that can opt a pull request in. The workflow d
 label; it has to exist in the repository.
 
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
-reopening a labelled pull request and pushing to one. `scripts/pr/automerge.py` then reads the head's
+reopening a labelled pull request, pushing to one, and a `pull_request` run of `Test` passing on a
+labelled one's head. `scripts/pr/automerge.py` then reads the head's
 runs of `.github/workflows/mutation.yml` — the campaign is a run of that file, and a check of another
 workflow bearing a campaign job's name is not one. Where there is none, or the newest was cancelled,
-it dispatches one onto the head's branch; where the newest is still running it leaves it to finish;
-and otherwise it dispatches the merge run. A failed campaign is a verdict about its head, which a push
+it dispatches one onto the head's branch once `Test` has passed there — the passing run hands the pull
+request off itself unless a newer `pull_request` run of `Test` on the head has started since, and a
+pull request event reads the head's newest such run, which passes only once it has concluded `success`
+or its `Required checks (Unity)` job has — since a campaign over a head whose suites then fail
+measured a change that cannot merge. Until then it dispatches nothing, and cancels a campaign still
+open on an older head of the branch. Where
+the newest is still running it leaves it to finish; and otherwise a hand-off from a pull request event
+dispatches the merge run, while one from a passing `Test` run leaves the merge to that run's own merge
+job. A failed campaign is a verdict about its head, which a push
 or a re-run of its failed jobs asks again, and a cancelled one is asked again by adding the label
 again, with no push. The campaign reads the head against
 its merge base with the pull request's base, with the licence secrets, so it is dispatched onto a
@@ -966,9 +975,11 @@ branch of this repository only: a head on a fork gets none, and settle refuses t
 holds one campaign at a time — a dispatch for a newer head cancels the run measuring the one before
 it — and no `Test` run shares its concurrency group. Two hand-offs of one head close enough together
 that neither finds the other's run can still dispatch twice, and the second then cancels the first. A
-hand-off whose reading or dispatch fails logs a warning, naming `settle.py update` for a branch that
-predates the workflow, and still passes: its job is a check on the head, and a failed one would
-have settle and the hook refuse that head, a merge by hand without the label included.
+hand-off whose campaign dispatch fails names `settle.py update` for a branch that predates the
+workflow. One from a pull request event logs a failed reading or dispatch as a warning and still
+passes: its job is a check on the head, and a failed one would have settle and the hook refuse that
+head, a merge by hand without the label included. One from a passing `Test` run runs on the default
+branch's commit, so it fails as the merge job does.
 
 `scripts/pr/campaign.py` owns what a merge requires of the campaign, and `settle.py merge`, the
 automerge runs through it, and `refuse/merge_unproven_head.py` all ask it: a head carrying the label
@@ -987,14 +998,18 @@ it, when a campaign on its head passes, when a hand-off finds the campaign alrea
 dispatched with its number (*Actions ▸ Automerge ▸ Run workflow*). It asks about the open pull
 requests carrying the label when `Test` or `Source generators` passes a push run on `main`, which is
 what clears a red base, and when a release
-dispatch of `UPM` passes, which is what clears an unpublished release. A refusal cleared by anything
+dispatch of `UPM` passes, which is what clears an unpublished release. Each of those but a passing
+`pull_request` run of `Test`, whose own hand-off has it, dispatches the campaign rather than asking
+settle where a labelled head has none and the hand-off's reading of `Test` passes there, so the
+campaign does not rest on the two hand-offs' events alone. A refusal cleared by anything
 else — a `Test` run dispatched by hand onto the head, for one — waits for the next of those events or
 for a manual dispatch.
 
 A completed run whose head is no longer the pull request's is left to the newer head's runs, and a head
 on a fork is refused, as `settle.py` refuses one by hand. A hand-off reaches a pull request based on a
-maintenance line only where that line holds the workflow, since the events behind one run the workflow
-file the base branch holds; a completed run reaches it either way. On a line without it, a labelled
+maintenance line only where that line holds the workflow: the pull request events run the workflow
+file the base branch holds, and the hand-off from a passing `Test` run asks the base for that file. A
+completed run's merge job reaches it either way. On a line without it, a labelled
 pull request gets no campaign and so no automerge: merge it by hand, without the label.
 
 The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's own token, because a
@@ -1004,7 +1019,8 @@ carried would go unseen until some later push. The `upm` split would wait for th
 the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
 Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
-holds it as it holds anyone: it lists no bypass actor.
+holds it as it holds anyone: it lists no bypass actor. A campaign those jobs dispatch goes out with
+the workflow's own token instead, granted Actions write, since this one only reads them.
 
 ### Enabling Unity tests (free Personal license)
 

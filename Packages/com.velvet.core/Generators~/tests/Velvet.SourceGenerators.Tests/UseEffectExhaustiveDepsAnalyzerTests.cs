@@ -1256,5 +1256,46 @@ namespace MyApp.Pages
             var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
             Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
         }
+
+        [Fact]
+        public void DoesNotReport_When_Captured_Property_Is_GetOnlyAuto()
+        {
+            // A get-only auto-property is assigned only at construction, as a readonly field is.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public sealed class HomePage
+    {
+        public HomePage(int limit) { Limit = limit; }
+        public int Limit { get; }
+        public void Render()
+        {
+            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(Limit), new object[] { });
+        }
+    }
+}";
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
+        public void Reports_Vel100_When_Captured_GetOnlyProperty_Has_A_Body()
+        {
+            const string source = @"
+namespace MyApp.Pages
+{
+    public sealed class HomePage
+    {
+        private int _limit;
+        public int Limit => _limit;
+        public void Render()
+        {
+            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(Limit), new object[] { });
+        }
+    }
+}";
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+            Assert.Equal(new[] { "Limit" }, diagnostics.Where(d => d.Id == "VEL100").Select(d => d.GetMessage().Split('\'')[1]).ToArray());
+        }
     }
 }
