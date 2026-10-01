@@ -218,8 +218,8 @@ namespace Velvet
             }
 
             // Dashed / dotted divider: resolve the paint color BEFORE masking.
-            var hasBinding = _ctx.DivideDashBindings.TryGetValue(child, out var binding);
-            var paintColor = DashColor(child, edge, hasBinding ? binding!.Color : (Color?)null);
+            _ctx.DivideDashBindings.TryGetValue(child, out var binding);
+            var paintColor = DashColor(child, edge, binding, out var source);
 
             // Reserve the gutter as a solid divider would, but mask the native border color so only the dashed /
             // dotted paint shows.
@@ -227,14 +227,24 @@ namespace Velvet
             StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
             WriteColors(child, edge, isDivider);
 
-            if (hasBinding)
+            if (binding != null)
             {
-                DivideDashPainter.Update(child, binding!, edge, paintColor, _spec.Style);
+                DivideDashPainter.Update(child, binding, edge, paintColor, _spec.Style);
             }
             else
             {
-                _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, edge, paintColor, _spec.Style);
+                binding = DivideDashPainter.Attach(child, edge, paintColor, _spec.Style);
+                _ctx.DivideDashBindings[child] = binding;
             }
+            binding.FromInline = source == DashColorSource.Inline;
+            DivideDashPainter.SyncProbe(child, binding, source == DashColorSource.Probe);
+        }
+
+        private enum DashColorSource
+        {
+            Fixed,
+            Inline,
+            Probe,
         }
 
         // Holds the divider's width on edge, giving way to a layer of the child's own, or hands the slot back.
@@ -252,15 +262,34 @@ namespace Velvet
         }
 
         // The child's own color on the edge wins over divide-{color}, as its class does over Tailwind's
-        // zero-specificity one. Where neither decides it, the child's would-be border color, re-resolved every
-        // pass so a class / theme change moving it after the first bind is picked up.
-        private Color DashColor(VisualElement child, DivideEdge edge, Color? captured)
+        // zero-specificity one. Where neither decides it: a color written inline on the child, kept once the
+        // mask takes its slot; else the color the child's classes resolve to, which the binding reads off its
+        // probe at paint time because the child's own slot holds the mask.
+        private Color DashColor(VisualElement child, DivideEdge edge, DivideDashChildBinding? binding,
+            out DashColorSource source)
         {
+            source = DashColorSource.Fixed;
             if (StyleArbitraryValueResolver.TryOwnColor(child, ColorSlot(edge), out var own, out var declared))
             {
                 return own;
             }
-            return _spec.HasColor && !declared ? _spec.Color : ResolveImplicitColor(child, edge, captured);
+            if (_spec.HasColor && !declared)
+            {
+                return _spec.Color;
+            }
+            var inline = InlineColor(child, edge);
+            if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
+            {
+                source = DashColorSource.Inline;
+                return inline;
+            }
+            if (SilhouetteFace.IsSentinel(inline) && binding is { FromInline: true })
+            {
+                source = DashColorSource.Inline;
+                return binding.Color;
+            }
+            source = DashColorSource.Probe;
+            return default;
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
@@ -297,31 +326,6 @@ namespace Velvet
             return _spec.Reverse ? DivideEdge.Top : DivideEdge.Bottom;
         }
 
-        // The child's would-be border color for an implicit (no divide-{color}) dashed divider, re-resolved every
-        // pass so a class / theme change moving that color after the first bind is picked up. A color the child's
-        // own border-[…] layers give the edge wins, read from the layer map because the inline slot holds this
-        // manipulator's sentinel once a dashed divider has drawn there. Otherwise it mirrors
-        // SilhouetteFaceStash.CaptureFace's three cases: a fresh inline value wins; an unset inline slot reads the
-        // USS color via resolvedStyle; and the previous pass's own suppression sentinel keeps the last captured
-        // color rather than reading the mask back.
-        private static Color ResolveImplicitColor(VisualElement child, DivideEdge edge, Color? captured)
-        {
-            if (StyleArbitraryValueResolver.ResolveLayered(child, ColorSlot(edge)) is { } layered)
-            {
-                return layered.Color;
-            }
-            var inline = InlineColor(child, edge);
-            if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
-            {
-                return inline;
-            }
-            if (SilhouetteFace.IsSentinel(inline) && captured.HasValue)
-            {
-                return captured.Value;
-            }
-            return ResolvedColor(child, edge);
-        }
-
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
         private static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
@@ -329,14 +333,6 @@ namespace Velvet
             DivideEdge.Right => child.style.borderRightColor.value,
             DivideEdge.Top => child.style.borderTopColor.value,
             DivideEdge.Bottom => child.style.borderBottomColor.value,
-        };
-
-        private static Color ResolvedColor(VisualElement child, DivideEdge edge) => edge switch
-        {
-            DivideEdge.Left => child.resolvedStyle.borderLeftColor,
-            DivideEdge.Right => child.resolvedStyle.borderRightColor,
-            DivideEdge.Top => child.resolvedStyle.borderTopColor,
-            DivideEdge.Bottom => child.resolvedStyle.borderBottomColor,
         };
 #pragma warning restore CS8524
 

@@ -94,8 +94,9 @@ namespace Velvet
             return last;
         }
 
-        // A child Velvet inserts itself rather than one the author wrote: the filter bounds-spacer or a ring
-        // overlay. Both are absolutely positioned, which IsOutOfFlow's off-panel class check cannot see.
+        // A child Velvet inserts itself rather than one the author wrote: the filter bounds-spacer, a ring
+        // overlay or a dashed divider's color probe. Each is absolutely positioned, which IsOutOfFlow's off-panel
+        // class check cannot see.
         private static bool IsInserted(VisualElement child)
             => SilhouetteBoundsSpacer.IsSpacer(child) || child.ClassListContains(RingOverlay.MarkerClass);
 

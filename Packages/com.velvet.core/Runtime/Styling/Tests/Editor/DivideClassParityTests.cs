@@ -1098,6 +1098,68 @@ namespace Velvet.Tests
             Assert.That(dash, Is.EqualTo((true, 1f)));
         }
 
+        // A colored dashed row whose middle child carries childClass, beside one reference element per class in
+        // referenceClasses, each carrying that class alone so the color it resolves to is read the engine's way.
+        private (VisualElement Child, VisualElement[] References) MountColoredDashRow(string childClass,
+            params string[] referenceClasses)
+        {
+            var nodes = new VNode[referenceClasses.Length + 1];
+            nodes[0] = V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+            {
+                V.Div(className: "w-[20px] h-[20px]"),
+                V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
+                V.Div(className: "w-[20px] h-[20px]"),
+            });
+            for (var i = 0; i < referenceClasses.Length; i++)
+            {
+                nodes[i + 1] = V.Div(name: "ref" + i, className: "border-r " + referenceClasses[i]);
+            }
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: nodes));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var found = new VisualElement[referenceClasses.Length];
+            for (var i = 0; i < found.Length; i++)
+            {
+                found[i] = _window.rootVisualElement.Q("ref" + i);
+            }
+            return (child, found);
+        }
+
+        private Color DashColorOf(VisualElement child)
+            => _mounted.Root.Reconciler.Context.DivideDashBindings[child].Color;
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAThemeColorClass_Then_TheDashTakesItsColorOnFirstBind()
+        {
+            // Arrange / Act
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            var (child, references) = MountColoredDashRow("border-default", "border-default");
+            var theme = references[0].resolvedStyle.borderRightColor;
+
+            // Assert — the theme color differing from the divide color rides along, since equal colors would
+            // pass whichever the dash took.
+            Assert.That((DashColorOf(child), theme == gray200), Is.EqualTo((theme, false)));
+        }
+
+        [Test]
+        public void Given_ADashTakingAThemeColorClass_When_TheChildsColorClassChanges_Then_TheDashTakesTheNewColor()
+        {
+            // Arrange
+            var (child, references) = MountColoredDashRow("border-default", "border-default", "border-accent");
+            var oldColor = references[0].resolvedStyle.borderRightColor;
+            var newColor = references[1].resolvedStyle.borderRightColor;
+            var before = DashColorOf(child);
+
+            // Act
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the color before the change rides along, so a dash that never took the first class
+            // cannot pass, and so do the two classes resolving apart.
+            Assert.That((before, DashColorOf(child), oldColor == newColor), Is.EqualTo((oldColor, newColor, false)));
+        }
+
         [Test]
         public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
         {

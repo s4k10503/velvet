@@ -9,16 +9,30 @@ namespace Velvet
     // Toolkit border-style, so it is painted by the CHILD's own generateVisualContent. The child still
     // reserves the SAME layout gutter (the border width stays on the child, the divider's or one of the child's
     // own, and only the color is masked with the sentinel), so switching a divider between solid and dashed is
-    // layout-identical — only the paint differs. The binding stores the physical EDGE rather than the axis: on a reversed container
-    // the divider is on the axis's trailing edge, and the stroke has to be drawn where the solid border of
-    // the same divider would paint.
+    // layout-identical — only the paint differs. The binding stores the physical EDGE rather than the axis: on a
+    // reversed container the divider is on the axis's trailing edge, and the stroke has to be drawn where the
+    // solid border of the same divider would paint.
     internal sealed class DivideDashChildBinding
     {
         public Action<MeshGenerationContext>? OnGenerate;
         public VisualElement Child = null!;
         public DivideEdge Edge;
-        public Color Color;
         public BorderLineStyle Style;
+
+        // Set when Color came from a value written inline on the child, which the mask then replaced.
+        public bool FromInline;
+
+        // An element carrying the child's classes and none of its inline style, present while the dash takes
+        // the color those classes resolve to: the child's own slot holds the mask, so it cannot be read there.
+        public VisualElement? Probe;
+
+        private Color _color;
+
+        public Color Color
+        {
+            get => Probe != null ? DivideDashPainter.ResolvedColor(Probe, Edge) : _color;
+            set => _color = value;
+        }
 
         // The width the child's border resolves to on Edge: the divider's own, or a width of the child's own that
         // the divider gave way to, so the dash is drawn as wide as the border it stands in for.
@@ -58,8 +72,65 @@ namespace Velvet
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
             child.generateVisualContent -= binding.OnGenerate;
+            RemoveProbe(binding);
             child.MarkDirtyRepaint();
         }
+
+        internal const string ProbeClass = "velvet-divide-dash-probe";
+
+        // Places the binding's probe beside the child, re-parenting it after a move, or removes it.
+        public static void SyncProbe(VisualElement child, DivideDashChildBinding binding, bool wanted)
+        {
+            var host = child.hierarchy.parent;
+            if (!wanted || host == null)
+            {
+                RemoveProbe(binding);
+                return;
+            }
+            binding.Probe ??= new VisualElement
+            {
+                pickingMode = PickingMode.Ignore,
+                style =
+                {
+                    position = Position.Absolute,
+                    width = 0f,
+                    height = 0f,
+                    visibility = Visibility.Hidden,
+                },
+            };
+            if (binding.Probe.hierarchy.parent != host)
+            {
+                binding.Probe.RemoveFromHierarchy();
+                host.hierarchy.Add(binding.Probe);
+            }
+            SyncProbeClasses(child, binding.Probe);
+        }
+
+        internal static void SyncProbeClasses(VisualElement child, VisualElement probe)
+        {
+            probe.ClearClassList();
+            probe.AddToClassList(ProbeClass);
+            foreach (var cls in child.GetClasses())
+            {
+                probe.AddToClassList(cls);
+            }
+        }
+
+        private static void RemoveProbe(DivideDashChildBinding binding)
+        {
+            binding.Probe?.RemoveFromHierarchy();
+            binding.Probe = null;
+        }
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
+        internal static Color ResolvedColor(VisualElement element, DivideEdge edge) => edge switch
+        {
+            DivideEdge.Left => element.resolvedStyle.borderLeftColor,
+            DivideEdge.Right => element.resolvedStyle.borderRightColor,
+            DivideEdge.Top => element.resolvedStyle.borderTopColor,
+            DivideEdge.Bottom => element.resolvedStyle.borderBottomColor,
+        };
+#pragma warning restore CS8524
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
         internal static float StrokeWidth(VisualElement child, DivideEdge edge) => edge switch

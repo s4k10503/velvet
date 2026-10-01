@@ -62,6 +62,9 @@ namespace Velvet.Tests
         private const string OwnColorReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.TryOwnColor("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot, UnityEngine.Color&, System.Boolean&)";
+        private const string DashProbeReader =
+            "System.Void Velvet.DivideDashPainter.SyncProbeClasses("
+            + "UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement)";
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
@@ -626,6 +629,26 @@ namespace Velvet.Tests
 
         // What shows the case can fail is answering with whichever setting class came first or last instead of
         // declining two: both arrangements then answer true.
+        [Test]
+        [ReaderVerdict(DashProbeReader)]
+        public void Given_TwoClassesOnADividedChild_When_TheOrderTheyWereAddedInIsReversed_Then_ItsProbeCarriesTheSameClasses()
+        {
+            // Arrange
+            var added = Carrying("border-default", "w-32");
+            var reversed = Carrying("w-32", "border-default");
+            var probeOfAdded = new VisualElement();
+            var probeOfReversed = new VisualElement();
+
+            // Act
+            DivideDashPainter.SyncProbeClasses(added, probeOfAdded);
+            DivideDashPainter.SyncProbeClasses(reversed, probeOfReversed);
+
+            // Assert — both hold the pair rather than merely agree: two empty lists would agree too.
+            Assert.That((SortedClassList(probeOfAdded), SortedClassList(probeOfReversed)),
+                Is.EqualTo(("border-default velvet-divide-dash-probe w-32", "border-default velvet-divide-dash-probe w-32")),
+                "a dash probe takes the set of the child's classes, whatever order they arrived in");
+        }
+
         [Test]
         [ReaderVerdict(OwnColorReader)]
         public void Given_TwoBorderColorClassesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_NeitherOrderNamesAColor()

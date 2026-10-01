@@ -118,7 +118,8 @@ symmetric one, so dividers between wrapped *lines* are not drawn.
 
 `divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules
 itself, which costs them on a child that also carries `overflow-hidden` — see the painted-utility
-table in [styling-variants.md](styling-variants.md).
+table in [styling-variants.md](styling-variants.md). A child's own border width on the divided edge is
+drawn dashed at that width, and the dash takes the child's own border color.
 
 ### How re-spacing stays correct
 
