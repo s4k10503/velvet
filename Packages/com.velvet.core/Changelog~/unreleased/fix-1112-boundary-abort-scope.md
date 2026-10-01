@@ -12,7 +12,9 @@
   original error goes on after it only where no boundary above caught the content's, and is logged where there
   is none.
 
-- A `V.AnimatePresence` child's enter that plays nothing — under `initial: false`, or a variant `V.Motion`
-  with no `initial` — calls its `onEnterComplete` once the render that reached it has ended rather than while
-  it is rendering, so a render an error boundary above it catches calls none. A `V.VirtualList` row rendered
+- A `V.AnimatePresence` child's enter that plays nothing — under `initial: false`, a child inheriting its
+  enter from a `V.Motion` above the presence included, or a variant `V.Motion` with no `initial` — calls its
+  `onEnterComplete` once the render that reached it has ended rather than while it is rendering, so a render
+  an error boundary above it catches calls none, whether the boundary catches inside another component's
+  render or on its own. A `V.VirtualList` row rendered
   as the list scrolls still calls it before the range update returns.

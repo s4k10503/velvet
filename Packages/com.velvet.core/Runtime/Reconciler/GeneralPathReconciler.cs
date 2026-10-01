@@ -2354,22 +2354,9 @@ namespace Velvet
                 }
                 else
                 {
-                    CompleteEnterAfterThePass(motion, pass.BoundaryFiber);
+                    _ctx.CompleteEnterAfterThePass(motion, pass.BoundaryFiber);
                 }
             }
-        }
-
-        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
-        // boundary catching later in that walk can take it back with the rest of the failed output
-        // (ExpandBoundaryInline). A VirtualList renders its rows outside any pass as it scrolls, and there it
-        // completes at once, since no pass end would reach it.
-        private void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundaryFiber)
-        {
-            // MUTANT_SURVIVES(equivalent, guard removed): both callers pass a motion they have resolved an enter for,
-            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
-            if (motion?.OnEnterComplete == null) return;
-            if (_ctx.SharedReconcileDepth == 0) InvokeEnterComplete(motion, boundaryFiber);
-            else _ctx.PendingEnterCompletions.Add((motion, boundaryFiber));
         }
 
         // The enter paths that fire the callback in-pass rather than handing it to
@@ -2439,7 +2426,7 @@ namespace Velvet
             else if (isVariantMotion)
             {
                 // Variant Motion without `initial`, or one whose exit was cancelled: rest at the animate pose.
-                CompleteEnterAfterThePass(motion, boundaryFiber);
+                _ctx.CompleteEnterAfterThePass(motion, boundaryFiber);
             }
             else
             {

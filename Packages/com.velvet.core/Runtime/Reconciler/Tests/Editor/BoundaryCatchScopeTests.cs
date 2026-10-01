@@ -347,6 +347,9 @@ namespace Velvet.Tests
                 Is.EqualTo("row"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base's fallback does not take this row's element either.
+        // There it is shown on the aborting path; what this pins is that the catch taken in the walk leaves the
+        // boundary's own row out of the fallback's diff.
         [Test]
         public void Given_ARowOfTheBoundarysOwnOutput_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
         {
@@ -642,6 +645,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInheritingEnterBlockedInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(
+                _root, V.Component(InheritedEnterHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert — the fallback is read with the count, since a mount that rendered nothing completes nothing
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base completes this enter inside the walk of a render that commits.
+        // The completion now waits for the end of the pass, and that it still runs there is what this pins.
+        [Test]
+        public void Given_AnInheritingEnterBlockedInAnOutputThatCommits_When_ItMounts_Then_ItsCompletionRunsOnce()
+        {
+            // Arrange
+            s_throws = false;
+
+            // Act
+            using var mounted = V.Mount(
+                _root, V.Component(InheritedEnterHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(s_enterCompletions, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_ASuspenseShowingItsFallbackInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoSuspenseFallbackIsRecordedAsShown()
         {
             // Arrange
@@ -711,6 +744,29 @@ namespace Velvet.Tests
                 V.Component(ThrowerRender, key: "thrower"),
             });
         }
+
+        // The presence's child names no animate of its own, so the enter it inherits from the Motion above is the
+        // one the element's creation resolves and, under initial: false, blocks.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InheritedEnterBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Motion(variants: s_fade, initial: "hidden", animate: "visible", children: new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                    {
+                        V.Motion(key: "a", variants: s_fade, onEnterComplete: () => s_enterCompletions++),
+                    }),
+                }),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InheritedEnterHostRender()
+            => V.Div(children: new VNode[] { V.Component(InheritedEnterBoundaryRender, key: "boundary") });
 
         [Component(Compiler = false)]
         private static VNode EnterAheadHostRender()

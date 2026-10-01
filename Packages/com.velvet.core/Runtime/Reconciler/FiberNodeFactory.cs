@@ -366,14 +366,15 @@ namespace Velvet
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
-                    var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
                     if (EntersBlocked)
                     {
-                        // The same completion a suppressed anchor enter reports.
-                        enterComplete?.Invoke();
+                        // The same completion a suppressed anchor enter reports, and deferred as that one is.
+                        _ctx.CompleteEnterAfterThePass(motionNode, _ctx.FiberStack.Current);
                     }
                     else
                     {
+                        var enterComplete =
+                            GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,

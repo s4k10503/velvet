@@ -1083,8 +1083,49 @@ namespace Velvet
         public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
 
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
-        // ended — see GeneralPathReconciler.CompleteEnterAfterThePass.
+        // ended — see CompleteEnterAfterThePass.
         internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
+
+        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
+        // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
+        // (GeneralPathReconciler.ExpandBoundaryInline) or on the aborting path (FiberErrorBoundary.TryCatch). A
+        // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
+        // pass end would reach it.
+        internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): every caller passes a motion it has resolved an enter for,
+            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
+            if (motion?.OnEnterComplete == null) return;
+            if (SharedReconcileDepth == 0) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+            else PendingEnterCompletions.Add((motion, boundary));
+        }
+
+        // The entries a render below boundary queued: read before a catch on the aborting path detaches what that
+        // render created, since an entry's owner is placed by its parent chain.
+        internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
+        {
+            List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
+            foreach (var entry in PendingEnterCompletions)
+            {
+                if (IsAtOrBelow(entry.Boundary, boundary)) (below ??= new()).Add(entry);
+            }
+            return below;
+        }
+
+        internal void DropEnterCompletions(List<(MotionNode Motion, ComponentFiber? Boundary)>? entries)
+        {
+            if (entries == null) return;
+            foreach (var entry in entries) PendingEnterCompletions.Remove(entry);
+        }
+
+        private static bool IsAtOrBelow(ComponentFiber? fiber, ComponentFiber boundary)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, boundary)) return true;
+            }
+            return false;
+        }
 
         internal void RunPendingEnterCompletions()
         {
