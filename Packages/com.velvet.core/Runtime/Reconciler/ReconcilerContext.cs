@@ -1078,6 +1078,8 @@ namespace Velvet
         internal void BindPortalTarget(VisualElement target)
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
+            // Containment follows portal content into the target's panel, which the navigator must listen on.
+            FiberFocusNavigator.EnsureAttached(target, this);
             // On the element whose contentContainer target is, where there is one, so that element's own
             // callbacks — a ScrollView's scroll — answer an event from the portal's children before the bridge
             // hands it to the declaring tree, as they answer one from the element's own children.

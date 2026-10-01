@@ -1859,8 +1859,8 @@ namespace Velvet
         /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
         /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
         /// in a contained scope created after this one).</param>
-        /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
-        /// when it first entered the scope.</param>
+        /// <param name="restoreFocus">On unmount while holding focus, refocus the element that held focus
+        /// when the scope mounted.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D

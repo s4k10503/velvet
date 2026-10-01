@@ -88,6 +88,7 @@ namespace Velvet
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             return record;
         }
 
@@ -105,6 +106,7 @@ namespace Velvet
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
             // settings are driven after the attach, with the mode round-tripped so the fixed
