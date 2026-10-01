@@ -1305,6 +1305,7 @@ namespace Velvet
 
             var durationMs = (int)(durationSec * 1000);
             var durationList = _listPool.RentDurationList(durationMs);
+            MotionNativeTransitionGuard.TweenTiming(element, true);
             element.style.transitionDuration = durationList;
             element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
 
@@ -1663,6 +1664,7 @@ namespace Velvet
             element.style.transitionDuration = StyleKeyword.Null;
             element.style.transitionTimingFunction = StyleKeyword.Null;
             element.style.transitionDelay = StyleKeyword.Null;
+            MotionNativeTransitionGuard.TweenTiming(element, false);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the

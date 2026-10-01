@@ -92,15 +92,12 @@ namespace Velvet
             public readonly HashSet<object> Owners = new();
             // The owners that take only what they write out of the element's transitions (Narrow), with those longhands.
             public readonly Dictionary<object, StyleLonghandSet> Narrowers = new();
+            // The drivers writing the element's slots frame by frame, suspended or not, with those slots (Drives).
+            public readonly Dictionary<object, MotionTransitionSlots> Driven = new();
             // The transition-property list Narrow last wrote, null while it has written none, and the rules it read it off.
             public List<StylePropertyName> Written;
             public long? Rules;
             public bool Stale;
-            // The inline duration, delay and curve lists the element holds of its own, which Narrow keeps aside while it
-            // writes its own there and puts back as the last narrower lets go.
-            public StyleList<TimeValue> OwnDuration;
-            public StyleList<TimeValue> OwnDelay;
-            public StyleList<EasingFunction> OwnCurve;
         }
 
         // Auto-drops entries when an element is collected; a pooled element is scrubbed explicitly through
@@ -118,6 +115,7 @@ namespace Velvet
             {
                 return;
             }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
             // A variant tween holding the slot is narrowed whatever the classes say: its list names this play's
             // slots, and writing `none` over it instead would land the tween at its target.
             // A keyword in the slot is not a list to narrow, and is written over as it always was.
@@ -167,13 +165,12 @@ namespace Velvet
             if (!intercepted)
             {
                 Release(element, owner);
-                return;
             }
-            var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
-            if (suspension.Owners.Add(owner) && !HoldsAForeignValue(element))
+            else if (s_suspensions.GetValue(element, static _ => new Suspension()).Owners.Add(owner) && !HoldsAForeignValue(element))
             {
                 element.style.transitionProperty = s_none;
             }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Driven[owner] = drivenSlots;
         }
 
         /// <summary>
@@ -184,10 +181,10 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The element's transitions are read off its cascade (<see cref="StyleCascade.Lists"/>) and written inline
-        /// without those longhands, an <c>all</c> becoming every other longhand, the element's own inline duration,
-        /// delay and curve lists being kept aside until the last narrower lets go. A variant tween's list in the slot
-        /// is narrowed instead, and a play's suspension left to suspend everything; either is replaced by the narrowed
-        /// lists as it ends (<see cref="RestoreAfterForeignWrite"/>).
+        /// without those longhands, an <c>all</c> becoming every other longhand, and the duration its own classes
+        /// wrote inline is handed back as the last narrower lets go. A variant tween's list in the slot is narrowed
+        /// instead, and a play's suspension left to suspend everything; either is replaced by the narrowed lists as
+        /// it ends (<see cref="RestoreAfterForeignWrite"/>, <see cref="Release"/>).
         /// </remarks>
         public static void NarrowIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
@@ -235,11 +232,6 @@ namespace Velvet
             if (slot.keyword != StyleKeyword.Null && !Wrote(suspension, slot.value)) return;
             var rules = StyleCascade.RulesHash(element);
             if (slot.keyword != StyleKeyword.Null && !suspension.Stale && rules == suspension.Rules) return;
-            if (suspension.Written == null)
-            {
-                (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve) =
-                    (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
-            }
             // Before a style pass has matched the element's rules none can be read: nothing is left to transition until the
             // next tick, which narrows again
             // (Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
@@ -248,9 +240,15 @@ namespace Velvet
             var lists = read ?? new TransitionLists(null, null, null, null);
             var count = lists.Properties.Count;
             style.transitionProperty = new List<StylePropertyName>(lists.Properties);
-            style.transitionDuration = Cycle(lists.Durations, count);
-            style.transitionDelay = Cycle(lists.Delays, count);
-            style.transitionTimingFunction = Cycle(lists.Curves, count);
+            // Written only where one of them pairs its entries with the properties by position, so that elsewhere a class
+            // changing them is taken by the style pass that sees it
+            // (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming);
+            // a tween's stay where it wrote them, and clear as it ends.
+            if (!s_tweenTimings.TryGetValue(element, out _) && Math.Max(lists.Durations.Count, Math.Max(lists.Delays.Count, lists.Curves.Count)) > 1)
+            {
+                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
+                    (Cycle(lists.Durations, count), Cycle(lists.Delays, count), Cycle(lists.Curves, count));
+            }
             var excluded = StyleLonghandSet.Empty;
             foreach (var longhands in suspension.Narrowers.Values)
             {
@@ -297,41 +295,63 @@ namespace Velvet
             }
             var style = element.style;
             var slot = style.transitionProperty;
-            // A variant tween writing over the lists keeps them until it ends, and clears them itself.
-            if (!HoldsAForeignValue(element))
+            // A tween writing over the lists keeps them until it ends, and clears them itself.
+            if (!HoldsAForeignValue(element) && !s_tweenTimings.TryGetValue(element, out _))
             {
                 (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                    (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve);
+                    (OwnDuration(element), StyleKeyword.Null, StyleKeyword.Null);
             }
             if (Wrote(suspension, slot.value)) style.transitionProperty = suspension.Owners.Count > 0 ? s_none : StyleKeyword.Null;
             suspension.Written = null;
         }
 
         /// <summary>
-        /// The element's own inline duration, delay and curve lists, which <see cref="Narrow"/> keeps aside while the
-        /// slots hold the lists it writes.
+        /// The duration, delay and curve lists the element runs its transitions by inline: while <see cref="Narrow"/>
+        /// writes its own lists there, the duration the element's own classes wrote (<see cref="WriteOwnDuration"/>),
+        /// Velvet writing no delay or curve of the element's own inline, else the slots'.
         /// </summary>
         internal static (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay, StyleList<EasingFunction> Curve) OwnTiming(
             VisualElement element) =>
-            s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null
-                ? (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve)
+            s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null && !s_tweenTimings.TryGetValue(element, out _)
+                ? (OwnDuration(element), StyleKeyword.Null, StyleKeyword.Null)
                 : (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
 
+        // The inline duration the element's own classes last wrote, as duration-[x] writes one.
+        private static readonly ConditionalWeakTable<VisualElement, StrongBox<StyleList<TimeValue>>> s_ownDurations = new();
+
+        private static StyleList<TimeValue> OwnDuration(VisualElement element) =>
+            s_ownDurations.TryGetValue(element, out var duration) ? duration.Value : StyleKeyword.Null;
+
+        // The elements a tween holds the inline duration, delay and curve of (TweenTiming).
+        private static readonly ConditionalWeakTable<VisualElement, object> s_tweenTimings = new();
+
         /// <summary>
-        /// Writes the element's own inline duration list, as a <c>duration-[x]</c> class gives it. While
-        /// <see cref="Narrow"/> writes its own lists there, it is kept aside in place of the one Narrow kept, and the
-        /// narrowed lists are written again from it
+        /// Called by <see cref="StyleAnimationScheduler"/> as it writes a tween's duration, delay and curve inline and as
+        /// it clears them: none of them is the element's own, to be handed back after a narrowing
+        /// (Given_ALayoutIdMotionWhoseEnterTweenEndsBeforeItsMove_When_TheMoveLands_Then_NoTimingIsLeftInline).
+        /// </summary>
+        internal static void TweenTiming(VisualElement element, bool held)
+        {
+            if (held) s_tweenTimings.AddOrUpdate(element, s_tweenTimings);
+            else s_tweenTimings.Remove(element);
+        }
+
+        /// <summary>
+        /// Writes the element's own inline duration list, as a <c>duration-[x]</c> class gives it, and keeps it as
+        /// the one a narrowing hands back. While <see cref="Narrow"/> writes its own lists there, the narrowed lists
+        /// are written again from it instead
         /// (Given_ANarrowedMotionWhoseArbitraryDurationChangesMidMove_When_TheMoveLands_Then_TheNewDurationIsHandedBack).
         /// </summary>
         internal static void WriteOwnDuration(VisualElement element, StyleList<TimeValue> duration)
         {
+            s_ownDurations.AddOrUpdate(element, new StrongBox<StyleList<TimeValue>>(Copy(duration)));
             var narrowing = s_suspensions.TryGetValue(element, out var suspension);
-            if (!narrowing || suspension.Written == null)
+            if (!narrowing || suspension.Written == null || s_tweenTimings.TryGetValue(element, out _))
             {
                 element.style.transitionDuration = duration;
                 return;
             }
-            (suspension.OwnDuration, suspension.Stale) = (Copy(duration), true);
+            suspension.Stale = true;
             WriteNarrowed(element, suspension);
         }
 
@@ -644,17 +664,40 @@ namespace Velvet
         public static void Release(VisualElement element, object owner)
         {
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            suspension.Driven.Remove(owner);
             var suspended = suspension.Owners.Remove(owner);
             if (suspension.Narrowers.Remove(owner)) Unnarrow(element, suspension);
             else if (!suspended) return;
-            if (suspension.Owners.Count == 0 && suspension.Narrowers.Count == 0)
+            if (suspension.Owners.Count > 0) return;
+            // A narrowing still held takes the slot back from the suspension that ends here
+            // (Given_ANarrowedMotionWhosePulseEndsMidMove_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
+            if (!HoldsAForeignValue(element) && !Wrote(suspension, element.style.transitionProperty.value))
             {
-                s_suspensions.Remove(element);
-                if (!HoldsAForeignValue(element))
-                {
-                    element.style.transitionProperty = StyleKeyword.Null;
-                }
+                element.style.transitionProperty = StyleKeyword.Null;
             }
+            if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
+            else if (suspension.Driven.Count == 0) s_suspensions.Remove(element);
+        }
+
+        /// <summary>
+        /// Writes the narrowed lists again where the element's rules have changed since they were written, called on
+        /// each pass a layoutId projection draws the element
+        /// (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming).
+        /// </summary>
+        internal static void Refresh(VisualElement element)
+        {
+            if (s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null) WriteNarrowed(element, suspension);
+        }
+
+        /// <summary>
+        /// Whether a driver writes the property frame by frame, suspended or not: either the element's transitions do
+        /// not cover it or the driver has taken it out of a variant tween's list, so UI Toolkit does not transition it.
+        /// </summary>
+        internal static bool Drives(VisualElement element, string property)
+        {
+            var longhand = Array.IndexOf(s_longhandNames, new StylePropertyName(property));
+            if (longhand < 0 || !s_suspensions.TryGetValue(element, out var suspension)) return false;
+            return suspension.Driven.Values.Any(slots => LonghandsOf(slots).Contains((StyleLonghand)longhand));
         }
 
         /// <summary>

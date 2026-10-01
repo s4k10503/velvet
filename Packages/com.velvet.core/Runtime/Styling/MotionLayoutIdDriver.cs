@@ -296,6 +296,7 @@ namespace Velvet
             var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
+            MotionNativeTransitionGuard.Refresh(element);
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
@@ -1160,6 +1161,8 @@ namespace Velvet
         private float _heldDurationSec = float.NaN;
         private float _heldDelaySec;
         private EasingMode _heldEasing;
+        // The held list has named the property since it was written.
+        private bool _named;
 
         public float Value { get; private set; }
         public float Target { get; private set; }
@@ -1186,11 +1189,18 @@ namespace Velvet
         {
             if (!listed)
             {
-                _heldDurationSec = float.NaN;
+                (_heldDurationSec, _named) = (float.NaN, false);
             }
             else if (StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing))
             {
-                (_heldDurationSec, _heldDelaySec, _heldEasing) = (durationMs / 1000f, delayMs / 1000f, easing);
+                (_heldDurationSec, _heldDelaySec, _heldEasing, _named) = (durationMs / 1000f, delayMs / 1000f, easing, true);
+            }
+            // A held list that has not named the property since it was written gives it no transition, as UI Toolkit runs
+            // the inline list; one that named it had it taken out by the projection after it was read here
+            // (Given_ALeadMixingRotateUnderAPoseTweenASpinTookRotateOutOf_When_TheSpinEndsAndItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
+            else if (!_named)
+            {
+                (_heldDurationSec, _heldDelaySec) = (0f, 0f);
             }
         }
 
@@ -1207,8 +1217,11 @@ namespace Velvet
                 _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
                 _reversingStart = reverses ? Target : Value;
                 (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
-                (_durationSec, _delaySec, _easing) = float.IsNaN(_heldDurationSec)
-                    ? StyleCascade.Transition(element, property, shorthand)
+                // Before the held list, since a driver takes the property out of it, and one that started after the list
+                // was read here leaves it holding the timing it had
+                // (Given_ALeadMixingRotateUnderAPoseTween_When_ASpinStarts_Then_ItsOwnRotateIsTheSpinsAtOnce).
+                (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
+                    : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
                 _durationSec *= _shortening;
                 if (_delaySec < 0f) _delaySec *= _shortening;
