@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -272,14 +271,14 @@ namespace Velvet.Tests
             var reconciler = new Reconciler();
             var root = new VisualElement();
             var container = new VisualElement();
-            var listenersBefore = BubbleUpListenerCount(container);
+            var listenersBefore = CallbackRegistryProbe.BubbleUpCallbackCount(container);
             var tree = new VNode[] { V.Portal(container, children: new VNode?[] { V.Div(name: "portal-child") }) };
             reconciler.Reconcile(root, Array.Empty<VNode>(), tree);
-            var listenersWhileMounted = BubbleUpListenerCount(container);
+            var listenersWhileMounted = CallbackRegistryProbe.BubbleUpCallbackCount(container);
 
             // Act
             reconciler.Reconcile(root, tree, Array.Empty<VNode>());
-            var listenersAfter = BubbleUpListenerCount(container);
+            var listenersAfter = CallbackRegistryProbe.BubbleUpCallbackCount(container);
             reconciler.Dispose();
 
             // Assert — the mounted count is folded in, since a bridge that never attached leaves nothing either.
@@ -296,33 +295,18 @@ namespace Velvet.Tests
             // Arrange
             var reconciler = new Reconciler();
             var container = new VisualElement();
-            var listenersBefore = BubbleUpListenerCount(container);
+            var listenersBefore = CallbackRegistryProbe.BubbleUpCallbackCount(container);
             reconciler.Reconcile(new VisualElement(), Array.Empty<VNode>(),
                 new VNode[] { V.Portal(container, children: new VNode?[] { V.Div(name: "portal-child") }) });
-            var listenersWhileMounted = BubbleUpListenerCount(container);
+            var listenersWhileMounted = CallbackRegistryProbe.BubbleUpCallbackCount(container);
 
             // Act
             reconciler.Dispose();
 
             // Assert — the mounted count is folded in, since a bridge that never attached leaves nothing either.
             Assert.That(
-                (listenersWhileMounted > listenersBefore, BubbleUpListenerCount(container) == listenersBefore),
+                (listenersWhileMounted > listenersBefore, CallbackRegistryProbe.BubbleUpCallbackCount(container) == listenersBefore),
                 Is.EqualTo((true, true)));
-        }
-
-        private static int BubbleUpListenerCount(VisualElement element)
-        {
-            var registry = typeof(CallbackEventHandler)
-                .GetField("m_CallbackRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(element);
-            if (registry == null)
-            {
-                return 0;
-            }
-            var bubbleUp = registry.GetType()
-                .GetField("m_BubbleUpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(registry);
-            return (int)bubbleUp.GetType().GetProperty("Count")!.GetValue(bubbleUp);
         }
 
         private void MountField<TField, TValue>(Action<TValue> handler) where TField : VisualElement
