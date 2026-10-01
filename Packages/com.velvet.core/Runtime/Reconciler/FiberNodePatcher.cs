@@ -450,12 +450,8 @@ namespace Velvet
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
             // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
             // would put an element between this container and each Component's output.
-            // A Portal records the element it was handed, which for an element whose contentContainer is another
-            // element may be either of the two; the rows sit in the container whichever it was.
-            FiberCommitWork.OpenOwnRows(_ctx, element);
             FiberCommitWork.OpenOwnRows(_ctx, childContainer);
-            int? rowsBehindElementRanges;
-            int? rowsBehindContainerRanges;
+            int? rowsBehindRanges;
             try
             {
                 _host.ReconcileChildren(childContainer,
@@ -464,16 +460,11 @@ namespace Velvet
             }
             finally
             {
-                rowsBehindElementRanges = FiberCommitWork.PopOwnRows(_ctx, element);
-                rowsBehindContainerRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
+                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
             }
-            if (rowsBehindElementRanges != null)
+            if (rowsBehindRanges != null)
             {
-                FiberCommitWork.FollowOwnRows(_ctx, element, rowsBehindElementRanges.Value);
-            }
-            if (rowsBehindContainerRanges != null)
-            {
-                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindContainerRanges.Value);
+                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
             }
 
             _ctx.SyncRefCallback(element, newNode.RefCallback);
@@ -1084,13 +1075,13 @@ namespace Velvet
             if (newNode.TargetElement is { } held)
             {
                 describe = "an element the caller holds";
-                return (held, false);
+                return (PortalContainerOf(held), false);
             }
 
             describe = newNode.TargetId!;
             if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
             {
-                var registered = FiberPortalRegistry.Get(describe);
+                var registered = PortalContainerOf(FiberPortalRegistry.Get(describe));
                 if (registered == null || ReferenceEquals(registered, recorded.Target))
                 {
                     // Nothing to follow: an unregistered id names no element to move to, so the children
@@ -1110,7 +1101,7 @@ namespace Velvet
             // Mounted before the id was registered (the mount warned and recorded no
             // target), or released by the retarget just above: resolve fresh so this patch mounts the
             // children into the element the id names now.
-            var resolvedTarget = FiberPortalRegistry.Get(describe);
+            var resolvedTarget = PortalContainerOf(FiberPortalRegistry.Get(describe));
             if (resolvedTarget == null)
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
@@ -3378,6 +3369,10 @@ namespace Velvet
         // A null contentContainer (the collection views, which build their rows themselves) answers with the
         // element. Not a crash guard: VisualElement is null-safe throughout — childCount reads 0, the indexer
         // yields nothing. Insert quietly does nothing there, so nothing should be reconciled into one.
+        // The element a Portal handed target puts its children in. They sit in target's contentContainer, so
+        // every range, own-row frame and component of the portal keys on that element rather than on target.
+        internal static VisualElement? PortalContainerOf(VisualElement? target) => target?.contentContainer ?? target;
+
         internal static VisualElement GetChildContainer(VisualElement element)
         {
             var content = element.contentContainer;

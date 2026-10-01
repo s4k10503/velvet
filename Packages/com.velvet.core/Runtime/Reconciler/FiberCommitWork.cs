@@ -250,25 +250,8 @@ namespace Velvet
                 return;
             }
             // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates, and
-            // one has a MountPoint. A Portal handed the element whose contentContainer mountPoint is recorded that
-            // element, and the rows are the same ones.
+            // one has a MountPoint.
             PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
-            var owner = ContentOwnerOf(mountPoint!);
-            if (owner != null)
-            {
-                PortalSlotTracker.ShiftRangesOn(portalState, owner, delta);
-            }
-        }
-
-        // The ancestor whose contentContainer container is, or null where container is its own.
-        private static VisualElement? ContentOwnerOf(VisualElement container)
-        {
-            var ancestor = container.hierarchy.parent;
-            while (ancestor != null && !ReferenceEquals(ancestor.contentContainer, container))
-            {
-                ancestor = ancestor.hierarchy.parent;
-            }
-            return ancestor;
         }
 
         // Follows a reconcile of a Portal target's own children, whose rows sit ahead of every range on the

@@ -44,6 +44,9 @@ namespace Velvet.Tests
             s_ownInFragment = false;
             s_registerScrollContent = false;
             s_scrollRowsFromComponent = false;
+            s_scrollHostRenders = 0;
+            s_setFirstPortalRows = null;
+            s_setSecondPortalChild = null;
             s_registerSelfOnRef = true;
             s_showSecondSelfPortal = true;
             s_setSelfPortals = null;
@@ -430,6 +433,8 @@ namespace Velvet.Tests
             Assert.That(Names(container), Is.EqualTo("a|b|changed"));
         }
 
+        // GREEN_ON_BASE(characterization): the base's reconcile of the container places the component at its row too.
+        // This pins that following the container's rows leaves a component carrying another portal's placeholder alone.
         [Test]
         public void Given_AContainerInsideAnotherPortal_When_ItsOwnRowsGrow_Then_TheComponentAmongThemStartsWhereItsRowIs()
         {
@@ -440,15 +445,16 @@ namespace Velvet.Tests
             Flush();
             Flush();
             var container = _root.Q<VisualElement>("container");
+            // Taken now: a later patch of another portal into the container can rename it.
+            var row = container.Q<VisualElement>("f1");
 
             // Act
             s_setOwn!.Invoke(new[] { "a", "b" });
             Flush();
 
-            // Assert — a container or row that never mounted reads -1 against -2 rather than throwing.
-            var row = container?.Q<VisualElement>("f1");
-            var fiber = row?.userData as ComponentFiber;
-            Assert.That(fiber?.MountSlotStart ?? -1, Is.EqualTo(row == null ? -2 : container!.IndexOf(row)));
+            // Assert
+            var fiber = row.userData as ComponentFiber;
+            Assert.That(fiber?.MountSlotStart ?? -1, Is.EqualTo(container.IndexOf(row)));
         }
 
         private static bool s_showSecondSelfPortal = true;
@@ -538,6 +544,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ScrollHostRender()
         {
+            s_scrollHostRenders++;
             var (own, setOwn) = Hooks.UseState(new[] { "a" });
             s_setOwn = setOwn;
             var (portalChild, setPortalChild) = Hooks.UseState("p");
@@ -545,11 +552,14 @@ namespace Velvet.Tests
             var ownChildren = s_scrollRowsFromComponent
                 ? new VNode?[] { V.Component(ComponentRowsRender, key: "rows") }
                 : Rows(own);
+            VNode portalContent = s_portalChildIsComponent
+                ? V.Component(PortalComponentRender, key: "portal-component")
+                : V.Div(name: portalChild);
             return V.Fragment(children: new VNode?[]
             {
                 V.ScrollView(name: "scroll", refCallback: element => Register(
                     "scroll-target", s_registerScrollContent ? element.contentContainer : element), children: ownChildren),
-                V.Portal("scroll-target", children: new VNode?[] { V.Div(name: portalChild) }),
+                V.Portal("scroll-target", children: new VNode?[] { portalContent }),
             });
         }
 
@@ -609,6 +619,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(content), Is.EqualTo("a|b|q"));
+        }
+        [Test]
+        public void Given_AComponentInAPortalIntoAScrollView_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalsComponentRerendersAlone_Then_ItPatchesItsOwnElement()
+        {
+            // Arrange — both components are mounted among the rows of the ScrollView's content container.
+            s_initialOwn = new[] { "a" };
+            s_scrollRowsFromComponent = true;
+            s_portalChildIsComponent = true;
+            var content = MountScroll();
+            s_setComponentRows!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_changePortalComponent!.Invoke(1);
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|changed"));
+        }
+
+        private static Action<string[]>? s_setFirstPortalRows;
+        private static Action<string>? s_setSecondPortalChild;
+
+        // One portal is handed the ScrollView and the other its content container, which hold the same rows.
+        [Component]
+        private static VNode ScrollPairRender()
+        {
+            var (firstRows, setFirstRows) = Hooks.UseState(new[] { "p1" });
+            s_setFirstPortalRows = setFirstRows;
+            var (secondChild, setSecondChild) = Hooks.UseState("b1");
+            s_setSecondPortalChild = setSecondChild;
+            return V.Fragment(children: new VNode?[]
+            {
+                V.ScrollView(name: "scroll", refCallback: element =>
+                {
+                    var unregisterElement = Register("scroll-element", element);
+                    var unregisterContent = Register("scroll-content", element.contentContainer);
+                    return () =>
+                    {
+                        unregisterElement();
+                        unregisterContent();
+                    };
+                }, children: Rows(new[] { "a" })),
+                V.Portal("scroll-element", children: Rows(firstRows)),
+                V.Portal("scroll-content", children: new VNode?[] { V.Div(name: secondChild) }),
+            });
+        }
+
+        [Test]
+        public void Given_PortalsIntoAScrollViewAndItsContentContainer_When_TheFirstGrows_Then_TheSecondsNextPatchLandsOnItsChild()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(ScrollPairRender, key: "host"));
+            Flush();
+            var content = _root.Q<VisualElement>("scroll").contentContainer;
+            s_setFirstPortalRows!.Invoke(new[] { "p1", "p2" });
+            Flush();
+
+            // Act
+            s_setSecondPortalChild!.Invoke("q");
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|p1|p2|q"));
+        }
+        private static int s_scrollHostRenders;
+
+        // GREEN_ON_BASE(characterization): the base renders nothing again for the element its portal already holds.
+        // This pins that the portal's recorded content container still counts as the ScrollView registered again.
+        [Test]
+        public void Given_APortalIntoAScrollView_When_TheScrollViewIsRegisteredAgain_Then_TheDeclaringComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            MountScroll();
+            var scroll = _root.Q<VisualElement>("scroll");
+            var rendersBefore = s_scrollHostRenders;
+
+            // Act
+            FiberPortalRegistry.Register("scroll-target", scroll);
+            Flush();
+
+            // Assert
+            Assert.That(s_scrollHostRenders, Is.EqualTo(rendersBefore));
         }
     }
 }

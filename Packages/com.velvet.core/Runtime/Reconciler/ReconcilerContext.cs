@@ -2012,7 +2012,7 @@ namespace Velvet
             }
             foreach (var info in PortalState.Values)
             {
-                if (info.TargetId != id || ReferenceEquals(info.Target, registered))
+                if (info.TargetId != id || ReferenceEquals(info.Target, FiberNodePatcher.PortalContainerOf(registered)))
                 {
                     continue;
                 }
