@@ -49,7 +49,9 @@ namespace Velvet
         // The transition the element runs a property by: the rules' transition-property with the inline duration,
         // delay and curve lists wherever the element holds them, as UI Toolkit combines the two, the inline
         // transition-property being a suspension's (MotionNativeTransitionGuard). None where the cached style cannot
-        // be read or names no entry for the property.
+        // be read or names no entry for the property, and none while a driver holds the element's transitions
+        // suspended (MotionNativeTransitionGuard.DriverSuspends), so that a value the driver writes is taken at once
+        // (Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce).
         public static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, string property,
             string? shorthand) =>
             Style(element) is { } style ? Transition(element, style, property, shorthand) : (0f, 0f, EasingMode.Ease);
@@ -57,6 +59,7 @@ namespace Velvet
         private static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, object style,
             string property, string? shorthand)
         {
+            if (MotionNativeTransitionGuard.DriverSuspends(element)) return (0f, 0f, EasingMode.Ease);
             var inline = element.style;
             var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
                 inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,

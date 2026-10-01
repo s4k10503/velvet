@@ -75,6 +75,7 @@ namespace Velvet.Tests
             (s_aClasses, s_bClasses) = (null, null);
             (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
             (s_aField, s_looseField, s_controlClasses) = (false, false, null);
+            s_aVariants = null;
             s_resizeFrom = 100;
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             (s_modalLeft, s_moverLeft) = (300, -1);
@@ -2407,6 +2408,14 @@ namespace Velvet.Tests
         private static bool s_looseField;
         // The classes of a Div "control" holding no id, whose opacity UI Toolkit transitions natively; none while null.
         private static string s_controlClasses;
+        // The variants "a" takes its pose of in place of s_fade, while set.
+        private static Dictionary<string, MotionVariant> s_aVariants;
+
+        private static readonly Dictionary<string, MotionVariant> s_turn = new()
+        {
+            ["still"] = "rotate-0",
+            ["turned"] = "rotate-90",
+        };
 
         [Component]
         private static VNode SharedLiveIdRender()
@@ -2417,7 +2426,7 @@ namespace Velvet.Tests
             if (s_aMounted)
             {
                 children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_aTransition ?? s_slowTween,
-                    variants: s_aPose != null ? s_fade : null, animate: s_aPose,
+                    variants: s_aPose != null ? s_aVariants ?? s_fade : null, animate: s_aPose,
                     className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses} {s_aClasses}",
                     children: s_aField
                         ? new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]"), V.TextField(key: "field", name: "field") }
@@ -2938,6 +2947,105 @@ namespace Velvet.Tests
             // Assert — still at the part-way opacity the mix reached, as a crossfade interrupted the same way holds.
             Assert.That((reached < 0.9f, Mathf.Abs(WrittenOpacity(Root.Q<VisualElement>("b")) - reached) < 0.06f),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached()
+        {
+            // Arrange — the bundled sheet; "a" at half opacity leaves as "b" mounts under its id, "b" about a third of the
+            // way through mixing from it, and a move of "b"'s own interrupting the mix.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "opacity-50");
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
+
+            // Act — "b"'s own opacity drops to a quarter while its own move runs.
+            s_bClasses = "opacity-25";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That((reached < 0.9f, Mathf.Abs(WrittenOpacity(Root.Q<VisualElement>("b")) - reached) < 0.01f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMemberFadingOutBehindALeadWhoseOwnMoveInterruptedIt_When_ItsOwnOpacityChanges_Then_ItIsDrawnAtWhatTheFadeHadReached()
+        {
+            // Arrange — the bundled sheet; "b" three quarters of the way through crossfading over "a", "a" fading out
+            // behind it, and a move of "b"'s own interrupting the crossfade.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 45; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var reached = WrittenOpacity(Root.Q<VisualElement>("a"));
+
+            // Act — "a"'s own opacity drops to a quarter while "b"'s own move runs.
+            s_aClasses = "opacity-25";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That((reached < 0.9f, Mathf.Abs(WrittenOpacity(Root.Q<VisualElement>("a")) - reached) < 0.01f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadMixingItsRotateWhoseOwnMoveInterruptedIt_When_ItsOwnRotateChanges_Then_ItIsDrawnAtWhatTheMixHadReached()
+        {
+            // Arrange — the bundled sheet; "b" at rotate-45 mixing it in from an unrotated "a", and a move of "b"'s own
+            // interrupting the mix.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "rotate-45";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            s_bLeft = 400;
+            RenderShared(mounted);
+            var b = Root.Q<VisualElement>("b");
+            var reached = b.style.rotate.value.angle.ToDegrees();
+
+            // Act
+            s_bClasses = "rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That((reached > 1f, Mathf.Abs(b.style.rotate.value.angle.ToDegrees() - reached) < 0.5f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce()
+        {
+            // Arrange — the bundled sheet; "a", transitioning everything, holds an id of its own still, while "b" holds
+            // "card" 300px right.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "transition-all");
+            (s_aVariants, s_aPose) = (s_turn, "still");
+            s_aTransition = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f, Layout = s_slowTween,
+            };
+            using var mounted = MountAAlone();
+
+            // Act — "a" moves under "card" and turns on a linear second's bezier in one render; half a second on.
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "turned");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Assert — drawn at its own rotate mixed in from "b"'s none as far as the move has got, its own being where the
+            // bezier has got, which runs alongside the move. Read off the projection, since the bezier writes the slot too.
+            var a = Root.Q<VisualElement>("a");
+            var progress = 1f - TranslateX(a) / 300f;
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
+            Assert.That(drawn / progress, Is.EqualTo(90f * progress).Within(3f));
         }
 
         [Test]

@@ -53,7 +53,11 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, Drawing> s_drawing = new();
         // The owner of the transition suspension an element holds while a crossfade draws it.
-        private static readonly object s_owner = new();
+        private static readonly object s_owner = new CarryingOwner();
+
+        private sealed class CarryingOwner : ICarryingOwner
+        {
+        }
 
         // Writes the element's own inline opacity for a driver that writes it every frame, Null handing it back to its
         // classes. Under a crossfade it lands at once, and the slot holds the crossfade applied to it.

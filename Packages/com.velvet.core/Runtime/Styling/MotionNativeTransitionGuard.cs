@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -36,6 +37,14 @@ namespace Velvet
         // The four corner radii alone, for a layoutId projection that writes them and no other length.
         Radius = 1 << 9,
         All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility | Radius,
+    }
+
+    /// <summary>
+    /// An owner whose values are carried on the element's own transitions rather than written frame by frame (a
+    /// layoutId projection, MotionOpacity's crossfade), whose suspension therefore stands for no driver.
+    /// </summary>
+    internal interface ICarryingOwner
+    {
     }
 
     /// <summary>
@@ -154,6 +163,13 @@ namespace Velvet
                 element.style.transitionProperty = s_none;
             }
         }
+
+        /// <summary>
+        /// Whether an owner other than an <see cref="ICarryingOwner"/> — a per-frame driver — holds a suspension of the
+        /// element's transitions.
+        /// </summary>
+        internal static bool DriverSuspends(VisualElement element) =>
+            s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Any(owner => owner is not ICarryingOwner);
 
         /// <summary>
         /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the

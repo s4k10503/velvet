@@ -43,7 +43,11 @@ namespace Velvet
         private static readonly List<VisualElement> s_ended = new();
         private static readonly List<VisualElement> s_none = new();
         // The owner of the transition suspension a member holds while another leads its id.
-        private static readonly object s_followOwner = new();
+        private static readonly object s_followOwner = new FollowOwner();
+
+        private sealed class FollowOwner : ICarryingOwner
+        {
+        }
         private static readonly StyleLonghandSet s_visibility = StyleLonghandSet.Of(StyleLonghand.Visibility);
         // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
@@ -203,6 +207,7 @@ namespace Velvet
             if (!moves && projection == null && IsUnit(parentScale)) return;
             projection ??= CreateProjection(element, host, ctx);
             Share(projection, shared, crossfades, moves, fromBox.Look);
+            Hold(element, projection, layoutId, ctx);
             projection.From = from;
             projection.Moving = moves;
             projection.Progress = pending.Timing.Start(EdgeTravel(from, layout), shared);
@@ -313,6 +318,7 @@ namespace Velvet
         {
             var layoutId = ctx.ElementToLayoutId.GetValueOrDefault(element);
             if (projection.Leader != null) return Behind(ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader), layoutId, ctx);
+            if (projection is { Shared: true, Moving: true, Held: { } held }) return new LayoutIdFade(held.Opacity, 0f, 1f);
             if (projection.Crossfade && projection.Moving) return new LayoutIdFade(0f, CrossfadeIn(CrossfadeProgress(projection)), 1f);
             if (projection is not { Shared: true, Moving: true, FromLook: { } look }) return null;
             if (layoutId == null || ctx.LayoutIdMembers.GetValueOrDefault(layoutId)?.Count != 1) return null;
@@ -360,6 +366,10 @@ namespace Velvet
                 rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
                 radii = LayoutIdLook.RadiiOf(projection.Leader, leading);
             }
+            else if (projection is { Shared: true, Moving: true, Held: { } held })
+            {
+                (rotate, radii) = (held.Rotate, held.Radii);
+            }
             else if (projection is { Shared: true, Moving: true, FromLook: { } from })
             {
                 var progress = CrossfadeProgress(projection);
@@ -385,6 +395,16 @@ namespace Velvet
             projection.Shared = (shared || carries) && moves;
             // Read only while the projection moves, which only a start with a tween sets.
             projection.Crossfade = crossfades || carries && projection.Crossfade;
+        }
+
+        // Read after Share and before the projection takes its new tween: what an interrupted shared move had reached is
+        // what the lead and the members behind it are drawn with until the interrupting move lands, as Framer draws the
+        // animationValues its stop() left, however the lead's own values or the holder it took its box from change
+        // meanwhile (Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached).
+        private static void Hold(VisualElement element, LayoutIdProjection projection, string layoutId, ReconcilerContext ctx)
+        {
+            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection);
+            if (projection is { Held: not null, FromLook: { } look }) projection.FromLook = look.Holding(PreviousOpacity(look, layoutId, ctx));
         }
 
         private static bool IsCrossfading(LayoutIdProjection? projection) => projection is { Crossfade: true, Moving: true };
@@ -950,7 +970,7 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
     }
 
-    internal sealed class LayoutIdProjection
+    internal sealed class LayoutIdProjection : ICarryingOwner
     {
         public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
             Vector3 ownTranslate, Vector3 ownScale)
@@ -997,6 +1017,8 @@ namespace Velvet
 
         // What the holder this lead took its box from looked like, while it moves from that box.
         public LayoutIdLook? FromLook;
+        // What the lead was drawn with as a move of its own interrupted its shared one, while it holds that (Hold).
+        public LayoutIdLook? Held;
 
         public bool WritesRotate;
         public StyleRotate OwnInlineRotate;
@@ -1148,13 +1170,13 @@ namespace Velvet
             _elapsedSec = _delaySec = _durationSec = 0f;
         }
 
-        // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve and its
-        // shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
+        // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve, its eased
+        // progress and its shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
         public void TakeOver((float From, float Target, float DurationSec, float ElapsedSec) run, System.Func<float, float> curve,
-            (float Start, float Shortening) reversing)
+            (float Start, float Shortening, float Eased) reversing)
         {
             (_from, Target, _durationSec, _elapsedSec, _delaySec, _curve) = (run.From, run.Target, run.DurationSec, run.ElapsedSec, 0f, curve);
-            (_reversingStart, _shortening) = reversing;
+            (_reversingStart, _shortening, _eased) = reversing;
         }
 
         // Read as the swap writes the list, before the projection takes the property out of it. The swap writes the
@@ -1172,8 +1194,9 @@ namespace Velvet
         }
 
         // Carries the value towards target, starting over from where it stands whenever target changes, over dtSec more.
-        // A change back to where the running transition started is shortened by how far that one had got, as UI Toolkit
-        // shortens a reversing transition
+        // A change back to what UI Toolkit would reverse to — where a fresh transition started, or the end of the one a
+        // reversal reversed — is shortened by how far the running one had got, as UI Toolkit shortens a reversing
+        // transition
         // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
         public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
         {

@@ -6,8 +6,8 @@ namespace Velvet
 {
     // What a holder of a layoutId looked like where its box was read: the values Framer's mixValues mixes a shared
     // layout animation's lead in from (mix-values.ts), which NodeStack.promote takes as the previous lead's
-    // animationValues or else its latestValues (stack.ts). Opacity is the holder's own; rotate and radii are as the
-    // holder was drawn.
+    // animationValues or else its latestValues (stack.ts): as the holder was drawn, and a holder's opacity its own
+    // unless it was itself moving from another's box (Read).
     internal readonly struct LayoutIdLook
     {
         // The source of a look whose holder has let go of the id: an element no Motion is, so no id holds it.
@@ -32,6 +32,9 @@ namespace Velvet
 
         // Without the holder, which has let go of the id: its element can come back from the pool as another Motion.
         public LayoutIdLook Released() => new(Opacity, Rotate, Radii, s_released);
+
+        // Released, at the given opacity.
+        public LayoutIdLook Holding(float opacity) => new(opacity, Rotate, Radii, s_released);
 
         // A holder read mid-way through a shared move of its own gives the opacity that move drew it at, and no
         // holder to read again, as promote takes animationValues, which the new lead's animation stops.
