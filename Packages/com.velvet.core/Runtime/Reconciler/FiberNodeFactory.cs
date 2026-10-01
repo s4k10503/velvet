@@ -397,6 +397,11 @@ namespace Velvet
             {
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
             }
+            // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
+            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ))
+            {
+                return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
+            }
             return element;
         }
 
@@ -467,17 +472,6 @@ namespace Velvet
                 FiberLogger.LogWarning("Motion",
                     "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                     + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
-            }
-            // z-* is ignored on a Motion: the Motion create path never consults FiberZLayerCoordinator at
-            // all (only CreateForElementNode does), so a Motion never relocates into a layer container
-            // — TryClassify's out-of-flow half runs off the declared class list / Anchored prop alone
-            // (no live element needed), so it can be evaluated here for diagnostics purposes even though
-            // that path never acts on it.
-            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out _))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
-                    + "Wrap the Motion around a z-managed Div instead.");
             }
             // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
             // Warned only where this reconciler holds no presence at all: a Motion a component inside a
@@ -786,12 +780,8 @@ namespace Velvet
                 return motion;
             }
             // The transparent wrappers whose children can carry the Motion: a Provider, a Fragment, or a
-            // z-managed ElementNode. The z-managed case is a narrow, deliberate carve-out — z-* is a
-            // documented no-op on a Motion itself (FiberNodeFactory's own create-time warning), so the ONLY
-            // way to combine z-* with an AnimatePresence-driven Motion is to wrap it in a z-managed Div; that
-            // wrapper exists purely to satisfy the out-of-flow scope gate, not as an opaque animation
-            // boundary the author intended, so treating it like Provider/Fragment for this walk is exactly
-            // the same "structurally forced, not a user choice" reasoning. An ORDINARY (non-z) ElementNode is
+            // z-managed ElementNode. The z-managed case is a narrow, deliberate carve-out that keeps a Motion
+            // wrapped in a z-managed Div anchoring the presence. An ORDINARY (non-z) ElementNode is
             // deliberately NOT walked into: unlike Provider/Fragment it emits its own real DOM element, so
             // silently treating any Motion nested anywhere inside it as the presence anchor would surprise a
             // caller who wrapped a Motion in a plain structural Div for unrelated styling reasons.

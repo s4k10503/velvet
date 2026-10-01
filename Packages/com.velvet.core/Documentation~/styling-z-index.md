@@ -18,18 +18,20 @@ V.Div(className: "relative w-64 h-64", children: new VNode[]
 
 `z-*` only takes effect on an element that is **also** out of flow — either the `absolute` utility
 class, or `V.Anchored` (which forces `position: absolute` itself). On an in-flow element `z-*` is a
-**documented no-op** — see [Scope cuts](#scope-cuts).
+**documented no-op** — see [Scope cuts](#scope-cuts). A `V.Motion` takes `z-*` the same way a `V.Div`
+does.
 
 | Utility | Resolved z |
 |---|---|
+| `z-auto` | none: the element is left unstacked, so `z-10 z-auto` resets the earlier `z-10` |
 | `z-0` / `z-10` / `z-20` / `z-30` / `z-40` / `z-50` | Tailwind's fixed named scale |
 | `-z-10` … `-z-50` | negated named scale |
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
 
-The named scale is fixed — `z-15` is not a thing, `z-[15]` is, mirroring real Tailwind. Each form
-also accepts the important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`): an important `z-*` wins
-over every plain one on the same element wherever it sits in the class list, and within either group
-the later class wins.
+The named scale is Tailwind v3's fixed one, the same choice `rotate-*` and the spacing utilities make:
+`z-15` is not on it, `z-[15]` is. Each form also accepts the important modifier (`!z-10`, `z-10!`,
+`!z-[5]`, `z-[5]!`): an important `z-*` wins over every plain one on the same element wherever it sits
+in the class list, and within either group the later class wins.
 
 ## How it works
 
@@ -58,17 +60,6 @@ physically reorders the declaring children list. Instead:
 - **In-flow `z-*` is a no-op.** The classic "overlapping cards with a negative margin and `z-10`,
   no `.absolute`" pattern needs `.absolute` too: reordering an in-flow child for paint would move
   its Yoga layout position with it, and there is no separate flex `order` to reorder instead.
-- **`z-*` on `V.Motion` is also a no-op, and logs a warning.** A Motion's create path never
-  relocates it into a layer container: the element identity its own enter/exit tween is bound to
-  must stay put, the same reason `shadow-*` and `clip-path-*` are already documented no-ops on a
-  Motion. Wrap the Motion around a z-managed `Div` instead. An `AnimatePresence` keyed child built
-  this way (the common "animated, top-most modal" shape) enters and exits against the *real*,
-  relocated element for its whole lifetime, including a `PopLayout` exit's out-of-flow pin. A
-  cancelled exit (the key re-added mid-animation) restores it the same way an ordinary, non-`z-*`
-  presence child does. The `variants` enter/exit *classes* resolve against the wrapped Motion's own
-  element, the same element its resting `variants[animate]` classes live on. Style the Motion, not
-  the wrapper, for anything that should animate with the variants: the wrapper itself does not fade
-  with a variant swap.
 - **Negative z never escapes the element's own parent's background.** UI Toolkit has exactly one
   paint traversal; a child can only paint after its own parent's background within that walk.
   Escaping "behind the parent" would mean hoisting the child to become the parent's own preceding

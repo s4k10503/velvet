@@ -16,6 +16,49 @@ namespace Velvet.Tests
     internal sealed class StyleTextEffectClassTests
     {
         [Test]
+        public void Given_AnImportantLeadingBeforeALaterPlainLeading_When_Parsed_Then_TheImportantOneWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!leading-[24px]", "leading-[10px]" });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
+        }
+
+        [Test]
+        public void Given_AnImportantPreLineAndAPlainNowrap_When_Parsed_Then_PreLineWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!whitespace-pre-line", "whitespace-nowrap" });
+
+            // Assert
+            Assert.That(effect.Whitespace, Is.EqualTo(WhitespaceCollapseKind.PreLine));
+        }
+
+        [Test]
+        public void Given_AnImportantNowrapAndAPlainPreWrap_When_Parsed_Then_TheImportantNowrapWins()
+        {
+            // Arrange — pre-wrap sits later in the sheet, so it wins the pair when neither is important.
+            var classes = new[] { "!whitespace-nowrap", "whitespace-pre-wrap" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classes);
+
+            // Assert
+            Assert.That(effect.WhiteSpaceClass, Is.EqualTo(UnityEngine.UIElements.WhiteSpace.NoWrap));
+        }
+
+        [Test]
+        public void Given_AnImportantUppercaseBeforeALaterPlainLowercase_When_Parsed_Then_TheImportantOneWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!uppercase", "lowercase" });
+
+            // Assert
+            Assert.That(effect.Transform, Is.EqualTo(TextTransformKind.Upper));
+        }
+
+        [Test]
         public void Given_Uppercase_When_Parsed_Then_TransformIsUpper()
         {
             Assert.That(StyleTextEffectClass.Parse(new[] { "uppercase" }).Transform, Is.EqualTo(TextTransformKind.Upper));

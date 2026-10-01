@@ -22,16 +22,10 @@ namespace Velvet
         // layer so it wins conflicts. A class-only utility (no inline form) cannot be elevated in UI Toolkit,
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
-        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
-        // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*, z-*)
-        // do NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn,
-        // resolved to inline that already wins, or (z-*) a physical relocation — so outside z-* the bang never
-        // has a cascade effect in this family; use the plain form (adding it would be a no-op elevation by
-        // definition). font-*, leading-*, and z-* still route their own classification gate through this
-        // method (StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass.IsArbitraryLeadingClass /
-        // StyleZIndexClass.TryParse), so a bang'd token still classifies as the family instead of silently
-        // falling through, and z-*'s bang then arbitrates among the element's own z-* tokens
-        // (StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not
+        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
+        // array-scanned subsystem utilities, the font, text-effect and z-* families strip the bang themselves
+        // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
+        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {

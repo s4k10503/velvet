@@ -228,6 +228,7 @@ namespace Velvet
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
             _ctx.EventManager.UnbindAll(element);
             _ctx.ComponentRegistry.Remove(element);
+            RelationalSourceSet.DropDeparted(_ctx, element);
             DetachManipulator(element, _ctx.GestureManipulators);
             DetachManipulator(element, _ctx.VariantManipulators);
             DetachManipulator(element, _ctx.ConditionalVariantManipulators);
