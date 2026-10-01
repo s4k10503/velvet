@@ -168,6 +168,30 @@ namespace Velvet.Tests
             Assert.That(s_ring.IsFocused, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base never relights a ring on a key press. This case pins that the
+        // ring of an element that unmounted while focused stops following the input.
+        [Test]
+        public void Given_AFocusVisibleRingWhoseElementUnmountedWhileFocused_When_AKeyIsPressed_Then_IsFocusVisibleStaysFalse()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Component(CollapsingRingHost, key: "root"));
+            PressAKey();
+            _host.Root.Q<VisualElement>("target").Focus();
+            _mounted.FlushStateForTest();
+            var litWhileFocused = s_ring.IsFocusVisible;
+            s_setShowTarget.Invoke(false);
+            _mounted.FlushStateForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushStateForTest();
+
+            // Act
+            PressAKey();
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((litWhileFocused, s_ring.IsFocusVisible), Is.EqualTo((true, false)));
+        }
+
         [Component]
         private static VNode SwappingRingHost()
         {

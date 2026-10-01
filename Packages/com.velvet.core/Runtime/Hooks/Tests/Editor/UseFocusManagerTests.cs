@@ -305,6 +305,7 @@ namespace Velvet.Tests
                 V.Toggle(name: "toggle"),
                 V.Custom<Foldout>(name: "fold", children: new VNode[] { V.Button(name: "folded") }),
                 V.Button(name: "last"),
+                V.Div(name: "tail"),
             }),
         });
 
@@ -354,6 +355,20 @@ namespace Velvet.Tests
             // Assert — the Foldout's own toggle, not the Button its collapsed content holds.
             Assert.That((fold.contentContainer.resolvedStyle.display, moved),
                 Is.EqualTo((DisplayStyle.None, (VisualElement)fold.Q<Toggle>())));
+        }
+
+        [Test]
+        public void Given_AScopeEndingInAnElementThatTakesNoFocus_When_FocusLastIsCalled_Then_TheLastFocusableElementTakesFocus()
+        {
+            // Arrange
+            Mount(FieldsHost);
+            Q("text").Focus();
+
+            // Act
+            var moved = s_manager.FocusLast();
+
+            // Assert
+            Assert.That((moved, Focused), Is.EqualTo((Q("last"), (Focusable)Q("last"))));
         }
 
         [Component]

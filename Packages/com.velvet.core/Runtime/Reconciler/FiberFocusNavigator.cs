@@ -291,7 +291,7 @@ namespace Velvet
             {
                 return;
             }
-            TryHandleSingleTabStopGroupEntryPrediction(in move);
+            HandleSingleTabStopGroupEntryPrediction(in move);
         }
 
         // Mode (a): the whole subtree acts as ONE tab stop. Every reachable outcome inside this mode is a
@@ -390,8 +390,8 @@ namespace Velvet
 
         // Mode (d): entering a SingleTabStop scope from outside — the group is one tab stop, so a move
         // predicted to land inside it is redirected to the group's roving stop instead. Reached only when
-        // no earlier mode claimed the move; this is the move's final word regardless of its own outcome.
-        private static bool TryHandleSingleTabStopGroupEntryPrediction(in NavigationMove move)
+        // no earlier mode claimed the move.
+        private static void HandleSingleTabStopGroupEntryPrediction(in NavigationMove move)
         {
             var focused = move.Focused;
             var ctx = move.Ctx;
@@ -403,7 +403,7 @@ namespace Velvet
                 panelRing.GetNextFocusable(focused, ToRingDirection(move.Forward)) as VisualElement;
             if (entryPredicted == null)
             {
-                return false;
+                return;
             }
             // Focus sitting in a group never reaches this mode, so a group the prediction lands in is entered
             // from outside. Landing == predicted: the engine's own move already enters at the group's correct
@@ -412,9 +412,7 @@ namespace Velvet
             if (!ReferenceEquals(landing, entryPredicted))
             {
                 Redirect(move.Evt, move.Panel, landing);
-                return true;
             }
-            return false;
         }
 
         // A landing inside a SingleTabStop group must enter at the group's roving tab stop — the member
@@ -740,8 +738,6 @@ namespace Velvet
                 return false;
             }
             var containRoot = FindLogicalContainScopeRoot(relatedTarget, ctx, out var binding);
-            // MUTANT_SURVIVES(equivalent, logic): FindLogicalContainScopeRoot hands back a binding exactly when
-            // it returns a root, so the two null tests agree, and joining them with && selects the same calls.
             if (containRoot == null || binding == null || IsLogicallyWithin(target, containRoot)
                 || LandsInANewerContainScope(target, binding))
             {

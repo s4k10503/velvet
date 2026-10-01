@@ -623,6 +623,33 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode ContainedGroupHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "both", contain: true, singleTabStop: true, children: new VNode[]
+            {
+                V.Button(name: "a"),
+                V.Button(name: "b"),
+            }),
+            V.Button(name: "outside"),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already lets contain decide a scope that is both.
+        [Test]
+        public void Given_AScopeThatIsBothContainedAndASingleTabStopGroup_When_TabDispatches_Then_FocusMovesToTheNextMember()
+        {
+            // Arrange
+            Mount(ContainedGroupHost);
+            var a = Q("a");
+            a.Focus();
+
+            // Act
+            SendMove(a, NavigationMoveEvent.Direction.Next);
+
+            // Assert — contain wraps within the scope rather than holding the one-stop group in place.
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("b")));
+        }
+
+        [Component]
         private static VNode GroupInModalHost() => V.Div(children: new VNode[]
         {
             V.FocusScope(name: "modal", contain: true, children: new VNode[]
