@@ -15,7 +15,8 @@ namespace Velvet.Tests
     internal sealed class RelationalSourceTrackingPanelTests : PanelTestBase
     {
         internal readonly record struct Peers(
-            bool FarChecked, bool NearChecked, bool NearMarked = true, bool ShowNear = true, bool Moved = false);
+            bool FarChecked, bool NearChecked, bool NearMarked = true, bool ShowNear = true, bool Moved = false,
+            bool FarMarked = true);
 
         private sealed class PeersStore : Store<Peers>
         {
@@ -69,6 +70,18 @@ namespace Velvet.Tests
                 s.Moved ? child : a,
                 s.Moved ? a : b,
                 s.Moved ? b : child);
+        }
+
+        // Two disabled peers the store can unmark or remove, ahead of a peer-disabled: consumer.
+        [Component]
+        private static VNode DisabledPeers()
+        {
+            var s = Hooks.UseStore(s_store, x => x);
+            return V.Div(
+                "container",
+                V.Toggle(key: "far", name: "far", className: s.FarMarked ? "peer" : "", enabled: false),
+                s.ShowNear ? V.Toggle(key: "near", name: "near", className: "peer", enabled: false) : null,
+                V.Label(key: "child", name: "child", className: "peer-disabled:bg-on"));
         }
 
         // A checked peer the store renders or not, ahead of a dark:peer-checked: consumer.
@@ -186,6 +199,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((afterRemoval, Lit), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_TwoDisabledPeers_When_TheNearerIsRemovedAndThenTheFartherLosesThePeerClass_Then_OnlyTheSecondStepClears()
+        {
+            // Arrange
+            Mount(DisabledPeers, new Peers(FarChecked: false, NearChecked: false));
+            var afterMount = Lit;
+
+            // Act
+            Change(s => s with { ShowNear = false });
+            var afterRemoval = Lit;
+            Change(s => s with { FarMarked = false });
+
+            // Assert
+            Assert.That((afterMount, afterRemoval, Lit), Is.EqualTo((true, true, false)));
         }
 
         // GREEN_ON_BASE(characterization): the base already clears a moved consumer once its only peer unchecks.

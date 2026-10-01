@@ -338,8 +338,6 @@ namespace Velvet
                 }
                 FindSources(target, _isPeer, SourceClass, _owner._ctx, _found);
                 _signals ??= new RelationalSourceSet(_owner._ctx, OnSignal);
-                // MUTANT_SURVIVES(equivalent, boundary): tracking with no disabled payload applies an empty
-                // payload list on each disabled edge.
                 var trackDisabled = _payloads[(int)StyleVariantClass.RelationalState.Disabled].Length > 0;
                 _signals.Retarget(_found, seedChecked: _isPeer, registerChecked: _isPeer, trackDisabled);
             }
