@@ -344,12 +344,19 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   composes with from its next frame on. A Motion that leaves its panel without being unmounted has
   its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
-  the id, not the physical element, is what's tracked. The handover happens within one batch — the updates one
-  scheduler drain commits together, such as the ordinary updates queued for a frame or the ones a
-  discrete event flushes, however many components they re-render: once an element has left the tree,
-  its id hands nothing to a Motion that mounts under it in a later batch, which appears in place. Two Motions in the same tree must never
-  share a live `layoutId` simultaneously — the second one to patch silently steals the
-  registration.
+  the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
+  within one batch — the updates one scheduler drain commits together, such as the ordinary updates
+  queued for a frame or the ones a discrete event flushes, however many components they re-render — and a
+  Motion that mounts under its id in a later batch appears in place.
+- Several Motions may hold one `layoutId` at once. The one that took the id last — by mounting under it
+  or by changing to it — leads, and the others are hidden by an inline `visibility: hidden`; a render
+  that moves one of them does not make it the lead. When the lead leaves the tree, the holder of those
+  left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
+  its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
+  relegate hands it on, and the child is removed once both its exit has played and that lead has landed;
+  a holder whose key comes back mid-exit takes the lead again. A holder that takes the lead in any of
+  these ways tweens from the box of the lead before it, whether or not its own layout changed. A Motion
+  whose `layoutId` becomes null stops holding the id and is shown.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a

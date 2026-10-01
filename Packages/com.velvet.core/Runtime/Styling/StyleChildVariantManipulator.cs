@@ -168,8 +168,9 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildVariantOwners decides this, not the tracked list, and every
-        // turn-off goes through here so no path can skip the question.
-        private void ReleasePayloads(VisualElement child)
+        // turn-off goes through here so no path can skip the question — FiberElementCleaner's, for a child the
+        // reconciler removes, included.
+        internal void ReleasePayloads(VisualElement child)
         {
             if (StyleChildOwnership.TryRelease(_ctx.ChildVariantOwners, child, this))
             {
@@ -178,8 +179,8 @@ namespace Velvet
         }
 
         // Offers every tracked child that has left the container for release, then prunes it. A child the
-        // reconciler removed has had its claim dropped by ClearElementSideTables already, so what this
-        // reaches is the reparents, such as a z-layer hoist. A clip wrapper inserted between container and child
+        // reconciler removed was released by its cleanup already, so what this reaches is the reparents, such
+        // as a z-layer hoist. A clip wrapper inserted between container and child
         // stands in for the child rather than taking it out of the container.
         private void ResetStaleApplied(VisualElement container)
         {
