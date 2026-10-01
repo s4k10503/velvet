@@ -61,6 +61,8 @@ namespace Velvet.Tests
             s_enterCompletions = 0;
             s_setOwnEnterTick = null;
             s_setSuspendingOwnTick = null;
+            s_setOuterCatchTick = null;
+            s_outerCatchFactoryRuns = 0;
             s_setOwnRowsTick = null;
             s_setSiblingCount = null;
             s_outerSaw = null;
@@ -1519,6 +1521,62 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
+
+        // GREEN_ON_BASE(characterization): the merge base forgets no catch when a primary is discarded. What this
+        // pins is that the forgetting this branch adds leaves alone a catch by a boundary above the Suspense's owner.
+        [Test]
+        public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryThatStaysPending_When_ThatRenderCommits_Then_TheCatchIsReported()
+        {
+            // Arrange — the primary holds a memoized reader that bails while its read is still pending
+            var reports = 0;
+            using var mounted = V.Mount(_root, V.Div(children: new VNode[] { V.Component(OuterCatchBoundaryRender, key: "outer") }),
+                new MountOptions((_, _) => reports++));
+
+            // Act
+            s_setOuterCatchTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the factory's runs are read with it, since a callback that never ran is reported by nobody
+            Assert.That((s_outerCatchFactoryRuns, reports), Is.EqualTo((1, 1)));
+        }
+
+        private static Action<int> s_setOuterCatchTick;
+        private static int s_outerCatchFactoryRuns;
+
+        // Memoized with no props, so the update reaches it without rendering it again, its read still pending.
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode MemoPendingRender()
+        {
+            var value = Hooks.Use<int>(_ => new VelvetTaskCompletionSource<int>().Task, "memo-pending");
+            return V.Label(text: "value " + value);
+        }
+
+        // Its own update is the pass, so the boundary above it takes the callback's error on the aborting path.
+        [Component(Compiler = false)]
+        private static VNode OuterCatchHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOuterCatchTick = setTick;
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[]
+                {
+                    V.Component(MemoPendingRender, key: "pending"),
+                    tick == 0 ? null : V.Component(CallbackThrowingRender, key: "callback"),
+                });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OuterCatchBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_outerCatchFactoryRuns++;
+                return V.Label(text: "outer-fallback");
+            });
+            return V.Component(OuterCatchHostRender, key: "host");
+        }
 
 
         #endregion
