@@ -1036,6 +1036,8 @@ namespace Velvet
         internal void BindPortalTarget(VisualElement target)
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
+            // Containment follows portal content into the target's panel, which the navigator must listen on.
+            FiberFocusNavigator.EnsureAttached(target, this);
             var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
             SamePanelPortalBridges[target] = () =>
