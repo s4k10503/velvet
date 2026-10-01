@@ -289,8 +289,10 @@ namespace Velvet
         private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey)
         {
             // A walk a catch on the aborting path stopped commits nothing further: a leaf matched by slot would
-            // patch whatever that catch's fallback put there.
-            if (_ctx.IsAborted) return;
+            // patch whatever the fallback's reconcile left at that slot. A suspended primary's fallback is the
+            // exception: it is what stays on screen for the primary the walk discards, whether the catch was in that
+            // primary or above it (BoundaryCatchScopeTests' pending-primary cases).
+            if (_ctx.IsAborted && _ctx.SuspenseFallbackDepth == 0) return;
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
@@ -1346,9 +1348,6 @@ namespace Velvet
                             _ctx.SuspensePrimaryDepth--;
                         }
                     }
-                    // A walk the primary's expansion stopped decides nothing here, as one stopped before it does
-                    // above: no fallback, no record, and no catch forgotten.
-                    if (_ctx.IsAborted) return;
                     if (!suspended)
                     {
                         suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber);
@@ -1369,13 +1368,10 @@ namespace Velvet
                     // exclusion in RollbackCommitTo.
                     if (suspended)
                     {
-                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore);
+                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers);
                         if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
-                        if (suspense.Fallback != null)
-                        {
-                            ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
-                        }
+                        if (suspense.Fallback != null) ExpandSuspendedFallback(walk, suspense.Fallback, fallbackPosition);
                     }
                 }
                 finally
@@ -1394,16 +1390,19 @@ namespace Velvet
             }
         }
 
-        // A catch a boundary in the primary took is discarded with the render the primary suspends in, as React
-        // discards a capture with the render that suspended: the boundary reports nothing for it and renders its
-        // children again rather than the fallback it would otherwise keep (FiberErrorBoundary.OutputOf). A walk a
-        // catch on the aborting path stopped returns before this, so a catch above the Suspense is never forgotten.
-        private void ForgetCatchesOfTheDiscardedPrimary(int reportsBefore)
+        // A catch a boundary the Suspense's own walk reached in the primary took is discarded with the render the
+        // primary suspends in, as React discards a capture with the render that suspended: that boundary reports
+        // nothing for it and renders its children again rather than the fallback it would otherwise keep
+        // (FiberErrorBoundary.OutputOf). A boundary inside a host element of the primary is expanded by that
+        // element's own reconcile, which this walk does not reach.
+        private void ForgetCatchesOfTheDiscardedPrimary(
+            int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers)
         {
             var reports = _ctx.PendingCaughtErrorReports;
             for (var i = reports.Count - 1; i >= reportsBefore; i--)
             {
                 var boundary = reports[i].Boundary;
+                if (fibersBefore.Contains(boundary) || !newFibers.Contains(boundary)) continue;
                 boundary.CaughtError = null;
                 reports.RemoveAt(i);
                 // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
@@ -1433,6 +1432,19 @@ namespace Velvet
             {
                 if (hidden) FiberEffects.HideLayoutEffects(fiber);
                 else FiberEffects.ShowLayoutEffects(fiber, _ctx);
+            }
+        }
+
+        private void ExpandSuspendedFallback(InlineWalk walk, VNode fallback, WalkPosition fallbackPosition)
+        {
+            _ctx.SuspenseFallbackDepth++;
+            try
+            {
+                ExpandInlineRecursive(walk, new[] { fallback }, fallbackPosition);
+            }
+            finally
+            {
+                _ctx.SuspenseFallbackDepth--;
             }
         }
 
@@ -1608,6 +1620,21 @@ namespace Velvet
             {
                 _ctx.MarkPresenceReproduced(stateKey);
                 ReproduceCommittedPresence(walk, stateKey, presencePosition);
+                return;
+            }
+
+            if (_ctx.IsAborted)
+            {
+                // A walk a catch on the aborting path stopped commits no removal, so the presence's record and its
+                // callbacks stay as the last committed render left them. Its committed children are walked for the
+                // components among them, which a stopped walk records as met rather than rendering.
+                if (_ctx.PresenceStates.TryGetValue(stateKey, out var committed))
+                {
+                    foreach (var (key, node) in committed.Committed.ToArray())
+                    {
+                        ExpandInlineRecursive(walk, new[] { node }, FiberKeying.PresenceChild(presencePosition, key));
+                    }
+                }
                 return;
             }
 

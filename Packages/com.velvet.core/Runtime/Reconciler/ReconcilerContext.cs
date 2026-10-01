@@ -1186,6 +1186,10 @@ namespace Velvet
         // none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
         internal int SuspensePrimaryDepth;
 
+        // The fallbacks of suspended primaries open on the walk, whose rows a walk an abort stopped still commits
+        // — see GeneralPathReconciler.CommitLeaf.
+        internal int SuspenseFallbackDepth;
+
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
         // ended — see CompleteEnterAfterThePass.
         internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();

@@ -64,6 +64,10 @@ namespace Velvet.Tests
             s_setOuterCatchTick = null;
             s_outerCatchFactoryRuns = 0;
             s_setStoppedTick = null;
+            s_insidePending = new VelvetTaskCompletionSource<int>();
+            s_insideThrows = false;
+            s_stoppedExitCompletions = 0;
+            s_statefulRenders = 0;
             s_setOwnRowsTick = null;
             s_setSiblingCount = null;
             s_outerSaw = null;
@@ -1524,21 +1528,6 @@ namespace Velvet.Tests
         private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
 
         [Test]
-        public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryThatStaysPending_When_ThatRenderCommits_Then_ItsFallbackIsOnScreen()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Div(children: new VNode[] { V.Component(OuterCatchBoundaryRender, key: "outer") }),
-                CaughtErrors.Unlogged);
-
-            // Act
-            s_setOuterCatchTick.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(Texts(), Is.EqualTo("outer-fallback"));
-        }
-
-        [Test]
         public void Given_ARowBehindAnElementCallbackErrorABoundaryAboveCaught_When_ThatRenderCommits_Then_TheRowAfterTheBoundaryKeepsItsText()
         {
             // Arrange — the host's row behind the throwing element matches the slot the sibling after the boundary
@@ -1553,7 +1542,156 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("outer-fallback,sibling"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base keeps the Suspense's fallback while a boundary inside the
+        // pending primary catches an element callback's error, and renders that boundary's children once the read
+        // resolves. What this pins is that a walk that boundary's catch stopped still leaves the Suspense to decide.
+        [Test]
+        public void Given_ABoundaryInsideAPendingPrimaryCatchingAnElementCallbackError_When_TheReadResolvesWithTheChildNoLongerThrowing_Then_ItRendersItsChildrenAndNothingWasReported()
+        {
+            // Arrange — the update mounts the boundary beside a memoized reader whose read is still pending
+            var reports = 0;
+            using var mounted = V.Mount(_root, V.Component(InsidePendingHostRender, key: "host"),
+                new MountOptions((_, _) => reports++));
+            s_insideThrows = true;
+            s_setStoppedTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var whilePending = Texts() + " r" + reports;
+            s_insideThrows = false;
+
+            // Act
+            s_insidePending.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whilePending, Texts() + " r" + reports), Is.EqualTo(("loading r0", "value 7,b-child r0")));
+        }
+
+        [Test]
+        public void Given_APresenceBehindABoundaryThatCaughtAnElementCallbackError_When_TheNextRenderRemovesItsChild_Then_TheRowsAreTheFallbackAndTheTailAndTheExitCompletedOnce()
+        {
+            // Arrange — the render the catch stopped removed the presence's child too
+            using var mounted = V.Mount(_root, V.Component(StoppedPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setStoppedTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setStoppedTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts() + ", exits " + s_stoppedExitCompletions, Is.EqualTo("o-fallback,tail:2, exits 1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base expands the presence's children on the stopped walk too,
+        // which records the component among them as met. What this pins is that the presence's own handling of a
+        // stopped walk still does.
+        [Test]
+        public void Given_AComponentInAPresenceBehindABoundaryThatCaughtAnElementCallbackError_When_TheNextRenderReachesIt_Then_ItKeepsItsState()
+        {
+            // Arrange — the presence belongs to a component the stopped render reached, whose tree stands
+            using var mounted = V.Mount(_root, V.Component(StoppedStateRootRender, key: "root"), CaughtErrors.Unlogged);
+            s_setStoppedTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setStoppedTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read with it, since a render nothing stopped keeps the state as well
+            Assert.That(Texts(), Is.EqualTo("o-fallback,state:1"));
+        }
+
         private static Action<int> s_setStoppedTick;
+        private static int s_statefulRenders;
+
+        // Its state is the render count at its mount, so a remount reads a later count.
+        [Component(Compiler = false)]
+        private static VNode StatefulRender()
+        {
+            var (mountedAt, _) = Hooks.UseState(++s_statefulRenders);
+            return V.Label(text: "state:" + mountedAt);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode StoppedStateHostRender(int tick)
+            => V.Fragment(new VNode[]
+            {
+                V.Component(StoppedPresenceBoundaryRender, tick, key: "o"),
+                V.AnimatePresence(key: "p", children: new VNode[] { V.Component(StatefulRender, key: "s") }),
+            });
+
+        // The host is rendered in this component's pass, so the host's own tree stands after a catch stops it.
+        [Component(Compiler = false)]
+        private static VNode StoppedStateRootRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setStoppedTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(StoppedStateHostRender, tick, key: "host") });
+        }
+        private static VelvetTaskCompletionSource<int> s_insidePending;
+        private static bool s_insideThrows;
+        private static int s_stoppedExitCompletions;
+
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode InsidePendingReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => s_insidePending.Task, "inside-pending");
+            return V.Label(text: "value " + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InsideChildRender()
+            => s_insideThrows
+                ? V.ScrollView(onCreated: _ => throw new InvalidOperationException("Element callback throw"),
+                    children: new VNode[] { V.Label(text: "inner") })
+                : V.Label(text: "b-child");
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InsideBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "b-fallback"));
+            return V.Component(InsideChildRender, key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InsidePendingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setStoppedTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
+                {
+                    V.Component(InsidePendingReaderRender, key: "pending"),
+                    tick == 0 ? null : V.Component(InsideBoundaryRender, key: "b"),
+                }),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode StoppedPresenceBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "o-fallback"));
+            return tick == 0 ? V.Label(text: "o-child") : V.Component(CallbackThrowingRender, key: "callback");
+        }
+
+        // The presence's child has no exit animation, so a render that removes it completes the exit at once.
+        [Component(Compiler = false)]
+        private static VNode StoppedPresenceHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setStoppedTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(StoppedPresenceBoundaryRender, tick, key: "o"),
+                V.AnimatePresence(key: "p", onExitComplete: () => s_stoppedExitCompletions++,
+                    children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>()),
+                V.Label(text: "tail:" + tick),
+            });
+        }
 
         [Component(Compiler = false)]
         private static VNode StoppedRowsHostRender()
