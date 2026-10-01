@@ -168,16 +168,17 @@ namespace Velvet
 
         // Releases resources for a single element (animations, events, components, gestures, VirtualList).
         // Performs no DOM operations. Shared logic between CleanupElement and
-        // CleanupDescendants. Split into cohesive groups, called in their original sequence — see
-        // CleanupEffectAndStyleBindingResources' own note on why MotionLayoutIdDriver must run before
-        // ClearElementSideTables.
+        // CleanupDescendants. Split into cohesive groups — see CleanupEffectAndStyleBindingResources' own note
+        // on why MotionLayoutIdDriver must run before ClearElementSideTables. The drag bindings go first: a
+        // session they cancel takes its classes off through the element's class projection, which the style
+        // group drops.
         private void CleanupElementResources(VisualElement element)
         {
+            CleanupDndResources(element);
             CleanupEffectAndStyleBindingResources(element);
             CleanupPaintResources(element);
             CleanupElementDriverResources(element);
             CleanupFocusAndNavigationResources(element);
-            CleanupDndResources(element);
             CleanupControllerResources(element);
             _ctx.PrunePresenceParentElementState(element);
             _ctx.PruneSuspenseContainerState(element);

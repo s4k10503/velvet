@@ -17,6 +17,12 @@ namespace Velvet
     // Tailwind's variant rule outranks the base one, and the base takes the property back on release.
     internal sealed class StyleGestureClassManipulator : Manipulator, IVariantSettleTarget
     {
+        // After every rule the className declares at the state's rank, so a gesture class wins a tie with the
+        // element's own hover: / active: / focus: rule, as Framer's whileHover overrides the element's own style.
+        private static readonly long HoverPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Hover);
+        private static readonly long ActivePriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Active);
+        private static readonly long FocusPriority = StyleLayerPriority.AfterEveryRule(StyleLayerPriority.Focus);
+
         private readonly ReconcilerContext? _ctx;
         private string[] _hoverClasses;
         private string[] _tapClasses;
@@ -54,20 +60,20 @@ namespace Velvet
 
             if (_isHovered)
             {
-                Toggle(oldHover, false, StyleLayerPriority.Hover);
-                Toggle(_hoverClasses, true, StyleLayerPriority.Hover);
+                Toggle(oldHover, false, HoverPriority);
+                Toggle(_hoverClasses, true, HoverPriority);
             }
 
             if (_isTapped)
             {
-                Toggle(oldTap, false, StyleLayerPriority.Active);
-                Toggle(_tapClasses, true, StyleLayerPriority.Active);
+                Toggle(oldTap, false, ActivePriority);
+                Toggle(_tapClasses, true, ActivePriority);
             }
 
             if (_isFocused)
             {
-                Toggle(oldFocus, false, StyleLayerPriority.Focus);
-                Toggle(_focusClasses, true, StyleLayerPriority.Focus);
+                Toggle(oldFocus, false, FocusPriority);
+                Toggle(_focusClasses, true, FocusPriority);
             }
         }
 
@@ -94,17 +100,17 @@ namespace Velvet
         {
             if (_isHovered)
             {
-                Toggle(_hoverClasses, false, StyleLayerPriority.Hover);
+                Toggle(_hoverClasses, false, HoverPriority);
             }
 
             if (_isTapped)
             {
-                Toggle(_tapClasses, false, StyleLayerPriority.Active);
+                Toggle(_tapClasses, false, ActivePriority);
             }
 
             if (_isFocused)
             {
-                Toggle(_focusClasses, false, StyleLayerPriority.Focus);
+                Toggle(_focusClasses, false, FocusPriority);
             }
 
             _isHovered = false;
@@ -127,21 +133,21 @@ namespace Velvet
                     if (on != _isHovered)
                     {
                         _isHovered = on;
-                        Toggle(_hoverClasses, on, StyleLayerPriority.Hover);
+                        Toggle(_hoverClasses, on, HoverPriority);
                     }
                     break;
                 case VariantSignal.Active:
                     if (on != _isTapped)
                     {
                         _isTapped = on;
-                        Toggle(_tapClasses, on, StyleLayerPriority.Active);
+                        Toggle(_tapClasses, on, ActivePriority);
                     }
                     break;
                 case VariantSignal.Focus:
                     if (on != _isFocused)
                     {
                         _isFocused = on;
-                        Toggle(_focusClasses, on, StyleLayerPriority.Focus);
+                        Toggle(_focusClasses, on, FocusPriority);
                     }
                     break;
             }

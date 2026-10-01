@@ -324,13 +324,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHoverChannelClassOnTheLiveList_When_AWidthPayloadReSyncs_Then_TheTextIsUntouched()
+        public void Given_AHoverChannelUppercase_When_HoveredAndLeft_Then_TheTextTransformsAndComesBack()
         {
-            // Arrange — whileHoverClass writes straight onto the live class list and raises no signal, so
-            // nothing would ever undo an effect derived from it. A width payload re-syncs an element that
-            // declares no gate payload at all, which is the same no-recorded-array path a [&>*]: rule takes
-            // — and here the live list is not merely missing tokens but carrying one the element never
-            // declared.
+            // Arrange — whileHoverClass applies as hover: does, so the transform it names re-derives on both edges.
             using var scope = new ReconcilerScope();
             var card = (Label)Mount(scope,
                 V.Label(className: "dark:w-64", whileHoverClass: "uppercase", text: "Docs", name: "card"));
@@ -338,13 +334,16 @@ namespace Velvet.Tests
             {
                 card.SimulateEvent(over);
             }
+            var hovered = card.text;
 
             // Act
-            VelvetTheme.IsDark = true;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                card.SimulateEvent(leave);
+            }
 
-            // Assert — the channel's class being live is what the case is about, so it rides along; a
-            // transform taken from it would be baked into the string for the element's remaining life.
-            Assert.That((card.ClassListContains("uppercase"), card.text), Is.EqualTo((true, "Docs")));
+            // Assert
+            Assert.That((hovered, card.text), Is.EqualTo(("DOCS", "Docs")));
         }
     }
 

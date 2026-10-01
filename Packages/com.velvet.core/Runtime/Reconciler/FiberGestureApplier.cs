@@ -23,6 +23,9 @@ namespace Velvet
             var tapClasses = V.ParseClassNames(whileTapClass);
             var focusClasses = V.ParseClassNames(whileFocusClass);
             var hasGesture = hoverClasses.Length > 0 || tapClasses.Length > 0 || focusClasses.Length > 0;
+            _ctx.ExpectGatePayload(element, hoverClasses);
+            _ctx.ExpectGatePayload(element, tapClasses);
+            _ctx.ExpectGatePayload(element, focusClasses);
 
             if (_ctx.GestureManipulators.TryGetValue(element, out var existing))
             {

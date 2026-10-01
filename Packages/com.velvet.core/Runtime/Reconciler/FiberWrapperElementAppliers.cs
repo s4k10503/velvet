@@ -205,6 +205,21 @@ namespace Velvet
             }
         }
 
+        // The drag channels' share of ReconcilerContext.ExpectGatePayload, for a create path that applies the drag
+        // bindings after it resolves its paints.
+        internal void ExpectDragGates(VisualElement element, FiberElementProps? props)
+        {
+            if (props?.Draggable != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Draggable.WhileDraggingClass));
+            }
+            if (props?.Droppable != null)
+            {
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Droppable.WhileOverClass));
+                _ctx.ExpectGatePayload(element, V.ParseClassNames(props.Droppable.WhileDragActiveClass));
+            }
+        }
+
         internal void ApplyDraggable(VisualElement element, DraggableSettings? settings)
         {
             if (_ctx.DraggableBindings.TryGetValue(element, out var binding))

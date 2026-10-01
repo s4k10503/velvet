@@ -130,6 +130,7 @@ namespace Velvet
             }
             _ctx.SyncRefCallback(element, elementNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
+            _patcher.Appliers.ExpectDragGates(element, elementNode.Props);
             _patcher.ApplyVariantManipulators(element, elementNode.ClassNames);
             // After ApplyVariantManipulators (which registers the data-/aria- variant rules): seed the
             // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
@@ -322,6 +323,7 @@ namespace Velvet
             }
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
+            _patcher.Appliers.ExpectDragGates(element, motionNode.Props);
             _patcher.ApplyVariantManipulators(element, appliedClasses);
             _patcher.ApplyAttributes(element, motionNode.Props);
             ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);

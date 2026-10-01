@@ -646,6 +646,17 @@ namespace Velvet
         // change), so nothing else would re-run those passes. Null until the patcher wires it.
         public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
 
+        // A class channel that is not a variant (whileHoverClass, a drag's class) carrying a gate token needs the
+        // element's class source recorded as a declared variant payload does (FiberNodePatcher.RecordVariantGateSource),
+        // so a toggle re-derives its paints. Called ahead of the create path's paint resolution.
+        internal void ExpectGatePayload(VisualElement element, string[] payloads)
+        {
+            if (StyleVariantPayload.CarriesGatePayload(payloads))
+            {
+                VariantGateClasses.TryAdd(element, new VariantGateState());
+            }
+        }
+
         // Records / drops one variant-applied gate token for target at the priority its payload was applied
         // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
         // list rank and expire together — plus, for the rules that carry one, the className position that

@@ -653,5 +653,140 @@ namespace Velvet.Tests
             // Assert
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
+
+        // Whether the reconciler holds a paint binding of the given table for a child whose whileHoverClass is
+        // hover, while hovered and once the pointer has left.
+        private (bool Hovered, bool Left) PaintWhileHovered(string hover,
+            System.Func<ReconcilerContext, VisualElement, bool> painted)
+        {
+            var (child, _) = Mount("", "bg-white", hover: hover);
+            var ctx = _mounted.Root.Reconciler.Context;
+            Hover(child, true);
+            var hovered = painted(ctx, child);
+            Hover(child, false);
+            return (hovered, painted(ctx, child));
+        }
+
+        [Test]
+        public void Given_AShadowHoverClass_When_HoveredAndLeft_Then_TheShadowPaintsAndGoes()
+        {
+            // Act
+            var painted = PaintWhileHovered("shadow-lg", (ctx, child) => ctx.ShadowBindings.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ARingHoverClass_When_HoveredAndLeft_Then_TheRingPaintsAndGoes()
+        {
+            // Act
+            var painted = PaintWhileHovered("ring-2", (ctx, child) => ctx.RingBindings.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ASkewHoverClass_When_HoveredAndLeft_Then_TheSkewPaintsAndGoes()
+        {
+            // Act
+            var painted = PaintWhileHovered("skew-x-6", (ctx, child) => ctx.SkewBindings.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AGradientHoverClass_When_HoveredAndLeft_Then_TheGradientPaintsAndGoes()
+        {
+            // Act
+            var painted = PaintWhileHovered("bg-gradient-to-r from-red-500 to-blue-500",
+                (ctx, child) => ctx.GradientBackgrounds.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnAnimateHoverClass_When_HoveredAndLeft_Then_TheAnimationRunsAndStops()
+        {
+            // Act
+            var painted = PaintWhileHovered("animate-pulse", (ctx, child) => ctx.AnimationBindings.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ADashedBorderHoverClass_When_HoveredAndLeft_Then_TheDashPaintsAndGoes()
+        {
+            // Act
+            var painted = PaintWhileHovered("border-2 border-dashed",
+                (ctx, child) => ctx.BorderStyleBindings.ContainsKey(child));
+
+            // Assert
+            Assert.That(painted, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AShadowTapClass_When_Pressed_Then_TheShadowPaints()
+        {
+            // Arrange
+            var (child, _) = Mount("", "bg-white", tap: "shadow-lg");
+
+            // Act
+            using (var down = PointerDownEvent.GetPooled())
+            {
+                child.SimulateEvent(down);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(child), Is.True);
+        }
+
+        [Test]
+        public void Given_AShadowFocusClass_When_Focused_Then_TheShadowPaints()
+        {
+            // Arrange
+            var (child, _) = Mount("", "bg-white", focus: "shadow-lg");
+
+            // Act
+            using (var focus = FocusEvent.GetPooled())
+            {
+                child.SimulateEvent(focus);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(child), Is.True);
+        }
+
+        [Test]
+        public void Given_AHoverRuleOfTheClassName_When_AHoverClassSetsTheSameColor_Then_TheHoverClassWins()
+        {
+            // Arrange — the bundled stylesheet puts the className's bg-blue-500 after the gesture's bg-red-500.
+            var (child, reference) = Mount("", "hover:bg-blue-500", hover: "bg-red-500", reference: "bg-red-500");
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
+        }
+
+        [Test]
+        public void Given_AHoverBracketOfTheClassName_When_AHoverBracketSetsTheSameColor_Then_TheHoverClassWins()
+        {
+            // Arrange
+            var (child, _) = Mount("", "hover:bg-[#0000ff]", hover: "bg-[#ff0000]");
+
+            // Act
+            Hover(child, true);
+
+            // Assert
+            Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(Color.red));
+        }
     }
 }

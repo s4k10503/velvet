@@ -93,6 +93,9 @@ namespace Velvet
         // The rank an arbitrary layer's key carries, without its rule position.
         public static long RankOf(long key) => key & ~RuleMask;
 
+        // priority, placed after every rule a className declares at that rank.
+        public static long AfterEveryRule(long priority) => priority | RuleMask;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
