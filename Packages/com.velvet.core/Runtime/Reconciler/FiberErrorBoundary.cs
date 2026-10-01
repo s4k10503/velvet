@@ -10,7 +10,7 @@ namespace Velvet
     // [Component(IsErrorBoundary = true)] ancestor; TryCatch renders that boundary's UseFallback UI in
     // place of the throwing subtree. A render error below a boundary whose output the walk is expanding, or
     // whose own render is reconciling its output, is taken in there (GeneralPathReconciler.ExpandBoundaryInline,
-    // FiberRenderer.ReconcileRenderedTree); otherwise TryCatch reconciles the fallback over the boundary's rows
+    // Reconciler.ReconcileCatching); otherwise TryCatch reconciles the fallback over the boundary's rows
     // and aborts the in-flight reconcile. The fiber-stack and VNode-pool
     // plumbing it relies on stays on FiberRenderer (the render core) and is called back into here.
     internal static class FiberErrorBoundary
@@ -115,9 +115,8 @@ namespace Velvet
             return !fiber.FallbackContentFailed;
         }
 
-        // A render error below a boundary whose own render is the pass, caught once that render's reconcile has
-        // unwound (FiberRenderer.ReconcileRenderedTree), as GeneralPathReconciler.ExpandBoundaryInline catches one
-        // in a walk: the fallback then replaces the rows the boundary's committed tree holds, and the catch is
+        // A render error below a boundary whose own render is the pass, caught inside that render's reconcile
+        // (Reconciler.ReconcileCatching), as GeneralPathReconciler.ExpandBoundaryInline catches one in a walk: the fallback then replaces the rows the boundary's committed tree holds, and the catch is
         // reported once it has rendered. Where the fallback's own content failed, the original error goes on.
         internal static void ShowCaughtFallback(ComponentFiber fiber, BoundaryCaughtSignal caught)
         {
@@ -216,9 +215,9 @@ namespace Velvet
         }
 
         // Leaves the fallback to the frame expanding or reconciling the boundary's output that is on the stack,
-        // which takes back what the failed children committed, renders the fallback in their place and reports the
-        // catch once the fallback has rendered; the rest of the pass goes on. Returns false only where no fallback was
-        // produced, so propagation continues.
+        // which renders the fallback in place of the failed children and reports the catch once the fallback has
+        // rendered; the rest of the pass goes on. Returns false only where no fallback was produced, so propagation
+        // continues.
         private static bool CatchInTheWalk(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
             var fallback = RenderFallback(fiber, throwingFiber, exception, out var info);

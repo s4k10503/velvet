@@ -168,6 +168,31 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base renders a boundary's children again on any later render,
+        // so this reads the same there. What this pins is that a catch the suspended render took inside an element
+        // of the primary does not keep the boundary on its fallback once the primary is revealed.
+        [Test]
+        public void Given_ABoundaryInsideAnElementOfAShownPrimary_When_AnUpdateThatSuspendsThePrimaryCaughtThereAndTheResourceResolves_Then_ItRendersItsChildren()
+        {
+            // Arrange — the update makes the child throw and mounts a reader that waits, so the catch is in a
+            // render the primary discards
+            using var mounted = V.Mount(_root, V.Component(ElementSuspenseHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_pending = new VelvetTaskCompletionSource<string>();
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_throws = false;
+
+            // Act
+            s_pending.TrySetResult("value");
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
+        }
+
         [Test]
         public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRender_Then_NothingIsReported()
         {
@@ -388,6 +413,30 @@ namespace Velvet.Tests
                     V.Component(PendingReaderRender, key: "reader"),
                 }),
             });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ElementBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(ThrowerRender, key: "thrower");
+        }
+
+        // The boundary sits inside a host element of the primary, which that element's own reconcile expands. The
+        // reader that waits is one the update mounts.
+        [Component(Compiler = false)]
+        private static VNode ElementSuspenseHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), new VNode[]
+                {
+                    V.Div(children: new VNode[] { V.Component(ElementBoundaryRender, tick, key: "boundary") }),
+                    tick == 0 ? V.Label(text: "loaded:first") : V.Component(PendingReaderRender, key: "reader-" + tick),
+                }),
+            });
+        }
 
         [Component(Compiler = false)]
         private static VNode OuterHostRender()

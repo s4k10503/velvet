@@ -424,8 +424,9 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
-        // A boundary reconciling its own output catches a render error below it once that reconcile has unwound,
-        // as the walk catches one below a boundary it expands (FiberErrorBoundary.ShowCaughtFallback). Where it
+        // A boundary reconciling its own output catches a render error below it inside that reconcile, as the walk
+        // catches one below a boundary it expands, and shows its fallback once the reconcile has returned
+        // (FiberErrorBoundary.ShowCaughtFallback). Where it
         // catches on the aborting path instead — an element callback's error — inside another component's pass,
         // a VirtualList row mounting during that pass, the abort it raises belongs to this reconcile alone: the
         // enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what tells that
@@ -438,29 +439,16 @@ namespace Velvet
         {
             var catchesHere = fiber.IsErrorBoundary && !deferReconcile;
             var passContext = fiber.Reconciler?.Context;
-            fiber.CatchesInTheWalk = catchesHere;
             var recordsBefore = catchesHere ? passContext?.RecordsOf(fiber) : null;
-            BoundaryCaughtSignal? caught = null;
-            try
-            {
-                FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
-            }
-            catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, fiber))
-            {
-                caught = signal;
-            }
-            finally
-            {
-                fiber.CatchesInTheWalk = false;
-            }
+            var caught = FiberCommitWork.ReconcileIntoSlotRange(
+                fiber, oldTree, newTree, frameBudgetMs, deferReconcile, catchesHere);
             if (caught != null)
             {
-                // React runs nothing for work that never committed. The Suspense and AnimatePresence records kept
-                // against the boundary are put back as they were before the fallback renders, rather than pruned as
-                // the walk's catch prunes them: the fallback's own reconcile reads them for the rows it replaces,
-                // and without them leaves those rows on screen (BoundaryCatchScopeTests' own-update cases).
-                passContext!.DropEnterCompletions(passContext.EnterCompletionsBelow(fiber));
-                if (recordsBefore is { } records) passContext.RestoreRecordsOf(fiber, records);
+                // The Suspense and AnimatePresence records kept against the boundary are put back as they were
+                // before the fallback renders, rather than pruned as the walk's catch prunes them: the fallback's own
+                // reconcile reads them for the rows it replaces, and without them leaves those rows on screen
+                // (BoundaryCatchScopeTests' own-update cases).
+                if (recordsBefore is { } records) passContext!.RestoreRecordsOf(fiber, records);
                 FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             }
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;

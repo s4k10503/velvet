@@ -1093,8 +1093,8 @@ namespace Velvet
 
         // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
         // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
-        // (GeneralPathReconciler.ExpandBoundaryInline), in its own reconcile (FiberRenderer.ReconcileRenderedTree)
-        // or on the aborting path (FiberErrorBoundary.TryCatch). A
+        // (GeneralPathReconciler.ExpandBoundaryInline), in its own reconcile (Reconciler.ReconcileCatching) or on
+        // the aborting path (FiberErrorBoundary.TryCatch). A
         // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
         // pass end would reach it.
         internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)

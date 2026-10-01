@@ -278,19 +278,24 @@ namespace Velvet
         // additional VEs — so the delta is measured as the MountPoint's child count before and after the
         // Reconcile, through RowCountWindow. Wrapper-mounted fibers own their entire MountPoint and don't
         // participate in the shift.
-        internal static void ReconcileOwnRows(
-            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs)
+        // A boundary's own render passes catches, and a render error below it comes back caught
+        // (Reconciler.ReconcileCatching) after the rows the failed render left are propagated like any others.
+        internal static BoundaryCaughtSignal? ReconcileOwnRows(
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool catches = false)
         {
             var reconciler = fiber.Reconciler!;
+            var catching = catches ? fiber : null;
             if (!fiber.IsInlineMounted)
             {
-                reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs);
-                return;
+                return reconciler.ReconcileCatching(
+                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catching);
             }
             var rows = new RowCountWindow(fiber);
             var slotLimit = NextInlineSiblingSlotStart(fiber);
-            reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit);
+            var caught = reconciler.ReconcileCatching(
+                fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catching);
             PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
+            return caught;
         }
 
         // When deferReconcile is true (initial inline mount), the commit is performed by the caller's parent
@@ -298,8 +303,9 @@ namespace Velvet
         // caller and consumed by ExpandInlineRecursive, which inserts the output VEs into the parent at the
         // fiber's slot range — so the FiberRenderer-side bookkeeping is skipped here to avoid using the
         // unexpanded VNode count.
-        internal static void ReconcileIntoSlotRange(
-            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
+        internal static BoundaryCaughtSignal? ReconcileIntoSlotRange(
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile,
+            bool catches)
         {
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
@@ -307,7 +313,7 @@ namespace Velvet
             if (treeContext != null) treeContext.CurrentFiberTree = newTree;
             try
             {
-                if (!deferReconcile) ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
+                return deferReconcile ? null : ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs, catches);
             }
             finally
             {

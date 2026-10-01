@@ -59,6 +59,9 @@ namespace Velvet.Tests
             s_brokenFallbackRenders = 0;
             s_setOwnerTick = null;
             s_enterCompletions = 0;
+            s_setOwnEnterTick = null;
+            s_setOwnRowsTick = null;
+            s_setSiblingCount = null;
             s_outerSaw = null;
             s_caughtStacks.Clear();
             s_target = new VisualElement { name = "target" };
@@ -980,6 +983,155 @@ namespace Velvet.Tests
             Assert.That(Texts() + ", states " + mounted.Root.Reconciler.Context.PresenceStates.Count,
                 Is.EqualTo("fallback, states 0"));
         }
+
+        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, which drops the enters
+        // the failed render queued too. What this pins is that the catch the boundary's own reconcile takes drops them.
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInTheFailedRenderOfTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsCompletionNeverRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OwnUpdateEnterHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnEnterTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read with the count, since an update that never rendered the presence
+            // completes nothing either
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 0"));
+        }
+
+        private static Action<int> s_setOwnEnterTick;
+
+        // Renders the presence only from its own update on, so the render that queues the enter is that update's.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnUpdateEnterBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnEnterTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return tick == 0
+                ? V.Label(text: "ok")
+                : V.Fragment(new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                    {
+                        V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                            onEnterComplete: () => s_enterCompletions++),
+                    }),
+                    V.Component(ThrowerRender, key: "thrower"),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwnUpdateEnterHostRender()
+            => V.Div(children: new VNode[] { V.Component(OwnUpdateEnterBoundaryRender, key: "boundary") });
+
+        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path. What this pins is
+        // that the catch the boundary's own reconcile takes leaves the sibling on its own row as well.
+        [Test]
+        public void Given_AnInlineSiblingBehindABoundaryWhoseOwnUpdateInsertedARowBeforeFailing_When_TheSiblingUpdates_Then_ItRewritesOnlyItsOwnRow()
+        {
+            // Arrange — the failed update's leaf list takes the fast path and inserts a row before the throw
+            using var mounted = V.Mount(_root, V.Component(RowsHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_setOwnRowsTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setSiblingCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read beside the sibling's rows, since a boundary that never caught leaves
+            // the sibling one row too
+            var labels = Texts().Split(',');
+            Assert.That(labels.Contains("fallback") + "|" + string.Join(",", labels.Where(text => text.StartsWith("s:"))),
+                Is.EqualTo("True|s:1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path. What this pins is
+        // that the catch the boundary's own reconcile takes leaves the sibling on its own row as well.
+        [Test]
+        public void Given_AnInlineSiblingBehindABoundaryWhoseOwnUpdateMountsAPortalWhoseContentThrows_When_TheSiblingUpdates_Then_ItRewritesOnlyItsOwnRow()
+        {
+            // Arrange — the Portal's content mounts in the drain that ends the boundary's own pass
+            using var mounted = V.Mount(_root, V.Component(PortalRowsHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_setOwnRowsTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setSiblingCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read beside the sibling's rows, since a boundary that never caught leaves
+            // the sibling one row too
+            var labels = Texts().Split(',');
+            Assert.That(labels.Contains("fallback") + "|" + string.Join(",", labels.Where(text => text.StartsWith("s:"))),
+                Is.EqualTo("True|s:1"));
+        }
+
+        private static Action<int> s_setOwnRowsTick;
+        private static Action<int> s_setSiblingCount;
+
+        [Component(Compiler = false)]
+        private static VNode RowsSiblingRender()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_setSiblingCount = setCount;
+            return V.Label(text: "s:" + count);
+        }
+
+        // Its output is host leaves only, so its own reconcile takes the fast path.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RowsBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRowsTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return tick == 0
+                ? V.Fragment(new VNode[] { V.Label(text: "a") })
+                : V.Fragment(new VNode[]
+                {
+                    V.Label(text: "a"),
+                    V.Label(text: "b"),
+                    V.Div(children: new VNode[] { V.Component(ThrowerRender, key: "thrower") }),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowsHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(RowsBoundaryRender, key: "boundary"),
+                V.Component(RowsSiblingRender, key: "sibling"),
+            });
+
+        // Its first row is the same Button before and after the update, since the fallback is diffed against the rows
+        // before the update.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode PortalRowsBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRowsTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return tick == 0
+                ? V.Button(text: "open", onClick: () => { })
+                : V.Fragment(new VNode[]
+                {
+                    V.Button(text: "open", onClick: () => { }),
+                    V.Portal(s_target, new VNode[] { V.Component(ThrowerRender, key: "dialog") }),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PortalRowsHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(PortalRowsBoundaryRender, key: "boundary"),
+                V.Component(RowsSiblingRender, key: "sibling"),
+            });
 
         [Test]
         public void Given_AnEnterWithNothingToPlayInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
