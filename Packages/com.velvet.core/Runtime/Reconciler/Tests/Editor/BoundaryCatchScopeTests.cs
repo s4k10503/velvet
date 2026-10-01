@@ -63,6 +63,7 @@ namespace Velvet.Tests
             s_setSuspendingOwnTick = null;
             s_setOuterCatchTick = null;
             s_outerCatchFactoryRuns = 0;
+            s_setStoppedTick = null;
             s_setOwnRowsTick = null;
             s_setSiblingCount = null;
             s_outerSaw = null;
@@ -1521,6 +1522,67 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
+
+        [Test]
+        public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryThatStaysPending_When_ThatRenderCommits_Then_ItsFallbackIsOnScreen()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Div(children: new VNode[] { V.Component(OuterCatchBoundaryRender, key: "outer") }),
+                CaughtErrors.Unlogged);
+
+            // Act
+            s_setOuterCatchTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("outer-fallback"));
+        }
+
+        [Test]
+        public void Given_ARowBehindAnElementCallbackErrorABoundaryAboveCaught_When_ThatRenderCommits_Then_TheRowAfterTheBoundaryKeepsItsText()
+        {
+            // Arrange — the host's row behind the throwing element matches the slot the sibling after the boundary
+            // moves into once the boundary's fallback has replaced the host's rows
+            using var mounted = V.Mount(_root, V.Component(StoppedRowsRootRender, key: "root"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setStoppedTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("outer-fallback,sibling"));
+        }
+
+        private static Action<int> s_setStoppedTick;
+
+        [Component(Compiler = false)]
+        private static VNode StoppedRowsHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setStoppedTick = setTick;
+            return V.Fragment(new VNode[]
+            {
+                V.Label(text: "before"),
+                tick == 0 ? null : V.Component(CallbackThrowingRender, key: "callback"),
+                V.Label(text: "after:" + tick),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode StoppedRowsBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(StoppedRowsHostRender, key: "host");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode StoppedRowsRootRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(StoppedRowsBoundaryRender, key: "boundary"),
+                V.Label(text: "sibling"),
+            });
+
 
         // GREEN_ON_BASE(characterization): the merge base forgets no catch when a primary is discarded. What this
         // pins is that the forgetting this branch adds leaves alone a catch by a boundary above the Suspense's owner.

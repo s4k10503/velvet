@@ -280,6 +280,9 @@ namespace Velvet
         // the old side the removal pass reads.
         private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey)
         {
+            // A walk a catch on the aborting path stopped commits nothing further: a leaf matched by slot would
+            // patch whatever that catch's fallback put there.
+            if (_ctx.IsAborted) return;
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
@@ -1317,6 +1320,9 @@ namespace Velvet
                             suspended = true;
                         }
                     }
+                    // A walk the primary's expansion stopped decides nothing here, as one stopped before it does
+                    // above: no fallback, no record, and no catch forgotten.
+                    if (_ctx.IsAborted) return;
                     if (!suspended)
                     {
                         suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber);
@@ -1342,7 +1348,7 @@ namespace Velvet
                     // exclusion in RollbackCommitTo.
                     if (suspended)
                     {
-                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers);
+                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore);
                         if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
@@ -1367,19 +1373,16 @@ namespace Velvet
             }
         }
 
-        // A catch a boundary the Suspense's own walk reached in the primary took is discarded with the render the
-        // primary suspends in, as React discards a capture with the render that suspended: that boundary reports
-        // nothing for it and renders its children again rather than the fallback it would otherwise keep
-        // (FiberErrorBoundary.OutputOf). A boundary inside a host element of the primary is expanded by that
-        // element's own reconcile, which this walk does not reach.
-        private void ForgetCatchesOfTheDiscardedPrimary(
-            int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers)
+        // A catch a boundary in the primary took is discarded with the render the primary suspends in, as React
+        // discards a capture with the render that suspended: the boundary reports nothing for it and renders its
+        // children again rather than the fallback it would otherwise keep (FiberErrorBoundary.OutputOf). A walk a
+        // catch on the aborting path stopped returns before this, so a catch above the Suspense is never forgotten.
+        private void ForgetCatchesOfTheDiscardedPrimary(int reportsBefore)
         {
             var reports = _ctx.PendingCaughtErrorReports;
             for (var i = reports.Count - 1; i >= reportsBefore; i--)
             {
                 var boundary = reports[i].Boundary;
-                if (fibersBefore.Contains(boundary) || !newFibers.Contains(boundary)) continue;
                 boundary.CaughtError = null;
                 reports.RemoveAt(i);
                 // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
