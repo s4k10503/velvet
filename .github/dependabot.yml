@@ -11,6 +11,11 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # A Dependabot pull request runs without the Unity licence secrets, so its Unity jobs skip and a
+      # game-ci bump would land unmeasured: #1185's took player-compile and every Unity job down on main.
+      # game-ci is raised by hand, in a pull request whose Unity jobs run.
+      - dependency-name: "game-ci/*"
 
   # The composite action under .github/actions pins a SHA of its own, and the entry above reads only
   # the workflows.
@@ -24,6 +29,9 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # The same reason as the entry above.
+      - dependency-name: "game-ci/*"
 
   # The same for the maintenance branch, which runs these workflows and pins the same SHAs; the
   # entry above does not reach it, and `target-branch` is what names it. Actions only: what a
@@ -40,6 +48,9 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # The same reason as the first entry.
+      - dependency-name: "game-ci/*"
 
   # Roslyn source-generator solution (standalone .NET project) — one grouped PR, monthly.
   - package-ecosystem: nuget
