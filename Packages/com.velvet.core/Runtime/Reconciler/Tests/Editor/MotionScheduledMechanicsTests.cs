@@ -3139,6 +3139,163 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadCrossfadingInOnATransitionAllClass_When_ItsBackgroundChanges_Then_TheBackgroundStillTransitions()
+        {
+            // Arrange — the bundled sheet; "b" transitioning everything linearly over a second, black, some way into its
+            // crossfade.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-all duration-1000 ease-linear bg-black";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "b" turns white; some 0.3 s on.
+            s_bClasses = "transition-all duration-1000 ease-linear bg-white";
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — part way to white on its own second, as Framer leaves the transitions of what a layout animation
+            // does not write.
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r, Is.InRange(0.15f, 0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone. Narrowing writes all
+        // four lists, and must hand back the element's own duration.
+        [Test]
+        public void Given_ATransitionAllMotionWithAnArbitraryDurationThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItsOwnDurationIsHandedBack()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-all duration-[400ms]";
+            using var mounted = MountBOverA();
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            var b = Root.Q<VisualElement>("b");
+            var durations = b.style.transitionDuration.value;
+            Assert.That((b.style.transitionProperty.keyword, durations.Count == 1 && Mathf.Approximately(durations[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes no list but transition-property, so the rules' lists pair as
+        // they were declared. The lists narrowing writes must not be paired with the rules' transition-property.
+        [Test]
+        public void Given_ALeadCrossfadingInWhoseRulesTransitionOpacityAfterAnotherProperty_When_AClassTakesItsOpacityToZero_Then_ItsOwnIsCarriedOnItsOwnEntry()
+        {
+            // Arrange — the bundled sheet and the test's own, transitioning background-color over a fifth of a second and
+            // then opacity over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            s_bClasses = "layout-id-test-two";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — some 0.3 s after "b" takes opacity-0.
+            s_bClasses = "layout-id-test-two opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — its own opacity, under the crossfade's circOut, some 0.3 s down its second rather than landed on the
+            // fifth of a second its first entry gives.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(own, Is.InRange(0.55f, 0.85f));
+        }
+
+        [Test]
+        public void Given_ALeadCrossfadingInOnANegativeDelay_When_ItsClassesFadeItOutAndBack_Then_TheWayBackShortensItsDelayAsTheEngineDoes()
+        {
+            // Arrange — the bundled sheet and the test's own; "b", and a control holding no id, both transitioning their
+            // opacity linearly over a second begun a fifth of a second in; "b" takes the id on a three-second tween.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early", "layout-id-test-fade-early");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early opacity-0", "layout-id-test-fade-early opacity-0");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Act — both back towards their own whole; a tenth of a second on.
+            (s_bClasses, s_controlClasses) = ("layout-id-test-fade-early", "layout-id-test-fade-early");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "b"'s own opacity, under the crossfade's circOut, where the control stands: the engine shortens the
+            // way back's negative delay with its duration, which leaves the control below three quarters.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            var control = Root.Q<VisualElement>("control").resolvedStyle.opacity;
+            Assert.That((Mathf.Abs(own - control) < 0.03f, control < 0.75f), Is.EqualTo((true, true)));
+        }
+
+        // "a", and a control holding no id, both transitioning everything linearly over a second, turn or round as
+        // classes turn; some 0.3 s in, "a" moves under "card" from "b" 300px right on a three-second tween, mixing in
+        // from "b"'s none. Returns how far "a"'s own is from the control's some 0.2 s on, read off the projection, and
+        // the control's.
+        private (float Gap, float Control) TakeOverAsItTurns(string to, System.Func<VisualElement, float> control,
+            System.Func<LayoutIdProjection, float> drawn)
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = (s_aClasses + " " + to, s_controlClasses + " " + to);
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            (s_aId, s_aLeft) = ("card", 0);
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            var own = drawn(mounted.Root.Reconciler.Context.LayoutIdProjections[a]) / (1f - TranslateX(a) / 300f);
+            var native = control(Root.Q<VisualElement>("control"));
+            return (Mathf.Abs(own - native), native);
+        }
+
+        [Test]
+        public void Given_AMotionTurningOnATransition_When_ItTakesAHeldIdAndMixesItsRotate_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act
+            var (gap, control) = TakeOverAsItTurns("rotate-90", e => e.resolvedStyle.rotate.angle.ToDegrees(), p => p.DrawnRotate);
+
+            // Assert — within a degree of the control, which is half way round.
+            Assert.That((gap < 1f, control > 30f && control < 60f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt()
+        {
+            // Arrange / Act
+            var (gap, control) = TakeOverAsItTurns("rounded-[20px]", e => e.resolvedStyle.borderTopLeftRadius, p => p.DrawnRadii[0].value);
+
+            // Assert — within half a pixel of the control, which is half way round.
+            Assert.That((gap < 0.5f, control > 6f && control < 14f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, and both turn 0.6 s in.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+
+            // Act — past the landing; some 0.6 s into the turn.
+            for (var i = 0; i < 35; i++) Tick();
+
+            // Assert — where the control stands, rather than a fresh second begun from where the move left it.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That((Mathf.Abs(b - control) < 1.5f, control > 30f && control < 80f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened()
         {
             // Arrange — the bundled sheet and the test's own; "b", and a control holding no id, both transitioning their

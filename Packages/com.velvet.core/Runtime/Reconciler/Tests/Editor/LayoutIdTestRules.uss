@@ -18,3 +18,16 @@
     transition-delay: 0.2s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-two {
+    transition-property: background-color, opacity;
+    transition-duration: 0.2s, 1s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-fade-early {
+    transition-property: opacity;
+    transition-duration: 1s;
+    transition-delay: -0.2s;
+    transition-timing-function: linear;
+}

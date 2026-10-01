@@ -1,4 +1,6 @@
 #nullable enable
+using System;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -246,9 +248,68 @@ namespace Velvet
             }
         }
 
+        private sealed class Tail
+        {
+            public Tail(LayoutIdProjection projection, IVisualElementScheduledItem item) => (Projection, Item) = (projection, item);
+
+            public readonly LayoutIdProjection Projection;
+            public readonly IVisualElementScheduledItem Item;
+        }
+
+        // A projection that ended with its own rotate or radii still carried, stepped until they land.
+        private static readonly ConditionalWeakTable<VisualElement, Tail> s_tails = new();
+
+        // Called as the projection ends: hands back the slots it wrote here and its transition suspension once the rotate
+        // and radii it carries have landed, running them on until then, as MotionOpacity runs an opacity that outlasts a
+        // crossfade (Given_ALeadWhoseOwnRotateChangesLateInItsMove_When_TheMoveLands_Then_ItsRotateRunsOnAsTheEngineRunsIt).
+        public static void End(VisualElement element, LayoutIdProjection projection)
+        {
+            if (Landed(projection))
+            {
+                Hand(element, projection);
+                return;
+            }
+            var item = element.schedule.Execute(state => StepTail(element, projection, state.deltaTime / 1000f)).Every(StyleAnimateDriver.TickMs);
+            s_tails.AddOrUpdate(element, new Tail(projection, item));
+        }
+
+        // Lands an ended projection's carried values at once, for a projection about to start on the element.
+        public static void Settle(VisualElement element)
+        {
+            if (!s_tails.TryGetValue(element, out var tail)) return;
+            Forget(element);
+            Hand(element, tail.Projection);
+        }
+
+        // Drops an ended projection's tail without writing, for an element torn down.
+        public static void Forget(VisualElement element)
+        {
+            if (!s_tails.TryGetValue(element, out var tail)) return;
+            tail.Item.Pause();
+            s_tails.Remove(element);
+        }
+
+        private static void StepTail(VisualElement element, LayoutIdProjection projection, float dtSec)
+        {
+            Adopt(element, projection);
+            Narrow(element, projection);
+            if (projection.WritesRotate) WriteRotate(element, projection, float.NaN, dtSec);
+            if (projection.WritesRadii) WriteRadii(element, projection, null, Vector2.one, dtSec);
+            if (Landed(projection)) Settle(element);
+        }
+
+        private static bool Landed(LayoutIdProjection projection) =>
+            projection.RotateCarry.Landed && Array.TrueForAll(projection.RadiusCarries, carry => carry.Landed);
+
+        private static void Hand(VisualElement element, LayoutIdProjection projection)
+        {
+            Restore(element, projection);
+            MotionNativeTransitionGuard.Release(element, projection);
+        }
+
         // Hands back what the projection wrote here, and the radius slots to CornerRadiusFit, which refits them for
         // whatever changed meanwhile.
-        public static void Restore(VisualElement element, LayoutIdProjection projection)
+        private static void Restore(VisualElement element, LayoutIdProjection projection)
         {
             if (projection.WritesRotate) element.style.rotate = projection.OwnInlineRotate;
             if (!projection.WritesRadii) return;

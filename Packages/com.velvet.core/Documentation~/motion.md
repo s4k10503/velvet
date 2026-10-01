@@ -341,7 +341,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
   the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
   held before the tween, or whatever something else wrote there while the tween ran, which the tween
-  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
+  composes with from its next frame on. While the tween runs, the transitions the element's classes
+  declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
+  transitions of what a layout animation does not animate; the element's own inline duration, delay and
+  easing are handed back with them. A Motion that leaves its panel without being unmounted has
   its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
@@ -355,9 +358,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
   it fades in on circOut over the first half of its move while they fade out linearly between halfway
   and 95% of it. The fade is written as the element's inline opacity over the opacity its classes,
-  variants and drivers give it. While it is written, an element whose transitions cover opacity has them
-  suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
-  unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
+  variants and drivers give it. While it is written, the element's transitions go on running for every
+  property but opacity and the others the tween writes, and Velvet carries a change of that opacity itself — a class
   change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the transition the
   element declares for opacity, as UI Toolkit runs it: one already running when the fade starts runs on
   from where it had got, inside its delay or past it, and a change back towards where a running one
@@ -396,7 +398,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   takes one length per corner, so the radius is divided by the geometric mean of the two scales and the
   corner is drawn slightly elliptical. A radius or rotate the Motion is given meanwhile is drawn as it is
   given, on the transition it changes by, such as a variant swap's, and at once while a Spring or Bezier
-  play or an `animate-*` loop writes it. The scale holds the
+  play or an `animate-*` loop writes it. One already running as the tween starts writing it runs on from
+  where it had got, and one still running as the tween lands runs on to its end. The scale holds the
   element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
