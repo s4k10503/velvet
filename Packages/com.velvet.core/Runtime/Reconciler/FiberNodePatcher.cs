@@ -91,7 +91,7 @@ namespace Velvet
                     }
                     break;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
-                    PatchMotion(element, oldMotion, newMotion);
+                    PatchMotionSlot(element, oldMotion, newMotion);
                     break;
                 // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
                 // patchable leaf — no case here.
@@ -306,6 +306,32 @@ namespace Velvet
             else
             {
                 FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, real);
+            }
+        }
+
+        // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
+        // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
+        private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        {
+            var wasZ = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real);
+            var motion = wasZ ? real : element;
+            PatchMotion(motion, oldNode, newNode);
+            var isZ = FiberZLayerCoordinator.TryClassify(
+                RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
+            if (!wasZ)
+            {
+                if (isZ)
+                {
+                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, motion, resolvedZ);
+                }
+            }
+            else if (isZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, element, motion, resolvedZ);
+            }
+            else
+            {
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, motion);
             }
         }
 
@@ -616,6 +642,10 @@ namespace Velvet
             if (newNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
+            }
+            else
+            {
+                MotionLayoutIdDriver.Forget(element, _ctx);
             }
         }
 
@@ -1047,7 +1077,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.SyncHost(placeholder, target);
+                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1177,7 +1207,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
-            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
@@ -1268,7 +1298,17 @@ namespace Velvet
             {
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
+                // suspend — leaves on the target what it inserted before the throw, and the range recorded is
+                // what the Portal's cleanup removes.
+                RecordPatchedPortalRange(placeholder, target, prevState, beforeTailCount, tenancy, shiftedBefore);
             }
+        }
+
+        private void RecordPatchedPortalRange(
+            VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
+            InlineTenancy? tenancy, int shiftedBefore)
+        {
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
@@ -1839,6 +1879,10 @@ namespace Velvet
             {
                 _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
             }
+            if (oldProps.NoDrag != newProps.NoDrag)
+            {
+                _appliers.ApplyNoDrag(element, newProps.NoDrag);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.
@@ -2079,27 +2123,21 @@ namespace Velvet
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
         {
-            private readonly float _gap;
-            private readonly GapAxis _axis;
-            private readonly bool _xReverse;
-            private readonly bool _yReverse;
+            private readonly GapSpec _spec;
 
-            internal GapOp(float gap, GapAxis axis, bool xReverse, bool yReverse)
+            internal GapOp(GapSpec spec)
             {
-                _gap = gap;
-                _axis = axis;
-                _xReverse = xReverse;
-                _yReverse = yReverse;
+                _spec = spec;
             }
 
             public Dictionary<VisualElement, StyleGapManipulator> Table(ReconcilerContext ctx)
                 => ctx.GapManipulators;
 
             public StyleGapManipulator Create(ReconcilerContext ctx)
-                => new StyleGapManipulator(ctx, _gap, _axis, _xReverse, _yReverse);
+                => new StyleGapManipulator(ctx, _spec);
 
             public void Update(StyleGapManipulator manipulator)
-                => manipulator.UpdateGap(_gap, _axis, _xReverse, _yReverse);
+                => manipulator.UpdateGap(_spec);
         }
 
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
@@ -2171,11 +2209,7 @@ namespace Velvet
         // own payload is its first inner, so the chain is read from there.
         private static bool StacksElementLocalInner(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var className in classNames)
+            foreach (var className in classNames ?? Array.Empty<string>())
             {
                 string? rest = null;
                 if (!StyleVariantClass.TryParse(className, out _, out rest)
@@ -3245,10 +3279,10 @@ namespace Velvet
             return classes.ToArray();
         }
 
-        // Configures the element's StyleGapManipulator from the gap-* / gap-x-* / gap-y-* token in
-        // classNames and (re-)applies it so the inter-child margins reflect the current child set. Call
-        // this AFTER the container's children have been reconciled so the manipulator sees the final
-        // child list. gridSuppressed is the caller's grid-class verdict: a grid container routes its gap
+        // Configures the element's StyleGapManipulator from the gap-* and space-* tokens in classNames and
+        // (re-)applies it so the inter-child margins reflect the current child set. Call this AFTER the
+        // container's children have been reconciled so the manipulator sees the final child list.
+        // gridSuppressed is the caller's grid-class verdict: a grid container routes its gap and space
         // through StyleGridManipulator (the grid owns the children's widths AND their margins, so the two
         // must never both write the margin edges), and the caller already needs that verdict to order the
         // two calls.
@@ -3268,10 +3302,9 @@ namespace Velvet
                 return;
             }
 
-            var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis);
-            StyleGapClass.ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
+            var spec = StyleGapClass.Extract(classNames);
 
-            Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis, xReverse, yReverse));
+            Configure<GapOp, StyleGapManipulator>(element, spec.IsActive, new GapOp(spec));
         }
 
         // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color /
@@ -3307,9 +3340,10 @@ namespace Velvet
 
             var hasGrid = StyleGridClass.TryExtract(classNames, out var columns);
             StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
+            var space = StyleGapClass.ExtractSpaceSpec(classNames);
 
             Configure<GridOp, StyleGridManipulator>(element, hasGrid,
-                new GridOp(new GridSpec(columns, columnGap, rowGap)));
+                new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
         }
 
         // Carries no per-element spec to diff, unlike Gap/Grid/Divide — the manipulator re-derives

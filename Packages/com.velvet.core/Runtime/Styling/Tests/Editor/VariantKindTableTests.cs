@@ -45,5 +45,18 @@ namespace Velvet.Tests
             // Assert — the count rides along, since a reflection that found no table reports nothing missing.
             Assert.That((tables.Count >= KnownTables, string.Join("\n", missing)), Is.EqualTo((true, "")));
         }
+
+        [Test]
+        public void Given_ATableBuiltWithOneKind_When_ItAndAnotherKindAreAskedFor_Then_OnlyThatKindIsCovered()
+        {
+            // Arrange
+            var table = new VariantKindTable<int>((StyleVariantKind.Hover, 1));
+
+            // Act
+            var covered = (table.Covers(StyleVariantKind.Hover), table.Covers(StyleVariantKind.Focus));
+
+            // Assert — the guard above reads Covers, so a Covers that answers true for every kind hollows it out.
+            Assert.That(covered, Is.EqualTo((true, false)));
+        }
     }
 }

@@ -365,8 +365,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)",
-          "neuter": "gap = 0f; axis = default; return false;"
+          "anchor": "public static void ExtractGapAxes(string[] classNames, out bool hasColumnGap, out bool hasRowGap)",
+          "neuter": "hasColumnGap = false; hasRowGap = false; return;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
@@ -596,7 +596,7 @@
     {
       "name": "filter-transition-applier",
       "mechanism": "filter-transition",
-      "summary": "the reconciler starts and updates no filter tween, at create or at patch",
+      "summary": "no filter tween is bound, by the reconciler at create or at patch or by the write hook, and the write hook starts and redirects none",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
@@ -607,6 +607,11 @@
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
           "anchor": "internal void ApplyFilterTransitionOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFilterTransitionDriver.cs",
+          "anchor": "internal static bool TryStartOrRedirect(VisualElement element, List<FilterFunction>? to)",
+          "neuter": "return false;"
         }
       ]
     },

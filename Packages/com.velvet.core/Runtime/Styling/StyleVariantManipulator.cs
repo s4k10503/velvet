@@ -228,6 +228,8 @@ namespace Velvet
             _isFocusVisible = false;
             _isActive = false;
             _isChecked = false;
+            // MUTANT_SURVIVES(unreachable): a detached manipulator is dropped from the context's table
+            // ReconcilerContext.VariantManipulators, the only path that reads one or attaches it again.
             _isDisabled = false;
 
             _signals?.Unhook();

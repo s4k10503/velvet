@@ -265,9 +265,9 @@ namespace Velvet
         // Flex basis (StyleLength)
         FlexBasis,    // basis-[120px]    -> flex-basis
 
-        // Flex grow / shrink factors (StyleFloat, unitless). The USS vocabulary stops at 0 and 1, so no
-        // class expresses any other ratio. Parsed by StyleTransformValueParser rather than through the
-        // prefix table, which is the length grammar — see TryParseFlexFactor.
+        // Flex grow / shrink factors (StyleFloat, unitless). The USS vocabulary stops at 0 and 1; grow-<N> /
+        // shrink-<N> and the bracket form take the rest. Parsed by StyleTransformValueParser rather than
+        // through the prefix table, which is the length grammar — see TryParseFlexFactor.
         FlexGrow,     // grow-[2]         -> flex-grow
         FlexShrink,   // shrink-[2]       -> flex-shrink
 

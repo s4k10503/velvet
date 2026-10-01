@@ -22,16 +22,10 @@ namespace Velvet
         // layer so it wins conflicts. A class-only utility (no inline form) cannot be elevated in UI Toolkit,
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
-        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
-        // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*, z-*)
-        // do NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn,
-        // resolved to inline that already wins, or (z-*) a physical relocation — so outside z-* the bang never
-        // has a cascade effect in this family; use the plain form (adding it would be a no-op elevation by
-        // definition). font-*, leading-*, and z-* still route their own classification gate through this
-        // method (StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass.IsArbitraryLeadingClass /
-        // StyleZIndexClass.TryParse), so a bang'd token still classifies as the family instead of silently
-        // falling through, and z-*'s bang then arbitrates among the element's own z-* tokens
-        // (StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not
+        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
+        // array-scanned subsystem utilities, the font, text-effect and z-* families strip the bang themselves
+        // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
+        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
@@ -328,7 +322,51 @@ namespace Velvet
             {
                 return SuffixInKeys(cls.AsSpan("scale-x-".Length), s_axisScale); // "scale-x-" and "scale-y-" share a length
             }
-            return false;
+            return TryGetFlexFactorPreset(cls, out _, out _);
+        }
+
+        // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
+        // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
+        private static bool TryGetFlexFactorPreset(string cls, out ArbitraryProperty property, out float factor)
+        {
+            factor = 0f;
+            int prefixLength;
+            if (cls.StartsWith("grow-", StringComparison.Ordinal))
+            {
+                property = ArbitraryProperty.FlexGrow;
+                prefixLength = "grow-".Length;
+            }
+            else if (cls.StartsWith("shrink-", StringComparison.Ordinal))
+            {
+                property = ArbitraryProperty.FlexShrink;
+                prefixLength = "shrink-".Length;
+            }
+            else
+            {
+                property = default;
+                return false;
+            }
+            if (!TryParseWhole(cls.AsSpan(prefixLength), out var whole))
+            {
+                return false;
+            }
+            factor = whole;
+            return whole != 0;
+        }
+
+        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
+        private static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
+        {
+            whole = 0;
+            // MUTANT_SURVIVES(equivalent): the boundary moves only a lone "0", whose whole of 0 the factor
+            // preset declines with `whole != 0` either way.
+            if (digits.Length > 1 && digits[0] == '0')
+            {
+                // MUTANT_SURVIVES(equivalent): a leading zero leaves whole at 0, which the factor preset
+                // declines with `whole != 0` whatever this returns.
+                return false;
+            }
+            return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out whole);
         }
 
         // True when the suffix span matches one of the preset table's keys. Allocation-free: the Dictionary
@@ -360,6 +398,11 @@ namespace Velvet
             // Sizing fractions (w-1/2, h-2/3, size-1/4) are non-negated and resolve to a percent of the parent.
             if (TryParseSizingFraction(className, out result))
             {
+                return true;
+            }
+            if (TryGetFlexFactorPreset(className, out var factorProperty, out var factor))
+            {
+                result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
                 return true;
             }
             var negate = className[0] == '-';
@@ -680,6 +723,10 @@ namespace Velvet
             // The slots a gap, grid or divide manipulator holds on this element — see Hold. Lazily
             // allocated: only an element one of them writes to gets one.
             public StyleHeldSlots? Holds;
+
+            // The containers that re-apply when a class of this element's own changes — see
+            // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
+            public List<IChildClassWatcher>? Watchers;
 
             public bool HasLayers => Count > 0;
 
@@ -1042,7 +1089,7 @@ namespace Velvet
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
-        // off — cannot take the slot from it.
+        // off — cannot take the slot from it. Yield makes the exception.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
         {
             var holds = HoldsOf(element);
@@ -1062,6 +1109,43 @@ namespace Velvet
             var holds = HoldsOf(element);
             holds.Set(slot, value);
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
+        // that layer's value stands, and the held one returns once the last such layer goes. That is how a
+        // zero-specificity Tailwind write (space, divide) gives way to the element's own arbitrary value for as
+        // long as it has one. The next Hold on the slot takes the yield back.
+        internal static void Yield(VisualElement element, HeldSlot slot)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            map.Holds?.SetYield(slot);
+            ReassertHolds(element, map, StyleHeldSlots.Bit(slot));
+        }
+
+        // Writes every held slot among slots back onto the element, except a yielding one a layer of the
+        // element's own writes, which takes that layer's value instead.
+        private static void ReassertHolds(VisualElement element, LayerMap map, int slots)
+        {
+            var holds = map.Holds;
+            if (holds == null)
+            {
+                return;
+            }
+            var yielded = 0;
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                if (!holds.Yields(slot))
+                {
+                    continue;
+                }
+                if (!TryLayeredWinner(map, slot, out var winner))
+                {
+                    continue;
+                }
+                StyleHeldSlots.WriteLayered(element.style, slot, winner);
+                yielded |= StyleHeldSlots.Bit(slot);
+            }
+            holds.Reassert(element.style, slots & ~yielded);
         }
 
         private static StyleHeldSlots HoldsOf(VisualElement element)
@@ -1089,6 +1173,91 @@ namespace Velvet
             else
             {
                 StyleHeldSlots.WriteNull(element.style, slot);
+            }
+        }
+
+        // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
+        // otherwise: an inline value nothing here wrote is not this layer's to clear.
+        internal static void HandBackIfHeld(VisualElement element, HeldSlot slot)
+        {
+            s_layers.TryGetValue(element, out var map);
+            var holds = map?.Holds;
+            if (holds != null && holds.IsHeld(slot))
+            {
+                HandBack(element, slot);
+            }
+        }
+
+        // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
+        // writes space and divide at zero specificity, so such a class of the element's own wins over them
+        // there; an arbitrary value's layer does the same through a yielding Hold.
+        internal static bool DeclaresOwn(VisualElement element, HeldSlot slot)
+        {
+            var longhand = HeldSlotGroups.LonghandOf(slot);
+            foreach (var cls in element.GetClasses())
+            {
+                if (!StyleUtilityProperties.TryGet(cls, out var rule))
+                {
+                    continue;
+                }
+                if (rule.Gate == StyleUtilityGate.None && rule.Properties.Contains(longhand))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal static void Watch(VisualElement element, IChildClassWatcher watcher)
+        {
+            var watchers = s_layers.GetValue(element, static _ => new LayerMap()).Watchers ??= new List<IChildClassWatcher>();
+            if (!watchers.Contains(watcher))
+            {
+                watchers.Add(watcher);
+            }
+        }
+
+        internal static void Unwatch(VisualElement element, IChildClassWatcher watcher)
+        {
+            s_layers.TryGetValue(element, out var map);
+            map?.Watchers?.Remove(watcher);
+        }
+
+        // Re-applies every container watching element after its class list changed. A copy is walked, because a
+        // re-apply can claim or release the element and so edit the list.
+        internal static void NotifyClassesChanged(VisualElement element)
+        {
+            s_layers.TryGetValue(element, out var map);
+            var watchers = map?.Watchers;
+            if (watchers == null)
+            {
+                return;
+            }
+            foreach (var watcher in watchers.ToArray())
+            {
+                watcher.Reapply();
+            }
+        }
+
+        // Hands back every slot held on element. For an element the reconciler removes: its claim is dropped
+        // with the rest of its side tables, so the container that holds a slot on it cannot release it later.
+        internal static void HandBackAll(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            var holds = map.Holds;
+            if (holds == null)
+            {
+                return;
+            }
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                if (holds.IsHeld(slot))
+                {
+                    HandBack(element, slot);
+                }
             }
         }
 
@@ -1285,7 +1454,7 @@ namespace Velvet
                 ClearInline(element, property);
             }
             var rewritten = ResolveSharedLonghands(element, property, map);
-            map.Holds?.Reassert(element.style, HeldSlotGroups.SlotsOf(property) | rewritten);
+            ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
@@ -1514,6 +1683,19 @@ namespace Velvet
         // filter set is single-sourced — see IsFilter.
         private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
 
+        // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
+        internal static void RecomposeFilter(VisualElement element)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                ApplyCombinedFilter(element, map);
+            }
+            else
+            {
+                StyleFilterEngineWrite.Write(element, null);
+            }
+        }
+
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
             List<FilterFunction>? functions = null;
@@ -1553,10 +1735,7 @@ namespace Velvet
                 }
             }
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write). It
-            // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // resolved transition lists the tween does not run under (the engine's own animation runs the change,
-            // or no transition does), or a non-interpolable change.
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
             if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
             {
                 StyleFilterEngineWrite.Write(element, functions);
@@ -1796,7 +1975,10 @@ namespace Velvet
             // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
-                element.style.filter = StyleKeyword.Null;
+                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
+                {
+                    StyleFilterEngineWrite.Write(element, null);
+                }
                 return true;
             }
             return false;

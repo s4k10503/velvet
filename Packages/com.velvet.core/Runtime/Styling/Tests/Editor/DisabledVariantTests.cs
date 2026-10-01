@@ -363,6 +363,173 @@ namespace Velvet.Tests
             Assert.That((whileWatched > before, AnnouncementCallbackCount(host) == before), Is.EqualTo((true, true)));
         }
 
+        private VisualElement MountSwitchableUnder(VisualElement host, string initialClass)
+        {
+            s_initialClass = initialClass;
+            _mounted = V.Mount(host, V.Component(RenderSwitchable));
+            return host.Q<VisualElement>("leaf");
+        }
+
+        private void Render(string className)
+        {
+            s_setClass.Invoke(className);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+        }
+
+        [Test]
+        public void Given_ADisabledPayloadBesideAHoverPayload_When_ARenderDropsTheDisabledOne_Then_TheHostKeepsNoRegistrationOfIt()
+        {
+            // Arrange — hover: keeps the element's manipulator through every render, so only the disabled:
+            // payload comes and goes.
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            MountSwitchableUnder(host, "hover:bg-cold");
+            var before = AnnouncementCallbackCount(host);
+            Render("hover:bg-cold disabled:bg-hot");
+            var whileWatched = AnnouncementCallbackCount(host);
+
+            // Act
+            Render("hover:bg-cold");
+
+            // Assert
+            Assert.That((whileWatched > before, AnnouncementCallbackCount(host) == before), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ADisabledPayloadDroppedFromAnEnabledElement_When_ARenderAddsAnotherBack_Then_ItWaitsForTheElementToBeDisabled()
+        {
+            // Arrange
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            var leaf = MountSwitchableUnder(host, "hover:bg-cold disabled:bg-hot");
+            Render("hover:bg-cold");
+
+            // Act
+            Render("hover:bg-cold disabled:bg-warm");
+            var appliedWhileEnabled = leaf.ClassListContains("bg-warm");
+            host.SetEnabled(false);
+
+            // Assert
+            Assert.That((appliedWhileEnabled, leaf.ClassListContains("bg-warm")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ADisabledPayloadAppliedUnderADisabledHost_When_ARenderSwapsItsClass_Then_TheNewClassReplacesTheOld()
+        {
+            // Arrange
+            var host = new VisualElement();
+            host.SetEnabled(false);
+            _window.rootVisualElement.Add(host);
+            var leaf = MountSwitchableUnder(host, "hover:bg-cold disabled:bg-hot");
+
+            // Act
+            Render("hover:bg-cold disabled:bg-warm");
+
+            // Assert
+            Assert.That((leaf.ClassListContains("bg-hot"), leaf.ClassListContains("bg-warm")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ADisabledPayload_When_ItsElementLeavesThePanel_Then_ItsFormerParentKeepsNoRegistrationOfIt()
+        {
+            // Arrange
+            var (outer, leaf) = Mount("disabled:bg-hot");
+            var whileAttached = AnnouncementCallbackCount(outer);
+
+            // Act
+            outer.Remove(leaf);
+
+            // Assert
+            Assert.That((whileAttached, AnnouncementCallbackCount(outer)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ADisabledInnerUnderDark_When_DarkTurnsOff_Then_TheAncestorKeepsNoRegistrationOfIt()
+        {
+            // Arrange — the disabled: inner is built when dark turns on and dropped when it turns off.
+            var (outer, _) = Mount("dark:disabled:bg-hot");
+            var before = AnnouncementCallbackCount(outer);
+            VelvetTheme.IsDark = true;
+            var whileDark = AnnouncementCallbackCount(outer);
+
+            // Act
+            VelvetTheme.IsDark = false;
+
+            // Assert
+            Assert.That((whileDark > before, AnnouncementCallbackCount(outer) == before), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AGroupHoverPayload_When_ARenderAddsAGroupDisabledOne_Then_OnlyThatOneWatchesTheGroup()
+        {
+            // Arrange
+            s_initialClass = "group-hover:bg-cold";
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "group", className: "group", children: new VNode?[] { V.Component(RenderSwitchable) }));
+            var group = _window.rootVisualElement.Q<VisualElement>("group");
+            var withHoverOnly = AnnouncementCallbackCount(group);
+
+            // Act
+            Render("group-hover:bg-cold group-disabled:bg-hot");
+
+            // Assert
+            Assert.That((withHoverOnly, AnnouncementCallbackCount(group) > withHoverOnly), Is.EqualTo((0, true)));
+        }
+
+        // The leaf sits behind peer a; moving it after a new peer b re-resolves it against both, each watched
+        // for disabled on its own.
+        private (VisualElement Parent, VisualElement FormerPeer, VisualElement NewPeer, VisualElement Leaf) MountReResolvedToNewPeer()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", children: new VNode?[]
+                {
+                    V.Div(name: "a", className: "peer"),
+                    V.Div(name: "leaf", className: "peer-disabled:bg-hot"),
+                }));
+            var root = _window.rootVisualElement;
+            var parent = root.Q<VisualElement>("parent");
+            var leaf = root.Q<VisualElement>("leaf");
+            var newPeer = new VisualElement { name = "b" };
+            newPeer.AddToClassList("peer");
+            parent.Insert(1, newPeer);
+            parent.Remove(leaf);
+            parent.Add(leaf);
+            return (parent, root.Q<VisualElement>("a"), newPeer, leaf);
+        }
+
+        [Test]
+        public void Given_APeerDisabledLeafReResolvedToANewPeer_When_ItsFormerPeerLeavesAndTheNewOneIsDisabled_Then_ThePayloadIsApplied()
+        {
+            // Arrange
+            var (parent, formerPeer, newPeer, leaf) = MountReResolvedToNewPeer();
+            parent.Remove(formerPeer);
+
+            // Act
+            newPeer.SetEnabled(false);
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_APeerDisabledLeafWhoseNewPeerLeftAndWasDisabled_When_ItsFormerPeerIsMoved_Then_ThePayloadStaysOff()
+        {
+            // Arrange — the applied half shows the new peer is watched.
+            var (parent, formerPeer, newPeer, leaf) = MountReResolvedToNewPeer();
+            newPeer.SetEnabled(false);
+            var appliedWhileNewPeerDisabled = leaf.ClassListContains("bg-hot");
+            newPeer.SetEnabled(true);
+            parent.Remove(newPeer);
+            newPeer.SetEnabled(false);
+
+            // Act — the former peer, enabled, moves; the new peer was disabled only after it left the tree.
+            parent.Remove(formerPeer);
+            parent.Insert(0, formerPeer);
+
+            // Assert
+            Assert.That((appliedWhileNewPeerDisabled, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
+        }
+
         // GREEN_ON_BASE(characterization): the engine announcement DisabledVariantSignal reads, which the
         // base engine already makes; this is the case that fails where the engine stops making it.
         [Test]

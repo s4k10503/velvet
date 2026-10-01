@@ -46,7 +46,7 @@ worth knowing, both when several variants name one such utility:
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches; `focus-visible:` also reads the last input to any panel, see [focus.md](focus.md#focus-visible-styling-and-state)) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
@@ -209,17 +209,18 @@ width.
 
 ### Relational variants (`group-` / `peer-`)
 
-`group-*` reacts to a **marked ancestor**: add the `group` class to a container, and a
+`group-*` reacts to **marked ancestors**: add the `group` class to a container, and a
 descendant's `group-hover:` payload toggles when that container is hovered. `peer-*` reacts to
-a **marked previous sibling**: add `peer` to one element, and a later sibling's `peer-checked:`
-payload toggles with that peer's checked state. Tailwind's **named** forms are supported, so
+**marked previous siblings**: add `peer` to one element, and a later sibling's `peer-checked:`
+payload toggles with that peer's checked state. With several marked ancestors or previous siblings,
+the payload holds while any one of them is in the state. Tailwind's **named** forms are supported, so
 multiple groups / peers can coexist without cross-talk:
 
 ```csharp
 V.Div(className: "group ...",
     children: new[]
     {
-        // Tints only when THIS card (the group) is hovered.
+        // Tints when this card, or any other unnamed group around it, is hovered.
         V.Label(className: "text-muted group-hover:text-foreground", text: "Title"),
     });
 

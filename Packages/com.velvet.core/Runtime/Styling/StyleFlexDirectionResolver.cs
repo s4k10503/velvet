@@ -2,12 +2,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The flex direction a container lays its children out in, for the manipulators that place something on
-    // the boundary BETWEEN two visually adjacent children (StyleGapManipulator's inter-child margin,
-    // StyleDivideManipulator's inter-child border). A reversed container paints its children in the opposite
-    // order, so the physical edge sitting between a given pair is the trailing one rather than the leading
-    // one; a manipulator that picked its edge from the axis alone would put its margin / border on an outer
-    // edge of the container and leave the boundary between the visually adjacent pair unmarked.
+    // The flex direction a container lays its children out in, for StyleGapManipulator's gap-* margin, which
+    // sits on the boundary BETWEEN two visually adjacent children. A reversed container paints its children
+    // in the opposite order, so the physical edge sitting between a given pair is the trailing one rather
+    // than the leading one; picking the edge from the axis alone would put the margin on an outer edge of
+    // the container and leave the boundary between the visually adjacent pair unmarked.
     //
     // The element handed in is the CHILD CONTAINER (FiberNodePatcher.GetChildContainer), NOT the element a
     // manipulator is attached to. A composite widget redirects its children into an inner box, so a
@@ -61,8 +60,8 @@ namespace Velvet
     // answer than omitting it does.
     internal static class StyleFlexDirectionResolver
     {
-        // widgetOwned marks a widget's own inner box; it selects the off-panel default only.
-        public static FlexDirection Resolve(VisualElement childContainer, bool widgetOwned)
+        // The verdict of the five direction/display classes; null when none is on the element.
+        public static FlexDirection? FromClasses(VisualElement childContainer)
         {
             if (childContainer.ClassListContains("flex-row-reverse"))
             {
@@ -84,6 +83,13 @@ namespace Velvet
             {
                 return FlexDirection.Row;
             }
+            return null;
+        }
+
+        // The verdict when no direction/display class is on the element. widgetOwned marks a widget's own
+        // inner box; it selects the off-panel default only.
+        public static FlexDirection ResolveWithoutClasses(VisualElement childContainer, bool widgetOwned)
+        {
             if (childContainer.panel != null)
             {
                 return childContainer.resolvedStyle.flexDirection;
@@ -99,8 +105,8 @@ namespace Velvet
                 return FlexDirection.Column;
             }
             // Mirror the .flex=row default — the one place this deliberately disagrees with the raw engine,
-            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "The engine's raw
-            // flex default is a column, not a row").
+            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "Without .flex,
+            // children stack vertically").
             return FlexDirection.Row;
         }
     }

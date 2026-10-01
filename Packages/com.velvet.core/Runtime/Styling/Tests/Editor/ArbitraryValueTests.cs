@@ -2258,6 +2258,132 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGrayscaleBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[2]", out var s);
+
+            // Assert — CSS clamps a grayscale() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterGrayscale, 1f)));
+        }
+
+        [Test]
+        public void Given_AnInvertBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("invert-[1.5]", out var s);
+
+            // Assert — CSS clamps an invert() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterInvert, 1f)));
+        }
+
+        [Test]
+        public void Given_ASepiaBracketAboveOne_When_Parsed_Then_ItIsClampedToOne()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("sepia-[3]", out var s);
+
+            // Assert — CSS clamps a sepia() amount above 1 to 1.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterSepia, 1f)));
+        }
+
+        [Test]
+        public void Given_AGrayscaleBracketInPercent_When_Parsed_Then_ItIsTheFraction()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[50%]", out var s);
+
+            // Assert — Tailwind writes grayscale(50%), which CSS reads as 0.5.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterGrayscale, 0.5f)));
+        }
+
+        [Test]
+        public void Given_AContrastBracketInPercent_When_Parsed_Then_ItIsTheFraction()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[150%]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterContrast, 1.5f)));
+        }
+
+        [Test]
+        public void Given_AUnitlessHueRotateBracket_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[30]", out _);
+
+            // Assert — CSS hue-rotate() takes an angle, and a number only where it is zero.
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a unitless zero stays accepted, as CSS accepts hue-rotate(0).
+        [Test]
+        public void Given_AUnitlessZeroHueRotateBracket_When_Parsed_Then_ItResolvesToZero()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[0]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterHueRotate, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): a negative percentage is rejected, as CSS rejects a negative contrast().
+        [Test]
+        public void Given_ANegativeContrastPercentBracket_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[-50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a bracket holding no number is rejected, as it was on the base.
+        [Test]
+        public void Given_AGrayscaleBracketHoldingNoNumber_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grayscale-[half]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a zero amount is kept, as CSS takes invert(0).
+        [Test]
+        public void Given_AZeroInvertBracket_When_Parsed_Then_ItIsKept()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("invert-[0]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterInvert, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): contrast is not clamped, as CSS leaves contrast() unbounded above 1.
+        [Test]
+        public void Given_AContrastBracketAboveOne_When_Parsed_Then_ItIsKept()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("contrast-[2.5]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterContrast, 2.5f)));
+        }
+
+        // GREEN_ON_BASE(characterization): pins the hue-rotate bracket's angle units styling-filters.md states.
+        [Test]
+        public void Given_AHueRotateBracketInTurns_When_Parsed_Then_ItResolvesToDegrees()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("hue-rotate-[0.5turn]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FilterHueRotate, 180f)));
+        }
+
+        [Test]
         public void Given_BlurArbitrary_When_Applied_Then_SetsAOneFunctionBlurFilter()
         {
             // Arrange
@@ -2824,6 +2950,77 @@ namespace Velvet.Tests
             // Assert — the applied value rides along because a fresh element already reads Null, so the
             // keyword alone cannot tell a revert from a setter that never wrote.
             Assert.That((applied, el.style.flexGrow.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_BareGrow_When_Parsed_Then_ResolvesFlexGrow()
+        {
+            // Act — Tailwind's grow-<number>, the bracketless spelling of a whole factor.
+            var ok = StyleArbitraryValueResolver.TryParse("grow-3", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 3f)));
+        }
+
+        [Test]
+        public void Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-2", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 2f)));
+        }
+
+        [Test]
+        public void Given_BareGrowOfTwoDigits_When_Parsed_Then_ResolvesThatFactor()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-12", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 12f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base routes no bare grow factor inline, grow-0 included.
+        // What reddens it is dropping the `whole != 0` check in TryGetFlexFactorPreset, which claims the zero
+        // the USS class already carries.
+        [Test]
+        public void Given_BareGrowZero_When_TheInlineGateIsAsked_Then_ItIsLeftToTheClassList()
+        {
+            // Act
+            var inline = StyleArbitraryValueResolver.IsInlineResolved("grow-0");
+
+            // Assert
+            Assert.That(inline, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no bare grow factor, a fractional one included.
+        // What reddens it is a parse that accepts a decimal point, where Tailwind's bare value is a whole
+        // number and the fraction takes the bracket form.
+        [Test]
+        public void Given_BareGrowWithAFraction_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-1.5", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_ADivCarryingBareGrow_When_Reconciled_Then_TheElementCarriesTheInlineFactor()
+        {
+            // Arrange — the whole path: the class has no USS rule, so it lands only if the dispatch gate
+            // routes it to the resolver.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "grow-3") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0].style.flexGrow.value, Is.EqualTo(3f));
         }
 
         [Test]
