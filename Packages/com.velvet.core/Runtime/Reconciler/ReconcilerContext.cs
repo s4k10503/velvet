@@ -1087,6 +1087,62 @@ namespace Velvet
         // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
         public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
 
+        // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
+        // ended — see CompleteEnterAfterThePass.
+        internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
+
+        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
+        // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
+        // (GeneralPathReconciler.ExpandBoundaryInline) or on the aborting path (FiberErrorBoundary.TryCatch). A
+        // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
+        // pass end would reach it.
+        internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): every caller passes a motion it has resolved an enter for,
+            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
+            if (motion?.OnEnterComplete == null) return;
+            if (SharedReconcileDepth == 0) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+            else PendingEnterCompletions.Add((motion, boundary));
+        }
+
+        // The entries a render below boundary queued: read before a catch on the aborting path detaches what that
+        // render created, since an entry's owner is placed by its parent chain.
+        internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
+        {
+            List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
+            foreach (var entry in PendingEnterCompletions)
+            {
+                if (IsAtOrBelow(entry.Boundary, boundary)) (below ??= new()).Add(entry);
+            }
+            return below;
+        }
+
+        internal void DropEnterCompletions(List<(MotionNode Motion, ComponentFiber? Boundary)>? entries)
+        {
+            if (entries == null) return;
+            foreach (var entry in entries) PendingEnterCompletions.Remove(entry);
+        }
+
+        private static bool IsAtOrBelow(ComponentFiber? fiber, ComponentFiber boundary)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, boundary)) return true;
+            }
+            return false;
+        }
+
+        internal void RunPendingEnterCompletions()
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): an empty list copies out nothing and the loop runs no
+            // callback; the guard spares that copy where nothing is queued.
+            if (PendingEnterCompletions.Count == 0) return;
+            // Copied out first: a callback can start a pass whose own end reaches this list.
+            var completions = PendingEnterCompletions.ToArray();
+            PendingEnterCompletions.Clear();
+            foreach (var (motion, boundary) in completions) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+        }
+
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
         // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
         // NextCaughtErrorSequence at the catch.

@@ -1294,7 +1294,17 @@ namespace Velvet
             {
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
+                // suspend — leaves on the target what it inserted before the throw, and the range recorded is
+                // what the Portal's cleanup removes.
+                RecordPatchedPortalRange(placeholder, target, prevState, beforeTailCount, tenancy, shiftedBefore);
             }
+        }
+
+        private void RecordPatchedPortalRange(
+            VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
+            InlineTenancy? tenancy, int shiftedBefore)
+        {
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
