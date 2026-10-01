@@ -309,7 +309,8 @@ namespace Velvet
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// </summary>
         /// <remarks>
-        /// The slots are nulled first and the element's surviving arbitrary-value layers re-asserted afterwards,
+        /// The slots are nulled first and the element's surviving arbitrary-value layers, then the holds on its slots,
+        /// re-asserted afterwards,
         /// in that order: a driven shorthand owns a whole fan-out (a `padding` channel writes all four edges)
         /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
         /// interleaving would let a later null wipe a value an earlier re-assert had just restored.

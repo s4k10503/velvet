@@ -219,6 +219,7 @@ namespace Velvet
             // Dashed / dotted divider: read any inline color of the child's own BEFORE masking.
             _ctx.DivideDashBindings.TryGetValue(child, out var binding);
             var inline = InlineOwnColor(child, edge, binding);
+            var driven = DrivenColor(child, edge);
 
             // Reserve the gutter as a solid divider would, but mask the native border color so only the dashed /
             // dotted paint shows.
@@ -237,6 +238,22 @@ namespace Velvet
             }
             binding.Divider = _spec.HasColor ? _spec.Color : (Color?)null;
             binding.Inline = inline;
+            if (driven.HasValue)
+            {
+                binding.Driven = driven;
+            }
+        }
+
+        // The color a motion driver wrote on the edge before the mask took it, where one drives the slot.
+        private static Color? DrivenColor(VisualElement child, DivideEdge edge)
+        {
+            var written = InlineColor(child, edge);
+            if (!StyleArbitraryValueResolver.IsDriven(child, ColorSlot(edge)) || DivideDashPainter.IsMask(written)
+                || written.keyword != StyleKeyword.Undefined)
+            {
+                return null;
+            }
+            return written.value;
         }
 
         // Holds the divider's width on edge, giving way to a layer of the child's own, or hands the slot back.
@@ -266,7 +283,8 @@ namespace Velvet
             {
                 return binding?.Inline;
             }
-            if (inline.keyword != StyleKeyword.Undefined)
+            // A motion driver's value is not the child's own: the dash takes it while the drive lasts (Drive).
+            if (inline.keyword != StyleKeyword.Undefined || StyleArbitraryValueResolver.IsDriven(child, slot))
             {
                 return null;
             }

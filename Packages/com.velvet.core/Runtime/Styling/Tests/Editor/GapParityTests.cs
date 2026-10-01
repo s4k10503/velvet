@@ -166,8 +166,9 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var (held, driven, child) = DriveGappedMargin(scope);
 
-            // Act
+            // Act — a driver's release: the channel's slots nulled, then the element's own layers and holds.
             StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.MarginLeft);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(child);
 
             // Assert — the driven margin rides along, since a driver that never wrote would leave the gap's in place.
             Assert.That((driven, child.style.marginLeft.value.value), Is.EqualTo((3f, held)));

@@ -81,6 +81,8 @@ namespace Velvet
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
+        public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
+
         public bool HoldsAny(int slots) => (_mask & slots) != 0;
 
         // Writes every held slot among slots back onto style.

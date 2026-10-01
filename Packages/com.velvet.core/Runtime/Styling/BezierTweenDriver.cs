@@ -206,7 +206,7 @@ namespace Velvet
         /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value
-        /// layers are re-asserted only after every slot has been nulled.
+        /// layers and holds are re-asserted only after every slot has been nulled.
         /// </summary>
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
         {

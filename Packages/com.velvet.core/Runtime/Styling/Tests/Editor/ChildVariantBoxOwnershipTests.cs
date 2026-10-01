@@ -678,11 +678,45 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.Width, 50f, LengthUnit.Pixel));
             var driven = child.style.width.value.value;
 
-            // Act
+            // Act — a driver's release: the channel's slots nulled, then the element's own layers and holds.
             StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.Width);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(child);
 
             // Assert — the column width rides along, since a grid that never sized the child leaves no width to restore.
             Assert.That((column > 100f, driven, child.style.width.value.value == column), Is.EqualTo((true, 50f, true)));
+        }
+
+        [Test]
+        public void Given_AGridMotionChildDelayedOnItsWidth_When_TheGridSizesItsColumns_Then_TheFromPoseStands()
+        {
+            // Arrange — the spring waits out its delay holding its from-pose, w-[10px].
+            var poses = new System.Collections.Generic.Dictionary<string, MotionVariant>
+            {
+                ["a"] = "w-[10px]",
+                ["b"] = "w-[120px]",
+            };
+            var spring = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f, DelaySec = 30f,
+            };
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "grid", className: "grid grid-cols-2 gap-4 w-[300px]", children: new VNode[]
+                {
+                    V.Motion(name: "m", variants: poses, initial: "a", animate: "b", transition: spring),
+                    V.Div(),
+                }));
+            var container = _window.rootVisualElement.Q<VisualElement>("grid");
+            ForcePanelUpdate(container.panel);
+
+            // Act
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+            EditorPanelTestHelpers.DriveSchedulerOnce(container.panel);
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q("m").style.width.value.value, Is.EqualTo(10f));
         }
 
         // GREEN_ON_BASE(characterization): a child that leaves a grid that sized it keeps no column width,

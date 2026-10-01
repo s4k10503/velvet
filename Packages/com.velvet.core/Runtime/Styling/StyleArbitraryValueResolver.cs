@@ -983,7 +983,11 @@ namespace Velvet
                 }
                 ResolveAndApply(element, property, map);
             }
+            // A hold on a slot no layer writes is re-asserted here too: a driver's release nulled it.
+            ReassertHolds(element, map, AllSlots);
         }
+
+        private const int AllSlots = -1;
 
         // The form of ReapplyLayeredValues above for the properties writing one of longhands, for a driver that
         // hands back some of its slots and keeps writing the rest, which a whole-map pass would take back for a
@@ -1002,6 +1006,7 @@ namespace Velvet
                     ResolveAndApply(element, property, map);
                 }
             }
+            ReassertHolds(element, map, AllSlots);
         }
 
         // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
@@ -1084,27 +1089,31 @@ namespace Velvet
         // them but a mask stands down for it as for a layer of the element's own, and comes back on the release.
         internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
         {
+            // Recorded from the first write, holds or none: a mount's from-pose is written before the container
+            // that holds the slot first applies.
             var slots = HeldSlotGroups.SlotsOf(style.Property);
-            s_layers.TryGetValue(element, out var map);
-            map?.Holds?.Drive(slots);
+            var holds = slots == 0 ? null : HoldsOf(element);
+            holds?.Drive(slots);
             ApplyInline(element, style);
-            map?.Holds?.Reassert(element.style, slots);
+            holds?.Reassert(element.style, slots);
             DivideDashPainter.Drive(element, slots, style.Color);
         }
 
-        // Hands the driven slots of property back: what the element's own layers resolve to, then the holds on them.
+        // Ends a driver's ownership of property's slots and nulls them. The driver re-asserts the element's own
+        // layers and holds once every channel is released (ReapplyLayeredValues).
         internal static void ReleaseDriven(VisualElement element, ArbitraryProperty property)
         {
             var slots = HeldSlotGroups.SlotsOf(property);
             DivideDashPainter.Drive(element, slots, null);
-            if (!s_layers.TryGetValue(element, out var map))
+            if (s_layers.TryGetValue(element, out var map))
             {
-                ClearInline(element, property);
-                return;
+                map.Holds?.Release(slots);
             }
-            map.Holds?.Release(slots);
-            ResolveAndApply(element, property, map);
+            ClearInline(element, property);
         }
+
+        internal static bool IsDriven(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsDriven(slot);
 
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
         // that layer's value stands, and the held one returns once the last such layer goes. That is how a
@@ -1173,6 +1182,11 @@ namespace Velvet
                 return;
             }
             map.Holds?.Drop(slot);
+            // A driver writing the slot keeps it; its release re-asserts what is left.
+            if (map.Holds != null && map.Holds.IsDriven(slot))
+            {
+                return;
+            }
             if (TryLayeredWinner(map, slot, out var winner))
             {
                 StyleHeldSlots.WriteLayered(element.style, slot, winner);

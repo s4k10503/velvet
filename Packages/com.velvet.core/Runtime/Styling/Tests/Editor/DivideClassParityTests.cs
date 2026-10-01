@@ -1401,8 +1401,9 @@ namespace Velvet.Tests
             ForcePanelUpdate(child.panel);
             var driven = DashColorOf(child);
 
-            // Act
+            // Act — a driver's release: the channel's slots nulled, then the element's own layers and holds.
             StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.BorderColor);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(child);
             ForcePanelUpdate(child.panel);
 
             // Assert — the driven color rides along, since a dash that never took it would let go of nothing, and
@@ -1423,6 +1424,55 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((DashColorOf(child), painted.TrueForAll(SilhouetteFace.IsSentinel)), Is.EqualTo((Color.red, true)));
+        }
+
+        // A dashed row whose middle child is a Motion entering from border-red-500 to border-blue-500 on a spring,
+        // beside reference elements carrying each.
+        private (VisualElement Child, Color Red, Color Blue) MountDrivenDashRow()
+        {
+            var poses = new Dictionary<string, MotionVariant> { ["dim"] = "border-red-500", ["lit"] = "border-blue-500" };
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, initial: "dim", animate: "lit",
+                        transition: spring),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }),
+                V.Div(name: "ref0", className: "border-r border-red-500"),
+                V.Div(name: "ref1", className: "border-r border-blue-500"),
+            }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            return (child, _window.rootVisualElement.Q("ref0").resolvedStyle.borderRightColor,
+                _window.rootVisualElement.Q("ref1").resolvedStyle.borderRightColor);
+        }
+
+        [Test]
+        public void Given_AMotionEnteringItsBorderColorInADashedRow_When_Mounted_Then_TheDashTakesTheDrivenColor()
+        {
+            // Act — the drive starts inside the child's mount, before the row's divider first applies.
+            var (child, red, _) = MountDrivenDashRow();
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_AMotionEnteringItsBorderColorInADashedRow_When_TheDriveIsReleased_Then_TheDashTakesTheRestingColor()
+        {
+            // Arrange
+            var (child, _, blue) = MountDrivenDashRow();
+
+            // Act
+            _mounted.Root.Reconciler.Context.StyleAnimationScheduler.CancelEnter(child);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(blue));
         }
 
         // A colored dashed row whose middle child takes border-red-500 while hovered, beside a reference carrying
