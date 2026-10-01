@@ -75,12 +75,13 @@ namespace Velvet
         // React disconnects the layout effects of a tree a Suspense hides — its imperative handles among them —
         // keeping its state, and reconnects them when the tree is revealed. While hidden, the fiber's layout work
         // is dropped from the commit (TakeBatch), a mount's included: one this render first mounted under the
-        // Suspense is marked without a cleanup, having set nothing up, and the reveal sets it up.
-        internal static void HideLayoutEffects(ComponentFiber fiber, List<ComponentFiber> committedFibers)
+        // Suspense has set nothing up for the cleanups below to take down, and the reveal sets it up.
+        internal static void HideLayoutEffects(ComponentFiber fiber)
         {
+            // Each pass that renders the boundary while it shows its fallback hides the fiber again, and must not
+            // clear a ref another component has written since.
             if (fiber.LayoutEffectsHidden) return;
             fiber.LayoutEffectsHidden = true;
-            if (!committedFibers.Contains(fiber)) return;
             HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
             if (fiber.ImperativeHandleSlots == null) return;
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);

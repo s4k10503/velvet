@@ -86,6 +86,76 @@ namespace Velvet.Tests
             s_nestedSource = null;
             s_nestedSetOwn = default;
             s_nestedReaderSetOwn = default;
+            s_shownSetTick = default;
+            s_shownLayoutSetups = 0;
+            s_sharedHandle.Set(null);
+            s_sharedSource = null;
+            s_sharedReaderSetOwn = default;
+            s_sharedSetTick = default;
+            s_sharedSetShowLater = default;
+            FiberStrictMode.Enabled = false;
+        }
+
+        // StrictMode is a global toggle a case below turns on.
+        [TearDown]
+        public void TearDown() => FiberStrictMode.Enabled = false;
+
+        // GREEN_ON_BASE(characterization): the merge base hides no tree, so a boundary that never suspends leaves
+        // its children's layout effects alone. What this pins is that only a hidden fiber is reconnected.
+        [Test]
+        public void Given_AComponentUnderABoundaryThatNeverSuspended_When_ItsParentRendersAgain_Then_ItsLayoutEffectRunsOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShownHostRender, key: "shown-host"));
+
+            // Act
+            s_shownSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the label is read beside the count, since a parent render that never reached the
+            // component runs its effect once as well
+            Assert.That((Texts(), s_shownLayoutSetups), Is.EqualTo(("shown:1", 1)),
+                "React runs a layout effect with empty dependencies once while its tree stays shown");
+        }
+
+        [Test]
+        public void Given_AHiddenHandleWhoseRefAnotherComponentWroteSince_When_ThePassRendersTheBoundaryStillShowingItsFallback_Then_TheRefKeepsThatHandle()
+        {
+            // Arrange — the boundary hides the handle; a component outside it then writes the same ref
+            using var mounted = V.Mount(_root, V.Component(SharedHandleHostRender, key: "shared-host"));
+            s_sharedReaderSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_sharedSetShowLater.Invoke(true);
+            s_sharedSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sharedSetTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read beside the ref, since a boundary that revealed would write it too
+            Assert.That((Texts(), s_sharedHandle.Current), Is.EqualTo(("loading|later", "later")),
+                "React disconnects a hidden handle once, and leaves the ref to the component that wrote it since");
+        }
+
+        [Test]
+        public void Given_StrictModeAndAComponentTheBoundaryHidAfterShowingIt_When_TheResourceResolves_Then_ItsLayoutEffectRunsOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(EffectBoundaryHostRender, key: "effect-host"));
+            s_effectSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            FiberStrictMode.Enabled = true;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((s_layoutSetups, s_layoutCleanups, Texts()), Is.EqualTo((2, 1, "reader:5")),
+                "React's StrictMode double-invokes the effects of a first mount, not of a tree a Suspense reveals");
         }
 
         [Test]
@@ -877,6 +947,83 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_otherHostSetTick;
         private static int s_mountEffectSetups;
         private static int s_mountPassiveSetups;
+        private static StateUpdater<int> s_shownSetTick;
+        private static int s_shownLayoutSetups;
+        private static readonly Ref<string> s_sharedHandle = new();
+        private static VelvetTaskCompletionSource<int> s_sharedSource;
+        private static StateUpdater<int> s_sharedReaderSetOwn;
+        private static StateUpdater<int> s_sharedSetTick;
+        private static StateUpdater<bool> s_sharedSetShowLater;
+
+        [Component]
+        private static VNode ShownEffectRender(int tick)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_shownLayoutSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "shown:" + tick);
+        }
+
+        [Component]
+        private static VNode ShownHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_shownSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ShownEffectRender, tick, key: "shown") }),
+            });
+        }
+
+        [Component]
+        private static VNode SharedHandleRender()
+        {
+            Hooks.UseImperativeHandle(s_sharedHandle, () => "hidden", Array.Empty<object>());
+            return V.Label(text: "hidden");
+        }
+
+        [Component]
+        private static VNode SharedReaderRender(int tick)
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_sharedReaderSetOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_sharedSource ??= new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "shared:" + value + ":" + tick);
+        }
+
+        // Memoized with no props, so the host's later renders bail on it and its handle is not written again.
+        [Component(Memoize = true)]
+        private static VNode SharedLaterRender()
+        {
+            Hooks.UseImperativeHandle(s_sharedHandle, () => "later", Array.Empty<object>());
+            return V.Label(text: "later");
+        }
+
+        [Component]
+        private static VNode SharedHandleHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            var (showLater, setShowLater) = Hooks.UseState(false);
+            s_sharedSetTick = setTick;
+            s_sharedSetShowLater = setShowLater;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(SharedHandleRender, key: "handle"),
+                        V.Component(SharedReaderRender, tick, key: "reader"),
+                    }),
+                showLater ? V.Component(SharedLaterRender, key: "later") : null,
+            });
+        }
         private static int s_memoMountPassiveSetups;
         private static StateUpdater<bool> s_memoMountHostSetShown;
 

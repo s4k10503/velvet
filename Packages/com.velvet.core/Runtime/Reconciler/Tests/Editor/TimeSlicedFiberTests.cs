@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -67,6 +68,10 @@ namespace Velvet.Tests
             s_slicedSuspendSetCount = default;
             s_slicedSuspendStart = default;
             s_slicedRowLayoutEffects = 0;
+            s_slicedRetryFiber = null;
+            s_slicedRetrySetCount = default;
+            s_slicedRetryStart = default;
+            s_slicedRetrySource = null;
         }
 
         [TearDown]
@@ -1086,6 +1091,56 @@ namespace Velvet.Tests
             // Assert — the count while parked is folded in, since an effect the first slice already ran reads 1 too
             Assert.That((ranWhileParked, s_slicedRowLayoutEffects), Is.EqualTo((0, 1)),
                 "The parked pass no longer holds the first row back once its resume suspends, and the resume commits it");
+        }
+
+        [Test]
+        public void Given_AResumedSliceThatSuspendedWithNoBoundary_When_TheResourceResolves_Then_EveryRowRenders()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedRetryRender, key: "sliced-retry"));
+            s_slicedRetryStart.Invoke(() => s_slicedRetrySetCount.Invoke(3));
+            s_slicedRetryFiber.FlushStateWithTinyBudgetForTest();
+            FiberWorkLoop.ContinueReconcile(s_slicedRetryFiber);
+
+            // Act
+            s_slicedRetrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join("|", _root.Query<Label>().ToList().Select(label => label.text)), Is.EqualTo("0|7|2"),
+                "The render the resolve retries puts up every row the suspended slice did not reach");
+        }
+
+        private static ComponentFiber s_slicedRetryFiber;
+        private static StateUpdater<int> s_slicedRetrySetCount;
+        private static TransitionStarter s_slicedRetryStart;
+        private static VelvetTaskCompletionSource<int> s_slicedRetrySource;
+
+        // SlicedSuspendRender's rows with no boundary above, a source the case completes, and a third row the
+        // slice that suspends on the second never reaches.
+        [Component]
+        private static VNode SlicedRetryRender()
+        {
+            s_slicedRetryFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_slicedRetrySetCount = setCount;
+            s_slicedRetryStart = start;
+            var children = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                children[i] = V.Div(key: "sr" + i, children: new VNode?[] { V.Component(SlicedRetryRow, i, key: "row") });
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode SlicedRetryRow(int index)
+        {
+            var value = Hooks.Use<int>(_ => index == 1
+                ? (s_slicedRetrySource ??= new VelvetTaskCompletionSource<int>()).Task
+                : VelvetTask.FromResult(index), index);
+            return V.Label(text: value.ToString());
         }
 
         private static ComponentFiber s_slicedBoundaryFiber;

@@ -213,7 +213,7 @@ namespace Velvet
                 if (removalsRan)
                 {
                     FinalizeGeneralCommit(commit);
-                    ApplyOffscreenChanges(commit, oldFibers);
+                    ApplyOffscreenChanges(commit);
                 }
                 else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
                 SweepOrphans(oldFibers, newFibers);
@@ -1257,12 +1257,12 @@ namespace Velvet
             }
         }
 
-        private void ApplyOffscreenChanges(GeneralCommitState commit, List<ComponentFiber> oldFibers)
+        private void ApplyOffscreenChanges(GeneralCommitState commit)
         {
             if (commit.OffscreenChanges == null) return;
             foreach (var (fiber, hidden) in commit.OffscreenChanges)
             {
-                if (hidden) FiberEffects.HideLayoutEffects(fiber, oldFibers);
+                if (hidden) FiberEffects.HideLayoutEffects(fiber);
                 else FiberEffects.ShowLayoutEffects(fiber, _ctx);
             }
         }
