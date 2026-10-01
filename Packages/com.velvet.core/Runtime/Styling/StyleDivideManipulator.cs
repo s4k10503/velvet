@@ -31,7 +31,10 @@ namespace Velvet
     // composite widget's inner box; else self.
     //
     // A child's own border width or color on an edge the divider writes (e.g. border-r-4 on a child of a
-    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild.
+    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild. On a
+    // dashed / dotted divided edge it does not yet: the dash is painted in the divide color over a color of
+    // the child's own, a width class of the child's own takes the edge off the dashed path and draws it solid,
+    // and a bracket width widens the edge while the dash stays at the divider's width.
     // Limitations: a child whose border face is owned by a higher paint layer — a skew
     // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
     // documented known limitation, mirroring the element-level border-dashed gate which defers to either).
@@ -193,12 +196,10 @@ namespace Velvet
         // dashed / dotted divider reserves the same gutter width, masks the native color with the sentinel, and
         // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding). A divide-{color}
         // colors all four edges of a divided child, as Tailwind's `border-color` does. Tailwind writes all of it
-        // at zero specificity, so a width or color the child's own classes set on an edge wins there; under
-        // divide-dashed that width is still dashed, since Tailwind's border-*-N takes the border style the
-        // divider set.
+        // at zero specificity, so a width or color the child's own classes set on an edge wins there.
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
-            var ownWidth = StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge));
+            var divides = isDivider && !StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge));
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
             // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
@@ -206,61 +207,48 @@ namespace Velvet
                 && !_ctx.SkewBindings.ContainsKey(child)
                 && !_ctx.ShadowBindings.ContainsKey(child);
 
-            if (!dashed || !isDivider)
+            if (!dashed || !divides)
             {
                 // Solid divider, the last child (no divider), or a child whose face a skew / shadow layer owns:
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the last slot).
                 DetachDash(child);
-                WriteWidth(child, edge, isDivider && !ownWidth);
+                if (divides)
+                {
+                    StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+                    StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBack(child, WidthSlot(edge));
+                }
                 WriteColors(child, null, isDivider);
                 return;
             }
 
-            // Dashed / dotted divider: resolve the paint color BEFORE masking.
+            // Dashed / dotted divider: resolve the paint color BEFORE masking. An explicit divide-{color} wins;
+            // otherwise the child's would-be border color, re-resolved every pass so a class / theme change moving
+            // it after the first bind is picked up (rather than captured once and cached forever).
             var hasBinding = _ctx.DivideDashBindings.TryGetValue(child, out var binding);
-            var paintColor = DashColor(child, edge, hasBinding ? binding!.Color : (Color?)null);
+            var paintColor = _spec.HasColor
+                ? _spec.Color
+                : ResolveImplicitColor(child, edge, hasBinding ? binding!.Color : (Color?)null);
 
-            // Reserve the gutter as a solid divider would, but mask the native border color so only the dashed /
-            // dotted paint shows.
-            WriteWidth(child, edge, !ownWidth);
+            // Reserve the same gutter as a solid divider (real width) but mask the native border color so only
+            // the dashed / dotted paint shows.
+            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
             StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
             WriteColors(child, edge, isDivider);
 
             if (hasBinding)
             {
-                DivideDashPainter.Update(child, binding!, edge, paintColor, _spec.Style);
+                DivideDashPainter.Update(child, binding!, edge, _spec.Width, paintColor, _spec.Style);
             }
             else
             {
-                _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, edge, paintColor, _spec.Style);
+                _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, edge, _spec.Width, paintColor, _spec.Style);
             }
-        }
-
-        // Holds the divider's width on edge, giving way to a layer of the child's own, or hands the slot back.
-        private void WriteWidth(VisualElement child, DivideEdge edge, bool holds)
-        {
-            if (holds)
-            {
-                StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
-                StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
-            }
-            else
-            {
-                StyleArbitraryValueResolver.HandBack(child, WidthSlot(edge));
-            }
-        }
-
-        // The child's own color on the edge wins over divide-{color}, as its class does over Tailwind's
-        // zero-specificity one. Where neither decides it, the child's would-be border color, re-resolved every
-        // pass so a class / theme change moving it after the first bind is picked up.
-        private Color DashColor(VisualElement child, DivideEdge edge, Color? captured)
-        {
-            if (StyleArbitraryValueResolver.TryOwnColor(child, ColorSlot(edge), out var own, out var declared))
-            {
-                return own;
-            }
-            return _spec.HasColor && !declared ? _spec.Color : ResolveImplicitColor(child, edge, captured);
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set

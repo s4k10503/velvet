@@ -610,73 +610,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderColor_Then_TheDashTakesIt()
-        {
-            // Arrange — the child's own color beats Tailwind's zero-specificity divide color on the dashed edge too.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[]
-            {
-                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-[#ff0000]"),
-            };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(Color.red));
-        }
-
-        // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What
-        // reddens it is TryOwnColor reporting a declared color on a child whose classes set none.
-        [Test]
-        public void Given_AColoredDashedDivideRow_When_Reconciled_Then_TheDashTakesTheDividerColor()
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
         {
             // Arrange
-            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-r-[3px]") };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(gray200));
-        }
-
-        [Test]
-        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAColorClassWithoutAPaletteName_Then_TheDividerColorStandsDown()
-        {
-            // Arrange — border-default has no palette color to paint with, but it still outranks the divide color.
-            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[]
-            {
-                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-default"),
-            };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.Not.EqualTo(gray200));
-        }
-
-        [Test]
-        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAPaletteBorderClass_Then_TheDashTakesItsColor()
-        {
-            // Arrange
-            VelvetPalette.TryResolveColorToken("red-500", out var red500);
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[]
-            {
-                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-red-500"),
-            };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(red500));
+            // Assert — the dash binding rides along, since a solid divider yields through another path, and so
+            // does the start edge, which a divider on the wrong edge would take instead.
+            var child = scope.Root[0][1];
+            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(child),
+                    child.style.borderRightWidth.value, child.style.borderLeftWidth.keyword),
+                Is.EqualTo((true, 3f, StyleKeyword.Null)));
         }
 
         [Test]
@@ -1068,54 +1016,6 @@ namespace Velvet.Tests
             var a = _window.rootVisualElement.Q<Label>("a");
             Assert.That((row.resolvedStyle.flexDirection, a.resolvedStyle.borderRightWidth),
                 Is.EqualTo((FlexDirection.RowReverse, 1f)));
-        }
-
-        // The width the dash is stroked at for the middle child of a dashed row whose class is childClass.
-        private (bool Dashed, float Width) MiddleDash(string childClass)
-        {
-            _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "row", className: "flex flex-row divide-x divide-dashed", children: new VNode[]
-                {
-                    V.Div(className: "w-[20px] h-[20px]"),
-                    V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
-                    V.Div(className: "w-[20px] h-[20px]"),
-                }));
-            var b = _window.rootVisualElement.Q("b");
-            ForcePanelUpdate(b.panel);
-            var dashed = _mounted.Root.Reconciler.Context.DivideDashBindings.TryGetValue(b, out var binding);
-            return (dashed, dashed ? binding.Width : 0f);
-        }
-
-        // GREEN_ON_BASE(characterization): the base strokes a dashed divider at the divider's width. What reddens
-        // it is the dashed path dropping its WriteWidth, which leaves the edge no width to stroke at.
-        [Test]
-        public void Given_ADashedDivideRow_When_LaidOut_Then_TheDashIsAsWideAsTheDivider()
-        {
-            // Arrange / Act
-            var dash = MiddleDash("");
-
-            // Assert
-            Assert.That(dash, Is.EqualTo((true, 1f)));
-        }
-
-        [Test]
-        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
-        {
-            // Arrange / Act
-            var dash = MiddleDash("border-r-[3px]");
-
-            // Assert
-            Assert.That(dash, Is.EqualTo((true, 3f)));
-        }
-
-        [Test]
-        public void Given_ADashedDivideRow_When_ADividedChildCarriesABorderWidthClass_Then_ThatWidthIsDashed()
-        {
-            // Arrange / Act — Tailwind's border-r-2 takes the border style divide-dashed set.
-            var dash = MiddleDash("border-r-2");
-
-            // Assert
-            Assert.That(dash, Is.EqualTo((true, 2f)));
         }
     }
 }

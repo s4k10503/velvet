@@ -7,22 +7,18 @@ namespace Velvet
     // Per-child bookkeeping for a dashed / dotted divider drawn on ONE divided child's divider edge. A solid
     // divider is a plain inline border the StyleDivideManipulator writes; a dashed / dotted divider has no UI
     // Toolkit border-style, so it is painted by the CHILD's own generateVisualContent. The child still
-    // reserves the SAME layout gutter (the border width stays on the child, the divider's or one of the child's
-    // own, and only the color is masked with the sentinel), so switching a divider between solid and dashed is
-    // layout-identical — only the paint differs. The binding stores the physical EDGE rather than the axis: on a reversed container
+    // reserves the SAME layout gutter (the manipulator writes the real border width inline and masks only the
+    // color with the sentinel), so switching a divider between solid and dashed is layout-identical — only
+    // the paint differs. The binding stores the physical EDGE rather than the axis: on a reversed container
     // the divider is on the axis's trailing edge, and the stroke has to be drawn where the solid border of
     // the same divider would paint.
     internal sealed class DivideDashChildBinding
     {
         public Action<MeshGenerationContext>? OnGenerate;
-        public VisualElement Child = null!;
         public DivideEdge Edge;
+        public float Width;
         public Color Color;
         public BorderLineStyle Style;
-
-        // The width the child's border resolves to on Edge: the divider's own, or a width of the child's own that
-        // the divider gave way to, so the dash is drawn as wide as the border it stands in for.
-        public float Width => DivideDashPainter.StrokeWidth(Child, Edge);
 
         // Reusable 2-point buffer for the divider segment (rebuilt each Draw from the live layout).
         public readonly Vector2[] Segment = new Vector2[2];
@@ -36,9 +32,9 @@ namespace Velvet
     // recycling one child independently of its container is still caught) and swept by Reconciler.Dispose.
     internal static class DivideDashPainter
     {
-        public static DivideDashChildBinding Attach(VisualElement child, DivideEdge edge, Color color, BorderLineStyle style)
+        public static DivideDashChildBinding Attach(VisualElement child, DivideEdge edge, float width, Color color, BorderLineStyle style)
         {
-            var binding = new DivideDashChildBinding { Child = child, Edge = edge, Color = color, Style = style };
+            var binding = new DivideDashChildBinding { Edge = edge, Width = width, Color = color, Style = style };
             binding.OnGenerate = mgc => Draw(mgc, child, binding);
             // Appended (not prepended): the divider sits ON the child's divider edge over its own content, the
             // same place a solid inline border paints (over the child's background edge).
@@ -47,9 +43,10 @@ namespace Velvet
             return binding;
         }
 
-        public static void Update(VisualElement child, DivideDashChildBinding binding, DivideEdge edge, Color color, BorderLineStyle style)
+        public static void Update(VisualElement child, DivideDashChildBinding binding, DivideEdge edge, float width, Color color, BorderLineStyle style)
         {
             binding.Edge = edge;
+            binding.Width = width;
             binding.Color = color;
             binding.Style = style;
             child.MarkDirtyRepaint();
@@ -60,16 +57,6 @@ namespace Velvet
             child.generateVisualContent -= binding.OnGenerate;
             child.MarkDirtyRepaint();
         }
-
-#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
-        internal static float StrokeWidth(VisualElement child, DivideEdge edge) => edge switch
-        {
-            DivideEdge.Left => child.resolvedStyle.borderLeftWidth,
-            DivideEdge.Right => child.resolvedStyle.borderRightWidth,
-            DivideEdge.Top => child.resolvedStyle.borderTopWidth,
-            DivideEdge.Bottom => child.resolvedStyle.borderBottomWidth,
-        };
-#pragma warning restore CS8524
 
         private static void Draw(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)
         {
