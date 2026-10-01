@@ -659,16 +659,11 @@ namespace Velvet
             fiber.EffectFlushScheduled = false;
         }
 
-        // Explicitly runs async effects from tests / Editor. In the normal flow they run automatically via
-        // schedule.Execute, so user code does not need to call this.
-        // fiber: Fiber whose pending async effects should be drained synchronously.
-        public static void FlushEffects(ComponentFiber fiber) => RunEffects(fiber);
-
         // Synchronously runs the tree-wide, 2-phase passive-effect drain for the reconcile context that
         // rootFiber belongs to (all cleanups before all setups, post-order). Mirrors the
         // production post-paint drain but fires immediately, so tests / Editor tooling observe the
         // passive ordering without waiting for the host scheduler. No-op when no passive effects are
-        // pending. Use this instead of per-fiber FlushEffects to preserve cross-fiber order.
+        // pending.
         public static void FlushPendingPassiveEffects(ComponentFiber rootFiber)
         {
             var context = rootFiber?.Reconciler?.Context;

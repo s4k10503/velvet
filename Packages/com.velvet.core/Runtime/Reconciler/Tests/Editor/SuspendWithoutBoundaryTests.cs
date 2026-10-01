@@ -78,6 +78,8 @@ namespace Velvet.Tests
             s_mountEffectSetups = 0;
             s_mountHostSetShown = default;
             s_mountPassiveSetups = 0;
+            s_memoMountPassiveSetups = 0;
+            s_memoMountHostSetShown = default;
             s_memoHandle.Set(null);
             s_memoHandleCreates = 0;
             s_nestedHandle.Set(null);
@@ -104,6 +106,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That((whileHidden, s_mountPassiveSetups), Is.EqualTo((0, 1)),
                 "React runs no effect of a tree it has not mounted, and runs it on reveal");
+        }
+
+        [Test]
+        public void Given_AMemoizedComponentFirstMountedBesideAReaderThatSuspends_When_TheRevealBailsOnIt_Then_ItsPassiveEffectRunsOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MemoMountInSuspenseHostRender, key: "memo-mount-host"));
+            s_memoMountHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var whileHidden = s_memoMountPassiveSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_memoMountPassiveSetups), Is.EqualTo((0, 1)),
+                "React runs the effect a hidden tree held when it reveals it, a component the reveal does not render included");
         }
 
         [Test]
@@ -855,6 +877,39 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_otherHostSetTick;
         private static int s_mountEffectSetups;
         private static int s_mountPassiveSetups;
+        private static int s_memoMountPassiveSetups;
+        private static StateUpdater<bool> s_memoMountHostSetShown;
+
+        // Memoized with no props, so the reveal bails on it.
+        [Component(Memoize = true)]
+        private static VNode MemoMountEffectRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_memoMountPassiveSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "memo-mounted");
+        }
+
+        [Component]
+        private static VNode MemoMountInSuspenseHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_memoMountHostSetShown = setShown;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: shown
+                        ? new VNode[]
+                        {
+                            V.Component(MemoMountEffectRender, key: "effect"),
+                            V.Component(MountReaderRender, key: "reader"),
+                        }
+                        : Array.Empty<VNode>()),
+            });
+        }
         private static readonly Ref<string> s_memoHandle = new();
         private static int s_memoHandleCreates;
         private static readonly Ref<string> s_nestedHandle = new();
