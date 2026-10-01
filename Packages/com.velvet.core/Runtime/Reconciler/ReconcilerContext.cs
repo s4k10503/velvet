@@ -1479,6 +1479,42 @@ namespace Velvet
             RemoveSuspenseFallback(boundary, position);
         }
 
+        // The Suspense and AnimatePresence records kept against a boundary, taken before its own reconcile so that
+        // a catch there can put them back (FiberRenderer.ReconcileRenderedTree).
+        internal BoundaryRecords RecordsOf(ComponentFiber boundary)
+        {
+            var suspense = _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
+                ? new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>(keys)
+                : null;
+            HashSet<(VisualElement? Parent, long Position)>? presence = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (ReferenceEquals(key.boundary, boundary)) (presence ??= new()).Add((key.parent, key.presenceKey));
+            }
+            return new BoundaryRecords(suspense, presence);
+        }
+
+        // Puts the boundary's Suspense records back as they were and drops the AnimatePresence records the failed
+        // render added; one that was there before stays as that render left it.
+        internal void RestoreRecordsOf(ComponentFiber boundary, BoundaryRecords before)
+        {
+            if (before.Suspense == null) _suspenseFallbackKeys.Remove(boundary);
+            else _suspenseFallbackKeys[boundary] = before.Suspense;
+            List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? added = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (!ReferenceEquals(key.boundary, boundary)) continue;
+                if (before.Presence != null && before.Presence.Contains((key.parent, key.presenceKey))) continue;
+                (added ??= new()).Add(key);
+            }
+            if (added == null) return;
+            foreach (var key in added) PresenceStates.Remove(key);
+        }
+
+        internal readonly record struct BoundaryRecords(
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>? Suspense,
+            HashSet<(VisualElement? Parent, long Position)>? Presence);
+
         private void RemoveSuspenseFallback(ComponentFiber? boundary,
             (VisualElement? Container, VisualElement? PortalScope, long Position) position)
         {

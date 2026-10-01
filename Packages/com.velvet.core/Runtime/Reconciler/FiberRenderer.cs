@@ -439,6 +439,7 @@ namespace Velvet
             var catchesHere = fiber.IsErrorBoundary && !deferReconcile;
             var passContext = fiber.Reconciler?.Context;
             fiber.CatchesInTheWalk = catchesHere;
+            var recordsBefore = catchesHere ? passContext?.RecordsOf(fiber) : null;
             BoundaryCaughtSignal? caught = null;
             try
             {
@@ -454,11 +455,12 @@ namespace Velvet
             }
             if (caught != null)
             {
-                // React runs nothing for work that never committed. The AnimatePresence and Suspense records kept
-                // against the boundary are not pruned here as the walk's catch prunes them: the fallback's own
-                // reconcile reads them for the rows it replaces, and without them leaves those rows on screen
-                // (BoundaryCatchScopeTests' own-update cases).
+                // React runs nothing for work that never committed. The Suspense and AnimatePresence records kept
+                // against the boundary are put back as they were before the fallback renders, rather than pruned as
+                // the walk's catch prunes them: the fallback's own reconcile reads them for the rows it replaces,
+                // and without them leaves those rows on screen (BoundaryCatchScopeTests' own-update cases).
                 passContext!.DropEnterCompletions(passContext.EnterCompletionsBelow(fiber));
+                if (recordsBefore is { } records) passContext.RestoreRecordsOf(fiber, records);
                 FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             }
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;

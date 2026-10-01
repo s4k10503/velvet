@@ -707,6 +707,40 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
         };
 
+        [Test]
+        public void Given_ASuspenseInTheFailedOutputOfTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_NoSuspenseFallbackIsRecordedAsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OwnSuspenseHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the screen is read beside the record, since a boundary that never caught records its
+            // Suspense too
+            Assert.That(Texts() + "|" + mounted.Root.Reconciler.Context.AnyBoundaryShowingFallback,
+                Is.EqualTo("outside,fallback|False"));
+        }
+
+        [Test]
+        public void Given_APresenceInTheFailedOutputOfTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_NoStateOfItIsKept()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NewPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the screen is read beside the count, since a boundary that never caught keeps its
+            // presence's state too
+            Assert.That(Texts() + "|" + mounted.Root.Reconciler.Context.PresenceStates.Count,
+                Is.EqualTo("outside,fallback|0"));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
         // reconcile retires the Suspense's record as this branch's does. What this pins is that the catch keeps
         // the record until that reconcile has read it.
@@ -748,6 +782,60 @@ namespace Velvet.Tests
         }
 
         private static Action<int> s_setOwnRecordTick;
+
+        // Renders no Suspense until its own update, whose render is the one that fails.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnSuspenseBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRecordTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return tick == 0
+                ? V.Label(text: "ok")
+                : V.Fragment(new VNode[]
+                {
+                    V.Suspense(
+                        fallback: V.Label(text: "loading"),
+                        children: new VNode[] { V.Component(PendingReaderRender, key: "reader") }),
+                    V.Component(ThrowerRender, key: "thrower"),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwnSuspenseHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(text: "outside"),
+                V.Component(OwnSuspenseBoundaryRender, key: "boundary"),
+            });
+
+        // Renders no AnimatePresence until its own update, whose render is the one that fails.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode NewPresenceBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRecordTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return tick == 0
+                ? V.Label(text: "ok")
+                : V.Fragment(new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", children: new VNode[]
+                    {
+                        V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    }),
+                    V.Component(ThrowerRender, key: "thrower"),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode NewPresenceHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(text: "outside"),
+                V.Component(NewPresenceBoundaryRender, key: "boundary"),
+            });
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode ShownSuspenseBoundaryRender()
