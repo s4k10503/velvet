@@ -34,6 +34,9 @@ namespace Velvet
         // The transition the child's own transition entry for the edge's color runs from From to Target; Tick
         // repaints the child each frame while it runs, and is paused otherwise.
         public Color From;
+        // Where a change back runs to, and how far the running transition was shortened.
+        public Color ReversingStart;
+        public float Shortening = 1f;
         public double StartTime;
         public float DelaySec;
         public float DurationSec;
@@ -64,6 +67,9 @@ namespace Velvet
     {
         internal const string MarkerClass = "velvet-divide-dash";
 
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, DivideDashChildBinding>
+            s_bound = new();
+
         public static DivideDashChildBinding Attach(VisualElement child, DivideEdge edge, BorderLineStyle style)
         {
             var binding = new DivideDashChildBinding { Child = child, Edge = edge, Style = style };
@@ -78,6 +84,7 @@ namespace Velvet
             child.generateVisualContent += binding.OnGenerate;
             child.RegisterCallback(binding.OnStyleResolved);
             child.AddToClassList(MarkerClass);
+            s_bound.AddOrUpdate(child, binding);
             child.MarkDirtyRepaint();
             return binding;
         }
@@ -92,10 +99,11 @@ namespace Velvet
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
             child.generateVisualContent -= binding.OnGenerate;
-            // MUTANT_SURVIVES(equivalent, line removed): with the class removed below the callback is sent at most
-            // the restyle that removes it, and a repaint it asks for draws no dash, the paint callback being gone.
+            // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only asks the element for a
+            // repaint.
             child.UnregisterCallback(binding.OnStyleResolved);
             child.RemoveFromClassList(MarkerClass);
+            s_bound.Remove(child);
             binding.Tick.Pause();
             child.MarkDirtyRepaint();
         }
@@ -106,6 +114,36 @@ namespace Velvet
             {
                 binding.Child.MarkDirtyRepaint();
             }
+        }
+
+        // The color writes of StyleArbitraryValueResolver.ApplyInline and ClearInline, which a motion driver makes
+        // each frame, reach here as they are made, so the mask is back before the engine paints the edge. A write of the child's own code is
+        // found when the child paints, and the mask goes back at the next scheduler tick rather than in the paint,
+        // so the edge shows the write for that one paint
+        // (Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_TheEdgeIsMaskedFromTheNextPaint goes red on
+        // a mask written back in the paint).
+        internal static void TakeOverWrite(VisualElement element)
+        {
+            if (s_bound.TryGetValue(element, out var binding) && TakeOver(binding))
+            {
+                StyleArbitraryValueResolver.Hold(element, StyleDivideManipulator.ColorSlot(binding.Edge),
+                    new StyleColor(SilhouetteFace.SuppressedColor));
+                element.MarkDirtyRepaint();
+            }
+        }
+
+        // A color written over the mask since it was held is taken as the child's own, and a write clearing the slot
+        // drops the color taken; true when the mask has to be written back. StyleDivideManipulator.InlineOwnColor
+        // takes one at an Apply.
+        private static bool TakeOver(DivideDashChildBinding binding)
+        {
+            var written = StyleDivideManipulator.InlineColor(binding.Child, binding.Edge);
+            if (SilhouetteFace.IsSentinel(written))
+            {
+                return false;
+            }
+            binding.Inline = SilhouetteFace.IsUnset(written) ? null : written;
+            return true;
         }
 
         // A layer of the child's own wins, then the divide-{color} where no class of the child's own sets the edge's
@@ -219,20 +257,31 @@ namespace Velvet
 #pragma warning restore CS8524
 
         // The color to paint now: the target, or a frame of the transition toward it. A target that differs from
-        // the last one starts a transition from the color last painted where the child carries an entry running
-        // for the edge's color; the first paint starts none.
+        // the last one starts a transition from the color shown where the child carries an entry running for the
+        // edge's color; the first paint starts none. A change back to where the running transition reverses to is
+        // shortened by how far that one had got, its duration and a negative delay alike, as CSS Transitions shortens
+        // a reversing transition (Given_ARunningDashTransition_When_TheColorChangesBackPartWay_Then_TheWayBackIsShortened).
         internal static Color Advance(DivideDashChildBinding binding, Color target, double now)
         {
             if (binding.Target != target)
             {
                 var runs = StyleFilterTransitionDriver.TryFindTransition(binding.Child, ColorProperty(binding.Edge),
                     "border-color", out var durationMs, out var delayMs, out var easing);
+                var running = binding.Tick.isActive;
+                var eased = running ? Eased(binding, now, out _) : 1f;
+                var shown = running ? Color.LerpUnclamped(binding.From, binding.Target!.Value, eased) : binding.Color;
                 if (binding.Target != null && runs)
                 {
-                    binding.From = binding.Color;
+                    var reverses = target == binding.ReversingStart;
+                    binding.Shortening = reverses
+                        ? Mathf.Clamp01(Mathf.Abs(1f - (1f - eased) * binding.Shortening))
+                        : 1f;
+                    binding.ReversingStart = reverses ? binding.Target.Value : shown;
+                    binding.From = shown;
                     binding.StartTime = now;
-                    binding.DurationSec = Mathf.Max(0, durationMs) / 1000f;
-                    binding.DelaySec = delayMs / 1000f;
+                    binding.DurationSec = Mathf.Max(0, durationMs) / 1000f * binding.Shortening;
+                    // MUTANT_SURVIVES(equivalent, boundary): a zero delay is zero shortened or not.
+                    binding.DelaySec = delayMs / 1000f * (delayMs < 0 ? binding.Shortening : 1f);
                     binding.Easing = easing;
                     binding.Tick.Resume();
                 }
@@ -246,26 +295,37 @@ namespace Velvet
             {
                 return target;
             }
-            var color = Frame(binding, target, now, out var ended);
+            // An entry taken away while the transition runs ends it at the target.
+            if (!StyleFilterTransitionDriver.TryFindTransition(binding.Child, ColorProperty(binding.Edge), "border-color",
+                    out _, out _, out _))
+            {
+                binding.Tick.Pause();
+                return target;
+            }
+            var progress = Eased(binding, now, out var ended);
             if (ended)
             {
                 binding.Tick.Pause();
             }
-            return color;
+            return Color.LerpUnclamped(binding.From, target, progress);
         }
 
-        // The color the binding's transition toward `to` shows at `now`, and whether it has ended: From through
-        // the delay, and a zero duration jumps to the end once the delay has passed.
-        internal static Color Frame(DivideDashChildBinding binding, Color to, double now, out bool ended)
+        // The eased progress of the binding's transition at `now`, and whether it has ended: 0 through the delay, and a
+        // zero duration jumps to the end once the delay has passed.
+        internal static float Eased(DivideDashChildBinding binding, double now, out bool ended)
         {
             var t = Mathf.Clamp01((float)((now - binding.StartTime - binding.DelaySec)
                 / Math.Max(binding.DurationSec, 1e-6)));
             ended = t >= 1f;
-            return Color.LerpUnclamped(binding.From, to, UssEasing.Evaluate(binding.Easing, t));
+            return UssEasing.Evaluate(binding.Easing, t);
         }
 
         private static void Draw(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)
         {
+            if (TakeOver(binding))
+            {
+                child.schedule.Execute(() => TakeOverWrite(child));
+            }
             binding.Color = Advance(binding, PaintColor(binding), Time.realtimeSinceStartupAsDouble);
             if (binding.Width <= 0.01f || binding.Color.a <= 0.004f)
             {

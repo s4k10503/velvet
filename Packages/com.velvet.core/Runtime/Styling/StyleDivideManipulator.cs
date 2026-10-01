@@ -317,7 +317,7 @@ namespace Velvet
         }
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
-        private static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
+        internal static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
             DivideEdge.Left => child.style.borderLeftColor.value,
             DivideEdge.Right => child.style.borderRightColor.value,

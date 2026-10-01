@@ -1677,6 +1677,7 @@ namespace Velvet
                 {
                     setter(cs, color);
                 }
+                DivideDashPainter.TakeOverWrite(element);
                 return;
             }
 
@@ -1728,6 +1729,7 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
+                DivideDashPainter.TakeOverWrite(element);
                 return;
             }
 
