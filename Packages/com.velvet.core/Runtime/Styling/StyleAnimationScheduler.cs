@@ -1139,12 +1139,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            element.style.transitionDuration = durations;
-            element.style.transitionTimingFunction = easings;
-            if (delays != null)
-            {
-                element.style.transitionDelay = delays;
-            }
+            MotionNativeTransitionGuard.WriteTiming(element, durations, easings, delays);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1306,8 +1301,7 @@ namespace Velvet
             var durationMs = (int)(durationSec * 1000);
             var durationList = _listPool.RentDurationList(durationMs);
             MotionNativeTransitionGuard.TweenTiming(element, true);
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
+            MotionNativeTransitionGuard.WriteTiming(element, durationList, GetOrCreateEasingList(easing), null);
 
             // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
             // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
@@ -1324,7 +1318,7 @@ namespace Velvet
             {
                 var delayMs = (int)(delaySec * 1000);
                 delayList = _listPool.RentDelayList(delayMs);
-                element.style.transitionDelay = delayList;
+                MotionNativeTransitionGuard.WriteTiming(element, null, null, delayList);
             }
 
             return (durationList, delayList);
@@ -1399,19 +1393,17 @@ namespace Velvet
 
             element.style.transitionProperty = propertyNames;
             MotionNativeTransitionGuard.TweenTiming(element, true);
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = easingList;
 
             // Mirrors the single-entry path: transition-delay is set only when at least one property actually
             // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
             // is returned immediately rather than handed to the caller for a later ReturnDelayList that would
             // never come (this play's own bookkeeping only tracks a DelayList when it set one).
+            MotionNativeTransitionGuard.WriteTiming(element, durationList, easingList, hasDelay ? delayList : null);
             if (!hasDelay)
             {
                 _listPool.ReturnDelayList(delayList);
                 return (durationList, null);
             }
-            element.style.transitionDelay = delayList;
             return (durationList, delayList);
         }
 
@@ -1661,10 +1653,7 @@ namespace Velvet
 
         private void ClearTransitionStyles(VisualElement element)
         {
-            // Releases UIElements' internal list reference, making pool return safe.
-            element.style.transitionDuration = StyleKeyword.Null;
-            element.style.transitionTimingFunction = StyleKeyword.Null;
-            element.style.transitionDelay = StyleKeyword.Null;
+            // Writes over the tween's lists, which releases UIElements' internal list reference, making pool return safe.
             MotionNativeTransitionGuard.TweenTiming(element, false);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).

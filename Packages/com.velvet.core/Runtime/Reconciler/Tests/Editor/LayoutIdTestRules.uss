@@ -48,3 +48,15 @@
     transition-duration: 1s, 0.2s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-delay-only {
+    transition-property: translate;
+    transition-duration: 0s;
+    transition-delay: 0.3s;
+}
+
+.layout-id-test-turn {
+    transition-property: rotate;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}

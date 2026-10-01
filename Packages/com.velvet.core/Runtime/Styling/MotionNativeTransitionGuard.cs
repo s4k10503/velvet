@@ -97,6 +97,8 @@ namespace Velvet
             public List<StylePropertyName> Written;
             public long? Rules;
             public bool Stale;
+            // The owners NarrowIfIntercepted found nothing to narrow for, with their slots and the rules it read.
+            public readonly Dictionary<object, (MotionTransitionSlots Slots, long? Rules)> Undecided = new();
             // Where Narrow writes the duration, delay and curve lists too (WriteNarrowed): the element's own, which it
             // hands back as the last narrower lets go, and what it last wrote, so that a list written over it since is
             // taken as the element's own (AdoptTiming).
@@ -185,8 +187,9 @@ namespace Velvet
         /// <summary>
         /// Takes the longhands of <paramref name="drivenSlots"/> out of the element's own transitions on
         /// <paramref name="owner"/>'s behalf, leaving the element's other transitions running, as Framer leaves the CSS
-        /// transitions of what a layout animation does not write. Where the element's own classes name none of
-        /// those slots this is a no-op, as for <see cref="SuspendIfIntercepted"/>.
+        /// transitions of what a layout animation does not write. Where the element's cascade transitions none of those
+        /// longhands over some time — its own classes deciding where the cascade cannot be read — this is a no-op,
+        /// decided again on a pass that finds the element's rules changed (<see cref="Refresh"/>).
         /// </summary>
         /// <remarks>
         /// The element's transitions are read off its cascade (<see cref="StyleCascade.Lists"/>) and written inline
@@ -199,7 +202,14 @@ namespace Velvet
         {
             var driven = LonghandsOf(drivenSlots);
             ExcludeFromHeldList(element, driven);
-            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None) Narrow(element, owner, drivenSlots);
+            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None)
+            {
+                Narrow(element, owner, drivenSlots);
+                return;
+            }
+            // Decided again on a pass that finds the element's rules changed
+            // (Given_AFollowerGivenTransitionClassesAsItsLeadLeaves_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+            s_suspensions.GetValue(element, static _ => new Suspension()).Undecided[owner] = (drivenSlots, StyleCascade.RulesHash(element));
         }
 
         /// <summary>
@@ -378,6 +388,10 @@ namespace Velvet
             public StyleList<TimeValue> Duration;
             public StyleList<TimeValue> Delay;
             public StyleList<EasingFunction> Curve;
+            // What Velvet's writes for the tween last left in the slots (WriteTiming).
+            public StyleList<TimeValue> WroteDuration;
+            public StyleList<TimeValue> WroteDelay;
+            public StyleList<EasingFunction> WroteCurve;
         }
 
         /// <summary>
@@ -385,7 +399,8 @@ namespace Velvet
         /// it clears them: none of them is the element's own, to be handed back after a narrowing
         /// (Given_ALayoutIdMotionWhoseEnterTweenEndsBeforeItsMove_When_TheMoveLands_Then_NoTimingIsLeftInline). What the
         /// element held before the tween's first write is put back as the tween clears its own
-        /// (Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain).
+        /// (Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain), or what was written
+        /// over the tween's own since (WriteTiming); the slots are cleared where nothing is held.
         /// </summary>
         internal static void TweenTiming(VisualElement element, bool held)
         {
@@ -396,15 +411,47 @@ namespace Velvet
                 s_tweenTimings.Add(element, new TweenHold
                 {
                     Duration = Copy(style.transitionDuration), Delay = Copy(style.transitionDelay), Curve = Copy(style.transitionTimingFunction),
+                    WroteDuration = Copy(style.transitionDuration), WroteDelay = Copy(style.transitionDelay),
+                    WroteCurve = Copy(style.transitionTimingFunction),
                 });
             }
-            else if (!held && holding)
+            else if (!held)
             {
+                if (holding) AdoptTweenWrites(style, hold);
                 s_tweenTimings.Remove(element);
-                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) = (hold.Duration, hold.Delay, hold.Curve);
+                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
+                    holding ? (hold.Duration, hold.Delay, hold.Curve) : (StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null);
             }
             // What the tween cleared is not a write of the element's own.
             if (s_suspensions.TryGetValue(element, out var suspension)) Rebaseline(element, suspension);
+        }
+
+        /// <summary>
+        /// Writes the duration, curve and delay lists given, for a tween or for <see cref="Exclude"/>. Under a tween, a
+        /// list written over the tween's since Velvet last wrote them is the element's own from then on, and is what
+        /// <see cref="TweenTiming"/> puts back
+        /// (Given_AMotionWhoseCodeWritesItsDelayMidVariantTween_When_TheTweenEnds_Then_ThatDelayIsItsOwn).
+        /// </summary>
+        internal static void WriteTiming(VisualElement element, List<TimeValue> duration, List<EasingFunction> curve, List<TimeValue> delay)
+        {
+            var style = element.style;
+            var holding = s_tweenTimings.TryGetValue(element, out var hold);
+            if (holding) AdoptTweenWrites(style, hold);
+            if (duration != null) style.transitionDuration = duration;
+            if (curve != null) style.transitionTimingFunction = curve;
+            if (delay != null) style.transitionDelay = delay;
+            if (holding)
+            {
+                (hold.WroteDuration, hold.WroteDelay, hold.WroteCurve) =
+                    (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
+            }
+        }
+
+        private static void AdoptTweenWrites(IStyle style, TweenHold hold)
+        {
+            if (!Same(style.transitionDuration, hold.WroteDuration)) hold.Duration = Copy(style.transitionDuration);
+            if (!Same(style.transitionDelay, hold.WroteDelay)) hold.Delay = Copy(style.transitionDelay);
+            if (!Same(style.transitionTimingFunction, hold.WroteCurve)) hold.Curve = Copy(style.transitionTimingFunction);
         }
 
         /// <summary>
@@ -699,12 +746,9 @@ namespace Velvet
             var heldCount = held.Count;
             element.style.transitionProperty = names;
             if (!realign) return;
-            WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
-                list => element.style.transitionDuration = list);
-            WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
-                list => element.style.transitionTimingFunction = list);
-            WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
-                list => element.style.transitionDelay = list);
+            WriteTiming(element, Realigned(element.style.transitionDuration.value, heldCount, sources),
+                Realigned(element.style.transitionTimingFunction.value, heldCount, sources),
+                Realigned(element.style.transitionDelay.value, heldCount, sources));
         }
 
         // The longhands a name in transition-property stands for where it is `all` or a shorthand, as UI Toolkit matches
@@ -739,8 +783,12 @@ namespace Velvet
             for (var i = 0; i < lists.Properties.Count; i++)
             {
                 var name = lists.Properties[i];
-                // The duration pairs with the name by position, repeating as UI Toolkit repeats it.
-                var timed = lists.Durations.Count > 0 && lists.Durations[i % lists.Durations.Count].value > 0f;
+                // The duration and delay pair with the name by position, repeating as UI Toolkit repeats them, and an entry
+                // runs where its duration, or its delay, is positive
+                // (Given_AMotionWhoseStylesheetDelaysAZeroDurationTranslate_When_ItsMoveRuns_Then_ItIsDrawnWhereItIsWritten).
+                var duration = lists.Durations.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Durations[i % lists.Durations.Count]) : 0;
+                var delay = lists.Delays.Count > 0 ? StyleFilterTransitionDriver.Milliseconds(lists.Delays[i % lists.Delays.Count]) : 0;
+                var timed = Math.Max(0, duration) + delay > 0;
                 if (timed && (Covered(name).Overlaps(driven) || NamesADrivenLonghand(name, driven))) return true;
             }
             return false;
@@ -754,19 +802,19 @@ namespace Velvet
             return longhand >= 0 && driven.Contains((StyleLonghand)longhand);
         }
 
-        // Leaves the list as it was where the slot holds none or it does not pair one-to-one with the held list.
-        private static void WriteRealigned<T>(List<T> list, int heldCount, List<int> sources, Action<List<T>> write)
+        // None, leaving the list as it was, where the slot holds none or it does not pair one-to-one with the held list.
+        private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
         {
             if (list == null || list.Count != heldCount)
             {
-                return;
+                return null;
             }
             var realigned = new List<T>(sources.Count);
             foreach (var source in sources)
             {
                 realigned.Add(list[source]);
             }
-            write(realigned);
+            return realigned;
         }
 
         private static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
@@ -784,6 +832,7 @@ namespace Velvet
         {
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
             suspension.Driven.Remove(owner);
+            suspension.Undecided.Remove(owner);
             var suspended = suspension.Owners.Remove(owner);
             var narrowed = suspension.Narrowers.Remove(owner);
             if (narrowed) Unnarrow(element, suspension);
@@ -797,9 +846,9 @@ namespace Velvet
                 }
                 if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
             }
-            // The record goes with the last of its owners, narrowers and drivers
+            // The record goes with the last of its owners, narrowers, drivers and undecided owners
             // (Given_ADriverWhoseSlotsAnElementsClassesDoNotTransition_When_ItIsReleased_Then_TheGuardKeepsNoRecordOfTheElement).
-            if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Driven.Count == 0) s_suspensions.Remove(element);
+            if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Driven.Count + suspension.Undecided.Count == 0) s_suspensions.Remove(element);
         }
 
         /// <summary>
@@ -809,6 +858,7 @@ namespace Velvet
         {
             if (!s_suspensions.TryGetValue(element, out var suspension)) return;
             if (suspension.Narrowers.Remove(from, out var longhands)) suspension.Narrowers[to] = longhands;
+            if (suspension.Undecided.Remove(from, out var undecided)) suspension.Undecided[to] = undecided;
         }
 
         /// <summary>
@@ -830,7 +880,15 @@ namespace Velvet
         /// </summary>
         internal static void Refresh(VisualElement element)
         {
-            if (!s_suspensions.TryGetValue(element, out var suspension) || suspension.Written == null) return;
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            var rules = StyleCascade.RulesHash(element);
+            foreach (var (owner, (slots, read)) in suspension.Undecided.ToArray())
+            {
+                if (read == rules) continue;
+                suspension.Undecided.Remove(owner);
+                NarrowIfIntercepted(element, owner, slots);
+            }
+            if (suspension.Written == null) return;
             if (suspension.WroteTiming) AdoptTiming(element, suspension);
             WriteNarrowed(element, suspension);
         }

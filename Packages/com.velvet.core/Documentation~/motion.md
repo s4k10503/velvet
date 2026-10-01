@@ -505,8 +505,8 @@ Every variant update on a `V.Motion` rides a `StyleTransitionConfig` — mount e
 presence enters and exits, and runtime `animate` label changes, whether the label is the Motion's
 own or inherited from an ancestor (orchestrated stagger children included). Tweens write the
 config's timing as an inline transition for the swap and release it on completion, putting back the
-duration, delay and easing the element held inline before the swap — a `duration-[x]` utility's, or its
-code's — or the `duration-[x]` it took meanwhile; spring configs integrate physically instead.
+duration, delay and easing the element holds inline of its own — a `duration-[x]` utility's, or its code's,
+written before the swap or while it ran; spring configs integrate physically instead.
 
 **Which config a swap takes is decided by the pose it is animating INTO.** A `MotionVariant` naming
 its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is

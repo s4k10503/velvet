@@ -237,7 +237,7 @@ namespace Velvet
             return false;
         }
 
-        private static int Milliseconds(TimeValue time)
+        internal static int Milliseconds(TimeValue time)
             => Mathf.RoundToInt(time.unit == TimeUnit.Millisecond ? time.value : time.value * 1000f);
 
         // Indexed rather than foreach'd: the resolved lists are typed as interfaces, so enumerating one boxes an
