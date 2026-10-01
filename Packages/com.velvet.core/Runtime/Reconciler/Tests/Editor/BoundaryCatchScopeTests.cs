@@ -778,9 +778,6 @@ namespace Velvet.Tests
                 Is.EqualTo("outside,fallback|0|0"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
-        // reconcile retires the Suspense's record as this branch's does. What this pins is that the catch keeps
-        // the record until that reconcile has read it.
         [Test]
         public void Given_ABoundaryShowingItsOwnSuspensesFallback_When_ItsOwnUpdateThrows_Then_TheFallbackReplacesThoseRowsAndNothingIsRecordedAsShown()
         {
@@ -798,9 +795,6 @@ namespace Velvet.Tests
                 Is.EqualTo("outside,loading|outside,fallback|False"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
-        // reconcile retires the presence and its child as this branch's does. What this pins is that the catch
-        // keeps the presence's record until that reconcile has read it.
         [Test]
         public void Given_APresenceInTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsChildrenLeaveAndNoStateOfItIsKept()
         {
@@ -970,6 +964,9 @@ namespace Velvet.Tests
                 V.Component(OwnPresenceBoundaryRender, key: "boundary"),
             });
 
+        // GREEN_ON_BASE(characterization): the merge base's catch in the walk prunes the presence's state too. The case
+        // reads it on the mount alone because the boundary no longer renders its children on its parent's next
+        // render, which the form it replaces went through.
         [Test]
         public void Given_APresenceInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoStateOfItIsKept()
         {
