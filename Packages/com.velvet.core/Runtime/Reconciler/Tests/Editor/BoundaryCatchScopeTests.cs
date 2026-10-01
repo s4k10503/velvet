@@ -20,8 +20,9 @@ namespace Velvet.Tests
     /// cleaned up once, in the commit, after the rest of the pass has rendered.</item>
     /// <item>A boundary with no fallback passes the error on, and the boundary above replaces its own whole
     /// output with its fallback.</item>
-    /// <item>The fallback never takes over an element the failed output held, so nothing that output wrote to it
-    /// stays and a row of the boundary's own is replaced, while a sibling's element is kept. The failed output's
+    /// <item>The fallback never takes over an element of the boundary's output, one the failed output never
+    /// reached included, so nothing that output wrote to it stays and a row of the boundary's own is replaced,
+    /// while a sibling's element is kept. The failed output's
     /// pooled nodes go back to the pool, and a boundary catches again on a later update.</item>
     /// <item>Where the fallback's own content throws, it renders once, and the content's error goes to the
     /// boundary above whether that boundary catches in the walk or aborts its own render. The original error
@@ -347,14 +348,29 @@ namespace Velvet.Tests
                 Is.EqualTo("row"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base's fallback does not take this row's element either.
-        // There it is shown on the aborting path; what this pins is that the catch taken in the walk leaves the
-        // boundary's own row out of the fallback's diff.
         [Test]
-        public void Given_ARowOfTheBoundarysOwnOutput_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
+        public void Given_AFallbackRowAtThePositionOfARowTheFailedOutputPatched_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(RowHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(SamePositionHostRender, key: "host"), CaughtErrors.Unlogged);
+            var rowBefore = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "t0");
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the row is read as found, since a row never found differs from every element
+            var fallbackRow = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "fallback");
+            Assert.That((rowBefore != null, fallbackRow != null && !ReferenceEquals(fallbackRow, rowBefore)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AFallbackRowKeyedLikeARowTheFailedOutputNeverReached_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SameKeyHostRender, key: "host"), CaughtErrors.Unlogged);
             var rowBefore = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "t0");
             s_throws = true;
 
@@ -445,6 +461,47 @@ namespace Velvet.Tests
             var (tick, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             return V.Div(children: new VNode[] { V.Component(RowBoundaryRender, tick, key: "boundary") });
+        }
+
+        // The fallback row is unwrapped, so it carries the key of the row the failed output patches first.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SamePositionBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Label(text: "t" + tick),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SamePositionHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(SamePositionBoundaryRender, tick, key: "boundary") });
+        }
+
+        // The thrower comes first, so the failed output reaches none of the rows, and the fallback row at
+        // another position carries the key of the row behind it.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SameKeyBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(key: "row", text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(ThrowerRender, key: "thrower"),
+                V.Label(key: "row", text: "t" + tick),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SameKeyHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(SameKeyBoundaryRender, tick, key: "boundary") });
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]

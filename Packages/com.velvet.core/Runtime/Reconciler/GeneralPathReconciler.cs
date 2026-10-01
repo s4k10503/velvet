@@ -331,7 +331,8 @@ namespace Velvet
         private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
         {
             int oldIndex;
-            if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key))
+            if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
+                && !commit.UsedOldIndices.Contains(ordinal))
             {
                 oldIndex = ordinal;
             }
@@ -410,9 +411,10 @@ namespace Velvet
                 }
                 _ctx.ComponentRegistry.DisposeFibersUnder(orphanContainers);
             }
-            // What the rolled-back leaves put in UsedOldIndices and NewKeys stays there unread: a Suspense
-            // primary's leaves are keyed under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of
-            // the walk carries, and the other rollbacks end the walk.
+            // What the rolled-back leaves put in UsedOldIndices and NewKeys stays there: a Suspense primary's
+            // leaves are keyed under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of the walk
+            // carries, a boundary's catch marks every old row of its output taken anyway (ForgetOldRowsOf), and the
+            // other rollbacks end the walk.
             for (var i = commit.NewElements.Count - 1; i >= preCount; i--)
             {
                 var (element, isExisting) = commit.NewElements[i];
@@ -1069,8 +1071,8 @@ namespace Velvet
         }
 
         // React unmounts a boundary's children before it renders the fallback, so no old row of the boundary is
-        // matched by a fallback row: each goes in the removal pass, and one the failed output patched in place
-        // leaves with what that patch wrote.
+        // matched by a fallback row: each is marked taken, which both arms of MatchOldLeaf decline, so it goes in
+        // the removal pass, and one the failed output patched in place leaves with what that patch wrote.
         private static void ForgetOldRowsOf(GeneralCommitState commit, ComponentFiber boundary)
         {
             for (var i = 0; i < commit.OldOwners.Count; i++)
@@ -1078,7 +1080,7 @@ namespace Velvet
                 for (var owner = commit.OldOwners[i]; owner != null; owner = owner.Parent)
                 {
                     if (!ReferenceEquals(owner, boundary)) continue;
-                    commit.OldKeyMap.Remove(commit.OldKeys[i]);
+                    commit.UsedOldIndices.Add(i);
                     break;
                 }
             }
