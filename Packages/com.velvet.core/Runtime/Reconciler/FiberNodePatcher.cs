@@ -450,8 +450,12 @@ namespace Velvet
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
             // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
             // would put an element between this container and each Component's output.
+            // A Portal records the element it was handed, which for an element whose contentContainer is another
+            // element may be either of the two; the rows sit in the container whichever it was.
+            FiberCommitWork.OpenOwnRows(_ctx, element);
             FiberCommitWork.OpenOwnRows(_ctx, childContainer);
-            int? rowsBehindRanges;
+            int? rowsBehindElementRanges;
+            int? rowsBehindContainerRanges;
             try
             {
                 _host.ReconcileChildren(childContainer,
@@ -460,11 +464,16 @@ namespace Velvet
             }
             finally
             {
-                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
+                rowsBehindElementRanges = FiberCommitWork.PopOwnRows(_ctx, element);
+                rowsBehindContainerRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
             }
-            if (rowsBehindRanges != null)
+            if (rowsBehindElementRanges != null)
             {
-                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
+                FiberCommitWork.FollowOwnRows(_ctx, element, rowsBehindElementRanges.Value);
+            }
+            if (rowsBehindContainerRanges != null)
+            {
+                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindContainerRanges.Value);
             }
 
             _ctx.SyncRefCallback(element, newNode.RefCallback);
@@ -958,10 +967,11 @@ namespace Velvet
         // range grows or shrinks, downstream Portals whose ranges sit after this one have their
         // slotStart shifted by the delta so subsequent patches stay correctly addressed.
         // A Portal declared among its own target's children patches from inside the reconcile of those
-        // children. Its rows sit behind every one that reconcile addresses, and each of Velvet's child
-        // reconciles patches the elements it keeps before it inserts or removes any, so the range still
-        // addresses its children here; the reconcile's close follows the rows it placed
-        // (FiberCommitWork.OpenOwnRows).
+        // children, behind every row that reconcile addresses. Each of Velvet's child reconciles inserts and
+        // removes rows only after it has reached every element it keeps; what it does before is replace an
+        // element at its slot, which takes one row out and puts one in, so the rows ahead of a later Portal
+        // keep their count and its range still addresses its children here. The reconcile's close follows
+        // the rows it placed (FiberCommitWork.OpenOwnRows).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
             var (target, isHeal) = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);

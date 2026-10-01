@@ -40,6 +40,10 @@ namespace Velvet.Tests
             s_setRows = null;
             s_portalLast = false;
             s_portalBeforeContainer = false;
+            s_selfPortalUnkeyed = false;
+            s_ownInFragment = false;
+            s_registerScrollContent = false;
+            s_scrollRowsFromComponent = false;
             s_registerSelfOnRef = true;
             s_showSecondSelfPortal = true;
             s_setSelfPortals = null;
@@ -138,11 +142,18 @@ namespace Velvet.Tests
             var (rows, setRows) = Hooks.UseState((Own: new[] { "a" }, Portal: new[] { "p1" }));
             s_setRows = setRows;
             // The portal is one of the container's own children and targets the container itself; its key keeps
-            // it the same portal where rows ahead of it are added.
-            var portal = new VNode?[] { V.Portal("self", key: "portal", children: Rows(rows.Portal)) };
+            // it the same portal where rows ahead of it are added, and the unkeyed and Fragment spellings take the
+            // positional and the general reconcile instead.
+            var portal = new VNode?[]
+            {
+                s_selfPortalUnkeyed
+                    ? V.Portal("self", children: Rows(rows.Portal))
+                    : V.Portal("self", key: "portal", children: Rows(rows.Portal)),
+            };
+            var own = s_ownInFragment ? new VNode?[] { V.Fragment(children: Rows(rows.Own)) } : Rows(rows.Own);
             Func<VisualElement, Action>? register = s_registerSelfOnRef ? element => Register("self", element) : null;
             return V.Div(name: "container", refCallback: register,
-                children: s_portalLast ? Rows(rows.Own).Concat(portal).ToArray() : portal.Concat(Rows(rows.Own)).ToArray());
+                children: s_portalLast ? own.Concat(portal).ToArray() : portal.Concat(own).ToArray());
         }
 
         [Test]
@@ -209,8 +220,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsAndItGrowInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
         {
-            // Arrange — the container's own rows ahead of the portal grow before the portal patches, in the
-            // same reconcile, so the portal's range has to catch up with them before it patches.
+            // Arrange — the container's own row ahead of the portal is added in the reconcile that patches the
+            // portal, which patches the portal at its old position before it inserts the row.
             s_portalLast = true;
             _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
             Flush();
@@ -419,9 +430,6 @@ namespace Velvet.Tests
             Assert.That(Names(container), Is.EqualTo("a|b|changed"));
         }
 
-        // GREEN_ON_BASE(characterization): the base moves no component when a container's own rows change.
-        // This pins that a component of those rows stays where their reconcile placed it, whichever portal it
-        // carries the placeholder of.
         [Test]
         public void Given_AContainerInsideAnotherPortal_When_ItsOwnRowsGrow_Then_TheComponentAmongThemStartsWhereItsRowIs()
         {
@@ -437,10 +445,10 @@ namespace Velvet.Tests
             s_setOwn!.Invoke(new[] { "a", "b" });
             Flush();
 
-            // Assert
-            var row = container.Q<VisualElement>("f1");
-            var fiber = row.userData as ComponentFiber;
-            Assert.That(fiber?.MountSlotStart ?? -1, Is.EqualTo(container.IndexOf(row)));
+            // Assert — a container or row that never mounted reads -1 against -2 rather than throwing.
+            var row = container?.Q<VisualElement>("f1");
+            var fiber = row?.userData as ComponentFiber;
+            Assert.That(fiber?.MountSlotStart ?? -1, Is.EqualTo(row == null ? -2 : container!.IndexOf(row)));
         }
 
         private static bool s_showSecondSelfPortal = true;
@@ -458,7 +466,9 @@ namespace Velvet.Tests
             };
             if (state.ShowSecond)
             {
-                children.Add(V.Portal("self-pair", key: "second", children: new VNode?[] { V.Div(name: "p2") }));
+                // Two children against the first's one, so the two ranges' lengths differ.
+                children.Add(V.Portal("self-pair", key: "second",
+                    children: new VNode?[] { V.Div(name: "p2"), V.Div(name: "p3") }));
             }
             return V.Div(name: "container", refCallback: element => Register("self-pair", element), children: children.ToArray());
         }
@@ -481,6 +491,124 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(NamedChildren(container), Is.EqualTo("a|q1"));
+        }
+        private static bool s_selfPortalUnkeyed;
+        private static bool s_ownInFragment;
+
+        [Test]
+        public void Given_AnUnkeyedPortalAmongTheContainerRowsItTargets_When_ThoseRowsAndItChangeInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
+        {
+            // Arrange — the portal is the first row and unkeyed, so the positional reconcile patches it before it
+            // adds the row behind it.
+            s_selfPortalUnkeyed = true;
+            _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+
+            // Act
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1", "q2" }));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("a|b|q1|q2"));
+        }
+
+        [Test]
+        public void Given_APortalBesideAFragmentOfTheContainerRowsItTargets_When_ThoseRowsAndItChangeInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren()
+        {
+            // Arrange — the container's own rows are a Fragment, which takes the general reconcile.
+            s_ownInFragment = true;
+            _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+
+            // Act
+            s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1", "q2" }));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("a|b|q1|q2"));
+        }
+
+        private static bool s_registerScrollContent;
+        private static bool s_scrollRowsFromComponent;
+
+        // A ScrollView's children sit in its contentContainer, which is another element; the portal is handed
+        // either the ScrollView or that container.
+        [Component]
+        private static VNode ScrollHostRender()
+        {
+            var (own, setOwn) = Hooks.UseState(new[] { "a" });
+            s_setOwn = setOwn;
+            var (portalChild, setPortalChild) = Hooks.UseState("p");
+            s_setPortalChild = setPortalChild;
+            var ownChildren = s_scrollRowsFromComponent
+                ? new VNode?[] { V.Component(ComponentRowsRender, key: "rows") }
+                : Rows(own);
+            return V.Fragment(children: new VNode?[]
+            {
+                V.ScrollView(name: "scroll", refCallback: element => Register(
+                    "scroll-target", s_registerScrollContent ? element.contentContainer : element), children: ownChildren),
+                V.Portal("scroll-target", children: new VNode?[] { V.Div(name: portalChild) }),
+            });
+        }
+
+        private VisualElement MountScroll()
+        {
+            _mounted = V.Mount(_root, V.Component(ScrollHostRender, key: "host"));
+            Flush();
+            return _root.Q<VisualElement>("scroll").contentContainer;
+        }
+
+        [Test]
+        public void Given_APortalIntoAScrollView_When_ItsOwnChildrenGrowAndThePortalPatches_Then_ThePatchLandsOnThePortalsChild()
+        {
+            // Arrange
+            var content = MountScroll();
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_setPortalChild!.Invoke("q");
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|q"));
+        }
+
+        [Test]
+        public void Given_APortalIntoAScrollViewsContentContainer_When_ItsOwnChildrenGrowAndThePortalPatches_Then_ThePatchLandsOnThePortalsChild()
+        {
+            // Arrange
+            s_registerScrollContent = true;
+            var content = MountScroll();
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_setPortalChild!.Invoke("q");
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|q"));
+        }
+
+        [Test]
+        public void Given_APortalIntoAScrollView_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalPatches_Then_ThePatchLandsOnThePortalsChild()
+        {
+            // Arrange
+            s_initialOwn = new[] { "a" };
+            s_scrollRowsFromComponent = true;
+            var content = MountScroll();
+            s_setComponentRows!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_setPortalChild!.Invoke("q");
+            Flush();
+
+            // Assert
+            Assert.That(Names(content), Is.EqualTo("a|b|q"));
         }
     }
 }

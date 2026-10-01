@@ -192,8 +192,9 @@ namespace Velvet
                 var range = entry.Value;
                 if (!ReferenceEquals(range.Target, parent)) continue;
                 if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
-                // MUTANT_SURVIVES(unreachable, boundary): ranges holding one row are one portal nested in another
-                // on one target, and the inner opens behind its placeholder, a row of the outer, so never at one slot.
+                // MUTANT_SURVIVES(unreachable, boundary): ranges holding one row are a portal nested in another on
+                // one target, and the inner opens at the target's row count, behind the outer's row that holds its
+                // placeholder, so they never start at one slot.
                 if (range.SlotStart <= holderStart) continue;
                 holder = entry.Key;
                 holderStart = range.SlotStart;
