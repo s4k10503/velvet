@@ -53,15 +53,16 @@ namespace Velvet
             projection is { WritesRadii: true } ? projection.DrawnRadii : Declared(element);
 
         // The radii the element holds with no projection writing them: its inline slots, else what its rules declare,
-        // else what it is resolved at.
+        // else what it is resolved at, each where a transition of it is running drawn as UI Toolkit draws it now
+        // (Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt).
         private static Length[] Declared(VisualElement element)
         {
             var radii = new Length[4];
             for (var corner = 0; corner < 4; corner++)
             {
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
-                radii[corner] = slot.keyword == StyleKeyword.Undefined ? slot.value
-                    : StyleCascade.Radius(element, corner) ?? new Length(CornerRadiusFit.ResolvedCorner(element.resolvedStyle, corner));
+                radii[corner] = RunningStyleTransition.CurrentRadius(element, corner, slot.keyword == StyleKeyword.Undefined ? slot.value
+                    : StyleCascade.Radius(element, corner) ?? new Length(CornerRadiusFit.ResolvedCorner(element.resolvedStyle, corner)));
             }
             return radii;
         }

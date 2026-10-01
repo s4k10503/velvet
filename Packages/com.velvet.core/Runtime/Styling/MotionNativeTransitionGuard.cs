@@ -95,8 +95,8 @@ namespace Velvet
             public List<StylePropertyName> Written;
             public long? Rules;
             public bool Stale;
-            // The inline duration, delay and curve lists the element held as Narrow first wrote its own over them, put back
-            // as the last narrower lets go.
+            // The inline duration, delay and curve lists the element holds of its own, which Narrow keeps aside while it
+            // writes its own there and puts back as the last narrower lets go.
             public StyleList<TimeValue> OwnDuration;
             public StyleList<TimeValue> OwnDelay;
             public StyleList<EasingFunction> OwnCurve;
@@ -239,8 +239,12 @@ namespace Velvet
                 (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve) =
                     (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
             }
-            // Before a style pass has matched the element's rules none can be read, and nothing is left to transition.
-            var lists = StyleCascade.Lists(element) ?? new TransitionLists(null, null, null, null);
+            // Before a style pass has matched the element's rules none can be read: nothing is left to transition until the
+            // next tick, which narrows again
+            // (Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions).
+            var read = StyleCascade.Lists(element);
+            if (read == null) element.schedule.Execute(() => Renarrow(element));
+            var lists = read ?? new TransitionLists(null, null, null, null);
             var count = lists.Properties.Count;
             style.transitionProperty = new List<StylePropertyName>(lists.Properties);
             style.transitionDuration = Cycle(lists.Durations, count);
@@ -253,7 +257,13 @@ namespace Velvet
             }
             Exclude(element, style.transitionProperty.value, excluded);
             (suspension.Written, suspension.Rules, suspension.Stale) =
-                (new List<StylePropertyName>(style.transitionProperty.value), rules, false);
+                (new List<StylePropertyName>(style.transitionProperty.value), rules, read == null);
+        }
+
+        private static void Renarrow(VisualElement element)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
         }
 
         private static bool Wrote(Suspension suspension, List<StylePropertyName> names) =>
@@ -305,6 +315,24 @@ namespace Velvet
             s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null
                 ? (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve)
                 : (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
+
+        /// <summary>
+        /// Writes the element's own inline duration list, as a <c>duration-[x]</c> class gives it. While
+        /// <see cref="Narrow"/> writes its own lists there, it is kept aside in place of the one Narrow kept, and the
+        /// narrowed lists are written again from it
+        /// (Given_ANarrowedMotionWhoseArbitraryDurationChangesMidMove_When_TheMoveLands_Then_TheNewDurationIsHandedBack).
+        /// </summary>
+        internal static void WriteOwnDuration(VisualElement element, StyleList<TimeValue> duration)
+        {
+            var narrowing = s_suspensions.TryGetValue(element, out var suspension);
+            if (!narrowing || suspension.Written == null)
+            {
+                element.style.transitionDuration = duration;
+                return;
+            }
+            (suspension.OwnDuration, suspension.Stale) = (Copy(duration), true);
+            WriteNarrowed(element, suspension);
+        }
 
         /// <summary>
         /// Whether an owner other than an <see cref="ICarryingOwner"/> — a per-frame driver — holds a suspension of the

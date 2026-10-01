@@ -3158,6 +3158,79 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r, Is.InRange(0.15f, 0.5f));
         }
 
+        [Test]
+        public void Given_ANarrowedMotionWhoseArbitraryDurationChangesMidMove_When_TheMoveLands_Then_TheNewDurationIsHandedBack()
+        {
+            // Arrange — the bundled sheet; "a", alone under "card" and transitioning everything over its own arbitrary
+            // duration, some way into a move of its own when that duration changes.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = "transition-all duration-[400ms]";
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+            s_aClasses = "transition-all duration-[700ms]";
+            RenderShared(mounted);
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            var a = Root.Q<VisualElement>("a");
+            var durations = a.style.transitionDuration.value;
+            Assert.That((a.style.transitionProperty.keyword, durations.Count == 1 && Mathf.Approximately(durations[0].value, 0.7f)),
+                Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        [Test]
+        public void Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions()
+        {
+            // Arrange — the bundled sheet; "a", transitioning everything linearly over a second, black, and "b" mounted
+            // under its id in the same render, hiding it before any style pass has matched its rules.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aClasses = "transition-all duration-1000 ease-linear bg-black";
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act — "a" turns white; some 0.3 s on.
+            s_aClasses = "transition-all duration-1000 ease-linear bg-white";
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — part way to white on its own second, its visibility alone taken out of its transitions.
+            Assert.That(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r, Is.InRange(0.15f, 0.5f));
+        }
+
+        [Test]
+        public void Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt()
+        {
+            // Arrange — the bundled sheet; "a" alone under "card", and a control holding no id, both transitioning
+            // everything linearly over a second, some 0.3 s into rounding to twenty pixels.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            (s_aClasses, s_controlClasses) = (s_aClasses + " rounded-[20px]", s_controlClasses + " rounded-[20px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+            var drawnThen = Root.Q<VisualElement>("control").resolvedStyle.borderTopLeftRadius;
+
+            // Act — "b" mounts under "card" 300px right; a few frames on.
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "b", unrounded of its own, mixes in from the radius "a" was drawn at as "b" took the id, rather
+            // than from the twenty it was on the way to.
+            var b = Root.Q<VisualElement>("b");
+            var from = mounted.Root.Reconciler.Context.LayoutIdProjections[b].DrawnRadii[0].value / (1f - BProgress());
+            Assert.That((Mathf.Abs(from - drawnThen) < 0.6f, drawnThen > 3f && drawnThen < 10f), Is.EqualTo((true, true)));
+        }
+
         // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone. Narrowing writes all
         // four lists, and must hand back the element's own duration.
         [Test]

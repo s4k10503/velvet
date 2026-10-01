@@ -1285,7 +1285,7 @@ namespace Velvet
             {
                 duration = new List<TimeValue> { new TimeValue(winner.Value, TimeUnit.Second) };
             }
-            element.style.transitionDuration = duration;
+            MotionNativeTransitionGuard.WriteOwnDuration(element, duration);
             var box = ClipPathLayoutBox.Of(element);
             if (box != element)
             {
@@ -1608,7 +1608,7 @@ namespace Velvet
                     element.style.scale = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.TransitionDuration:
-                    element.style.transitionDuration = StyleKeyword.Null;
+                    MotionNativeTransitionGuard.WriteOwnDuration(element, StyleKeyword.Null);
                     return true;
             }
 

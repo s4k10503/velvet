@@ -7,8 +7,8 @@ namespace Velvet
 {
     // The transitions UI Toolkit is running for an element, which its panel's StylePropertyAnimationSystem keeps in a
     // running set per value type internal to it, and so are read by reflection: when one started, how long it runs, its
-    // curve, its eased progress, its start and end, and what a reversal of it would run back to. Where that cannot be
-    // read, a carry taking the element's value over starts again from where it stands.
+    // curve, its eased progress, its start, current and end values, and what a reversal of it would run back to. Where
+    // that cannot be read, a carry taking the element's value over starts again from where it stands.
     // Given_AMemberInsideTheDelayOfAFade_When_ANewLeadTakesTheId_Then_ItsOwnRunsAsTheEngineRunsIt fails when the read
     // stops giving the running transition.
     internal static class RunningStyleTransition
@@ -28,10 +28,10 @@ namespace Velvet
                 var style = Styles?.FieldType.GetElementType();
                 (StartTime, Duration, Curve, Shortening, Eased) = (timing?.GetField("startTime"), timing?.GetField("duration"),
                     timing?.GetField("easingCurve"), timing?.GetField("reversingShorteningFactor"), timing?.GetField("easedProgress"));
-                (From, To, ReversingStart) = (style?.GetField("startValue"), style?.GetField("endValue"),
-                    style?.GetField("reversingAdjustedStartValue"));
+                (From, To, ReversingStart, Current) = (style?.GetField("startValue"), style?.GetField("endValue"),
+                    style?.GetField("reversingAdjustedStartValue"), style?.GetField("currentValue"));
                 Readable = Array.TrueForAll(
-                    new MemberInfo?[] { Values, Running, IndexOf, Timings, Styles, StartTime, Duration, Curve, Shortening, Eased, From, To, ReversingStart },
+                    new MemberInfo?[] { Values, Running, IndexOf, Timings, Styles, StartTime, Duration, Curve, Shortening, Eased, From, To, ReversingStart, Current },
                     m => m != null);
             }
 
@@ -48,6 +48,7 @@ namespace Velvet
             public readonly FieldInfo? From;
             public readonly FieldInfo? To;
             public readonly FieldInfo? ReversingStart;
+            public readonly FieldInfo? Current;
             public readonly bool Readable;
         }
 
@@ -76,25 +77,29 @@ namespace Velvet
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
             TakeOver(element, carry, s_lengths, s_corners[corner], value => ((Length)value).unit == unit ? ((Length)value).value : float.NaN);
 
+        // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
+        // radius's unit, its current value, else that radius.
+        public static Length CurrentRadius(VisualElement element, int corner, Length radius)
+        {
+            if (Find(element, s_lengths, s_corners[corner]) is not { } found) return radius;
+            try
+            {
+                var current = (Length)s_lengths.Current!.GetValue(found.Style);
+                return current.unit == radius.unit ? current : radius;
+            }
+            catch (Exception)
+            {
+                return radius;
+            }
+        }
+
         private static void TakeOver(VisualElement element, LayoutIdCarry carry, RunningSet set, string property, Func<object, float> read)
         {
-            var system = set.Readable && s_now != null ? s_system?.GetValue(element.panel) : null;
-            // MUTANT_SURVIVES(unreachable): the panels the tests mount run a StylePropertyAnimationSystem, whose members
-            // all resolve on the editor this package declares.
-            if (s_systemType?.IsInstanceOfType(system) != true) return;
-            if (!Enum.TryParse(s_propertyId!, property, out var id)) return;
-            var values = set.Values!.GetValue(system);
-            // None until the panel first runs a transition of that value type.
-            if (values == null) return;
+            if (Find(element, set, property) is not { } found) return;
             // A member whose type or shape has changed under the read fails it as one gone does.
             try
             {
-                var running = set.Running!.GetValue(values);
-                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
-                if (set.IndexOf!.Invoke(running, s_args) is not true) return;
-                var index = (int)s_args[2]!;
-                var timing = ((Array)set.Timings!.GetValue(running)).GetValue(index);
-                var style = ((Array)set.Styles!.GetValue(running)).GetValue(index);
+                var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(set.From!.GetValue(style)), read(set.To!.GetValue(style)), read(set.ReversingStart!.GetValue(style)));
                 if (float.IsNaN(from + to + reversingStart)) return;
                 var elapsedSec = (double)s_now!.GetValue(system) - (double)set.StartTime!.GetValue(timing);
@@ -103,6 +108,32 @@ namespace Velvet
             }
             catch (Exception)
             {
+            }
+        }
+
+        // The element's running transition of a property: the animation system, and the transition's timing and values.
+        // Null where none runs or it cannot be read.
+        private static (object System, object Timing, object Style)? Find(VisualElement element, RunningSet set, string property)
+        {
+            var system = set.Readable && s_now != null ? s_system?.GetValue(element.panel) : null;
+            // MUTANT_SURVIVES(unreachable): the panels the tests mount run a StylePropertyAnimationSystem, whose members
+            // all resolve on the editor this package declares.
+            if (s_systemType?.IsInstanceOfType(system) != true) return null;
+            if (!Enum.TryParse(s_propertyId!, property, out var id)) return null;
+            var values = set.Values!.GetValue(system);
+            // None until the panel first runs a transition of that value type.
+            if (values == null) return null;
+            try
+            {
+                var running = set.Running!.GetValue(values);
+                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
+                if (set.IndexOf!.Invoke(running, s_args) is not true) return null;
+                var index = (int)s_args[2]!;
+                return (system!, ((Array)set.Timings!.GetValue(running)).GetValue(index), ((Array)set.Styles!.GetValue(running)).GetValue(index));
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
     }
