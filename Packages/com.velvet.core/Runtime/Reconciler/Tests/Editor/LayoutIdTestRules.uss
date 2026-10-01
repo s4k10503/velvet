@@ -36,3 +36,15 @@
     border-top-left-radius: 90px;
     border-top-right-radius: 30px;
 }
+
+.layout-id-test-radius-transition {
+    transition-property: border-radius;
+    transition-duration: 1s;
+    transition-timing-function: linear;
+}
+
+.layout-id-test-move-two {
+    transition-property: translate, background-color;
+    transition-duration: 1s, 0.2s;
+    transition-timing-function: linear;
+}

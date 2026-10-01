@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -96,6 +97,16 @@ namespace Velvet
             public List<StylePropertyName> Written;
             public long? Rules;
             public bool Stale;
+            // Where Narrow writes the duration, delay and curve lists too (WriteNarrowed): the element's own, which it
+            // hands back as the last narrower lets go, and what it last wrote, so that a list written over it since is
+            // taken as the element's own (AdoptTiming).
+            public bool WroteTiming;
+            public StyleList<TimeValue> OwnDuration;
+            public StyleList<TimeValue> OwnDelay;
+            public StyleList<EasingFunction> OwnCurve;
+            public StyleList<TimeValue> WrittenDuration;
+            public StyleList<TimeValue> WrittenDelay;
+            public StyleList<EasingFunction> WrittenCurve;
         }
 
         // Auto-drops entries when an element is collected; a pooled element is scrubbed explicitly through
@@ -186,8 +197,9 @@ namespace Velvet
         /// </remarks>
         public static void NarrowIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
-            ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
-            if ((DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None) Narrow(element, owner, drivenSlots);
+            var driven = LonghandsOf(drivenSlots);
+            ExcludeFromHeldList(element, driven);
+            if (Intercepts(element, driven) ?? (DeclaredSlots(element) & drivenSlots) != MotionTransitionSlots.None) Narrow(element, owner, drivenSlots);
         }
 
         /// <summary>
@@ -242,8 +254,12 @@ namespace Velvet
             // changing them is taken by the style pass that sees it
             // (Given_ANarrowedMotionWhoseTransitionClassesChangeMidMove_When_ItsBackgroundChanges_Then_ItRunsOnTheNewTiming);
             // a tween's stay where it wrote them, and clear as it ends.
-            if (!s_tweenTimings.TryGetValue(element, out _) && Math.Max(lists.Durations.Count, Math.Max(lists.Delays.Count, lists.Curves.Count)) > 1)
+            var writes = !s_tweenTimings.TryGetValue(element, out _) && Math.Max(lists.Durations.Count, Math.Max(lists.Delays.Count, lists.Curves.Count)) > 1;
+            HandBackTiming(element, suspension);
+            if (writes)
             {
+                (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve) =
+                    (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
                 (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
                     (Cycle(lists.Durations, count), Cycle(lists.Delays, count), Cycle(lists.Curves, count));
             }
@@ -252,9 +268,10 @@ namespace Velvet
             {
                 excluded = excluded.Union(longhands);
             }
-            Exclude(element, style.transitionProperty.value, excluded);
-            (suspension.Written, suspension.Rules, suspension.Stale) =
-                (new List<StylePropertyName>(style.transitionProperty.value), rules, read == null);
+            Exclude(element, style.transitionProperty.value, excluded, writes);
+            (suspension.Written, suspension.Rules, suspension.Stale, suspension.WroteTiming) =
+                (new List<StylePropertyName>(style.transitionProperty.value), rules, read == null, writes);
+            Rebaseline(element, suspension);
         }
 
         private static void Renarrow(VisualElement element)
@@ -293,32 +310,63 @@ namespace Velvet
             }
             var style = element.style;
             var slot = style.transitionProperty;
-            // A tween writing over the lists keeps them until it ends, and clears them itself.
-            if (!HoldsAForeignValue(element) && !s_tweenTimings.TryGetValue(element, out _))
-            {
-                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                    (OwnDuration(element), StyleKeyword.Null, StyleKeyword.Null);
-            }
+            // A variant tween writing over the lists keeps them until it ends, and clears them itself.
+            if (!HoldsAForeignValue(element)) HandBackTiming(element, suspension);
             if (Wrote(suspension, slot.value)) style.transitionProperty = suspension.Owners.Count > 0 ? s_none : StyleKeyword.Null;
             suspension.Written = null;
         }
 
         /// <summary>
-        /// The duration, delay and curve lists the element runs its transitions by inline: while <see cref="Narrow"/>
-        /// writes its own lists there, the duration the element's own classes wrote (<see cref="WriteOwnDuration"/>),
-        /// Velvet writing no delay or curve of the element's own inline, else the slots'.
+        /// The duration, delay and curve lists the element runs its transitions by inline: its own, which
+        /// <see cref="Narrow"/> keeps aside while it writes its own lists there, else the slots'.
         /// </summary>
         internal static (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay, StyleList<EasingFunction> Curve) OwnTiming(
-            VisualElement element) =>
-            s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null && !s_tweenTimings.TryGetValue(element, out _)
-                ? (OwnDuration(element), StyleKeyword.Null, StyleKeyword.Null)
-                : (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
+            VisualElement element)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension) || !suspension.WroteTiming)
+            {
+                return (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
+            }
+            AdoptTiming(element, suspension);
+            return (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve);
+        }
 
-        // The inline duration the element's own classes last wrote, as duration-[x] writes one.
-        private static readonly ConditionalWeakTable<VisualElement, StrongBox<StyleList<TimeValue>>> s_ownDurations = new();
+        // A list written over one Narrow wrote is the element's own from then on, as user code writing style writes one
+        // (Given_ANarrowedMotionWhoseCodeWritesItsDelayMidMove_When_TheMoveLands_Then_ThatDelayIsHandedBack).
+        private static void AdoptTiming(VisualElement element, Suspension suspension)
+        {
+            // A tween's lists are its own, and re-baselined as it clears them (TweenTiming).
+            if (s_tweenTimings.TryGetValue(element, out _)) return;
+            var style = element.style;
+            if (!Same(style.transitionDuration, suspension.WrittenDuration)) (suspension.OwnDuration, suspension.Stale) = (Copy(style.transitionDuration), true);
+            if (!Same(style.transitionDelay, suspension.WrittenDelay)) (suspension.OwnDelay, suspension.Stale) = (Copy(style.transitionDelay), true);
+            if (!Same(style.transitionTimingFunction, suspension.WrittenCurve)) (suspension.OwnCurve, suspension.Stale) = (Copy(style.transitionTimingFunction), true);
+        }
 
-        private static StyleList<TimeValue> OwnDuration(VisualElement element) =>
-            s_ownDurations.TryGetValue(element, out var duration) ? duration.Value : StyleKeyword.Null;
+        private static void Rebaseline(VisualElement element, Suspension suspension)
+        {
+            var style = element.style;
+            (suspension.WrittenDuration, suspension.WrittenDelay, suspension.WrittenCurve) =
+                (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
+        }
+
+        private static bool Same<T>(StyleList<T> a, StyleList<T> b) =>
+            a.keyword == b.keyword && (a.value ?? NoList<T>.Value).SequenceEqual(b.value ?? NoList<T>.Value);
+
+        private static class NoList<T>
+        {
+            public static readonly List<T> Value = new();
+        }
+
+        // Writes back the element's own lists where Narrow wrote its own over them.
+        private static void HandBackTiming(VisualElement element, Suspension suspension)
+        {
+            if (!suspension.WroteTiming || s_tweenTimings.TryGetValue(element, out _)) return;
+            AdoptTiming(element, suspension);
+            (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction) =
+                (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve);
+            suspension.WroteTiming = false;
+        }
 
         // The elements a tween holds the inline duration, delay and curve of (TweenTiming).
         private static readonly ConditionalWeakTable<VisualElement, object> s_tweenTimings = new();
@@ -332,6 +380,8 @@ namespace Velvet
         {
             if (held) s_tweenTimings.AddOrUpdate(element, s_tweenTimings);
             else s_tweenTimings.Remove(element);
+            // What the tween cleared is not a write of the element's own.
+            if (s_suspensions.TryGetValue(element, out var suspension)) Rebaseline(element, suspension);
         }
 
         /// <summary>
@@ -342,14 +392,13 @@ namespace Velvet
         /// </summary>
         internal static void WriteOwnDuration(VisualElement element, StyleList<TimeValue> duration)
         {
-            s_ownDurations.AddOrUpdate(element, new StrongBox<StyleList<TimeValue>>(Copy(duration)));
             var narrowing = s_suspensions.TryGetValue(element, out var suspension);
-            if (!narrowing || suspension.Written == null || s_tweenTimings.TryGetValue(element, out _))
+            if (!narrowing || !suspension.WroteTiming)
             {
                 element.style.transitionDuration = duration;
                 return;
             }
-            suspension.Stale = true;
+            (suspension.OwnDuration, suspension.Stale) = (Copy(duration), true);
             WriteNarrowed(element, suspension);
         }
 
@@ -577,7 +626,7 @@ namespace Velvet
             Exclude(element, held, driven);
         }
 
-        private static void Exclude(VisualElement element, List<StylePropertyName> held, StyleLonghandSet driven)
+        private static void Exclude(VisualElement element, List<StylePropertyName> held, StyleLonghandSet driven, bool realign = true)
         {
             var names = new List<StylePropertyName>(held.Count);
             // The held entry each kept name takes its duration, easing and delay from.
@@ -587,12 +636,13 @@ namespace Velvet
             var changed = false;
             for (var i = 0; i < held.Count; i++)
             {
-                if (held[i] == s_allName)
+                var covered = Covered(held[i]);
+                if (covered.Overlaps(driven))
                 {
                     changed = true;
                     for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
                     {
-                        if (!driven.Contains((StyleLonghand)longhand))
+                        if (covered.Contains((StyleLonghand)longhand) && !driven.Contains((StyleLonghand)longhand))
                         {
                             names.Add(s_longhandNames[longhand]);
                             sources.Add(i);
@@ -617,12 +667,52 @@ namespace Velvet
             // MotionNativeTransitionGuardSuspensionTests pins.
             var heldCount = held.Count;
             element.style.transitionProperty = names;
+            if (!realign) return;
             WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
                 list => element.style.transitionDuration = list);
             WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
                 list => element.style.transitionTimingFunction = list);
             WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
                 list => element.style.transitionDelay = list);
+        }
+
+        // The longhands a name in transition-property stands for where it is `all` or a shorthand, as UI Toolkit matches
+        // them (StylePropertyUtil.IsMatchingShorthand, internal to it and so read by reflection); none for a longhand.
+        // Given_AMotionWhoseOwnStylesheetTransitionsBorderRadius_When_AProjectionWritesItsRadii_Then_TheyAreDrawnAsWritten
+        // fails when the read stops giving a shorthand's longhands.
+        private static StyleLonghandSet Covered(StylePropertyName name)
+        {
+            if (s_covered.TryGetValue(name, out var covered)) return covered;
+            covered = StyleLonghandSet.Empty;
+            for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
+            {
+                if (name == s_allName || Matches(name, s_longhandNames[longhand])) covered = covered.Union(StyleLonghandSet.Of((StyleLonghand)longhand));
+            }
+            s_covered[name] = covered;
+            return covered;
+        }
+
+        private static readonly Dictionary<StylePropertyName, StyleLonghandSet> s_covered = new();
+        private static readonly PropertyInfo s_nameId = typeof(StylePropertyName).GetProperty("id", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly MethodInfo s_matching = typeof(VisualElement).Assembly
+            .GetType("UnityEngine.UIElements.StyleSheets.StylePropertyUtil")?.GetMethod("IsMatchingShorthand", BindingFlags.Public | BindingFlags.Static);
+
+        private static bool Matches(StylePropertyName shorthand, StylePropertyName longhand) =>
+            s_nameId != null && s_matching != null && s_matching.Invoke(null, new[] { s_nameId.GetValue(shorthand), s_nameId.GetValue(longhand) }) is true;
+
+        // Whether the element's transitions, as its cascade gives them, run a longhand of driven over some time, named
+        // itself or through a shorthand or `all`; null where the cascade cannot be read.
+        private static bool? Intercepts(VisualElement element, StyleLonghandSet driven)
+        {
+            if (StyleCascade.Lists(element) is not { } lists) return null;
+            for (var i = 0; i < lists.Properties.Count; i++)
+            {
+                var name = lists.Properties[i];
+                // The duration pairs with the name by position, repeating as UI Toolkit repeats it.
+                var timed = lists.Durations.Count > 0 && lists.Durations[i % lists.Durations.Count].value > 0f;
+                if (timed && (Covered(name).Overlaps(driven) || NamesADrivenLonghand(name, driven))) return true;
+            }
+            return false;
         }
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
@@ -678,6 +768,15 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Hands <paramref name="from"/>'s narrowing on to <paramref name="to"/>.
+        /// </summary>
+        internal static void Transfer(VisualElement element, object from, object to)
+        {
+            if (!s_suspensions.TryGetValue(element, out var suspension)) return;
+            if (suspension.Narrowers.Remove(from, out var longhands)) suspension.Narrowers[to] = longhands;
+        }
+
+        /// <summary>
         /// Narrows <paramref name="owner"/> to the longhands of <paramref name="drivenSlots"/> alone, for one that has
         /// stopped writing some of what it narrowed; a no-op for an owner that narrows nothing.
         /// </summary>
@@ -695,7 +794,9 @@ namespace Velvet
         /// </summary>
         internal static void Refresh(VisualElement element)
         {
-            if (s_suspensions.TryGetValue(element, out var suspension) && suspension.Written != null) WriteNarrowed(element, suspension);
+            if (!s_suspensions.TryGetValue(element, out var suspension) || suspension.Written == null) return;
+            if (suspension.WroteTiming) AdoptTiming(element, suspension);
+            WriteNarrowed(element, suspension);
         }
 
         /// <summary>

@@ -343,9 +343,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   held before the tween, or whatever something else wrote there while the tween ran, which the tween
   composes with from its next frame on. While the tween runs, the transitions the element's classes
   declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
-  transitions of what a layout animation does not animate, and take a change of those classes as it comes;
-  a `duration-[x]` the element carries is handed back with them. A Motion that leaves its panel without being unmounted has
-  its tween ended on its panel's next frame.
+  transitions of what a layout animation does not animate, and take a change of those classes as it comes.
+  A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
   within one batch — the updates one scheduler drain commits together, such as the ordinary updates
@@ -402,8 +401,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   scales them. A radius or rotate the Motion is given meanwhile is drawn as it is
   given, on the transition it changes by, such as a variant swap's, and at once while a Spring or Bezier
   play or an `animate-*` loop writes it. One already running as the tween starts writing it runs on from
-  where it had got, and one still running as the tween lands runs on to its end, unless another tween
-  starts on the Motion first, which lands it. The scale holds the
+  where it had got, and one still running as the tween lands runs on to its end, through any tween that
+  starts on the Motion meanwhile. The scale holds the
   element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.

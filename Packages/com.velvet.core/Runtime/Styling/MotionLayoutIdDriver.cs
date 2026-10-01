@@ -229,7 +229,6 @@ namespace Velvet
 
         private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
-            LayoutIdLook.Settle(element);
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
@@ -239,6 +238,7 @@ namespace Velvet
             {
                 From = element.layout,
             };
+            LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
             return projection;
         }
@@ -1039,9 +1039,9 @@ namespace Velvet
         public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
         // How the own rotate and each corner's own radius are carried while the projection writes them
         // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
-        public readonly LayoutIdCarry RotateCarry = new();
-        public readonly LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
-        public readonly LengthUnit[] RadiusUnits = new LengthUnit[4];
+        public LayoutIdCarry RotateCarry = new();
+        public LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
+        public LengthUnit[] RadiusUnits = new LengthUnit[4];
 
         // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
         public HashSet<VisualElement>? Picking;

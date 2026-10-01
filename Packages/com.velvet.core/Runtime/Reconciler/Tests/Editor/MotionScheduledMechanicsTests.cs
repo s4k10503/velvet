@@ -2203,7 +2203,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALayoutIdMotionThatTransitionsItsTransform_When_ItResizesAboutItsCorner_Then_ItsTransitionsAreSuspended()
         {
-            // Arrange / Act — the tween writes only the scale.
+            // Arrange / Act — the bundled sheet, so transition-transform transitions the transform; the tween writes only
+            // the scale.
+            VelvetStyleUtilities.AttachTo(Root);
             var element = ResizeBoxWithOrigin("origin-[0%_0%] transition-transform");
 
             // Assert
@@ -3808,6 +3810,86 @@ namespace Velvet.Tests
 
             // Assert — within half a pixel of the control, which is half way round.
             Assert.That((gap < 0.5f, control > 6f && control < 14f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the move lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear", "transition-all duration-1000 ease-linear");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — "b" moves 100px further while its turn runs on; some 0.2 s on.
+            s_bLeft = 400;
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — where the control stands, rather than landed at the quarter turn as the move starts.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var b = Root.Q<VisualElement>("b").resolvedStyle.rotate.angle.ToDegrees();
+            Assert.That((Mathf.Abs(b - control) < 1.5f, control > 50f && control < 85f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseOwnStylesheetTransitionsBorderRadius_When_AProjectionWritesItsRadii_Then_TheyAreDrawnAsWritten()
+        {
+            // Arrange — the test's own sheet transitioning border-radius, a shorthand, over a second; rounded-[20px], doubled
+            // in place.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var element = ResizeBoxWithOrigin("layout-id-test-radius-transition rounded-[20px]");
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — drawn at the radius the projection writes, which a transition of the shorthand would trail.
+            var written = element.style.borderTopLeftRadius.value.value;
+            Assert.That((written > 21f, Mathf.Abs(element.resolvedStyle.borderTopLeftRadius - written) < 0.5f), Is.EqualTo((true, true)));
+        }
+
+        // "a", alone under "card" with the given classes, moving 100px right on a second's tween; its code writes a
+        // transition-delay of a tenth of a second some way in. Returns the delay "a" holds inline once the move lands.
+        private StyleList<TimeValue> DelayWrittenMidMove(string classes)
+        {
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = classes;
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDelay = new List<TimeValue> { new(0.1f, TimeUnit.Second) };
+            AdvancePast(1f);
+            return a.style.transitionDelay;
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWhoseCodeWritesItsDelayMidMove_When_TheMoveLands_Then_ThatDelayIsHandedBack()
+        {
+            // Arrange / Act — its transitions one list each, which a narrowing leaves where they are.
+            var delay = DelayWrittenMidMove("transition-all duration-1000 ease-linear");
+
+            // Assert
+            Assert.That((delay.keyword, delay.value?.Count == 1 && Mathf.Approximately(delay.value[0].value, 0.1f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWithPairedTimingWhoseCodeWritesItsDelayMidMove_When_TheMoveLands_Then_ThatDelayIsHandedBack()
+        {
+            // Arrange / Act — translate and background-color on durations of their own, which a narrowing writes aligned.
+            var delay = DelayWrittenMidMove("layout-id-test-move-two");
+
+            // Assert
+            Assert.That((delay.keyword, delay.value?.Count == 1 && Mathf.Approximately(delay.value[0].value, 0.1f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
         }
 
         [Test]

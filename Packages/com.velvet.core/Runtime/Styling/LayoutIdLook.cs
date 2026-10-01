@@ -297,12 +297,20 @@ namespace Velvet
             s_tails.AddOrUpdate(element, new Tail(projection, item));
         }
 
-        // Lands an ended projection's carried values at once, for a projection about to start on the element.
-        public static void Settle(VisualElement element)
+        // Hands an ended projection's carried rotate and radii, with the slots and the narrowing it holds for them, to a
+        // projection starting on the element, which runs them on
+        // (Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItMovesAgain_Then_ItsRotateRunsOnAsTheEngineRunsIt).
+        public static void Settle(VisualElement element, LayoutIdProjection next)
         {
             if (!s_tails.TryGetValue(element, out var tail)) return;
             Forget(element);
-            Hand(element, tail.Projection);
+            var held = tail.Projection;
+            (next.WritesRotate, next.OwnInlineRotate, next.StartRotate, next.DrawnRotate, next.WrittenRotate, next.RotateCarry) =
+                (held.WritesRotate, held.OwnInlineRotate, held.StartRotate, held.DrawnRotate, held.WrittenRotate, held.RotateCarry);
+            (next.WritesRadii, next.OwnInlineRadii, next.InlineRadii, next.StartRadii, next.DrawnRadii, next.WrittenRadii, next.RadiusCarries,
+                next.RadiusUnits) = (held.WritesRadii, held.OwnInlineRadii, held.InlineRadii, held.StartRadii, held.DrawnRadii, held.WrittenRadii,
+                held.RadiusCarries, held.RadiusUnits);
+            MotionNativeTransitionGuard.Transfer(element, held, next);
         }
 
         // Drops an ended projection's tail without writing, for an element torn down.
@@ -319,7 +327,9 @@ namespace Velvet
             Narrow(element, projection);
             if (projection.WritesRotate) WriteRotate(element, projection, float.NaN, dtSec);
             if (projection.WritesRadii) WriteRadii(element, projection, null, Vector2.one, dtSec);
-            if (Landed(projection)) Settle(element);
+            if (!Landed(projection)) return;
+            Forget(element);
+            Hand(element, projection);
         }
 
         private static bool Landed(LayoutIdProjection projection) =>
