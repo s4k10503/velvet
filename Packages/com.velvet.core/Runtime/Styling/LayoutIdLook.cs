@@ -79,7 +79,7 @@ namespace Velvet
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
                 if (slot == projection.WrittenRadii[corner]) continue;
                 projection.OwnInlineRadii[corner] = slot;
-                projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined;
+                projection.InlineRadii[corner] = slot.keyword != StyleKeyword.Null;
             }
         }
 
@@ -118,7 +118,7 @@ namespace Velvet
             {
                 return inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : element.resolvedStyle.rotate.angle.ToDegrees();
             }
-            var declared = inline.keyword == StyleKeyword.Undefined ? inline.value.angle.ToDegrees() : StyleCascade.Rotate(element);
+            var declared = inline.keyword != StyleKeyword.Null ? inline.value.angle.ToDegrees() : StyleCascade.Rotate(element);
             return projection.RotateCarry.Step(float.IsNaN(declared) ? projection.StartRotate : declared, dtSec, element, "rotate", null);
         }
 
@@ -230,13 +230,14 @@ namespace Velvet
                 written[corner] = radius.unit == LengthUnit.Percent ? radius
                     : new Length(divisor > 0f ? radius.value / divisor : 0f, radius.unit);
             }
-            // Scaled down together where adjacent ones overlap on a side, as CSS scales radii and CornerRadiusFit does for
-            // a radius the element declares: in the element's own box, which is the drawn box divided by the scale on each
-            // axis (Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox).
+            // Scaled down together where adjacent ones overlap on a side, as CSS scales radii, in the element's own box, which
+            // is the drawn box divided by the scale on each axis: the corners CornerRadiusFit fits at rest, as it fits them
+            // there (Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox).
             var fit = CornerRadiusFit.ScaleFactor(element.layout.width, element.layout.height, Extent(written, element.layout));
             for (var corner = 0; corner < 4; corner++)
             {
-                projection.WrittenRadii[corner] = written[corner] = new Length(written[corner].value * fit, written[corner].unit);
+                var scaled = CornerRadiusFit.Fitted(element, corner) != null ? fit : 1f;
+                projection.WrittenRadii[corner] = written[corner] = new Length(written[corner].value * scaled, written[corner].unit);
                 Write(element.style, corner, written[corner]);
             }
         }
