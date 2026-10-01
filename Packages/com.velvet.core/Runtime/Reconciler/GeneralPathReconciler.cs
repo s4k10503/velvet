@@ -1574,7 +1574,7 @@ namespace Velvet
 
             if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
             {
-                StartPresenceExit(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode);
+                StartPresenceExit(in pass, key, node, ghostAnchor, ghostMotionElement, ghostMotionNode);
                 pass.Tally.ExitIndex++;
             }
 
@@ -1739,6 +1739,7 @@ namespace Velvet
         private void StartPresenceExit(
             in PresenceExpansion pass,
             string key,
+            VNode node,
             VisualElement ghostAnchor,
             VisualElement? ghostMotionElement,
             MotionNode? ghostMotionNode)
@@ -1751,7 +1752,7 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
@@ -1840,7 +1841,7 @@ namespace Velvet
             // anchor-targeted transition plays instead.
             var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
             var exitTransition = variantExit ?? ghostMotionNode?.Transition;
-            var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
+            var exitTarget = variantExit != null ? ghostMotionElement! : ClassicTarget(ghostAnchor, ghostMotionElement);
             // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired from
             // inside one of the PlayExit calls below) is queued instead of run inline.
             void Settled()
@@ -1971,7 +1972,7 @@ namespace Velvet
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
             var site = LiveEntrySite(in pass, key);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
-                out var anchorEnterHandled);
+                out var anchorEmission);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
             // reference-equal patch bailed before recording.
@@ -2019,17 +2020,24 @@ namespace Velvet
                     ReleaseDescendantExits(state, key);
                 }
 
-                var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
+                var isEnter = wasExiting || wasExitComplete || Remounted(anchorEmission, state, key)
+                    || !PresenceContainsKey(prevCommitted, key);
                 // The create path already played, or withheld, the enter of an anchor inheriting its labels.
-                if (isEnter && !anchorEnterHandled)
+                if (isEnter && !anchorEmission.EnterHandled)
                 {
-                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
+                    // A cancelled exit's reversal returns the same element to rest; a new one enters.
+                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting && !anchorEmission.Created);
                 }
             }
 
             pass.NextCommitted.Add((key, node));
             pass.Tally.VisualIndex++;
         }
+
+        // A live key whose anchor was created again under the same key — a type flip — remounts with an enter, as a
+        // Framer PresenceChild's new child does, unless the key still withholds its first render's.
+        private static bool Remounted(in AnchorEmission emission, ReconcilerContext.PresenceBoundaryState state, string key)
+            => emission.Created && !state.InitialBlocked.Contains(key);
 
         // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in. A child
         // present at the first render under initial: false keeps withholding mount enters for as long as it
@@ -2138,7 +2146,7 @@ namespace Velvet
             {
                 _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
                 // `anchor` (this keyed child's own top-level element), which for a Div wrapping
@@ -2160,7 +2168,7 @@ namespace Velvet
             VNode node,
             bool freshReplacement)
         {
-            if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
+            if (PopsOutOfFlow(presence, node) && !freshReplacement)
             {
                 // The out-of-flow pin outlives its exit (only the drop would have removed the
                 // element). Skipped for a fresh replacement: the pin lives on the discarded
@@ -2174,7 +2182,7 @@ namespace Velvet
                 // A completed classic exit leaves its to classes on the anchor it played on.
                 if (motion?.Transition != null)
                 {
-                    StyleAnimationClassUtils.RemoveClasses(anchor, motion.Transition.ExitToClasses);
+                    StyleAnimationClassUtils.RemoveClasses(ClassicTarget(anchor, motionElement), motion.Transition.ExitToClasses);
                 }
                 return;
             }
@@ -2241,9 +2249,9 @@ namespace Velvet
         internal static Action? ContainedEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
             => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion, boundaryFiber);
 
-        // A variant Motion (carrying variants + animate) manages its resting state through variant classes:
-        // variants[animate] is applied at mount and restored by CancelExit on an exit-cancel. So it only ever
-        // plays a VARIANT enter (when an `initial` label is declared) and must NOT fall through to the classic
+        // A variant Motion (carrying variants and an animate label, its own or inherited) manages its resting state
+        // through variant classes: variants[animate] is applied at mount and restored by CancelExit on an
+        // exit-cancel. So it only ever plays a VARIANT enter (when an initial label resolves) and must NOT fall through to the classic
         // preset enter — the default StyleTransition.Fade would replay a fade-in on top of the resting variant
         // on every add / interrupt. The variant swap targets the Motion's OWN element (where those resting
         // classes live), which for a wrapped Motion is not the anchor; without a resolved element the variant
@@ -2261,9 +2269,14 @@ namespace Velvet
             float staggerDelaySec,
             ComponentFiber? boundaryFiber)
         {
-            var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
+            // Resolved as FiberNodeFactory.ResolveMountEnter resolves them, so an anchor inheriting its labels from
+            // the Motion above the presence is a variant Motion here too.
+            var stack = _ctx.ComponentContextStack;
+            var animateLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
+            var initialLabel = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel));
+            var isVariantMotion = motionElement != null && motion.Variants != null && animateLabel != null;
             if (isVariantMotion && !wasExiting
-                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses,
+                && TryResolveVariantEnter(motion, initialLabel, animateLabel, out var fromClasses, out var toClasses,
                     out var enterTransition)
                 && enterTransition != null)
             {
@@ -2279,20 +2292,26 @@ namespace Velvet
             }
             else if (isVariantMotion)
             {
-                // Variant Motion without `initial`: rest at variants[animate], no enter anim.
+                // Variant Motion without `initial`, or one whose exit was cancelled: rest at the animate pose.
                 InvokeEnterComplete(motion, boundaryFiber);
             }
             else
             {
                 // As for the variant enter above; of the classic enters, only a timed tween cancels it.
+                var target = ClassicTarget(anchor, motionElement);
                 if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
                 {
-                    _patcher.LandInlineHold(anchor);
+                    _patcher.LandInlineHold(target);
                 }
-                _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
+                _ctx.StyleAnimationScheduler.PlayEnter(target, motion.Transition,
                     ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
         }
+
+        // Where a classic enter or exit plays: the keyed child's anchor, which holds the Motion or is it, unless the
+        // Motion's element sits outside it, as when the child places another element ahead of its Motion.
+        private static VisualElement ClassicTarget(VisualElement anchor, VisualElement? motionElement)
+            => motionElement != null && !anchor.Contains(motionElement) ? motionElement : anchor;
 
         private static bool PresenceContainsKey(
             List<(string key, VNode node)> list, string? key)
@@ -2326,6 +2345,11 @@ namespace Velvet
                 }
             }
         }
+
+        // A keyed Fragment exits in flow, as under Framer's popLayout: its PopChild pins only an HTML element the
+        // child's ref resolves to, which a Fragment's never does.
+        private static bool PopsOutOfFlow(AnimatePresenceNode presence, VNode node)
+            => presence.Mode == AnimatePresenceMode.PopLayout && node is not FragmentNode;
 
         // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
         // it via absolute positioning at the last rect Yoga resolved for it in-flow (anchor.layout is parent-
@@ -2500,10 +2524,11 @@ namespace Velvet
             MotionNode? anchorMotion,
             string? key,
             out VisualElement? anchorMotionElement,
-            out bool anchorEnterHandled)
+            out AnchorEmission anchorEmission)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
             var previousAnchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+            var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             _ctx.PresenceAnchorMotion = anchorMotion;
@@ -2511,11 +2536,16 @@ namespace Velvet
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
             _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
             _ctx.PresenceAnchorEnterHandled = false;
+            _ctx.PresenceAnchorCreated = false;
             try
             {
                 var emitted = EmitPresenceChild(site.Walk, node, key, site.Position, site.State);
                 anchorMotionElement = _ctx.PresenceAnchorMotionElement;
-                anchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+                anchorEmission = new AnchorEmission
+                {
+                    EnterHandled = _ctx.PresenceAnchorEnterHandled,
+                    Created = _ctx.PresenceAnchorCreated,
+                };
                 return emitted;
             }
             finally
@@ -2525,7 +2555,16 @@ namespace Velvet
                 _ctx.ComponentContextStack.Pop(MotionContext.EntersBlocked);
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
+                _ctx.PresenceAnchorCreated = previousAnchorCreated;
             }
+        }
+
+        // What the create path reported about the anchor Motion during one emission: whether it played or withheld
+        // the anchor's enter itself, and whether it created the anchor's element rather than patching it.
+        private readonly struct AnchorEmission
+        {
+            internal bool EnterHandled { get; init; }
+            internal bool Created { get; init; }
         }
 
         // Where a keyed child is emitted and on what terms: the state its roots are recorded in (null on the
