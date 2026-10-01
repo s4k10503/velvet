@@ -8,21 +8,17 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <c>V.Anchored</c>'s wiring contract: mounting registers an <c>AnchoredBinding</c> and forces
     /// the element out of flow (<c>position: absolute</c>), a target behind the camera hides the element
-    /// (<c>display: none</c>) WITHOUT reaching the real screen-projection call (see the class remarks on why
-    /// that matters for this fixture), unmounting releases the binding and every inline style it drove, and a
+    /// (<c>display: none</c>) unless that hide is opted out of, an editor panel lays the camera's viewport
+    /// over itself, unmounting releases the binding and every inline style it drove, and a
     /// patched target updates the SAME binding rather than tearing down and recreating it. Also specifies
     /// <c>distanceFactor</c>'s numeric precondition: it must be positive and finite (rejecting <c>0</c>,
     /// negative values, and <c>float.PositiveInfinity</c>) on every construction path — the settings record
     /// directly, and the factory both with and without leaking a pooled props bag on the throwing path.
     /// </summary>
     /// <remarks>
-    /// Deliberately does NOT assert the actual projected left/top for an in-front-of-camera target:
-    /// <c>RuntimePanelUtils.CameraTransformWorldToPanel</c> casts its panel argument to
-    /// <c>BaseRuntimePanel</c> internally, and this fixture's panel (via <c>MotionSimulatedPanelTestsBase</c>'s
-    /// <c>EditorPanelSimulator</c>) is an EDITOR panel, not a runtime one — calling it here would throw an
-    /// <c>InvalidCastException</c>, not exercise the real behavior. The projection math itself is pinned by
-    /// <c>AnchoredPlaybackTests</c> (PlayMode, a real <c>UIDocument</c> runtime panel) instead. The
-    /// behind-camera path is safe to test here because it short-circuits BEFORE that call.
+    /// This fixture's panel (via <c>MotionSimulatedPanelTestsBase</c>'s <c>EditorPanelSimulator</c>) is an
+    /// EDITOR panel, so the cases here reach the editor-panel projection; the runtime-panel projection is
+    /// pinned by <c>AnchoredPlaybackTests</c> (PlayMode, a real <c>UIDocument</c> runtime panel).
     /// </remarks>
     [TestFixture]
     internal sealed class AnchoredTests : MotionSimulatedPanelTestsBase
@@ -95,36 +91,105 @@ namespace Velvet.Tests
             Assert.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base hides every element of an editor panel, this one included.
+        // This pins the hide with no camera to project through, which that editor-panel hide used to mask.
         [Test]
         public void Given_NoCameraIsSuppliedAndNoMainCameraExists_When_Ticked_Then_TheElementIsHidden()
         {
-            // Arrange — Camera.main resolves to null: no camera param, and _camera (the only Camera in this
-            // test's scene) is never tagged MainCamera.
-            _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+            // Arrange — no camera param, and every camera the open scene tags MainCamera untagged for the
+            // case, so Camera.main resolves to null; _camera is never tagged.
+            var mainCameras = GameObject.FindGameObjectsWithTag("MainCamera");
+            foreach (var mainCamera in mainCameras) mainCamera.tag = "Untagged";
+            try
+            {
+                _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+                _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                    new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
+                var element = Root.Q<VisualElement>("anchored");
+
+                // Act
+                Tick();
+
+                // Assert — Camera.main is folded in: with a camera left to project through, the hide is not this case's.
+                Assert.That((Camera.main == null, element.style.display.value), Is.EqualTo((true, DisplayStyle.None)));
+            }
+            finally
+            {
+                foreach (var mainCamera in mainCameras) mainCamera.tag = "MainCamera";
+            }
+        }
+
+        [Test]
+        public void Given_ATargetInFrontOfTheCamera_When_TheHostPanelIsNotARuntimePanel_Then_TheCameraViewportIsLaidOverThePanel()
+        {
+            // Arrange — this fixture's panel is an Editor-context one (see class remarks), 800x600. The target
+            // sits off the camera's axis on both axes, so a flipped or swapped axis lands elsewhere.
+            _targetGo.transform.position = new Vector3(1f, 0.5f, 0f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
-                new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
+                new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
+            var element = Root.Q<VisualElement>("anchored");
+
+            // Act
+            Tick();
+
+            // Assert — a hidden element reads NaN, since an unwritten left would otherwise compare as 0.
+            Assert.That(ShownPosition(element), Is.EqualTo(ExpectedViewportPosition()).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ATargetBehindTheCamera_When_TheHideIsOptedOut_Then_TheElementKeepsFollowingItsProjection()
+        {
+            // Arrange
+            _targetGo.transform.position = new Vector3(1f, 0.5f, -20f);
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                new[] { V.Anchored(_targetGo.transform, camera: _camera, hideWhenBehindCamera: false, key: "a", name: "anchored") });
             var element = Root.Q<VisualElement>("anchored");
 
             // Act
             Tick();
 
             // Assert
-            Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+            Assert.That(ShownPosition(element), Is.EqualTo(ExpectedViewportPosition()).Within(0.01f));
         }
 
         [Test]
-        public void Given_ATargetInFrontOfTheCamera_When_TheHostPanelIsNotARuntimePanel_Then_TheElementIsHidden()
+        public void Given_ATargetLevelWithTheCameraPlane_When_Ticked_Then_TheElementIsNotHidden()
         {
-            // Arrange & Act — this fixture's panel is an Editor-context one (see class remarks); an
-            // in-front-of-camera target has nothing that would otherwise hide it, isolating this guard.
-            _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+            // Arrange — the target sits at a right angle to the camera's forward axis, which drei's Html does
+            // not count as behind the camera: only an angle past a right angle is.
+            _targetGo.transform.position = new Vector3(5f, 0f, -10f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
             var element = Root.Q<VisualElement>("anchored");
+
+            // Act
             Tick();
 
             // Assert
-            Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+            Assert.That(element.style.display.value, Is.Not.EqualTo(DisplayStyle.None));
+        }
+
+        private static float[] ShownPosition(VisualElement element)
+        {
+            var shown = element.style.display.value != DisplayStyle.None;
+            return new[]
+            {
+                shown ? element.style.left.value.value : float.NaN,
+                element.style.top.value.value,
+            };
+        }
+
+        // The target's perspective projection through _camera, worked from its field of view and aspect rather
+        // than read back from the camera, stretched over the declared 800x600 panel and taken to the parent's
+        // origin. Panel y runs down where the camera's runs up.
+        private float[] ExpectedViewportPosition()
+        {
+            var local = _camera.transform.InverseTransformPoint(_targetGo.transform.position);
+            var halfHeight = local.z * Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            var viewportX = 0.5f + 0.5f * local.x / (halfHeight * _camera.aspect);
+            var viewportY = 0.5f + 0.5f * local.y / halfHeight;
+            var origin = Root.worldBound.position;
+            return new[] { viewportX * 800f - origin.x, (1f - viewportY) * 600f - origin.y };
         }
 
         [Test]

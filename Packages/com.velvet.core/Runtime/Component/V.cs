@@ -1629,10 +1629,9 @@ namespace Velvet
         /// call site. An element that happens to sit on BOTH chains — a physical ancestor of the
         /// target AND a logical ancestor of the call site — still fires exactly once: the synthetic
         /// walk detects that native bubbling already covers it and stops there rather than
-        /// double-firing. <c>Button</c>'s native click
-        /// (<c>ClickedBinding</c>) and field value-change (<c>ChangeEventBinding&lt;T&gt;</c>) stay
-        /// physical-tree-only in every portal form — neither has an underlying bubbling event object to
-        /// carry across a logical boundary. See the portals documentation for the full contract.
+        /// double-firing. A <c>Button</c>'s click (<c>ClickedBinding</c>) and a field's value change
+        /// (<c>ChangeEventBinding&lt;T&gt;</c>) cross the same way. See the portals documentation for the
+        /// full contract.
         /// </remarks>
         /// <param name="targetId">Portal target ID registered via <c>FiberPortalRegistry.Register</c>.</param>
         /// <param name="children">Descendant VNodes mounted into the resolved portal target.</param>
@@ -1770,7 +1769,9 @@ namespace Velvet
         /// inherent scene depth (unlike <see cref="WorldSpace"/>, which renders content INTO the 3D scene and
         /// is occluded by it for free) — <paramref name="occlude"/> opts into an explicit physics stand-in for
         /// that test. Forces <c>position: absolute</c> inline (dynamic left/top positioning has no other way
-        /// to work; see AnchoredDriver.Attach) — pass layout classes for everything else.
+        /// to work; see AnchoredDriver.Attach) — pass layout classes for everything else. Among a
+        /// <see cref="WorldSpace"/> panel's children it sits where the camera's ray to the target crosses
+        /// that panel's plane.
         /// </summary>
         /// <param name="target">The Transform this element's screen position tracks. Null (or a Transform
         /// destroyed later) mounts an inert, hidden (display: none) element until a live target is supplied —
@@ -1781,7 +1782,8 @@ namespace Velvet
         /// every tick, so a scene's active camera can change without re-supplying this.</param>
         /// <param name="offset">Pixel offset applied after projection (e.g. to center a label on the point).</param>
         /// <param name="hideWhenBehindCamera">When true (default), the element is hidden (display: none)
-        /// while <paramref name="target"/> is behind the camera rather than jumping to a wrong on-screen spot.</param>
+        /// while <paramref name="target"/> is behind the camera. When false, it keeps following the target's
+        /// projection there too.</param>
         /// <param name="occlude">When true, a solid (non-trigger) collider between the camera and
         /// <paramref name="target"/> hides the element — an extra physics query every tick, so it is off by
         /// default rather than a standing cost every consumer pays. A target whose own collider sits on

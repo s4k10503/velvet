@@ -153,6 +153,10 @@ namespace Velvet
         // async action is still awaiting. An owner compares its own value before touching the flags above,
         // so a task settling after that release cannot clear a pending state a later owner is managing.
         public int OwnerGeneration;
+        // The error of the call whose callback returned last, thrown from the declaring component's next
+        // Transition-lane render, and the count of those returns that orders them — see FiberWorkLoop.Dispatch.
+        public System.Runtime.ExceptionServices.ExceptionDispatchInfo? PendingError;
+        public int OutcomeSequence;
         public TransitionStarter Starter = default!;
     }
 
@@ -163,6 +167,9 @@ namespace Velvet
         public object?[]? LastDeps;
         public object?[]? NextDeps;
         public Func<object>? NextFactory;
+        // The factory the last commit consumed, which a reveal the fiber does not render creates the handle from
+        // again (FiberEffects.ShowLayoutEffects).
+        public Func<object>? Factory;
         public IHookRefSetter? NextHandleRef;
         public bool NextNeedsRecompute;
     }

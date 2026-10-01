@@ -19,8 +19,8 @@ namespace Velvet.Tests
     /// not just at Attach — reacts correctly), <c>distanceFactor</c> (the resolved scale, and that leaving it
     /// unset never touches a pre-existing inline scale some OTHER system owns on the same element). Complements
     /// <see cref="AnchoredTests"/> (EditMode, wiring + numeric-precondition validation + the behind-camera/
-    /// no-camera/unsupported-panel hide paths only — an editor-simulated panel cannot exercise the real
-    /// runtime-panel projection call, the occlusion physics query, or the distanceFactor scale write).
+    /// no-camera hide paths and the editor-panel projection — an editor-simulated panel cannot exercise the
+    /// real runtime-panel projection call, the occlusion physics query, or the distanceFactor scale write).
     /// </summary>
     internal sealed class AnchoredPlaybackTests
     {

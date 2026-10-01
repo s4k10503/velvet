@@ -512,11 +512,11 @@ namespace Velvet
                 // Already resolved by the caller. Nothing can be missing and nothing heals later:
                 // a container that changes is a different portal, which ReconcileKeying.CanPatch
                 // turns into a remount rather than a patch.
-                target = portalNode.TargetElement;
+                target = FiberNodePatcher.PortalContainerOf(portalNode.TargetElement);
             }
             else if (!hasLayer)
             {
-                target = FiberPortalRegistry.Get(portalNode.TargetId!);
+                target = FiberNodePatcher.PortalContainerOf(FiberPortalRegistry.Get(portalNode.TargetId!));
                 if (target == null)
                 {
                     FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
