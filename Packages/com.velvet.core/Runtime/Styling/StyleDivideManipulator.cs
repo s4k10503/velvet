@@ -223,7 +223,7 @@ namespace Velvet
             // Reserve the gutter as a solid divider would, but mask the native border color so only the dashed /
             // dotted paint shows.
             WriteWidth(child, edge, !ownWidth);
-            StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
+            StyleArbitraryValueResolver.Mask(child, ColorSlot(edge));
             WriteColors(child, edge, isDivider);
 
             if (binding != null)
@@ -262,24 +262,24 @@ namespace Velvet
         {
             var slot = ColorSlot(edge);
             var inline = InlineColor(child, edge);
-            if (SilhouetteFace.IsSentinel(inline))
+            if (DivideDashPainter.IsMask(inline))
             {
                 return binding?.Inline;
             }
-            if (SilhouetteFace.IsUnset(inline))
+            if (inline.keyword != StyleKeyword.Undefined)
             {
                 return null;
             }
             if (binding?.Edge == edge)
             {
-                return inline;
+                return inline.value;
             }
             if (StyleArbitraryValueResolver.IsHeld(child, slot)
                 || StyleArbitraryValueResolver.ResolveLayered(child, slot) != null)
             {
                 return null;
             }
-            return inline;
+            return inline.value;
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
@@ -317,12 +317,12 @@ namespace Velvet
         }
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
-        internal static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
+        internal static StyleColor InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
-            DivideEdge.Left => child.style.borderLeftColor.value,
-            DivideEdge.Right => child.style.borderRightColor.value,
-            DivideEdge.Top => child.style.borderTopColor.value,
-            DivideEdge.Bottom => child.style.borderBottomColor.value,
+            DivideEdge.Left => child.style.borderLeftColor,
+            DivideEdge.Right => child.style.borderRightColor,
+            DivideEdge.Top => child.style.borderTopColor,
+            DivideEdge.Bottom => child.style.borderBottomColor,
         };
 #pragma warning restore CS8524
 

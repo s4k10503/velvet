@@ -628,6 +628,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMotionDriverWritingABorderColorTheDividerGivesWayFor_When_TheDividerAppliesAgain_Then_TheDrivenColorStands()
+        {
+            // Arrange — border-[#0000ff] is a layer of the child's own, which the divide color's hold on its other
+            // edges gives way to.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-[#0000ff]"),
+            });
+            var child = scope.Root[0][1];
+            var own = child.style.borderLeftColor.value;
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert — the child's own color rides along, since a hold that never gave way to it writes no layer.
+            Assert.That((own, child.style.borderLeftColor.value), Is.EqualTo((Color.blue, Color.red)));
+        }
+
+        [Test]
         public void Given_ADashTransitionInsideItsDelay_When_Eased_Then_ItHasNotStarted()
         {
             // Arrange
@@ -1319,13 +1340,13 @@ namespace Velvet.Tests
 
         // The middle child of a dashed row without a divide color, painted once, and the colors the engine paints its
         // divided edge in from then on: each read as the child paints, ahead of the dash.
-        private (VisualElement Child, List<Color> Painted) MountWatchedDash()
+        private (VisualElement Child, List<Color> Painted) MountWatchedDash(string childClass = "")
         {
             _mounted = V.Mount(_window.rootVisualElement,
                 V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
                 {
                     V.Div(className: "w-[20px] h-[20px]"),
-                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px] " + childClass),
                     V.Div(className: "w-[20px] h-[20px]"),
                 }));
             var child = _window.rootVisualElement.Q("b");
@@ -1339,40 +1360,69 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_TheEdgeIsMaskedFromTheNextPaint()
+        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_ItIsMaskedBeforeItPaints()
         {
             // Arrange
             var (child, painted) = MountWatchedDash();
 
-            // Act — a paint, then the scheduler tick that follows it, then the next paint.
+            // Act — a frame: the panel's scheduled items, then its styles, layout and paint.
             child.style.borderRightColor = Color.blue;
-            ForcePanelUpdate(child.panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
             ForcePanelUpdate(child.panel);
 
-            // Assert
-            Assert.That((SilhouetteFace.IsSentinel(painted[painted.Count - 1]), DashColorOf(child)),
-                Is.EqualTo((true, Color.blue)));
+            // Assert — the paint rides along, since a check that never ran would leave nothing painted to read.
+            Assert.That((painted.Count > 0, painted.TrueForAll(SilhouetteFace.IsSentinel), DashColorOf(child)),
+                Is.EqualTo((true, true, Color.blue)));
         }
 
         [Test]
-        public void Given_ADashedDivideRow_When_AMotionDriverWritesTheChildsBorderColorAndClearsIt_Then_TheDashFollowsAndLetsGo()
+        public void Given_ADashedDivideRow_When_TheChildsCodeMakesItsEdgeTransparent_Then_TheDashIsTransparentToo()
+        {
+            // Arrange
+            var (child, _) = MountWatchedDash("border-default");
+            var before = DashColorOf(child);
+
+            // Act
+            child.style.borderRightColor = Color.clear;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the theme color before rides along, since a dash that was never painted would read clear too.
+            Assert.That((before == Color.clear, DashColorOf(child)), Is.EqualTo((false, Color.clear)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AMotionDriverDrivesTheChildsBorderColorAndReleasesIt_Then_TheDashFollowsAndLetsGo()
         {
             // Arrange — the calls MotionSpringDriver and BezierTweenDriver make for a border-color channel.
             var (child, painted) = MountWatchedDash();
             var before = DashColorOf(child);
-            StyleArbitraryValueResolver.ApplyInline(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
             ForcePanelUpdate(child.panel);
             var driven = DashColorOf(child);
 
             // Act
-            StyleArbitraryValueResolver.ClearInline(child, ArbitraryProperty.BorderColor);
+            StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.BorderColor);
             ForcePanelUpdate(child.panel);
 
             // Assert — the driven color rides along, since a dash that never took it would let go of nothing, and
             // every paint saw the mask on the edge, so the engine painted no solid line there.
             Assert.That((driven, DashColorOf(child) == before, painted.TrueForAll(SilhouetteFace.IsSentinel)),
                 Is.EqualTo((Color.red, true, true)));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithABracketBorderColor_When_AMotionDriverDrivesItsBorderColor_Then_TheDashTakesTheDrivenColor()
+        {
+            // Arrange — border-[#e5e7eb] is a layer of the child's own, which the driver's inline write outranks.
+            var (child, painted) = MountWatchedDash("border-[#e5e7eb]");
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That((DashColorOf(child), painted.TrueForAll(SilhouetteFace.IsSentinel)), Is.EqualTo((Color.red, true)));
         }
 
         // A colored dashed row whose middle child takes border-red-500 while hovered, beside a reference carrying
@@ -1525,7 +1575,9 @@ namespace Velvet.Tests
             var running = binding.Tick.isActive;
             var accent = references[1].resolvedStyle.borderRightColor;
 
-            // Act — the tick the running transition repaints on, then the paint.
+            // Act — the tick the running transition repaints on, then the paint; the transition is made long enough
+            // to be running still whatever time the run takes.
+            binding.DurationSec = 1000f;
             StyleClassProjection.Remove(child, "transition-colors", StyleLayerPriority.Base);
             ForcePanelUpdate(child.panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
@@ -1542,9 +1594,10 @@ namespace Velvet.Tests
             var (child, binding, _) = MountRunningDashTransition();
             var running = binding.Tick.isActive;
 
-            // Act — and a driver writes a color after it, which no mask should take any longer.
+            // Act — and a color is written after it, which no mask should take any longer.
             DivideDashPainter.Detach(child, binding);
-            StyleArbitraryValueResolver.ApplyInline(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+            child.style.borderRightColor = Color.red;
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
 
             // Assert
             Assert.That((running, binding.Tick.isActive, child.ClassListContains(DivideDashPainter.MarkerClass),

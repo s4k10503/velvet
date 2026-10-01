@@ -24,8 +24,10 @@ namespace Velvet
         // The divide-{color}, where the divider has one.
         public Color? Divider;
 
-        // A color written inline on the child, kept once the mask replaced it.
+        // A color written inline on the child, kept once the mask replaced it, and the one a motion driver writes
+        // while it drives the edge.
         public Color? Inline;
+        public Color? Driven;
 
         // The color the dash heads for, null before the first paint, and the color the last paint drew.
         public Color? Target;
@@ -85,6 +87,7 @@ namespace Velvet
             child.RegisterCallback(binding.OnStyleResolved);
             child.AddToClassList(MarkerClass);
             s_bound.AddOrUpdate(child, binding);
+            s_live.Add(binding);
             child.MarkDirtyRepaint();
             return binding;
         }
@@ -103,7 +106,10 @@ namespace Velvet
             // repaint.
             child.UnregisterCallback(binding.OnStyleResolved);
             child.RemoveFromClassList(MarkerClass);
+            // MUTANT_SURVIVES(equivalent, line removed): a binding left in the table only takes a driver's color for
+            // a dash nothing paints.
             s_bound.Remove(child);
+            s_live.Remove(binding);
             binding.Tick.Pause();
             child.MarkDirtyRepaint();
         }
@@ -116,19 +122,67 @@ namespace Velvet
             }
         }
 
-        // The color writes of StyleArbitraryValueResolver.ApplyInline and ClearInline, which a motion driver makes
-        // each frame, reach here as they are made, so the mask is back before the engine paints the edge. A write of the child's own code is
-        // found when the child paints, and the mask goes back at the next scheduler tick rather than in the paint,
-        // so the edge shows the write for that one paint
-        // (Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_TheEdgeIsMaskedFromTheNextPaint goes red on
-        // a mask written back in the paint).
-        internal static void TakeOverWrite(VisualElement element)
+        // The color a motion driver writes over the edge while it drives it (StyleArbitraryValueResolver.ApplyDriven,
+        // which keeps the mask on the slot), or null once it hands the edge back.
+        internal static void Drive(VisualElement element, int slots, Color? color)
         {
-            if (s_bound.TryGetValue(element, out var binding) && TakeOver(binding))
+            if (!s_bound.TryGetValue(element, out var binding))
             {
-                StyleArbitraryValueResolver.Hold(element, StyleDivideManipulator.ColorSlot(binding.Edge),
-                    new StyleColor(SilhouetteFace.SuppressedColor));
+                return;
+            }
+            if ((slots & StyleHeldSlots.Bit(StyleDivideManipulator.ColorSlot(binding.Edge))) != 0)
+            {
+                binding.Driven = color;
                 element.MarkDirtyRepaint();
+            }
+        }
+
+        internal static bool IsMask(StyleColor color)
+            => color.keyword == StyleKeyword.Undefined && SilhouetteFace.IsSentinel(color.value);
+
+        private static readonly System.Collections.Generic.List<DivideDashChildBinding> s_live = new();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, IVisualElementScheduledItem>
+            s_checks = new();
+
+        // A write of other code over a mask is found by one check per panel, run each frame among the panel's
+        // scheduled items, so one made before it is masked before the edge paints
+        // (Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColor_Then_ItIsMaskedBeforeItPaints). One made
+        // after it, by a scheduled item that runs later, shows on the edge for the paint that follows, which takes
+        // its color, and is masked at the next check.
+        private static void EnsureCheck(IPanel panel)
+        {
+            if (s_checks.TryGetValue(panel, out var check))
+            {
+                check.Resume();
+                return;
+            }
+            check = panel.visualTree.schedule.Execute(() => Check(panel)).Every(0);
+            s_checks.Add(panel, check);
+        }
+
+        private static void Check(IPanel panel)
+        {
+            var any = false;
+            foreach (var binding in s_live)
+            {
+                if (binding.Child.panel != panel)
+                {
+                    continue;
+                }
+                any = true;
+                if (TakeOver(binding))
+                {
+                    StyleArbitraryValueResolver.Mask(binding.Child, StyleDivideManipulator.ColorSlot(binding.Edge));
+                    binding.Child.MarkDirtyRepaint();
+                }
+            }
+            if (any)
+            {
+                return;
+            }
+            if (s_checks.TryGetValue(panel, out var check))
+            {
+                check.Pause();
             }
         }
 
@@ -138,19 +192,23 @@ namespace Velvet
         private static bool TakeOver(DivideDashChildBinding binding)
         {
             var written = StyleDivideManipulator.InlineColor(binding.Child, binding.Edge);
-            if (SilhouetteFace.IsSentinel(written))
+            if (IsMask(written))
             {
                 return false;
             }
-            binding.Inline = SilhouetteFace.IsUnset(written) ? null : written;
+            binding.Inline = written.keyword == StyleKeyword.Undefined ? written.value : null;
             return true;
         }
 
-        // A layer of the child's own wins, then the divide-{color} where no class of the child's own sets the edge's
-        // color, as a solid divider's hold does; then a color written inline on the child; then the color the
-        // child's own style rules give the edge.
+        // A motion driver's color wins, as an inline style does over every rule; then a layer of the child's own,
+        // then the divide-{color} where no class of the child's own sets the edge's color, as a solid divider's hold
+        // does; then a color written inline on the child; then the color the child's own style rules give the edge.
         internal static Color PaintColor(DivideDashChildBinding binding)
         {
+            if (binding.Driven is { } driven)
+            {
+                return driven;
+            }
             var slot = StyleDivideManipulator.ColorSlot(binding.Edge);
             if (StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot) is { } layered)
             {
@@ -322,10 +380,8 @@ namespace Velvet
 
         private static void Draw(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)
         {
-            if (TakeOver(binding))
-            {
-                child.schedule.Execute(() => TakeOverWrite(child));
-            }
+            EnsureCheck(child.panel);
+            TakeOver(binding);
             binding.Color = Advance(binding, PaintColor(binding), Time.realtimeSinceStartupAsDouble);
             if (binding.Width <= 0.01f || binding.Color.a <= 0.004f)
             {

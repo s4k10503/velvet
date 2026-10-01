@@ -216,11 +216,11 @@ namespace Velvet
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
@@ -338,7 +338,7 @@ namespace Velvet
                 foreach (var c in state.Colors)
                 {
                     var progress = Mathf.LerpUnclamped(c.Progress.From, c.Progress.To, eased);
-                    StyleArbitraryValueResolver.ApplyInline(element,
+                    StyleArbitraryValueResolver.ApplyDriven(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
                 }
             }
@@ -347,7 +347,7 @@ namespace Velvet
                 foreach (var l in state.Lengths)
                 {
                     var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, eased);
-                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
             StyleAnimateDriver.ReassertLoop(element);

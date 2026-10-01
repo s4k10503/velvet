@@ -31,6 +31,11 @@ namespace Velvet
 
         // The held slots that give way to a layer of the element's own — see StyleArbitraryValueResolver.Yield.
         private int _yieldMask;
+
+        // The slots a per-frame driver writes now, which every hold but a mask leaves to it
+        // (StyleArbitraryValueResolver.ApplyDriven), and the held slots that are masks.
+        private int _driven;
+        private int _masks;
         private StyleLength[]? _lengths;
         private StyleFloat[]? _floats;
         private StyleColor[]? _colors;
@@ -40,29 +45,39 @@ namespace Velvet
         public void Set(HeldSlot slot, StyleLength value)
         {
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
-            _mask |= Bit(slot);
-            _yieldMask &= ~Bit(slot);
+            Take(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
         {
             (_floats ??= new StyleFloat[HeldSlotGroups.SlotCount])[(int)slot] = value;
-            _mask |= Bit(slot);
-            _yieldMask &= ~Bit(slot);
+            Take(slot);
         }
 
         public void Set(HeldSlot slot, StyleColor value)
         {
             (_colors ??= new StyleColor[HeldSlotGroups.SlotCount])[(int)slot] = value;
+            Take(slot);
+        }
+
+        private void Take(HeldSlot slot)
+        {
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
+            _masks &= ~Bit(slot);
         }
+
+        public void SetMask(HeldSlot slot) => _masks |= Bit(slot);
+
+        public void Drive(int slots) => _driven |= slots;
+
+        public void Release(int slots) => _driven &= ~slots;
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);
 
         public void SetYield(HeldSlot slot) => _yieldMask |= Bit(slot);
 
-        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & Bit(slot)) != 0;
+        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & ~_driven & Bit(slot)) != 0;
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
@@ -71,7 +86,7 @@ namespace Velvet
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)
         {
-            var due = _mask & slots;
+            var due = _mask & slots & ~(_driven & ~_masks);
             for (var i = 0; due != 0; i++, due >>= 1)
             {
                 if ((due & 1) != 0)

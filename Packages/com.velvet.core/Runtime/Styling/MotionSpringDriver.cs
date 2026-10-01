@@ -219,7 +219,7 @@ namespace Velvet
             {
                 foreach (var c in state.Colors)
                 {
-                    StyleArbitraryValueResolver.ApplyInline(element,
+                    StyleArbitraryValueResolver.ApplyDriven(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
                 }
             }
@@ -230,7 +230,7 @@ namespace Velvet
                     // The integrator already holds the spring's true position, overshoot included; the emitter
                     // is what saturates a property with no negative meaning.
                     var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
-                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                    StyleArbitraryValueResolver.ApplyDriven(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
             StyleAnimateDriver.ReassertLoop(element);
@@ -322,11 +322,11 @@ namespace Velvet
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ReleaseDriven(element, c.Property);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ReleaseDriven(element, l.Property);
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
@@ -375,7 +375,7 @@ namespace Velvet
             {
                 return false;
             }
-            StyleArbitraryValueResolver.ClearInline(element, property);
+            StyleArbitraryValueResolver.ReleaseDriven(element, property);
             return true;
         }
 

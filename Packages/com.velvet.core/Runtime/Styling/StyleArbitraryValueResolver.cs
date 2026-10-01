@@ -1070,6 +1070,42 @@ namespace Velvet
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
         }
 
+        // Holds the slot at the sentinel for whatever paints it in the engine's place, as a dashed divider paints
+        // its edge: a mask the slot keeps through a drive (ApplyDriven).
+        internal static void Mask(VisualElement element, HeldSlot slot)
+        {
+            var holds = HoldsOf(element);
+            holds.Set(slot, new StyleColor(SilhouetteFace.SuppressedColor));
+            holds.SetMask(slot);
+            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        // A per-frame driver's write, which owns the slots it writes until ReleaseDriven: inline, so every hold on
+        // them but a mask stands down for it as for a layer of the element's own, and comes back on the release.
+        internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
+        {
+            var slots = HeldSlotGroups.SlotsOf(style.Property);
+            s_layers.TryGetValue(element, out var map);
+            map?.Holds?.Drive(slots);
+            ApplyInline(element, style);
+            map?.Holds?.Reassert(element.style, slots);
+            DivideDashPainter.Drive(element, slots, style.Color);
+        }
+
+        // Hands the driven slots of property back: what the element's own layers resolve to, then the holds on them.
+        internal static void ReleaseDriven(VisualElement element, ArbitraryProperty property)
+        {
+            var slots = HeldSlotGroups.SlotsOf(property);
+            DivideDashPainter.Drive(element, slots, null);
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                ClearInline(element, property);
+                return;
+            }
+            map.Holds?.Release(slots);
+            ResolveAndApply(element, property, map);
+        }
+
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
         // that layer's value stands, and the held one returns once the last such layer goes. That is how a
         // zero-specificity Tailwind write (space, divide) gives way to the element's own arbitrary value for as
@@ -1641,10 +1677,8 @@ namespace Velvet
         // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
         // every slot it owns (padding → four edges, border-color → four sides, size → width + height). A value
         // that places or sizes a clipped element goes to its clip wrapper instead (ClipPathLayoutBox.StyleFor).
-        // Class-diff callers must go through Apply / Clear instead so per-property layering is respected; the
-        // layer-bypassing form is for a per-frame driver that OWNS the slot for the duration of its play and
-        // hands it back through ClearInline (see MotionSpringDriver / BezierTweenDriver), where registering and
-        // unregistering a layer on every tick would only churn the layer map.
+        // Class-diff callers must go through Apply / Clear instead so per-property layering is respected, and a
+        // per-frame driver through ApplyDriven / ReleaseDriven.
         internal static void ApplyInline(VisualElement element, in ArbitraryStyle style)
         {
             // Transform properties (scale / translate / rotate / transform-origin) are not StyleLength and
@@ -1677,7 +1711,6 @@ namespace Velvet
                 {
                     setter(cs, color);
                 }
-                DivideDashPainter.TakeOverWrite(element);
                 return;
             }
 
@@ -1729,7 +1762,6 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
-                DivideDashPainter.TakeOverWrite(element);
                 return;
             }
 

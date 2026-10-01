@@ -148,6 +148,45 @@ namespace Velvet.Tests
             });
         }
 
+        // The margin a gap-x-4 row holds on its middle child, the one a motion driver then writes there, and the
+        // child.
+        private static (float Held, float Driven, VisualElement Child) DriveGappedMargin(ReconcilerScope scope)
+        {
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row gap-x-4", 3) });
+            var child = scope.Root[0][1];
+            var held = child.style.marginLeft.value.value;
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 3f, LengthUnit.Pixel));
+            return (held, child.style.marginLeft.value.value, child);
+        }
+
+        [Test]
+        public void Given_AMotionDriverWritingAGappedChildsMargin_When_ItReleasesIt_Then_TheGapMarginComesBack()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var (held, driven, child) = DriveGappedMargin(scope);
+
+            // Act
+            StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.MarginLeft);
+
+            // Assert — the driven margin rides along, since a driver that never wrote would leave the gap's in place.
+            Assert.That((driven, child.style.marginLeft.value.value), Is.EqualTo((3f, held)));
+        }
+
+        [Test]
+        public void Given_AMotionDriverWritingAGappedChildsMargin_When_TheGapAppliesAgain_Then_TheDrivenMarginStands()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var (held, _, child) = DriveGappedMargin(scope);
+
+            // Act
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+
+            // Assert — the held margin differing rides along, since one equal to the driven value would stand either way.
+            Assert.That((held == 3f, child.style.marginLeft.value.value), Is.EqualTo((false, 3f)));
+        }
+
         [Test]
         public void Given_FlexRowGapX4_When_Reconciled_Then_EqualLeadingMarginBetweenChildrenAndNoTrailing()
         {

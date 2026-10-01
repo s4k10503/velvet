@@ -660,6 +660,31 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 8f)));
         }
 
+        [Test]
+        public void Given_AMotionDriverWritingAGridChildsWidth_When_ItReleasesIt_Then_TheColumnWidthComesBack()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "grid", className: "grid grid-cols-2 gap-4 w-[300px]",
+                    children: new VNode[] { V.Div(), V.Div() }));
+            var container = _window.rootVisualElement.Q<VisualElement>("grid");
+            ForcePanelUpdate(container.panel);
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+            var child = container[0];
+            var column = child.style.width.value.value;
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.Width, 50f, LengthUnit.Pixel));
+            var driven = child.style.width.value.value;
+
+            // Act
+            StyleArbitraryValueResolver.ReleaseDriven(child, ArbitraryProperty.Width);
+
+            // Assert — the column width rides along, since a grid that never sized the child leaves no width to restore.
+            Assert.That((column > 100f, driven, child.style.width.value.value == column), Is.EqualTo((true, 50f, true)));
+        }
+
         // GREEN_ON_BASE(characterization): a child that leaves a grid that sized it keeps no column width,
         // which a release handing back nothing would stop.
         [Test]
