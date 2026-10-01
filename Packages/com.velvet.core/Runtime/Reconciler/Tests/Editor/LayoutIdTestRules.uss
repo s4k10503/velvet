@@ -18,3 +18,8 @@
     transition-delay: 0.2s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-uneven {
+    border-top-left-radius: 90px;
+    border-top-right-radius: 30px;
+}

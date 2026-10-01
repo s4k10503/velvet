@@ -40,9 +40,7 @@ namespace Velvet
     }
 
     /// <summary>
-    /// An owner beneath whose writes Velvet carries the element's own values on the transitions the element declares
-    /// (a layoutId projection, MotionOpacity's crossfade, a follower's hiding), so that its suspension stands for no
-    /// driver (<see cref="MotionNativeTransitionGuard.DriverSuspends"/>).
+    /// An owner <see cref="MotionNativeTransitionGuard.DriverSuspends"/> does not count as a driver.
     /// </summary>
     internal interface ICarryingOwner
     {

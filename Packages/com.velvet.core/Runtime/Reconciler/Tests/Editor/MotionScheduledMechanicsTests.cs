@@ -885,7 +885,7 @@ namespace Velvet.Tests
         // The size step 1 lays the box out at, two hundred pixels square while null.
         private static Vector2Int? s_resizeTo;
 
-        // At step 0 the box is s_resizeFrom pixels square, and from step 1 two hundred, in place, its top-left corner
+        // At step 0 the box is s_resizeFrom pixels square, and from step 1 s_resizeTo, in place, its top-left corner
         // fixed; s_resizeOrigin holds its transform origin, or any other classes.
         [Component]
         private static VNode ResizingBoxRender()
@@ -971,6 +971,55 @@ namespace Velvet.Tests
             var declared = StyleCascade.Radius(element, 0)!.Value.value;
             var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value;
             Assert.That((declared > 1f, Mathf.Abs(drawn - declared) < 0.01f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithUnequalArbitraryRadiiThatOverlapAsItsTweenStarts_When_ItStarts_Then_TheyAreScaledDownTogether()
+        {
+            // Arrange / Act — ninety and thirty at 100×100, doubled in place, so drawn at half and written at twice, 180
+            // and 60 on a 200px side.
+            var element = ResizeBoxWithOrigin("rounded-tl-[90px] rounded-tr-[30px]");
+
+            // Assert — both by the one factor that fits the side, 200 over 240, as CSS scales radii, rather than each
+            // bounded on its own.
+            Assert.That((Mathf.Abs(element.style.borderTopLeftRadius.value.value - 150f) < 0.5f,
+                    Mathf.Abs(element.style.borderTopRightRadius.value.value - 50f) < 0.5f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWhoseOwnStylesheetGivesItOverlappingRadii_When_ItsTweenStarts_Then_TheyAreLeftUnfittedAsAtRest()
+        {
+            // Arrange / Act — the test's own sheet giving ninety and thirty, which Velvet leaves unfitted at rest; doubled in
+            // place.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var element = ResizeBoxWithOrigin("layout-id-test-uneven");
+
+            // Assert — written at twice each, drawn at half as at rest.
+            Assert.That((Mathf.Abs(element.style.borderTopLeftRadius.value.value - 180f) < 0.5f,
+                    Mathf.Abs(element.style.borderTopRightRadius.value.value - 60f) < 0.5f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionMidTween_When_ItsRadiusIsWrittenInitial_Then_ItIsDrawnSquare()
+        {
+            // Arrange — the bundled sheet; rounded-lg, some way into doubling in place.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeOrigin = "rounded-lg";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 6; i++) Tick();
+            var element = Root.Q<VisualElement>("shared");
+
+            // Act — Initial, which UI Toolkit draws as no radius.
+            element.style.borderTopLeftRadius = StyleKeyword.Initial;
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value, Is.EqualTo(0f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base starts a corner-origin resize at the old corner with no translate.
