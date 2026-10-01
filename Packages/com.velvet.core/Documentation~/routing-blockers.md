@@ -26,8 +26,8 @@ flight, if any, goes on. `Location` is what a dialog names the destination from.
 
 ## Resolving a block
 
-`Proceed` sends the blocked navigation through again as the caller made it — its path and its mode, so a
-Back or Forward goes again as the same history step. That navigation does not consult the Blocker that
+`Proceed` sends the blocked navigation through again as the caller made it — its path, its mode, so a
+Back or Forward goes again as the same history step, and its submission, if it was one. That navigation does not consult the Blocker that
 released it — that is what `Proceeding` is for — so a predicate that still answers "block" does not have
 to disarm itself. It hands nothing back; the navigation's outcome arrives through
 `Router.OnLocationChanged` and `Router.Status`.
@@ -46,7 +46,8 @@ Every Blocker returns to `Idle` when a navigation commits. A navigation that end
 while another is under way leaves a `Proceeding` Blocker as it is, as React Router's stays proceeding
 until a navigation completes: one that takes over from the navigation it released is not put to it
 either. One that ends without committing — a Guard redirect that goes nowhere, a failure, a
-cancellation — with none left under way returns it to `Idle`.
+cancellation — with none left under way returns it to `Idle`. One a Blocker registered after it blocks
+leaves it `Proceeding`, as a blocked navigation completes nothing in React Router either.
 
 A navigation a `Blocked` Blocker lets through does not release it: the block stands while that
 navigation loads, and ends when a navigation commits. A navigation it vetoes replaces what it holds.

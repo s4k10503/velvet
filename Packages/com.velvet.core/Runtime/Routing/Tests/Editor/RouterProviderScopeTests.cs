@@ -76,6 +76,8 @@ namespace Velvet.Tests
                     "UseBlocker" => Blocker,
                     "UseLoaderData" => LoaderData,
                     "UseRouteError" => RouteError,
+                    "UseSubmit" => Submit,
+                    "UseActionData" => ActionData,
                     "UseParams" => Params,
                     "UseOutletContext" => OutletContext,
                     "Outlet" => Outlet,
@@ -139,6 +141,20 @@ namespace Velvet.Tests
             private static VNode RouteError()
             {
                 _ = Hooks.UseRouteError();
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode Submit()
+            {
+                _ = Hooks.UseSubmit();
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode ActionData()
+            {
+                _ = Hooks.UseActionData<string>();
                 return Rendered();
             }
 
@@ -263,6 +279,8 @@ namespace Velvet.Tests
         [TestCase("UseBlocker")]
         [TestCase("UseLoaderData")]
         [TestCase("UseRouteError")]
+        [TestCase("UseSubmit")]
+        [TestCase("UseActionData")]
         public void Given_NoRouterProviderAbove_When_AComponentCallsTheHook_Then_ItsRenderThrowsNamingTheHook(string hook)
         {
             // Arrange

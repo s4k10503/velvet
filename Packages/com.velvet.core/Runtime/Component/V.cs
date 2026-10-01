@@ -2577,6 +2577,7 @@ namespace Velvet
         /// <param name="redirectTo">Path to redirect to. Mutually exclusive with <paramref name="element"/> and <paramref name="guard"/>.</param>
         /// <param name="guard">Pass-through guard returning a redirect path or null. Cannot be combined with <paramref name="redirectTo"/>.</param>
         /// <param name="caseSensitive">When true, literal path segments match case-sensitively. Defaults to false (case-insensitive).</param>
+        /// <param name="action">Called for a submission other than <c>get</c> that targets this route; its result is exposed via <c>Hooks.UseActionData</c>.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="loaderMode"/> names no member of
         /// <see cref="LoaderMode"/>.</exception>
         /// <returns>The created <see cref="RouteDefinition"/>.</returns>
@@ -2590,7 +2591,8 @@ namespace Velvet
             RouteDefinition[]? children = null,
             string? redirectTo = null,
             Func<RouteLoaderContext, string>? guard = null,
-            bool caseSensitive = false)
+            bool caseSensitive = false,
+            Func<RouteActionContext, CancellationToken, VelvetTask<object>>? action = null)
         {
             if (path == null)
             {
@@ -2633,6 +2635,7 @@ namespace Velvet
                 RedirectTo = redirectTo,
                 Guard = guard,
                 CaseSensitive = caseSensitive,
+                Action = action,
             };
         }
 

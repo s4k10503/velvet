@@ -61,7 +61,7 @@ namespace Velvet.Tests
 
             // Assert — both are pinned rather than ordered, and an assertion with a slack constant would
             // move with whichever path grew.
-            Assert.That((awaitBlocks, suspendBlocks), Is.EqualTo((18, 19)));
+            Assert.That((awaitBlocks, suspendBlocks), Is.EqualTo((20, 21)));
         }
     }
 }
