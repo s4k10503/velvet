@@ -1131,10 +1131,12 @@ class GitProcesses(GuardTestCase):
 
 class CampaignsAndCuts(GuardTestCase):
     def campaign_holding(self, name):
-        """A campaign's record holding `name`, beside the script that reads it."""
+        """A campaign's record holding `name`, beside the script that reads it and the modules beside
+        that script, which it imports from there."""
         script = self.root / CAMPAIGN.relative_to(REPO_ROOT)
         script.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(CAMPAIGN, script)
+        for module in CAMPAIGN.parent.glob("*.py"):
+            shutil.copy(module, script.parent / module.name)
         Holder(self.root / SENTINEL).hold(self.root / name, WHOLE, BROKEN, "probe")
 
     # GREEN_ON_BASE(characterization): the base reads every file it lists, whatever its suffix.
