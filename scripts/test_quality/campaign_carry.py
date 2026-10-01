@@ -5,12 +5,12 @@
 mutated program under a green baseline; it still holds at the later head when neither that program nor
 that test can have changed. So this answers from the paths the push changed, in two tiers:
 
-- A change to anything but a test assembly's C# stops every kill from carrying. That is an allowlist,
-  so a path nobody thought of lands on the side that measures everything.
+- A change to anything but a test assembly's C#, or its `.meta`, stops every kill from carrying. That
+  is an allowlist, so a path nobody thought of lands on the side that measures everything.
 - A changed test source stops the kills resting on the fixtures it declares. Where something outside
-  the file can reach what it declares -- another source names one of its types, it extends a type, it
-  opens a namespace, it declares something NUnit or Unity applies beyond the file -- the kills resting
-  on its whole assembly stop instead, and on every assembly referencing that one.
+  the file can reach what it declares -- another source names one of its types, it declares an
+  extension method, it opens a namespace, it declares something NUnit or Unity applies beyond the
+  file -- the kills resting on its whole assembly stop instead, and on every assembly referencing it.
 
 What a test does to shared state while it runs is not read: a kill taken by an area's own assemblies
 already stands in `mutation_check.py` without the rest of the suite running beside it.
@@ -29,7 +29,7 @@ DELEGATE = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[
 NAMESPACE = re.compile(r"\bnamespace\s+([A-Za-z_][\w.]*)")
 # What reaches past the file it is written in without any other source naming it: an attribute on the
 # assembly, a using every file of it sees, an extension method, a fixture NUnit applies to a namespace,
-# and the hooks Unity and its test runner call on their own.
+# and the load-time hooks of Unity and its test runner named here.
 BEYOND_THE_FILE = re.compile(
     r"\[\s*(?:assembly|module)\s*:|\bglobal\s+using\b|\(\s*(?:\[[^\]]*\]\s*)*this\s+[A-Za-z_@]"
     r"|\b(?:SetUpFixture|InitializeOnLoad\w*|RuntimeInitializeOnLoadMethod|InitializeOnEnterPlayMode"
@@ -168,7 +168,8 @@ def current(project, relative):
 
 def named_elsewhere(project, word, own, uncommented):
     """Whether any file but `own` under Packages/ or Assets/ holds `word` where it can bind: in code
-    rather than in a comment of a C# source, and anywhere at all in any other text file but prose."""
+    rather than in a comment of a C# source, and anywhere in any other text file but markdown and
+    .meta files."""
     found = git(project, "grep", "-l", "-w", "-I", "--untracked", "-F", "-e", word, "--",
                 "Packages", "Assets")
     for relative in found.stdout.splitlines():
@@ -239,7 +240,8 @@ def touched(project, previous, paths, uncommented=lambda text: text):
             reach.assemblies.add(owner)
             continue
         source = relative[:-len(".meta")] if name.endswith(".meta") else relative
-        texts = [text for text in (show(project, previous, source), current(project, source))
+        # Read without comments, where a sentence like "the class is a term" declares a type `is`.
+        texts = [uncommented(text) for text in (show(project, previous, source), current(project, source))
                  if text is not None]
         names = set().union(*(declared(text) for text in texts)) if texts else set()
         if self_contained(project, source, previous, texts, names, uncommented):

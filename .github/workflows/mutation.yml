@@ -91,7 +91,8 @@ jobs:
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       # The kills an earlier head's campaign recorded that this head keeps, written under
-      # Logs/mutation-carried for every later job to take as verdicts. CONTRIBUTING.md owns which carry.
+      # Logs/mutation-carried for the shards, the PlayMode pass and the verdict to take as verdicts.
+      # CONTRIBUTING.md owns which carry.
       - id: previous
         env:
           GH_TOKEN: ${{ github.token }}

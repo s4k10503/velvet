@@ -5415,6 +5415,8 @@ class CarryCampaign(StubbedCampaign):
                             *arguments)
 
     def remeasure(self, *arguments):
+        # A fresh directory each time, so no kill a run before this one recorded there is resumed.
+        shutil.rmtree(self.logs("now"), ignore_errors=True)
         self.measured.clear()
         self.on_base("--shard", "0/1", "--output", self.logs("now"), "--carried-in", self.logs("carried"),
                      *arguments)
@@ -5472,15 +5474,16 @@ class CarriedKillTests(unittest.TestCase):
         # Act
         campaign.carry()
 
-        # Assert
-        self.assertFalse(campaign.carried(4))
+        # Assert — beside a kill that did carry, so a carry that wrote nothing does not read as a refusal.
+        self.assertEqual((campaign.carried(3), campaign.carried(4)), (True, False))
 
     def test_Given_ACarriedRecordHoldingASurvivor_When_TheNextHeadIsMeasured_Then_ItIsMeasuredAgain(self):
         # Arrange — a carried directory is read as data, so a record in it is a kill only by its verdict.
         campaign = CarryCampaign()
         campaign.after({TESTS + "/ProbeTests.cs": EDITED})
         carried = mutation_check.verdict_path(campaign.project / "Logs" / "carried" / "EditMode", 2)
-        carried.write_text(json.dumps(dict(json.loads(carried.read_text()), verdict=mutation_check.SURVIVED)))
+        if carried.exists():
+            carried.write_text(json.dumps(dict(json.loads(carried.read_text()), verdict=mutation_check.SURVIVED)))
 
         # Act
         measured = campaign.remeasure()
@@ -5670,6 +5673,18 @@ class SharedTestSourceTests(unittest.TestCase):
         self.assertEqual(reach, (False, True))
 
 
+    def test_Given_ACommentInTheChangedFixtureReadingLikeADeclaration_When_Measured_Then_ItsNeighboursKillCarries(self):
+        # Arrange — "class is" in prose reads as a type named `is`, which the neighbour's code spells.
+        files = {TESTS + "/NeighbourTests.cs": fixture_source(
+            "NeighbourTests", "        internal bool Text(object value) => value is string;\n")}
+
+        # Act
+        reach = self.shared({TESTS + "/ProbeTests.cs": fixture_source(
+            "ProbeTests", "        // the class is a term here\n")}, files)
+
+        # Assert
+        self.assertEqual(reach, (False, True))
+
     def test_Given_AnAssemblyReferencingOneAChangeReachesWhole_When_Measured_Then_ItsKillIsMeasuredAgain(self):
         # Arrange — the other assembly references this one by name, so what it declares reaches there.
         files = {ELSEWHERE + "/Velvet.Tests.Other.Editor.asmdef":
@@ -5712,8 +5727,6 @@ class CarriedPlanTests(unittest.TestCase):
         # Assert — the first mutant and the survivor are left, one shard each at this size.
         self.assertEqual(re.findall(r"^shards=.*$", printed, re.MULTILINE), ["shards=[0, 1]"])
 
-    # GREEN_ON_BASE(characterization): the base plans every mutant, so its count is the diff's too. What
-    # this pins is that the count the shards' --max takes stays the whole list once some are carried.
     def test_Given_KillsCarriedForSomeMutants_When_Planned_Then_TheMutantCountStaysTheWholeList(self):
         # Act
         printed = self.planned()

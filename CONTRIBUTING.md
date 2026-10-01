@@ -230,21 +230,24 @@ a push, and before the label.
 `Mutation campaign ▸ mutation-plan` takes the newest campaign on the branch that completed without being
 cancelled, measured a head this one descends from, and left records — `scripts/ci/previous_campaign.py`
 picks it — and downloads those records; `mutation_check.py --carry-to` writes each kill it keeps to the
-`Mutation carried` artifact, and every later job reads that through `--carried-in`. The plan sizes the
+`Mutation carried` artifact, which the shards, the PlayMode pass and the verdict read through
+`--carried-in`. The plan sizes the
 shards by the mutants left, the shards measure only those, and the PlayMode pass skips a survivor of
 the EditMode one whose PlayMode kill carried. A kill carries when all three hold:
 
 - the merge base and every mutated source are what that campaign measured: a record is read under this
   head's key, which covers both;
-- every path the push changed is C# compiled into a test assembly. Anything else carries nothing —
+- every path the push changed is C# compiled into a test assembly, or that C#'s or its directory's
+  `.meta`. Anything else carries nothing —
   a production source, a comment in one included, the tooling under `scripts/`, a workflow,
   `TestUtilities/`, an `.asmdef` or `csc.rsp`, a stylesheet, markdown, anything under a `~` directory;
 - a case that failed on it there is still not a text reader's at this head, and runs under a fixture
   declared in one test assembly that no changed source declares and no changed source reaches whole.
   A changed source reaches its assembly, and every assembly referencing that one, where another file
-  names a type it declares, where it opens a namespace no other source opens or opens more than one,
-  where an asset holds its GUID, and where it declares an extension method, an assembly or module
-  attribute, a `global using`, a `[SetUpFixture]` or a hook Unity or its test runner calls on its own.
+  under `Packages/` or `Assets/` names a type it declares outside a comment and outside markdown, where
+  it opens a namespace no other source opens or opens more than one, where another file holds the GUID
+  it is imported under, and where it declares an extension method, an assembly or module attribute, a
+  `global using`, a `[SetUpFixture]`, or one of the load-time hooks `campaign_carry.py` lists.
 
 Only a kill a failing case named carries; every other verdict is measured again. What a test does to
 shared state while it runs is not read, the same as for a kill an area's own assemblies took. The
