@@ -714,7 +714,7 @@ namespace Velvet
                 if (suspension.Narrowers.Count > 0) WriteNarrowed(element, suspension);
             }
             // The record goes with the last of its owners, narrowers and drivers
-            // (Given_AMotionWhoseSpringDroveNothingItTransitions_When_ATweenEnds_Then_NoTransitionIsLeftInline).
+            // (Given_ADriverWhoseSlotsAnElementsClassesDoNotTransition_When_ItIsReleased_Then_TheGuardKeepsNoRecordOfTheElement).
             if (suspension.Owners.Count + suspension.Narrowers.Count + suspension.Driven.Count == 0) s_suspensions.Remove(element);
         }
 
