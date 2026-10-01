@@ -958,8 +958,10 @@ namespace Velvet
         // range grows or shrinks, downstream Portals whose ranges sit after this one have their
         // slotStart shifted by the delta so subsequent patches stay correctly addressed.
         // A Portal declared among its own target's children patches from inside the reconcile of those
-        // children. Its rows sit behind every one that reconcile addresses, and its range catches up with
-        // the rows that reconcile has already moved first (FiberCommitWork.OpenOwnRows).
+        // children. Its rows sit behind every one that reconcile addresses, and each of Velvet's child
+        // reconciles patches the elements it keeps before it inserts or removes any, so the range still
+        // addresses its children here; the reconcile's close follows the rows it placed
+        // (FiberCommitWork.OpenOwnRows).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
             var (target, isHeal) = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
@@ -1239,7 +1241,6 @@ namespace Velvet
             VisualElement placeholder, VisualElement target,
             VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw, string describe)
         {
-            var inOwnRows = FiberCommitWork.CatchUpOwnRows(_ctx, target);
             if (!_ctx.PortalState.TryGetValue(placeholder, out var prevState))
             {
                 // PortalState missing means CreateElement never recorded this Portal's slot range
@@ -1294,10 +1295,7 @@ namespace Velvet
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, placeholder, prevState, unshifted);
             FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
-            if (inOwnRows)
-            {
-                FiberCommitWork.RebaseOwnRows(_ctx, target);
-            }
+            FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
 
         // Applies the diff for a ContextProviderNode.

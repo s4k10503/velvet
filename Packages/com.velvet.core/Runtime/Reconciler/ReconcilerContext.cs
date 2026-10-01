@@ -132,6 +132,7 @@ namespace Velvet
             {
                 if (!ReferenceEquals(info.Target, target)) continue;
                 var end = info.SlotStart + info.SlotLength;
+                // MUTANT_SURVIVES(equivalent, boundary): where the two are equal, either arm is the same number.
                 lastEnd = lastEnd > end ? lastEnd : end;
             }
             return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;

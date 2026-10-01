@@ -39,6 +39,10 @@ namespace Velvet.Tests
             s_changePortalComponent = null;
             s_setRows = null;
             s_portalLast = false;
+            s_portalBeforeContainer = false;
+            s_registerSelfOnRef = true;
+            s_showSecondSelfPortal = true;
+            s_setSelfPortals = null;
             RuntimeStateProbe.ClearPortalRegistry();
             _root = new VisualElement();
         }
@@ -75,11 +79,11 @@ namespace Velvet.Tests
             VNode portalContent = s_portalChildIsComponent
                 ? V.Component(PortalComponentRender, key: "portal-component")
                 : V.Div(name: portalChild);
-            return V.Fragment(children: new VNode?[]
-            {
-                V.Div(name: "container", refCallback: RegisterContainer, children: ownChildren),
-                V.Portal(TargetId, children: new VNode?[] { portalContent }),
-            });
+            var container = V.Div(name: "container", refCallback: RegisterContainer, children: ownChildren);
+            var portal = V.Portal(TargetId, children: new VNode?[] { portalContent });
+            return V.Fragment(children: s_portalBeforeContainer
+                ? new VNode?[] { portal, container }
+                : new VNode?[] { container, portal });
         }
 
         [Component]
@@ -136,7 +140,8 @@ namespace Velvet.Tests
             // The portal is one of the container's own children and targets the container itself; its key keeps
             // it the same portal where rows ahead of it are added.
             var portal = new VNode?[] { V.Portal("self", key: "portal", children: Rows(rows.Portal)) };
-            return V.Div(name: "container", refCallback: element => Register("self", element),
+            Func<VisualElement, Action>? register = s_registerSelfOnRef ? element => Register("self", element) : null;
+            return V.Div(name: "container", refCallback: register,
                 children: s_portalLast ? Rows(rows.Own).Concat(portal).ToArray() : portal.Concat(Rows(rows.Own)).ToArray());
         }
 
@@ -162,12 +167,15 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalInsideTheContainerItTargets_When_TheTargetRegistersInTheRenderTheContainerGrows_Then_ItsNextPatchLandsOnItsChildren()
         {
-            // Arrange — the registration heals the portal from inside the container's reconcile, before the
-            // container's own row behind the portal is added in that same render.
+            // Arrange — registered from here, so the render the registration asks for is the one that adds the
+            // container's own row behind the portal: the portal heals from inside the container's reconcile,
+            // before that row is placed.
+            s_registerSelfOnRef = false;
             _mounted = V.Mount(_root, V.Component(SelfTargetRender, key: "host"));
+            var container = _root.Q<VisualElement>("container");
+            FiberPortalRegistry.Register("self", container);
             s_setRows!.Invoke((new[] { "a", "b" }, new[] { "p1" }));
             Flush();
-            var container = _root.Q<VisualElement>("container");
 
             // Act
             s_setRows!.Invoke((new[] { "a", "b" }, new[] { "q1" }));
@@ -387,6 +395,92 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(container), Is.EqualTo("a|b|changed"));
+        }
+        private static bool s_portalBeforeContainer;
+        private static bool s_registerSelfOnRef = true;
+
+        [Test]
+        public void Given_APortalDeclaredBeforeTheContainer_When_TheContainerGainsAChildAndAComponentInThePortalRerendersAlone_Then_ItPatchesItsOwnElement()
+        {
+            // Arrange — the portal patches before the container in the render that adds the row, so nothing
+            // re-places its component after the container's rows move it.
+            s_initialOwn = new[] { "a" };
+            s_portalChildIsComponent = true;
+            s_portalBeforeContainer = true;
+            var container = MountContainer();
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Act
+            s_changePortalComponent!.Invoke(1);
+            Flush();
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("a|b|changed"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves no component when a container's own rows change.
+        // This pins that a component of those rows stays where their reconcile placed it, whichever portal it
+        // carries the placeholder of.
+        [Test]
+        public void Given_AContainerInsideAnotherPortal_When_ItsOwnRowsGrow_Then_TheComponentAmongThemStartsWhereItsRowIs()
+        {
+            // Arrange — the component carries the placeholder of the portal the container sits in, whose range
+            // is on another element.
+            s_initialOwn = new[] { "f1" };
+            _mounted = V.Mount(_root, V.Component(ContainerInsidePortalRender, key: "host"));
+            Flush();
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+
+            // Act
+            s_setOwn!.Invoke(new[] { "a", "b" });
+            Flush();
+
+            // Assert
+            var row = container.Q<VisualElement>("f1");
+            var fiber = row.userData as ComponentFiber;
+            Assert.That(fiber?.MountSlotStart ?? -1, Is.EqualTo(container.IndexOf(row)));
+        }
+
+        private static bool s_showSecondSelfPortal = true;
+        private static Action<(bool ShowSecond, string FirstChild)>? s_setSelfPortals;
+
+        [Component]
+        private static VNode TwoSelfPortalsRender()
+        {
+            var (state, setState) = Hooks.UseState((ShowSecond: s_showSecondSelfPortal, FirstChild: "p1"));
+            s_setSelfPortals = setState;
+            var children = new System.Collections.Generic.List<VNode?>
+            {
+                V.Div(name: "a"),
+                V.Portal("self-pair", key: "first", children: new VNode?[] { V.Div(name: state.FirstChild) }),
+            };
+            if (state.ShowSecond)
+            {
+                children.Add(V.Portal("self-pair", key: "second", children: new VNode?[] { V.Div(name: "p2") }));
+            }
+            return V.Div(name: "container", refCallback: element => Register("self-pair", element), children: children.ToArray());
+        }
+
+        [Test]
+        public void Given_TwoPortalsAmongTheChildrenOfTheContainerTheyTarget_When_TheSecondGoes_Then_TheFirstsNextPatchLandsOnItsChild()
+        {
+            // Arrange — the second portal's placeholder is a row of the container's own ahead of the first
+            // portal's range, and its range is the last on the container, so its removal moves both the rows
+            // ahead of the first range and where the last range ends.
+            _mounted = V.Mount(_root, V.Component(TwoSelfPortalsRender, key: "host"));
+            Flush();
+            var container = _root.Q<VisualElement>("container");
+            s_setSelfPortals!.Invoke((false, "p1"));
+            Flush();
+
+            // Act
+            s_setSelfPortals!.Invoke((false, "q1"));
+            Flush();
+
+            // Assert
+            Assert.That(NamedChildren(container), Is.EqualTo("a|q1"));
         }
     }
 }
