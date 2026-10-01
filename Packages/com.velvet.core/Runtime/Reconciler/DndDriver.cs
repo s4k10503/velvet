@@ -57,10 +57,15 @@ namespace Velvet
         }
     }
 
-    // Bookkeeping for one V.DragOverlay positioner: only the one-shot unsupported-panel warning — the
-    // positioner element itself is the registry key, and all session state lives on DndActiveDrag.
+    // Bookkeeping for one V.DragOverlay positioner: where it was declared and the one-shot
+    // unsupported-panel warning — the positioner element itself is the registry key, and all session
+    // state lives on DndActiveDrag.
     internal sealed class DndOverlayBinding
     {
+        // The placeholder V.DragOverlay's portal leaves at its declaring position, which is what pairs the
+        // overlay with a scope: the positioner itself sits in the layer panel, under no scope. Null for a
+        // positioner whose DragOverlay prop is declared outside any portal.
+        public VisualElement? Anchor;
         public bool WarnedUnsupportedPanel;
     }
 
@@ -164,22 +169,13 @@ namespace Velvet
     {
         public static DndOverlayBinding Attach(VisualElement positioner, ReconcilerContext ctx)
         {
-            // Dictionary enumeration order is unspecified once entries have churned, so which of several
-            // overlays a session picks is not deterministic — surface that at mount instead of letting
-            // the ghost jump between containers across drags.
-            if (ctx.DragOverlayBindings.Count > 0)
-            {
-                FiberLogger.LogWarning("Dnd",
-                    "More than one V.DragOverlay is mounted in this tree; which one shows the drag "
-                    + "preview is unspecified. Keep a single overlay per mounted tree.");
-            }
             // Forced inline for the same reason AnchoredDriver forces absolute: dynamic left/top has no
             // other way to work. PickingMode.Ignore keeps the ghost from intercepting the drop or waking
             // the cross-panel pointer router.
             positioner.pickingMode = PickingMode.Ignore;
             positioner.style.position = Position.Absolute;
             positioner.style.display = DisplayStyle.None;
-            return new DndOverlayBinding();
+            return new DndOverlayBinding { Anchor = ctx.CurrentPortalPlaceholder };
         }
 
         public static void Detach(VisualElement positioner, ReconcilerContext ctx)
@@ -192,19 +188,6 @@ namespace Velvet
             positioner.style.top = StyleKeyword.Null;
             positioner.style.width = StyleKeyword.Null;
             positioner.style.height = StyleKeyword.Null;
-        }
-
-        // One overlay per mounted tree: the first registered positioner wins — several in one
-        // Velvet tree would fight over one pointer.
-        public static DndOverlayBinding? FindOverlay(ReconcilerContext ctx, out VisualElement? positioner)
-        {
-            foreach (var (element, binding) in ctx.DragOverlayBindings)
-            {
-                positioner = element;
-                return binding;
-            }
-            positioner = null;
-            return null;
         }
 
         public static void BeginSession(VisualElement positioner, Vector2 sourceSize)
@@ -263,17 +246,18 @@ namespace Velvet
 
     // Settles the press-derived styling state after the session swallowed the real PointerUp
     // (StopImmediatePropagation runs before the bubble-phase signal callbacks, and captured delivery
-    // hides it from ancestors entirely): every manipulator holding an ElementLocalVariantSignals on the
-    // source OR any of its ancestors is told to observe a synthetic release — the press's own
-    // PointerDown BUBBLED, so ancestors' whileTap / active: (and stacked forms) lit too and would
-    // otherwise stick on.
+    // hides it from every other element entirely): every manipulator holding an ElementLocalVariantSignals
+    // on an element of the press chain — the elements the press's own PointerDown reached, so the ones
+    // whose whileTap / active: (and stacked forms) it may have lit — is told to observe a synthetic
+    // release. The chain is the session's press-time list rather than a walk from the press target: a
+    // descendant unmounted mid-drag no longer has the source above it.
     internal static class DndPressVariantSettler
     {
-        public static void Settle(VisualElement element, ReconcilerContext ctx)
+        public static void Settle(System.Collections.Generic.List<VisualElement> pressChain, ReconcilerContext ctx)
         {
-            for (var current = element; current != null; current = current.parent)
+            foreach (var element in pressChain)
             {
-                SettleOn(current, ctx);
+                SettleOn(element, ctx);
             }
         }
 

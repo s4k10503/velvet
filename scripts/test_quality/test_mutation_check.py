@@ -17,6 +17,7 @@ Run: python3 scripts/test_quality/test_mutation_check.py
 import argparse
 import contextlib
 import fcntl
+import hashlib
 import importlib.util
 import inspect
 import io
@@ -3792,9 +3793,12 @@ class ProjectLockTests(unittest.TestCase):
         self.assertEqual(last, getattr(mutation_check, "LOCK_REFUSED_LINE", None))
 
 
+    # GREEN_ON_BASE(refactor): the base passes this too, since only the editor's bound changed here,
+    # from one second to ten; what the case pins is unchanged.
     def test_Given_AnEditorRefusedTheLockThatOutlivesItsBoundEachTime_When_ItIsRun_Then_ItIsNotReadAsHung(self):
         # Arrange — a refusal followed by an editor that does not exit, so each launch ends at the
-        # bound rather than at the refusal.
+        # bound rather than at the refusal. The editor is given ten seconds rather than one: at one,
+        # this case errored on a loaded machine.
         body = textwrap.dedent("""\
             open(log, "w").write("editor log\\n")
             sys.stdout.write({!r})
@@ -3805,7 +3809,7 @@ class ProjectLockTests(unittest.TestCase):
             # Act
             with contextlib.redirect_stdout(io.StringIO()):
                 reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
-                                                   root / "results.xml", root / "run.log", 1)
+                                                   root / "results.xml", root / "run.log", 10)
             last = (root / "run.log").read_text().rstrip().splitlines()[-1]
 
         # Assert
@@ -3974,6 +3978,312 @@ class LockVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, 1)
+
+
+# Lines of the editor log a CI campaign recorded for a mutant launch the build system stopped: no
+# compiler diagnostic, and the banner a compile error also ends with.
+BUILD_SYSTEM_LOG = textwrap.dedent("""\
+    [ScriptCompilation] Requested script compilation because: Assetdatabase observed changes in script compilation related files
+    Starting: /opt/unity/Editor/Data/Tools/BuildPipeline/bee_backend --ipc --defer-dag-verification --dagfile="Library/Bee/2400b0aEDbg.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+    WorkingDir: /github/workspace
+    DisplayProgressbar: Compiling Scripts
+    Internal build system error. Request cancelled while reading the binlog.
+    The backend process appears to still be running.
+    Caught exception:
+    Cannot access a closed pipe.
+    AssetDatabase: script compilation time: 0.765877s
+    Total cache size 753824
+    Total cache size after purge 753824, took 00:00:00.0119856
+    Scripts have compiler errors.
+
+    SDL leaked 2 allocations
+    """)
+
+ANALYZER_ERROR = "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
+
+
+class BuildSystemFailureTests(unittest.TestCase):
+    """A launch the build system stopped with no diagnostic in its log measured nothing about the
+    mutation, and is made again."""
+
+    # An editor below that outlives its bound is given ten seconds rather than one: at one, these cases
+    # errored on a loaded machine.
+    def launched(self, body, timeout=30):
+        """How many launches `run_suite` made of an editor running `body`, the counts it left, the
+        log's last line, what `run_suite` returned, and what the editor wrote to `seen`. `launch` in
+        `body` is which launch this is, from zero."""
+        prelude = textwrap.dedent("""\
+            launches = os.path.join(project, "launches")
+            launch = len(open(launches).read()) if os.path.exists(launches) else 0
+            open(launches, "a").write("x")
+            seen = os.path.join(project, "seen")
+            """)
+        with scripted_editor(prelude + body) as (editor, project, root, _):
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", timeout)
+            made = len((project / "launches").read_text())
+            counts = mutation_check.read_counts(root / "results.xml")
+            last = (root / "run.log").read_text().rstrip().splitlines()[-1]
+            seen = (project / "seen").read_text() if (project / "seen").exists() else None
+        return made, counts, last, reading, seen
+
+    def test_Given_ABuildSystemFailureOnTheFirstLaunchOnly_When_ItIsRun_Then_TheNextLaunchsResultStands(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, counts, _, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(counts, {"total": 1, "passed": 1, "failed": 0, "inconclusive": 0})
+
+    def test_Given_ABuildSystemFailureOnEveryLaunch_When_ItIsRun_Then_ItIsLaunchedTwiceAndItsLogEndsSayingSo(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            sys.exit(1)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        made, _, last, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual((made, last),
+                         (2, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", None)))
+
+    def test_Given_ABuildSystemFailureThatOutlivesItsBound_When_ItIsRun_Then_ItIsNotReadAsHung(self):
+        # Arrange -- the failure followed by an editor that does not exit, so the launch ends at the
+        # bound rather than at the failure.
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+        with scripted_editor(body) as (editor, project, root, _):
+            # Act
+            with contextlib.redirect_stdout(io.StringIO()):
+                reading = mutation_check.run_suite(editor, str(project), "EditMode", [],
+                                                   root / "results.xml", root / "run.log", 10)
+            last = (root / "run.log").read_text().rstrip().splitlines()[-1]
+
+        # Assert
+        self.assertEqual((reading[1], last),
+                         (False, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", None)))
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever it does after;
+    # this pins that the relaunch it now gets is not made after the bound has already been spent.
+    def test_Given_ABuildSystemFailureThatOutlivesItsBound_When_ItIsRun_Then_ItIsNotLaunchedAgain(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        made, _, _, _, _ = self.launched(body, timeout=10)
+
+        # Assert
+        self.assertEqual(made, 1)
+
+    def test_Given_AnEditorAppendingToItsLog_When_TheRelaunchHangs_Then_ItIsReadAsTimedOut(self):
+        # Arrange -- the relaunch leaves the first launch's build-system line in the log it appends to.
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "a").write({!r})
+                sys.exit(1)
+            open(log, "a").write("tests started\\n")
+            time.sleep(60)
+            """).format(BUILD_SYSTEM_LOG)
+
+        # Act
+        _, _, _, reading, _ = self.launched(body, timeout=10)
+
+        # Assert
+        self.assertTrue(reading[1])
+
+    def test_Given_AFailedLaunchLeavingAProcessThatFinishes_When_ItIsRelaunched_Then_TheRelaunchStartsAfterIt(self):
+        # Arrange -- launch 0 leaves a process in its group that marks `finished` two seconds later.
+        body = textwrap.dedent("""\
+            finished = os.path.join(project, "finished")
+            if launch == 0:
+                lingering = subprocess.Popen(
+                    [sys.executable, "-c",
+                     "import sys, time; time.sleep(2); open(sys.argv[1], 'w').write('')", finished],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                open(os.path.join(holders, "lingering"), "w").write(str(lingering.pid))
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            open(seen, "w").write("finished" if os.path.exists(finished) else "running")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, _, _, _, seen = self.launched(body)
+
+        # Assert
+        self.assertEqual(seen, "finished")
+
+    def test_Given_AFailedLaunchLeavingAProcessThatOutlivesTheWait_When_ItIsRelaunched_Then_ThatProcessIsGone(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            record = os.path.join(project, "lingering")
+            if launch == 0:
+                lingering = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"],
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                open(os.path.join(holders, "lingering"), "w").write(str(lingering.pid))
+                open(record, "w").write(str(lingering.pid))
+                open(log, "w").write({!r})
+                sys.exit(1)
+            open(log, "w").write("editor log\\n")
+            try:
+                os.kill(int(open(record).read()), 0)
+                open(seen, "w").write("running")
+            except ProcessLookupError:
+                open(seen, "w").write("gone")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        with mock.patch.object(mutation_check, "BUILD_SYSTEM_SETTLE", 1):
+            _, _, _, _, seen = self.launched(body)
+
+        # Assert
+        self.assertEqual(seen, "gone")
+
+    def test_Given_AnEditorAppendingToItsLog_When_TheRelaunchWritesAResult_Then_TheLogHoldsTheRelaunchAlone(self):
+        # Arrange -- the relaunch appends to whatever log it finds.
+        body = textwrap.dedent("""\
+            if launch == 0:
+                open(log, "a").write({!r})
+                sys.exit(1)
+            open(log, "a").write("editor log\\n")
+            open(results, "w").write({!r})
+            """).format(BUILD_SYSTEM_LOG, GREEN_RESULTS)
+
+        # Act
+        _, _, last, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(last, "editor log")
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever its log holds;
+    # this pins that a build-system line an earlier run left in the log is not read as this launch's.
+    def test_Given_ABuildSystemLineAnEarlierRunLeftInTheLog_When_TheLaunchAppendsAndWritesNoResult_Then_ItIsLaunchedOnce(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(os.path.join(project, "launches"), "a").write("x")
+            open(log, "a").write("editor log\\n")
+            sys.exit(1)
+            """)
+        with scripted_editor(body) as (editor, project, root, _):
+            (root / "run.log").write_text(BUILD_SYSTEM_LOG)
+
+            # Act
+            run_scripted(editor, project, root)
+            made = len((project / "launches").read_text())
+
+        # Assert
+        self.assertEqual(made, 1)
+
+    # GREEN_ON_BASE(characterization): the base launches a failed build once whatever its log says;
+    # this pins that an analyzer's error, which carries no CS code, still keeps it to one launch.
+    def test_Given_ABuildSystemLineBesideAnAnalyzerError_When_ItIsRun_Then_ItIsLaunchedOnce(self):
+        # Arrange
+        body = textwrap.dedent("""\
+            open(log, "w").write({!r})
+            sys.exit(1)
+            """).format(BUILD_SYSTEM_LOG + ANALYZER_ERROR)
+
+        # Act
+        made, _, _, _, _ = self.launched(body)
+
+        # Assert
+        self.assertEqual(made, 1)
+
+
+class BuildSystemFailedCampaign(StubbedCampaign):
+    """A campaign whose mutant launch leaves no result and a log `run_suite` ended as it ends one whose
+    last launch the build system stopped."""
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+        Path(log).write_text("{}\n{}\n".format(
+            BUILD_SYSTEM_LOG, getattr(mutation_check, "BUILD_SYSTEM_FAILED_LINE", "")))
+        return 0.0, False, 0
+
+
+class BuildSystemVerdictTests(unittest.TestCase):
+    """A mutant the build system stopped on its last launch was never measured, and says so rather than
+    reading as code that does not compile."""
+
+    def recorded(self):
+        campaign = BuildSystemFailedCampaign()
+        code = campaign.run_over_diff()
+        record = json.loads((campaign.project / "out" / "mutant-001.json").read_text())
+        return code, record, campaign.printed
+
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Recorded_Then_ItIsNotMeasured(self):
+        # Act
+        _, record, _ = self.recorded()
+
+        # Assert
+        self.assertEqual(record.get("verdict"), getattr(mutation_check, "BUILD_SYSTEM", None))
+
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Recorded_Then_ItsDetailNamesTheLine(self):
+        # Act
+        _, record, _ = self.recorded()
+
+        # Assert
+        self.assertIn("Internal build system error. Request cancelled while reading the binlog.",
+                      record.get("detail"))
+
+    # GREEN_ON_BASE(characterization): the base fails this campaign too, reading the mutant as
+    # uncompilable; this pins that the verdict replacing that one still fails it as unmeasured.
+    def test_Given_AMutantEveryLaunchOfWhichTheBuildSystemStopped_When_Decided_Then_TheCampaignFailsNamingItUnmeasured(self):
+        # Act
+        code, _, printed = self.recorded()
+
+        # Assert
+        self.assertEqual((code, "--- mutants nothing was asked of the suite about ---" in printed),
+                         (1, True))
+
+
+class SilentBaselineCampaign(StubbedCampaign):
+    """A campaign whose baseline launch writes no result, over an output an earlier campaign left a
+    green baseline in."""
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        (self.project / "out").mkdir()
+        (self.project / "out" / "baseline.xml").write_text(GREEN_RESULTS)
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        if Path(results).name == "baseline.xml":
+            Path(log).write_text("")
+            return 0.0, False, 0
+        return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+
+
+class StaleBaselineTests(unittest.TestCase):
+    """A baseline launch that wrote nothing is not read off an earlier campaign's result."""
+
+    def test_Given_AnEarlierGreenBaselineInTheOutput_When_TheBaselineWritesNoResult_Then_TheRunStopsSayingSo(self):
+        # Arrange
+        campaign = SilentBaselineCampaign()
+
+        # Act
+        code = campaign.run_over_diff()
+
+        # Assert
+        self.assertIn("the baseline run wrote no result", str(code))
 
 
 class ParityKilledCampaign(StubbedCampaign):
@@ -5086,6 +5396,678 @@ class ShardCeilingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
+
+
+READ_IL = mutation_check.il_reading_assemblies
+
+
+class SessionCampaign(StubbedCampaign):
+    """A campaign whose rewriter and session are stubbed as well as its editor launches.
+
+    `outcome` names what the session records for each mutant it measures: "killed" fails the case
+    `N.C.Kills` in the whole stage, "survived" runs the whole stage green over the baseline's case
+    count, or over none of them where `short`. The confirmation that closes a segment passes
+    `N.C.Kills` unless `unconfirmed`; `unarmed` records no switch in any stage, and `lost` reports every
+    mutant's item as one no launch finished.
+    """
+
+    REWRITTEN = "// guarded for the session\n"
+
+    unconfirmed = False
+    lost = False
+    unarmed = False
+    short = False
+
+    def __init__(self):
+        super().__init__()
+        self.outcome = "killed"
+        self.rewrites = []
+        self.launched = []
+        self.during = None
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        self.launched.append(Path(results).name)
+        return super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+
+    def rewrite(self, _unity, project, request, _scratch):
+        self.rewrites.append(request)
+        ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
+        relative = request["files"][0]["path"]
+        return {"placed": ids, "declined": {}, "files": {relative: self.REWRITTEN}, "fatal": []}
+
+    def session(self, _args, _project, plan, directory, _holder):
+        self.during = self.source.read_text()
+        assembly = mutation_check.assembly_of(self.source)
+        for item in plan["items"]:
+            number = item["id"]
+            name = directory / "item-{}.json".format(mutation_check.cs_id(number))
+            xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
+            if item.get("confirm"):
+                result = "Failed" if self.unconfirmed else "Passed"
+                xml.write_text('<test-run total="1"><test-case fullname="N.C.Kills" result="{}" />'
+                               '</test-run>'.format(result))
+                stage = {"name": "confirm", "finished": True, "xml": str(xml), "failures": [],
+                         "armed": ["{}:{}".format(assembly, number)]}
+            elif self.outcome == "killed":
+                stage = {"name": "whole", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                         "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
+            else:
+                xml.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />'
+                               if self.short else GREEN_RESULTS)
+                stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
+                         "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
+            name.write_text(json.dumps({"id": number, "stages": [stage]}))
+        lost = {position for position, item in enumerate(plan["items"])
+                if self.lost and not item.get("confirm")}
+        return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
+                if position not in lost}, lost, None
+
+    def recorded(self):
+        return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
+
+
+class SessionRoutingTests(unittest.TestCase):
+    def setUp(self):
+        self.campaign = SessionCampaign()
+        saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
+        mutation_check.rewrite_schemata = self.campaign.rewrite
+        mutation_check.run_session = self.campaign.session
+        mutation_check.response_file = lambda _project, _assembly: "Library/Bee/artifacts/x/A.rsp"
+        self.il_read = set()
+        mutation_check.il_reading_assemblies = lambda _project: self.il_read
+        self.addCleanup(self.restore, saved + (READ_IL,))
+
+    @staticmethod
+    def restore(saved):
+        (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file,
+         mutation_check.il_reading_assemblies) = saved
+
+    def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert — the baseline is the only launch; the session measured the mutant.
+        self.assertEqual(campaign.launched, ["baseline.xml"])
+
+    def test_Given_AMutantTheSessionKilled_When_ItsVerdictIsRecorded_Then_ItIsAKill(self):
+        # Arrange — the stubbed editor would make an own launch survive, so the kill is the session's.
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.recorded(), mutation_check.KILLED)
+
+    def test_Given_AMutantTheSessionLeftSurviving_When_ItsVerdictIsRecorded_Then_ItIsASurvivor(self):
+        # Arrange — the stubbed editor would make an own launch a kill, so the survivor is the session's.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.kills = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.recorded(), mutation_check.SURVIVED)
+
+    def test_Given_AKillWhoseCaseFailsUnmutatedToo_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — a case that fails again under the unmutated program failed on what the session
+        # carried, and a survivor recorded as covered is what that reading would ship.
+        campaign = self.campaign
+        campaign.unconfirmed = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AStageThatDidNotArmTheMutant_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — the editor kept the last build it could compile, which carries no switch.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.unarmed = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_ASurvivingStageShortOfTheBaselinesCases_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — a run that held other cases than the baseline's asked another question.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.short = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AnItemNoSessionLaunchFinished_When_TheSessionEnds_Then_TheMutantTakesItsOwnLaunch(self):
+        # Arrange — the editor was killed at the stage's bound, and the own launch decides as it always has.
+        # A survivor, since a kill would fall back on its confirmation's launch as well.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.lost = True
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_LaunchPerMutant_When_TheCampaignRuns_Then_TheRewriterIsNotAsked(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1", "--launch-per-mutant")
+
+        # Assert
+        self.assertEqual(campaign.rewrites, [])
+
+    def test_Given_ASession_When_ItRuns_Then_TheRewrittenSourceIsOnDisk(self):
+        # Arrange
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.during, SessionCampaign.REWRITTEN)
+
+
+    def test_Given_ASurvivorInAnAssemblyAFixtureReadsTheILOf_When_TheSessionEnds_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — that fixture read every guard compiled together, not this mutant's build.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        self.il_read = {mutation_check.assembly_of(campaign.source), "Elsewhere"}
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_NoMutantIsMeasuredInASession(self):
+        # Arrange — the runner starts each stage itself, so the argument would reach none of them.
+        campaign = self.campaign
+
+        # Act
+        campaign.run("--max", "1", "--editor-arg=-someFlag")
+
+        # Assert
+        self.assertEqual(campaign.rewrites, [])
+
+
+class ILReadingAssemblyTests(unittest.TestCase):
+    def test_Given_AFixtureReadingTheModuleOfAType_When_Derived_Then_TheTypesAssemblyIsRead(self):
+        # Arrange — one assembly a fixture reads by a type, one it never names.
+        project = Path(tempfile.mkdtemp(prefix="il-read-"))
+        for name, declares in (("Read", "public static class V { }"), ("Unread", "public static class W { }")):
+            directory = project / "Packages" / name
+            directory.mkdir(parents=True)
+            (directory / "{}.asmdef".format(name)).write_text(json.dumps({"name": name}))
+            (directory / "{}.cs".format(name)).write_text(declares)
+        tests = project / "Packages" / "Read" / "Tests"
+        tests.mkdir()
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(
+            "class ReaderTests { void A() { ModuleDefinition.ReadModule(typeof(V).Assembly.Location); } }")
+
+        # Act
+        read = mutation_check.il_reading_assemblies(project)
+
+        # Assert
+        self.assertEqual(read, {"Read"})
+
+
+class SessionVerdictTests(unittest.TestCase):
+    """A narrowed kill, read directly: the campaign stub runs no narrowed stage."""
+
+    def reading(self, opening_failures):
+        planned = {"id": 7, "stages": [{"name": "narrowed:Styling", "assemblyNames": ["Velvet.Tests.Styling.Editor"]},
+                                       {"name": "whole", "assemblyNames": []}]}
+        item = {"id": 7, "stages": [{"name": "narrowed:Styling", "finished": True, "cancelled": True,
+                                     "failures": ["N.C.Kills"], "armed": ["Velvet:7"]}]}
+        opening = {"narrowed:Styling": {"name": "narrowed:Styling", "finished": True, "passed": 3,
+                                        "failed": len(opening_failures), "failures": opening_failures}}
+        return mutation_check.session_verdict(item, planned, 7, "Velvet", {}, opening, {"N.C.Kills": True}, set())
+
+    def test_Given_ANarrowedKillOverAGreenAreaBaseline_When_Read_Then_ItNamesTheAreasAssemblies(self):
+        # Arrange
+
+        # Act
+        reading = self.reading([])
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.KILLED, "1 failed in Velvet.Tests.Styling.Editor: Kills",
+                                   ["N.C.Kills"]))
+
+    def test_Given_ANarrowedKillOverAnAreaBaselineThatFailed_When_Read_Then_ItDoesNotStand(self):
+        # Arrange — the area failing alone under the unmutated program fails under every mutant too.
+
+        # Act
+        reading = self.reading(["N.C.Other"])
+
+        # Assert
+        self.assertIsNone(reading)
+
+
+class SessionPlanTests(unittest.TestCase):
+    def plan(self, count, platform="EditMode"):
+        project = Path("/p")
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(count)]
+        plan, segments = mutation_check.session_plan(project, mutants, list(range(1, count + 1)), {}, [],
+                                                     platform, 100, 900, Path("/out"))
+        return plan, segments
+
+    def test_Given_MoreMutantsThanOneSegmentHolds_When_Planned_Then_EachSegmentEndsInAConfirmation(self):
+        # Arrange — one mutant past a full segment, so the second segment is the short tail.
+        full = mutation_check.SESSION_MUTANTS
+
+        # Act
+        plan, segments = self.plan(full + 1)
+
+        # Assert — and each launch ends where its confirmation does.
+        self.assertEqual(([position for position, item in enumerate(plan["items"]) if item.get("confirm")],
+                          segments), ([full, full + 2], [full + 1, full + 3]))
+
+    def test_Given_OneSegmentOfMutants_When_Planned_Then_ItHoldsExactlyOneConfirmation(self):
+        # Arrange
+        count = mutation_check.SESSION_MUTANTS
+
+        # Act
+        plan, _ = self.plan(count)
+
+        # Assert
+        self.assertEqual(sum(1 for item in plan["items"] if item.get("confirm")), 1)
+
+    def test_Given_PlayMode_When_Planned_Then_NoStageStopsAtItsFirstFailure(self):
+        # Arrange — a job cancelled in play mode leaves its scene modified for the next one.
+
+        # Act
+        plan, _ = self.plan(2, "PlayMode")
+
+        # Assert
+        self.assertEqual({stage["stopAtFirstFailure"] for item in plan["items"] for stage in item["stages"]},
+                         {False})
+
+    def test_Given_EditMode_When_Planned_Then_AMutantsStagesStopAtTheirFirstFailure(self):
+        # Arrange
+
+        # Act
+        plan, _ = self.plan(2)
+
+        # Assert
+        self.assertEqual([stage["stopAtFirstFailure"] for item in plan["items"] if not item.get("confirm")
+                          for stage in item["stages"]], [True, True])
+
+
+class SessionFilterTests(unittest.TestCase):
+    def test_Given_AnEditorScope_When_ReadAsAStageFilter_Then_EachFlagSplitsOnSemicolons(self):
+        # Arrange
+        scope = ["-assemblyNames", "A;B", "-testFilter", "!\\.X$;!\\.Y$"]
+
+        # Act
+        read = mutation_check.session_filter(scope)
+
+        # Assert
+        self.assertEqual(read, (["A", "B"], ["!\\.X$", "!\\.Y$"]))
+
+
+class HeldFilesTests(unittest.TestCase):
+    def held(self):
+        """A tree holding the record a session writes over two guarded sources."""
+        campaign = StubbedCampaign()
+        second = campaign.project / "Packages/com.velvet.core/Runtime/Second.cs"
+        entries = []
+        for path, original in ((campaign.source, campaign.source.read_text()), (second, "second original")):
+            entries.append({"source": str(path), "original": original,
+                            "original_sha": hashlib.sha256(original.encode()).hexdigest(),
+                            "mutated_sha": hashlib.sha256(b"guarded").hexdigest()})
+            path.write_text("guarded")
+        (campaign.project / mutation_check.SENTINEL).write_text(json.dumps(
+            {"sources": entries, "mutation": "2 mutant(s) guarded for one session"}))
+        return campaign, second
+
+    def test_Given_ASessionsHeldFiles_When_TheHolderReleasesThem_Then_EveryOneIsPutBack(self):
+        # Arrange
+        campaign, second = self.held()
+
+        # Act
+        mutation_check.Holder(campaign.project / mutation_check.SENTINEL).release()
+
+        # Assert
+        self.assertEqual(second.read_text(), "second original")
+
+    def test_Given_ASessionsHeldFiles_When_ACommitWouldRecordAnyOfThem_Then_ItIsRefused(self):
+        # Arrange — the second file, not the first: a reader of one `source` sees only the first.
+        campaign, _ = self.held()
+
+        # Act
+        code = campaign.run("--carried", "Packages/com.velvet.core/Runtime/Second.cs")
+
+        # Assert
+        self.assertEqual(code, mutation_check.CARRIED_REFUSAL)
+
+    def test_Given_ASessionsHeldFileEditedSince_When_RestoreRuns_Then_ItRefusesToOverwriteIt(self):
+        # Arrange
+        campaign, second = self.held()
+        second.write_text("somebody's own work")
+
+        # Act — a reader of one `source` finds none in this record and stops on an OSError instead.
+        try:
+            code = campaign.run("--restore")
+        except OSError as failure:
+            code = failure
+
+        # Assert
+        self.assertIn("holds neither the mutation", str(code))
+
+
+class SessionLaunchTests(unittest.TestCase):
+    """`run_session` against a runner played by a stub of `launch`, which writes what the real runner
+    writes: its progress, and `runner-done` or `runner-failed`."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="session-launch-"))
+        project = Path("/p")
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(3)]
+        self.plan, segments = mutation_check.session_plan(project, mutants, [1, 2, 3], {}, [], "EditMode",
+                                                          100, 900, self.directory)
+        self.plan["segments"] = segments
+        self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
+                                       editor_arg=[])
+        self.commands, self.answers, self.busy = [], [], []
+        self.scripts = []
+        saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
+                 mutation_check.wait_for_quiet)
+        mutation_check.launch = self.launch
+        mutation_check.wait_for_quiet = lambda _seconds: True
+        mutation_check.unity_busy = lambda: self.busy.pop(0) if self.busy else 1
+        mutation_check.wait_for_release = lambda _project, _seconds: True
+        self.addCleanup(self.restore, saved)
+
+    @staticmethod
+    def restore(saved):
+        (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
+         mutation_check.wait_for_quiet) = saved
+
+    def progress(self, position, phase="running", age=0):
+        (self.directory / "runner-progress.json").write_text(json.dumps(
+            {"position": position, "id": 0, "stage": 0, "phase": phase, "since": time.time() - age}))
+
+    # A group no process holds, so a settle over it returns at once.
+    GROUP = 2 ** 22 + 7
+
+    def launch(self, command, _timeout, _holder, _env, expired):
+        self.commands.append(command)
+        self.log = Path(command[command.index("-logFile") + 1])
+        # A script returns (timed out, what the editor printed) where the launch was not a plain one.
+        timed_out, printed = self.scripts.pop(0)(expired) or (False, "")
+        return 0.0, timed_out, 0, printed, self.GROUP
+
+    def stopped(self, expired):
+        self.log.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
+
+    def finishes(self, expired):
+        self.progress(len(self.plan["items"]))
+        (self.directory / "runner-done").write_text("")
+
+    def session(self):
+        return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
+        # Arrange — the first launch dies in the second mutant's item.
+        def dies(expired):
+            self.progress(2)
+        self.scripts = [dies, self.finishes]
+
+        # Act
+        runs, lost, _ = self.session()
+
+        # Assert
+        self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
+                         ([2], {0: 1, 1: 1, 3: 2}))
+
+    def test_Given_AStageOlderThanItsBound_When_Asked_Then_ItHasExpired(self):
+        # Arrange — the plan's stage bound plus the slack, and a second past it.
+        bound = self.plan["items"][0]["stages"][0]["bound"] + mutation_check.SESSION_STAGE_SLACK
+        def overdue(expired):
+            self.progress(0, age=bound + 1)
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [overdue]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [True])
+
+    def test_Given_AStageInsideItsBound_When_Asked_Then_ItHasNotExpired(self):
+        # Arrange
+        def young(expired):
+            self.progress(0, age=1)
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [young]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [False])
+
+    def test_Given_AReloadThatNeverCompletes_When_ItsBoundPasses_Then_TheSessionIsAbandoned(self):
+        # Arrange — asked for, and past SESSION_RELOAD_BOUND though well inside the stage's own bound.
+        def stuck(expired):
+            self.progress(1, phase="start", age=mutation_check.SESSION_RELOAD_BOUND + 1)
+            expired()
+        self.scripts = [stuck, self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert — and no second launch was made.
+        self.assertEqual((len(self.commands), "reload" in (stopped or "")), (1, True))
+
+    def test_Given_ARunnerThatFailedClosed_When_TheLaunchEnds_Then_TheSessionIsAbandoned(self):
+        # Arrange
+        def fails(expired):
+            self.progress(0)
+            (self.directory / "runner-failed").write_text("no holder")
+        self.scripts = [fails, self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "no holder" in (stopped or "")), (1, True))
+
+    def test_Given_AnotherEditorDuringOneItem_When_TheSessionEnds_Then_OnlyThatItemCarriesIt(self):
+        # Arrange — unity_busy counts the session's own editor too, so 2 is one neighbour.
+        def neighbour(expired):
+            self.busy = [2, 1]
+            self.progress(1)
+            expired()
+            self.progress(2)
+            expired()
+            self.finishes(expired)
+        self.scripts = [neighbour]
+
+        # Act
+        runs, _, _ = self.session()
+
+        # Assert
+        self.assertEqual({position: run["peak"] for position, run in runs.items()}, {0: 0, 1: 1, 2: 0, 3: 0})
+
+    def test_Given_AMachineThatStaysBusy_When_ASessionWouldLaunch_Then_NoEditorIsStarted(self):
+        # Arrange — a later segment's launch waits for the machine as the first one did.
+        mutation_check.wait_for_quiet = lambda _seconds: False
+        self.scripts = [self.finishes]
+
+        # Act
+        _, _, stopped = self.session()
+
+        # Assert
+        self.assertEqual((self.commands, "still in flight" in (stopped or "")), ([], True))
+
+    def test_Given_ALaunchTheBuildSystemStopped_When_TheSessionGoesOn_Then_ItIsLaunchedAgain(self):
+        # Arrange — stopped before the runner wrote anything, as run_suite's own launches can be.
+        self.scripts = [self.stopped, self.finishes]
+
+        # Act
+        runs, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), failure, sorted(runs)), (2, None, [0, 1, 2, 3]))
+
+    def test_Given_ABuildSystemStopThatAlsoTimedOut_When_TheLaunchEnds_Then_TheSessionIsGivenUpUnrelaunched(self):
+        # Arrange — a relaunch after a timeout would charge the session a second full bound.
+        def stopped_late(expired):
+            self.stopped(expired)
+            return True, ""
+        self.scripts = [stopped_late, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "build system" in (failure or "")), (1, True))
+
+    def test_Given_TheBuildSystemStoppingEveryLaunch_When_TheSessionRetries_Then_ItStopsAtTheAttempts(self):
+        # Arrange
+        self.scripts = [self.stopped] * (mutation_check.BUILD_SYSTEM_ATTEMPTS + 1)
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), "build system" in (failure or "")),
+                         (mutation_check.BUILD_SYSTEM_ATTEMPTS, True))
+
+    def test_Given_ALaunchTheBuildSystemStopped_When_ItIsRelaunched_Then_ItsGroupIsSettledFirst(self):
+        # Arrange — what the stopped launch left running would hold the project against the relaunch.
+        settled = []
+        saved = mutation_check.settle
+        mutation_check.settle = lambda group, seconds: settled.append((group, seconds))
+        self.addCleanup(setattr, mutation_check, "settle", saved)
+        self.scripts = [self.stopped, self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(settled, [(self.GROUP, mutation_check.BUILD_SYSTEM_SETTLE)])
+
+    def test_Given_ALaunchRefusedForTheLock_When_TheSessionGoesOn_Then_ItIsLaunchedAgain(self):
+        # Arrange
+        def refused(expired):
+            return False, mutation_check.LOCK_REFUSAL
+        self.scripts = [refused, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert
+        self.assertEqual((len(self.commands), failure), (2, None))
+
+    def test_Given_ARelaunchAfterABuildSystemStop_When_ItHasNotYetWrittenProgress_Then_ItHasItsOwnFullBound(self):
+        # Arrange — the first launch used most of the bound before the build system stopped it.
+        clock = [1000.0]
+        saved = mutation_check.time
+        mutation_check.time = argparse.Namespace(time=lambda: clock[0], sleep=lambda _seconds: None,
+                                                 strftime=saved.strftime)
+        self.addCleanup(setattr, mutation_check, "time", saved)
+        def stopped_late(expired):
+            clock[0] += self.args.timeout - 10
+            self.stopped(expired)
+        def still_compiling(expired):
+            clock[0] += 20
+            self.answers.append(expired())
+            self.finishes(expired)
+        self.scripts = [stopped_late, still_compiling]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.answers, [False])
+
+    def test_Given_AStaleSessionLogFromAnEarlierRun_When_TheLaunchWritesNone_Then_ItIsNotReadAsThisLaunchs(self):
+        # Arrange — an earlier campaign over the same output left a build-system line in the log.
+        stale = self.directory / "session-000.log"
+        stale.write_text(mutation_check.BUILD_SYSTEM_FAILURE + " Bee exited\n")
+        self.scripts = [lambda expired: None, self.finishes]
+
+        # Act
+        _, _, failure = self.session()
+
+        # Assert — read as a launch that never started, not as one the build system stopped.
+        self.assertEqual((len(self.commands), "first stage" in (failure or "")), (1, True))
+
+    def test_Given_TheSessionsOwnLaunch_When_ABusyCountReadsIt_Then_ItIsCounted(self):
+        # Arrange — a session the campaign's own wait could not see would share the machine with the next.
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertIsNotNone(re.match(mutation_check.UNITY_RUNNING, " ".join(self.commands[0])))
+
+
+class SessionConfirmationTests(unittest.TestCase):
+    """Which confirmation a kill stands on: its own segment's, run in its own launch."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="session-confirm-"))
+        project = Path("/p")
+        count = mutation_check.SESSION_MUTANTS + 1
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(count)]
+        self.plan, _ = mutation_check.session_plan(project, mutants, list(range(1, count + 1)), {}, [],
+                                                   "EditMode", 100, 900, self.directory)
+        # The first segment's confirmation failed the case, the second's passed it.
+        for number, result in ((-1, "Failed"), (-2, "Passed")):
+            xml = self.directory / "confirm{}.xml".format(number)
+            xml.write_text('<test-run><test-case fullname="N.C.Kills" result="{}" /></test-run>'.format(result))
+            (self.directory / "item-{}.json".format(mutation_check.cs_id(number))).write_text(json.dumps(
+                {"id": number, "stages": [{"name": "confirm", "finished": True, "xml": str(xml)}]}))
+        self.found = mutation_check.confirmations(self.plan, self.directory)
+
+    def test_Given_AKillInTheFirstSegment_When_ItsConfirmationIsRead_Then_ItIsItsOwnSegments(self):
+        # Arrange — every item carried by the one launch.
+        runs = {position: {"launch": 1, "peak": 0} for position in range(len(self.plan["items"]))}
+
+        # Act
+        confirmed = mutation_check.confirmed_for(self.plan, 0, runs, self.found)
+
+        # Assert — the second segment's pass does not clear the first's failure.
+        self.assertEqual(confirmed, {"N.C.Kills": False})
+
+    def test_Given_AConfirmationFromALaterLaunch_When_ItsKillIsRead_Then_NothingConfirmsIt(self):
+        # Arrange — the item's editor died after it, and its segment's confirmation ran in the next one.
+        closing = next(position for position, item in enumerate(self.plan["items"]) if item.get("confirm"))
+        runs = {position: {"launch": 1 if position < 3 else 2, "peak": 0} for position in range(closing + 1)}
+        found = {closing: {"N.C.Kills": True}}
+
+        # Act
+        confirmed = mutation_check.confirmed_for(self.plan, 0, runs, found)
+
+        # Assert
+        self.assertEqual(confirmed, {})
 
 
 if __name__ == "__main__":

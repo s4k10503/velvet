@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using NUnit.Framework;
 
 namespace Velvet.Tests
@@ -9,14 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what <see cref="StyleVariantClass.BreakpointPx"/> and <see cref="StyleVariantClass.IsResponsive"/>
     /// answer for a value that names no <see cref="StyleVariantKind"/>, and that the two of them stay one
-    /// question. <see cref="StyleVariantClass.RelationalOf"/> is enumerated over the named members, which
-    /// nothing else does — <see cref="StyleVariantClass.BreakpointPx"/> is enumerated by the agreement case
-    /// beside it.
-    /// <para>
-    /// That enumeration is not redundant with CS8509 being an error, because nothing here establishes that
-    /// the flag reaches the compiler: <c>ExhaustiveSwitchSeverityTests</c> reads the response file, not the
-    /// build.
-    /// </para>
+    /// question. <see cref="StyleVariantClass.RelationalOf"/> is enumerated over the named members, and
+    /// <see cref="StyleVariantClass.BreakpointPx"/> by the agreement case beside it.
     /// </summary>
     [TestFixture]
     internal sealed class StyleVariantKindClassificationTests
@@ -24,8 +17,8 @@ namespace Velvet.Tests
         private static StyleVariantKind UnnamedKind() =>
             (StyleVariantKind)(Enum.GetValues(typeof(StyleVariantKind)).Cast<int>().Max() + 1);
 
-        // GREEN_ON_BASE(characterization): the only enumeration of RelationalOf. Its other defence is the
-        // compiler flag, and no case here establishes that the flag reaches the build.
+        // GREEN_ON_BASE(characterization): every named kind was answered on the base as well, where a
+        // switch did the lookup; VariantKindTableTests holds the table itself.
         [Test]
         public void Given_EveryNamedKind_When_RelationalOfIsAsked_Then_NoneIsRefused()
         {
@@ -37,7 +30,7 @@ namespace Velvet.Tests
                 {
                     StyleVariantClass.RelationalOf(kind);
                 }
-                catch (SwitchExpressionException)
+                catch (ArgumentOutOfRangeException)
                 {
                     refused.Add(kind);
                 }
@@ -64,28 +57,24 @@ namespace Velvet.Tests
             Assert.That(disagreeing, Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the refusal is the behaviour the CHANGELOG now records. The type
-        // is named to separate it from a member throwing for a reason of its own; it is the compiler's
-        // signature for the absent arm rather than a contract, so a deliberate move to
-        // ArgumentOutOfRangeException updates this line rather than being blocked by it.
+        // The type is named to separate the refusal the CHANGELOG records from a member throwing for a
+        // reason of its own; it is the lookup table's refusal of a value naming no kind.
         [Test]
         public void Given_AValueNamingNoKind_When_BreakpointPxIsAsked_Then_ItIsRefused()
         {
             // Assert
             Assert.That(() => StyleVariantClass.BreakpointPx(UnnamedKind()),
-                Throws.InstanceOf<SwitchExpressionException>());
+                Throws.InstanceOf<ArgumentOutOfRangeException>());
         }
 
-        // GREEN_ON_BASE(characterization): the refusal is the behaviour the CHANGELOG now records. The type
-        // is named to separate it from a member throwing for a reason of its own; it is the compiler's
-        // signature for the absent arm rather than a contract, so a deliberate move to
-        // ArgumentOutOfRangeException updates this line rather than being blocked by it.
+        // The type is named to separate the refusal the CHANGELOG records from a member throwing for a
+        // reason of its own; it is the lookup table's refusal of a value naming no kind.
         [Test]
         public void Given_AValueNamingNoKind_When_IsResponsiveIsAsked_Then_ItIsRefused()
         {
             // Assert
             Assert.That(() => StyleVariantClass.IsResponsive(UnnamedKind()),
-                Throws.InstanceOf<SwitchExpressionException>());
+                Throws.InstanceOf<ArgumentOutOfRangeException>());
         }
     }
 }

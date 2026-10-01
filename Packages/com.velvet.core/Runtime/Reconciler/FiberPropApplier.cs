@@ -47,7 +47,7 @@ namespace Velvet
             }
         }
 
-        private static readonly int s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
+        private static readonly long s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
 
         // Unlike ApplyEnabled, a dropped Focusable cannot coalesce to a constant: what an absent prop has to
         // restore is the element's own constructed value, which differs by

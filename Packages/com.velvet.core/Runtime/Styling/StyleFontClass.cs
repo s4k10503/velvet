@@ -80,7 +80,7 @@ namespace Velvet
 
             foreach (var cls in classNames)
             {
-                if (IsFontToken(cls))
+                if (IsFontToken(StyleArbitraryValueResolver.StripImportant(cls, out _)))
                 {
                     return true;
                 }
@@ -121,9 +121,7 @@ namespace Velvet
         /// important-modifier bang (<c>!font-[…]</c> / <c>font-[…]!</c>) is tolerated: the 3 call sites
         /// above run THIS check before their own <c>StripImportant</c> call, so a bang'd token that only
         /// matched the un-prefixed form would fall through, have its bang stripped downstream, and leak the
-        /// bare bracket core into the class list as a dead token. The modifier itself stays a no-op for
-        /// this family either way (see <c>StripImportant</c>'s own Scope comment) — this only makes the
-        /// classlist guard agree with the stripper on what counts as "this family".
+        /// bare bracket core into the class list as a dead token.
         /// </summary>
         public static bool IsArbitraryFontClass(string cls)
         {
@@ -152,14 +150,18 @@ namespace Velvet
             var facets = new FontFacets { Weight = VelvetFontWeight.Normal };
             var any = false;
 
-            foreach (var cls in classNames)
+            // The important tokens are folded in a second pass, so each facet one of them sets overrides every
+            // plain token's wherever it sits, and within either group the later class wins.
+            for (var pass = 0; pass < 2; pass++)
             {
-                if (!ParseClass(cls, ref facets))
+                foreach (var cls in classNames)
                 {
-                    continue;
+                    var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
+                    if (important == (pass == 1) && ParseClass(core, ref facets))
+                    {
+                        any = true;
+                    }
                 }
-
-                any = true;
             }
 
             if (!any)

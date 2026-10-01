@@ -37,6 +37,7 @@ namespace Velvet.Tests
         private static SetStore s_store;
         private static AnimatePresenceMode s_mode;
         private static bool s_classicTransition;
+        private static bool s_fragments;
         private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["visible"] = "opacity-100",
@@ -50,6 +51,7 @@ namespace Velvet.Tests
             s_store = null;
             s_mode = AnimatePresenceMode.PopLayout;
             s_classicTransition = false;
+            s_fragments = false;
         }
 
         [Component]
@@ -59,10 +61,11 @@ namespace Velvet.Tests
             var children = new List<VNode>();
             foreach (var key in keys)
             {
-                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                var motion = V.Motion(name: "item-" + key, key: s_fragments ? null : key.ToString(),
                     className: "w-[60px] h-[24px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                children.Add(s_fragments ? V.Fragment(new[] { motion }, key: key.ToString()) : motion);
             }
             return V.Div(name: "presence-host", children: new VNode[]
             {
@@ -302,6 +305,47 @@ namespace Velvet.Tests
                 (positionWhilePinned,
                     _window.rootVisualElement.Q<VisualElement>("item-b").style.position.keyword),
                 Is.EqualTo((Position.Absolute, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentChild_When_ItsPopLayoutExitStarts_Then_ItStaysInFlow()
+        {
+            // Arrange — each keyed child is a Fragment around its Motion.
+            s_fragments = true;
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act — remove the middle child.
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the Fragment's element is held for its exit and left unpinned.
+            var item = _window.rootVisualElement.Q<VisualElement>("item-b");
+            Assert.That((item != null, item?.style.position.keyword), Is.EqualTo((true, (StyleKeyword?)StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AKeyedFragmentChildExiting_When_TheKeyReturnsBeforeItFinishes_Then_ItsArbitraryWidthSurvives()
+        {
+            // Arrange — w-[60px] lives only as inline style on the Fragment's Motion, and the removal has started
+            // its exit.
+            s_fragments = true;
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = MountLaidOut();
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+
+            // Act — re-add the key before the exit finishes.
+            store.Set("abc");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the inline width is still the one the class wrote.
+            var item = _window.rootVisualElement.Q<VisualElement>("item-b");
+            Assert.That((item != null, item?.style.width.value.value), Is.EqualTo((true, (float?)60f)));
         }
 
         [Test]

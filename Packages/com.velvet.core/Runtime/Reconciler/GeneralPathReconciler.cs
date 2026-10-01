@@ -58,15 +58,17 @@ namespace Velvet
             // OldOwners names from the map build on.
             public List<ChildKey> OldKeys = null!;
             public Dictionary<ChildKey, (int index, VNode? node)> OldKeyMap = null!;
-            public HashSet<ChildKey> UsedKeys = null!;
-            public HashSet<ChildKey> ReplacedKeys = null!;
-            public HashSet<int> OrphanedOldIndices = null!;
+            // The old leaves a new leaf has taken, patched or replaced, by index: two leaves sharing a key can
+            // both be taken. FinalizeGeneralCommit narrows it to the ones patched.
+            public HashSet<int> UsedOldIndices = null!;
+            public HashSet<ChildKey> NewKeys = null!;
             public List<(VisualElement? element, bool isExisting)> NewElements = null!;
             // The fiber whose output emitted each OldNodes entry, index-aligned with it.
             public List<ComponentFiber?> OldOwners = null!;
-            // Key committed for each NewElements entry (parallel list), so a
-            // speculative subtree (Suspense primary) can be rolled back on suspend.
-            public List<ChildKey> CommittedKeys = null!;
+            // One entry per NewElements entry (parallel list), truncated with it when a speculative subtree
+            // (Suspense primary) rolls back: the old leaf it took (-1 for none), and whether it and every entry
+            // before it took the old leaf at their own index.
+            public List<CommittedLeaf> Committed = null!;
             // The component fibers whose expansion this walk completed, each with the NewElements index its
             // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
             // places the rows. RollbackCommitTo leaves the entries of a suspended primary's fibers in place, so
@@ -75,6 +77,8 @@ namespace Velvet
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
         }
+
+        internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
 
         // Runs effect cleanups for fibers present on the old side but absent on the new side
         // (orphans), before any DOM removal. Scoped to this reconcile call's expansion.
@@ -143,20 +147,16 @@ namespace Velvet
                 OldNodes = oldNodes,
                 OldKeys = pairing.OldKeys,
                 OldKeyMap = pool.RentOldKeyMap(),
-                UsedKeys = pool.RentKeySet(),
-                ReplacedKeys = pool.RentReplacedKeySet(),
-                OrphanedOldIndices = pool.RentOrphanedIndexSet(),
+                UsedOldIndices = pool.RentOrphanedIndexSet(),
+                NewKeys = pool.RentKeySet(),
                 NewElements = pool.RentElementList(),
                 OldOwners = pairing.OldOwners,
-                CommittedKeys = new List<ChildKey>(),
+                Committed = new List<CommittedLeaf>(),
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
             try
             {
-                // Build the old-key → (domIndex, node) map. Duplicate keys register the earlier index
-                // as orphaned (it will be removed), through the same ReconcileKeying.RegisterOldKey the
-                // keyed paths use.
                 if (commit.OldKeys.Count == 0)
                 {
                     for (var i = 0; i < oldNodes.Length; i++) commit.OldKeys.Add(_keying.ReconcileKey(oldNodes[i], i));
@@ -164,8 +164,7 @@ namespace Velvet
                 for (var i = 0; i < oldNodes.Length; i++)
                 {
                     commit.OldKeys[i] = commit.OldKeys[i].OwnedBy(commit.OldOwners[i]);
-                    ReconcileKeying.RegisterOldKey(
-                        commit.OldKeys[i], oldNodes[i], i, commit.OldKeyMap, commit.OrphanedOldIndices);
+                    commit.OldKeyMap[commit.OldKeys[i]] = (i, oldNodes[i]);
                 }
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
@@ -219,9 +218,8 @@ namespace Velvet
             {
                 pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
-                pool.ReturnKeySet(commit.UsedKeys);
-                pool.ReturnReplacedKeySet(commit.ReplacedKeys);
-                pool.ReturnOrphanedIndexSet(commit.OrphanedOldIndices);
+                pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
+                pool.ReturnKeySet(commit.NewKeys);
                 pool.Return(commit.NewElements);
             }
         }
@@ -285,63 +283,71 @@ namespace Velvet
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
+            var oldNodes = commit.OldNodes!;
 
-            // Old leaf i is committed at parent.children[slotStart + i] (the previous render placed
-            // leaves in expansion order; patches stay in place and creates are orphans, so the bound
-            // holds throughout the walk). The childCount guard degrades a stale oldNodes/DOM mismatch
-            // (e.g. after a prior aborted/suspended commit) to a fresh create instead of throwing
-            // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
-            // can be re-entered mid-suspend so it guards defensively.
-            var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
-                && LogicalChildSlots.TryGetPhysical(parent, slotStart + old.index, out _);
-            if (oldMatched && commit.UsedKeys.Contains(key))
+            if (!commit.NewKeys.Add(key))
             {
-                // A second new-side sibling resolved the same old entry its first occurrence already
-                // claimed: re-matching would alias two rows onto one element or retroactively remove
-                // the patched one via ReplacedKeys. Mirror the old-side duplicate guard: warn and
-                // fall through to a fresh create so every declared row commits.
                 FiberLogger.LogWarning("GeneralPathReconciler",
                     $"Duplicate key detected among new siblings: {key}. " +
-                    "The repeated sibling mounts a fresh element; give each sibling a unique key.");
-                oldMatched = false;
+                    "Both siblings render; give each sibling a unique key.");
             }
-            if (oldMatched)
+            var ordinal = commit.NewElements.Count;
+            var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
+            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear);
+            if (oldIndex >= 0)
             {
-                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
-                if (ReconcileKeying.CanPatch(old.node, node))
+                var oldNode = oldNodes[oldIndex];
+                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
+                if (ReconcileKeying.CanPatch(oldNode, node))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
-                    _patcher.PatchNode(actual, old.node, node);
+                    _patcher.PatchNode(actual, oldNode, node);
                     if (_ctx.IsAborted) return;
                     // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
+                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
                     commit.NewElements.Add((existingDom, true));
-                    // Mark the old key consumed only AFTER the patch succeeds. PatchNode can re-enter a
-                    // child reconcile that throws FiberSuspendSignal (a suspending descendant) or set
-                    // IsAborted; recording UsedKeys before that would leave a stale entry that survives
-                    // RollbackCommitTo (which un-uses only keys recorded in CommittedKeys) and wrongly
-                    // suppress the old element's removal, leaving primary content beside the fallback.
-                    commit.UsedKeys.Add(key);
                 }
                 else
                 {
-                    var newElement = _factory.CreateElement(node);
-                    commit.NewElements.Add((newElement, false));
-                    // Type-swap (old element removed, new created). Recorded after CreateElement
-                    // succeeds, for the same suspend/abort safety as the patch branch above.
-                    commit.UsedKeys.Add(key);
-                    commit.ReplacedKeys.Add(key);
+                    commit.NewElements.Add((_factory.CreateElement(node), false));
                 }
+                commit.UsedOldIndices.Add(oldIndex);
             }
             else
             {
                 var newElement = _factory.CreateElement(node);
                 commit.NewElements.Add((newElement, false));
             }
-            // Parallel to the single NewElements entry added on every committed (non-throwing,
-            // non-aborted) path, so a speculative subtree (Suspense primary) can roll its commits
-            // back on suspend.
-            commit.CommittedKeys.Add(key);
+            commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal, key));
+        }
+
+        // React's reconcileChildrenArray: while each leaf so far took the old leaf at its own index, a leaf
+        // whose key that old leaf carries takes it too, so siblings repeating a key in an unchanged order keep
+        // their elements. After the first that does not, a key resolves to its last old leaf, and to none once
+        // that leaf is taken.
+        //
+        // Old leaf i is committed at parent.children[slotStart + i] (the previous render placed leaves in
+        // expansion order; patches stay in place and creates are orphans, so the bound holds throughout the
+        // walk). The slot check degrades a stale oldNodes/DOM mismatch (e.g. after a prior aborted/suspended
+        // commit) to a fresh create instead of throwing IndexOutOfRange — the time-sliced keyed path asserts
+        // this invariant; the general path can be re-entered mid-suspend so it guards defensively.
+        private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
+        {
+            int oldIndex;
+            if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
+                && !commit.UsedOldIndices.Contains(ordinal))
+            {
+                oldIndex = ordinal;
+            }
+            else if (commit.OldKeyMap.TryGetValue(key, out var old) && !commit.UsedOldIndices.Contains(old.index))
+            {
+                oldIndex = old.index;
+            }
+            else
+            {
+                return -1;
+            }
+            return LogicalChildSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context
@@ -408,11 +414,14 @@ namespace Velvet
                 }
                 _ctx.ComponentRegistry.DisposeFibersUnder(orphanContainers);
             }
+            // The rolled-back leaves' keys leave NewKeys, so a boundary's fallback leaf carrying one of them is not
+            // reported as a duplicate. What they put in UsedOldIndices stays: a Suspense primary's leaves are keyed
+            // under its own scope (FiberKeying.SuspenseSubtree), which no later leaf of the walk carries, a
+            // boundary's catch marks every old row of its output taken anyway (ForgetOldRowsOf), and the other
+            // rollbacks end the walk.
             for (var i = commit.NewElements.Count - 1; i >= preCount; i--)
             {
-                var key = commit.CommittedKeys[i];
-                commit.UsedKeys.Remove(key);
-                commit.ReplacedKeys.Remove(key);
+                commit.NewKeys.Remove(commit.Committed[i].Key);
                 var (element, isExisting) = commit.NewElements[i];
                 if (!isExisting)
                 {
@@ -420,7 +429,7 @@ namespace Velvet
                 }
             }
             commit.NewElements.RemoveRange(preCount, commit.NewElements.Count - preCount);
-            commit.CommittedKeys.RemoveRange(preCount, commit.CommittedKeys.Count - preCount);
+            commit.Committed.RemoveRange(preCount, commit.Committed.Count - preCount);
         }
 
         // A created container orphan (e.g. V.Div) reconciled its declared children during CreateElement, so
@@ -509,8 +518,8 @@ namespace Velvet
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
-        // ReconcileKeyedSync with linearEnd == 0 (the live-context walk performs
-        // no linear prefix pass — all matching happened in CommitLeaf).
+        // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
+        // matched linearly are placed with the rest rather than ahead of them.
         private void FinalizeGeneralCommit(GeneralCommitState commit)
         {
             var parent = commit.Parent!;
@@ -518,20 +527,23 @@ namespace Velvet
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
+            // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
+            var patched = commit.UsedOldIndices;
+            patched.Clear();
+            for (var j = 0; j < newElements.Count; j++)
+            {
+                if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
+            }
             // Removal (reverse so not-yet-visited indices stay valid).
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
-                var key = commit.OldKeys[i];
-                if (commit.OrphanedOldIndices.Contains(i)
-                    || !commit.UsedKeys.Contains(key)
-                    || commit.ReplacedKeys.Contains(key))
+                if (!patched.Contains(i))
                 {
                     _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 }
             }
 
-            // LIS reorder over the post-removal DOM positions. linearEnd == 0 here (the live-context
-            // walk performs no linear prefix pass), so the region begins at slotStart.
+            // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
             {
                 SlotStart = slotStart,
@@ -1064,8 +1076,8 @@ namespace Velvet
         }
 
         // React unmounts a boundary's children before it renders the fallback, so no old row of the boundary is
-        // matched by a fallback row: each goes in the removal pass, and one the failed output patched in place
-        // leaves with what that patch wrote.
+        // matched by a fallback row: each is marked taken, which both arms of MatchOldLeaf decline, so it goes in
+        // the removal pass, and one the failed output patched in place leaves with what that patch wrote.
         private static void ForgetOldRowsOf(GeneralCommitState commit, ComponentFiber boundary)
         {
             for (var i = 0; i < commit.OldOwners.Count; i++)
@@ -1073,7 +1085,7 @@ namespace Velvet
                 for (var owner = commit.OldOwners[i]; owner != null; owner = owner.Parent)
                 {
                     if (!ReferenceEquals(owner, boundary)) continue;
-                    commit.OldKeyMap.Remove(commit.OldKeys[i]);
+                    commit.UsedOldIndices.Add(i);
                     break;
                 }
             }
@@ -1136,6 +1148,8 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): an empty tree sets and restores the walk's fiber and tree
+            // around a descent that expands no node.
             if (tree == null || tree.Length == 0) return;
 
             _ctx.FiberStack.Push(fiber);
@@ -1732,7 +1746,7 @@ namespace Velvet
 
             if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
             {
-                StartPresenceExit(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode);
+                StartPresenceExit(in pass, key, node, ghostAnchor, ghostMotionElement, ghostMotionNode);
                 pass.Tally.ExitIndex++;
             }
 
@@ -1897,6 +1911,7 @@ namespace Velvet
         private void StartPresenceExit(
             in PresenceExpansion pass,
             string key,
+            VNode node,
             VisualElement ghostAnchor,
             VisualElement? ghostMotionElement,
             MotionNode? ghostMotionNode)
@@ -1909,7 +1924,7 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
@@ -1998,7 +2013,7 @@ namespace Velvet
             // anchor-targeted transition plays instead.
             var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
             var exitTransition = variantExit ?? ghostMotionNode?.Transition;
-            var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
+            var exitTarget = variantExit != null ? ghostMotionElement! : ClassicTarget(ghostAnchor, ghostMotionElement);
             // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired from
             // inside one of the PlayExit calls below) is queued instead of run inline.
             void Settled()
@@ -2129,7 +2144,7 @@ namespace Velvet
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
             var site = LiveEntrySite(in pass, key);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
-                out var anchorEnterHandled);
+                out var anchorEmission);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
             // reference-equal patch bailed before recording.
@@ -2177,17 +2192,24 @@ namespace Velvet
                     ReleaseDescendantExits(state, key);
                 }
 
-                var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
+                var isEnter = wasExiting || wasExitComplete || Remounted(anchorEmission, state, key)
+                    || !PresenceContainsKey(prevCommitted, key);
                 // The create path already played, or withheld, the enter of an anchor inheriting its labels.
-                if (isEnter && !anchorEnterHandled)
+                if (isEnter && !anchorEmission.EnterHandled)
                 {
-                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
+                    // A cancelled exit's reversal returns the same element to rest; a new one enters.
+                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting && !anchorEmission.Created);
                 }
             }
 
             pass.NextCommitted.Add((key, node));
             pass.Tally.VisualIndex++;
         }
+
+        // A live key whose anchor was created again under the same key — a type flip — remounts with an enter, as a
+        // Framer PresenceChild's new child does, unless the key still withholds its first render's.
+        private static bool Remounted(in AnchorEmission emission, ReconcilerContext.PresenceBoundaryState state, string key)
+            => emission.Created && !state.InitialBlocked.Contains(key);
 
         // Where a live keyed child is emitted, and the stagger slot PlayPresenceEnter plays its enter in. A child
         // present at the first render under initial: false keeps withholding mount enters for as long as it
@@ -2296,7 +2318,7 @@ namespace Velvet
             {
                 _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
             }
-            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            if (PopsOutOfFlow(presence, node))
             {
                 // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
                 // `anchor` (this keyed child's own top-level element), which for a Div wrapping
@@ -2318,7 +2340,7 @@ namespace Velvet
             VNode node,
             bool freshReplacement)
         {
-            if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
+            if (PopsOutOfFlow(presence, node) && !freshReplacement)
             {
                 // The out-of-flow pin outlives its exit (only the drop would have removed the
                 // element). Skipped for a fresh replacement: the pin lives on the discarded
@@ -2332,7 +2354,7 @@ namespace Velvet
                 // A completed classic exit leaves its to classes on the anchor it played on.
                 if (motion?.Transition != null)
                 {
-                    StyleAnimationClassUtils.RemoveClasses(anchor, motion.Transition.ExitToClasses);
+                    StyleAnimationClassUtils.RemoveClasses(ClassicTarget(anchor, motionElement), motion.Transition.ExitToClasses);
                 }
                 return;
             }
@@ -2371,20 +2393,9 @@ namespace Velvet
                 }
                 else
                 {
-                    CompleteEnterAfterThePass(motion, pass.BoundaryFiber);
+                    _ctx.CompleteEnterAfterThePass(motion, pass.BoundaryFiber);
                 }
             }
-        }
-
-        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
-        // boundary catching later in that walk can take it back with the rest of the failed output
-        // (ExpandBoundaryInline). A VirtualList renders its rows outside any pass as it scrolls, and there it
-        // completes at once, since no pass end would reach it.
-        private void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundaryFiber)
-        {
-            if (motion?.OnEnterComplete == null) return;
-            if (_ctx.SharedReconcileDepth == 0) InvokeEnterComplete(motion, boundaryFiber);
-            else _ctx.PendingEnterCompletions.Add((motion, boundaryFiber));
         }
 
         // The enter paths that fire the callback in-pass rather than handing it to
@@ -2410,9 +2421,9 @@ namespace Velvet
         internal static Action? ContainedEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
             => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion, boundaryFiber);
 
-        // A variant Motion (carrying variants + animate) manages its resting state through variant classes:
-        // variants[animate] is applied at mount and restored by CancelExit on an exit-cancel. So it only ever
-        // plays a VARIANT enter (when an `initial` label is declared) and must NOT fall through to the classic
+        // A variant Motion (carrying variants and an animate label, its own or inherited) manages its resting state
+        // through variant classes: variants[animate] is applied at mount and restored by CancelExit on an
+        // exit-cancel. So it only ever plays a VARIANT enter (when an initial label resolves) and must NOT fall through to the classic
         // preset enter — the default StyleTransition.Fade would replay a fade-in on top of the resting variant
         // on every add / interrupt. The variant swap targets the Motion's OWN element (where those resting
         // classes live), which for a wrapped Motion is not the anchor; without a resolved element the variant
@@ -2430,9 +2441,14 @@ namespace Velvet
             float staggerDelaySec,
             ComponentFiber? boundaryFiber)
         {
-            var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
+            // Resolved as FiberNodeFactory.ResolveMountEnter resolves them, so an anchor inheriting its labels from
+            // the Motion above the presence is a variant Motion here too.
+            var stack = _ctx.ComponentContextStack;
+            var animateLabel = MotionVariantResolver.LabelForChildren(motion, stack.Get(MotionContext.ActiveLabel));
+            var initialLabel = MotionVariantResolver.InitialLabel(motion, stack.Get(MotionContext.InitialLabel));
+            var isVariantMotion = motionElement != null && motion.Variants != null && animateLabel != null;
             if (isVariantMotion && !wasExiting
-                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses,
+                && TryResolveVariantEnter(motion, initialLabel, animateLabel, out var fromClasses, out var toClasses,
                     out var enterTransition)
                 && enterTransition != null)
             {
@@ -2448,20 +2464,26 @@ namespace Velvet
             }
             else if (isVariantMotion)
             {
-                // Variant Motion without `initial`: rest at variants[animate], no enter anim.
-                CompleteEnterAfterThePass(motion, boundaryFiber);
+                // Variant Motion without `initial`, or one whose exit was cancelled: rest at the animate pose.
+                _ctx.CompleteEnterAfterThePass(motion, boundaryFiber);
             }
             else
             {
                 // As for the variant enter above; of the classic enters, only a timed tween cancels it.
+                var target = ClassicTarget(anchor, motionElement);
                 if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
                 {
-                    _patcher.LandInlineHold(anchor);
+                    _patcher.LandInlineHold(target);
                 }
-                _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
+                _ctx.StyleAnimationScheduler.PlayEnter(target, motion.Transition,
                     ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
         }
+
+        // Where a classic enter or exit plays: the keyed child's anchor, which holds the Motion or is it, unless the
+        // Motion's element sits outside it, as when the child places another element ahead of its Motion.
+        private static VisualElement ClassicTarget(VisualElement anchor, VisualElement? motionElement)
+            => motionElement != null && !anchor.Contains(motionElement) ? motionElement : anchor;
 
         private static bool PresenceContainsKey(
             List<(string key, VNode node)> list, string? key)
@@ -2495,6 +2517,11 @@ namespace Velvet
                 }
             }
         }
+
+        // A keyed Fragment exits in flow, as under Framer's popLayout: its PopChild pins only an HTML element the
+        // child's ref resolves to, which a Fragment's never does.
+        private static bool PopsOutOfFlow(AnimatePresenceNode presence, VNode node)
+            => presence.Mode == AnimatePresenceMode.PopLayout && node is not FragmentNode;
 
         // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
         // it via absolute positioning at the last rect Yoga resolved for it in-flow (anchor.layout is parent-
@@ -2669,10 +2696,11 @@ namespace Velvet
             MotionNode? anchorMotion,
             string? key,
             out VisualElement? anchorMotionElement,
-            out bool anchorEnterHandled)
+            out AnchorEmission anchorEmission)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
             var previousAnchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+            var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             _ctx.PresenceAnchorMotion = anchorMotion;
@@ -2680,11 +2708,16 @@ namespace Velvet
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
             _ctx.PresenceAnchorEnterDelaySec = site.AnchorEnterDelaySec;
             _ctx.PresenceAnchorEnterHandled = false;
+            _ctx.PresenceAnchorCreated = false;
             try
             {
                 var emitted = EmitPresenceChild(site.Walk, node, key, site.Position, site.State);
                 anchorMotionElement = _ctx.PresenceAnchorMotionElement;
-                anchorEnterHandled = _ctx.PresenceAnchorEnterHandled;
+                anchorEmission = new AnchorEmission
+                {
+                    EnterHandled = _ctx.PresenceAnchorEnterHandled,
+                    Created = _ctx.PresenceAnchorCreated,
+                };
                 return emitted;
             }
             finally
@@ -2694,7 +2727,16 @@ namespace Velvet
                 _ctx.ComponentContextStack.Pop(MotionContext.EntersBlocked);
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
+                _ctx.PresenceAnchorCreated = previousAnchorCreated;
             }
+        }
+
+        // What the create path reported about the anchor Motion during one emission: whether it played or withheld
+        // the anchor's enter itself, and whether it created the anchor's element rather than patching it.
+        private readonly struct AnchorEmission
+        {
+            internal bool EnterHandled { get; init; }
+            internal bool Created { get; init; }
         }
 
         // Where a keyed child is emitted and on what terms: the state its roots are recorded in (null on the
