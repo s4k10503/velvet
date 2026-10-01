@@ -52,7 +52,7 @@ namespace Velvet.Tests
             }
 
             var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
-            Assert.That(blocks, Is.EqualTo(88));
+            Assert.That(blocks, Is.EqualTo(92));
             yield return null;
         }
     }

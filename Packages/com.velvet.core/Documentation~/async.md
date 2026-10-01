@@ -4,7 +4,9 @@ Velvet ships `VelvetTask` / `VelvetTask<T>` as its awaitable type.
 
 ## What completes synchronously in EditMode
 
-- `await VelvetTask.FromResult(value)` (and other already-completed tasks)
+- `await VelvetTask.FromResult(value)` (and other already-completed tasks), except inside a
+  `startTransition` callback, where it resumes later — the `useTransition` row of
+  [react-migration.md §1](react-migration.md#1-hooks-mapping) says when
 - `await` on a `VelvetTaskCompletionSource` completed on the same call stack before the await
 
 ## Frame-bound continuations in EditMode

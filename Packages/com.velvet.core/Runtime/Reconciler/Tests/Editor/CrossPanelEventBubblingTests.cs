@@ -45,10 +45,6 @@ namespace Velvet.Tests
         {
             return V.Portal(UILayer.Overlay, children: new VNode[]
             {
-                // Wrapped in a component (rather than a bare V.Motion) so the portal drain
-                // (ChildReconciler.DrainPendingPortalMounts) produces a top-level ComponentFiber to
-                // stamp DetachedMountContext onto — see FiberCrossPanelEventDispatcher's own comment
-                // on the bare-element limitation.
                 V.Component(PortalChildRender),
             });
         }

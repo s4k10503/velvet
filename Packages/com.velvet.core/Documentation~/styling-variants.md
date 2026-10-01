@@ -439,7 +439,8 @@ only an element's own class pass records.
 ## Container queries — `@container`
 
 By default every responsive breakpoint (`sm:`/`md:`/…) is measured against the **panel root**
-width. A container query re-points that measurement at a specific element, so the same
+width — for a layer or world-space portal's children, the root of the panel the portal was declared
+on ([portals.md](portals.md#the-shared-boundary-semantics)). A container query re-points that measurement at a specific element, so the same
 breakpoints respond to **that element's** width instead — the CSS `container-type:
 inline-size` equivalent. This lets a component be responsive to the space it is *given* rather
 than to the whole window, so the same component can sit in a narrow sidebar and a wide main

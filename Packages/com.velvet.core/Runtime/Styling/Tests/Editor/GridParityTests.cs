@@ -352,5 +352,32 @@ namespace Velvet.Tests
             var expected = (300f - 2f * Space4) / 3f;
             Assert.That(container[0].style.width.value.value, Is.EqualTo(expected).Within(2f));
         }
+
+        [Test]
+        public void Given_GridCols3WithASpaceXOnA300pxRow_When_LaidOut_Then_TheSpacedColumnGivesUpItsMargin()
+        {
+            // Arrange — a space-x margin on a grid item comes out of its cell, as a CSS grid item stretched to
+            // its cell gives up its margins, so the row still holds three columns.
+            var children = new VNode[3];
+            for (var i = 0; i < 3; i++)
+            {
+                children[i] = V.Div(className: "child");
+            }
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "grid", className: "grid grid-cols-3 space-x-4 w-[300px]", children: children));
+            var container = _window.rootVisualElement.Q<VisualElement>("grid");
+
+            // Act
+            ForcePanelUpdate(container.panel);
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+            Assume.That(container.contentRect.width, Is.EqualTo(300f).Within(1f),
+                "Precondition: the row resolved to its 300px width");
+
+            // Assert — the first column ≈ 300 / 3 less the 16px margin it carries.
+            Assert.That(container[0].style.width.value.value, Is.EqualTo(300f / 3f - Space4).Within(2f));
+        }
     }
 }

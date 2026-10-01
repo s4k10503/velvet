@@ -19,6 +19,8 @@ namespace Velvet
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
         private Dictionary<string?, Exception> _loaderErrors = new();
+        private Dictionary<string?, object> _actionData = EmptyActionData;
+        private static readonly Dictionary<string?, object> EmptyActionData = new();
         private const int MaxRedirects = 5;
         // Cancellation for the currently in-flight navigation (null when idle). A newer navigation
         // that matches cancels it on its way past the match, so the prior attempt unwinds
@@ -32,13 +34,52 @@ namespace Velvet
         // describes a router that no longer exists.
         private int _navigationSequence;
 
+        // The routers constructed, oldest first, held weakly: a router nobody disposed and nothing else holds
+        // stays collectable, as it was when Current named only the newest. The newest is held strongly as
+        // well, so Current names it however the caller holds it, as it always has.
+        private static readonly List<WeakReference<Router>> s_constructed = new();
+        private static Router? s_newest;
+
         /// <summary>
-        /// The most recently constructed router, until that router is disposed; null then, and before any is
-        /// constructed. Disposing an earlier router leaves it as it is, and disposing the latest does not
-        /// restore one constructed before it. The routing hooks do not read it: they act on the router
-        /// <c>V.RouterProvider</c> publishes above them.
+        /// The most recently constructed router that has not been disposed. Once that one is disposed, the most
+        /// recently constructed of the earlier ones still undisposed and still referenced elsewhere; null when
+        /// there is none. The routing hooks do not read it: they act on the router <c>V.RouterProvider</c>
+        /// publishes above them.
         /// </summary>
-        public static Router? Current { get; private set; }
+        public static Router? Current => s_newest ?? NewestEarlierRouter();
+
+        private static Router? NewestEarlierRouter()
+        {
+            ForgetFinishedRouters();
+            if (s_constructed.Count == 0)
+            {
+                return null;
+            }
+            s_constructed[s_constructed.Count - 1].TryGetTarget(out var router);
+            return router;
+        }
+
+        // Entries whose router was collected or disposed, dropped so the list tracks what is live.
+        private static void ForgetFinishedRouters()
+        {
+            for (var index = s_constructed.Count - 1; index >= 0; index--)
+            {
+                s_constructed[index].TryGetTarget(out var router);
+                if (router == null || router._disposed)
+                {
+                    s_constructed.RemoveAt(index);
+                }
+            }
+        }
+
+        // Entering Play Mode without a domain reload keeps statics, and the routers of the session before are
+        // not this session's.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ForgetEveryRouter()
+        {
+            s_constructed.Clear();
+            s_newest = null;
+        }
 
         private RouterStatus _status = RouterStatus.Idle;
 
@@ -67,6 +108,13 @@ namespace Velvet
         /// React Router's <c>navigation.location</c>.
         /// </summary>
         public RouterLocation? PendingLocation { get; private set; }
+        // The submission of the attempt that last published a destination, which UseNavigation reads while
+        // one is in flight. A refused one carries none, as React Router's navigation has no submission then.
+        private Submission? _pendingSubmission;
+        internal Submission? PendingSubmission => _pendingSubmission?.Refusal == null ? _pendingSubmission : null;
+        // React Router's isRevalidationRequired: set when an action starts, cleared by a commit, so a navigation
+        // that takes over from a submission whose action has started keeps no loader data.
+        private bool _revalidationRequired;
         /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;
         /// <summary>True when the history stack can be moved forward.</summary>
@@ -124,7 +172,9 @@ namespace Velvet
                 RepublishCurrentLocation(routeId);
             };
             _scopeFactory = scopeFactory;
-            Current = this;
+            ForgetFinishedRouters();
+            s_constructed.Add(new WeakReference<Router>(this));
+            s_newest = this;
         }
 
         /// <summary>
@@ -152,10 +202,7 @@ namespace Velvet
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            StepHasNoEntryToLandOn(mode)
-                ? VelvetTask.FromResult(NavigationResult.Cancelled)
-                : NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0,
-                    initiator: null);
+            Begin(ResolvePath(path), mode, cancellationToken, submission: null);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -169,10 +216,120 @@ namespace Velvet
             NavigationMode mode,
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
+            Begin(ResolvePath(path, baseRouteIndex), mode, cancellationToken, submission: null);
+
+        /// <summary>
+        /// Submits <paramref name="formData"/> as React Router's <c>router.navigate(to, { formMethod,
+        /// formData })</c> does; <c>routing.md</c> owns what each method does. A <c>get</c> submission navigates
+        /// with the form data as its query string. Another form method calls the action of the route the target
+        /// path matches, reporting <see cref="RouterStatus.Submitting"/> while it runs, and commits its result
+        /// for <c>UseActionData</c> or its failure as that route's error. A method no form takes commits React
+        /// Router's 405 error.
+        /// </summary>
+        /// <param name="formData">What the submission sends. A <c>get</c> submission takes an
+        /// <see cref="ISearchParams"/> or null.</param>
+        /// <param name="options">How to submit; null takes every default. A null
+        /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
+        /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
+        /// <returns>The outcome, as <see cref="NavigateAsync(string, NavigationMode, CancellationToken)"/> reports
+        /// it. A failure an action or a method commits reports <see cref="NavigationResult.Success"/>.</returns>
+        /// <exception cref="ArgumentException">A <c>get</c> submission's form data is not an
+        /// <see cref="ISearchParams"/>.</exception>
+        public VelvetTask<NavigationResult> SubmitAsync(
+            object? formData,
+            SubmitOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            SubmitAsync(formData, options, baseRouteIndex: -1, cancellationToken);
+
+        internal VelvetTask<NavigationResult> SubmitAsync(
+            object? formData,
+            SubmitOptions? options,
+            int baseRouteIndex,
+            CancellationToken cancellationToken)
+        {
+            options ??= DefaultSubmitOptions;
+            var action = SubmissionPath(string.IsNullOrEmpty(options.Action) ? null : options.Action, baseRouteIndex);
+            var submission = new Submission(
+                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace);
+            var path = action;
+            if (submission.Method == "GET")
+            {
+                if (formData is not (null or ISearchParams))
+                {
+                    throw new ArgumentException("A get submission sends an ISearchParams.", nameof(formData));
+                }
+                path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery((ISearchParams)formData!);
+            }
+            // React Router replaces on a mutation submitted to the location it is on, so the entry the form was
+            // on is not left under the one it produced.
+            var replace = options.Replace ?? (submission.IsMutation && action == CurrentLocation?.Path);
+            return Begin(path, replace ? NavigationMode.Replace : NavigationMode.Push, cancellationToken, submission);
+        }
+
+        private static readonly SubmitOptions DefaultSubmitOptions = new();
+
+        // React Router's normalizeTo for a submission, whose target useSubmit passes as options.action or null.
+        // No target keeps the current search; no target or "." also gives the submitting route a bare index
+        // when it is an index route, and takes one away when it is not.
+        private string SubmissionPath(string? to, int baseRouteIndex)
+        {
+            var path = ResolvePath(to ?? ".", baseRouteIndex)!;
+            if (to != null && to != ".")
+            {
+                return path;
+            }
+            var search = to == null ? SearchOf(CurrentLocation?.Path ?? string.Empty) : string.Empty;
+            var matches = CurrentLocation?.Matches;
+            var index = matches != null && IsIndexRoute(matches[AnchorIndex(matches, baseRouteIndex)].Route);
+            var naked = HasBareIndex(search);
+            if (index && !naked)
+            {
+                search = search.Length == 0 ? "?index" : "?index&" + search.Substring(1);
+            }
+            else if (!index && naked)
+            {
+                search = WithoutBareIndex(search);
+            }
+            return path + search;
+        }
+
+        // React Router's route.index. A route with an empty path and children is a pathless layout.
+        private static bool IsIndexRoute(RouteDefinition? route)
+            => route?.Path == "" && (route.Children == null || route.Children.Length == 0);
+
+        private static bool HasBareIndex(string path)
+        {
+            var bare = false;
+            foreach (var value in RouteQuery.ParseQuery(path).GetAll("index"))
+            {
+                bare |= value.Length == 0;
+            }
+            return bare;
+        }
+
+        private static string WithoutBareIndex(string search)
+        {
+            var kept = new SearchParams();
+            var current = RouteQuery.ParseQuery(search);
+            foreach (var key in current.Keys)
+            {
+                foreach (var value in current.GetAll(key))
+                {
+                    if (key != "index" || value.Length > 0)
+                    {
+                        kept.Append(key, value);
+                    }
+                }
+            }
+            return RouteQuery.BuildQuery(kept);
+        }
+
+        // Refused here rather than inside the attempt, for the reason StepHasNoEntryToLandOn gives.
+        private VelvetTask<NavigationResult> Begin(
+            string? path, NavigationMode mode, CancellationToken cancellationToken, Submission? submission) =>
             StepHasNoEntryToLandOn(mode)
                 ? VelvetTask.FromResult(NavigationResult.Cancelled)
-                : NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken,
-                    redirectCount: 0, initiator: null);
+                : NavigateInternalAsync(path, mode, cancellationToken, initiator: null, submission);
 
         // Refusing the step before the navigation starts, rather than partway through it, is what makes
         // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
@@ -223,10 +380,7 @@ namespace Velvet
 
             var targetParts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-            // Anchor at the caller's route level (clamped into range; -1 -> leaf).
-            var cursor = baseRouteIndex < 0
-                ? matches.Count - 1
-                : System.Math.Min(baseRouteIndex, matches.Count - 1);
+            var cursor = AnchorIndex(matches, baseRouteIndex);
 
             // Consume leading "." (no-op) and ".." (pop one route level each).
             var start = 0;
@@ -249,6 +403,10 @@ namespace Velvet
             // Append the remainder segment-wise (any interior "./.." in the tail still resolves URL-wise).
             return FoldSegments(baseSegments, targetParts, start);
         }
+
+        // The caller's route level, clamped into range; -1 is the leaf.
+        private static int AnchorIndex(IReadOnlyList<RouteMatch> matches, int baseRouteIndex) =>
+            baseRouteIndex < 0 ? matches.Count - 1 : Math.Min(baseRouteIndex, matches.Count - 1);
 
         // Folds the tail segments (from start) into baseSegments — "." is a no-op, ".." pops one level (only
         // when non-empty), anything else appends — then rebuilds the absolute path ("/" when empty). The
@@ -299,14 +457,14 @@ namespace Velvet
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
-            int redirectCount,
-            PendingNavigation? initiator)
+            PendingNavigation? initiator,
+            Submission? submission = null)
         {
             // Redirect recursion shares the initiating cancellation and claim without cancelling or
             // dispossessing the navigation it belongs to.
             RouteCancellationSource? myCancellation = null;
             CancellationToken navToken = cancellationToken;
-            if (redirectCount == 0)
+            if (!initiator.HasValue)
             {
                 // Built here so the phases run under it, but not installed here: taking over from the
                 // in-flight navigation is NavigateCore's, on the far side of the match.
@@ -314,9 +472,11 @@ namespace Velvet
                 navToken = myCancellation.Token;
             }
 
+            NavigationResult? result = null;
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount, initiator, myCancellation);
+                result = await NavigateCore(path, mode, navToken, initiator, myCancellation, submission);
+                return result.Value;
             }
             catch (OperationCanceledException) when (myCancellation != null && navToken.IsCancellationRequested)
             {
@@ -341,7 +501,8 @@ namespace Velvet
                     // Settled with no navigation left under way and not before, as React Router keeps a blocker
                     // proceeding until a navigation completes: the attempt that took over from the one it
                     // released passes it too. With none left under way, nothing is left for it to proceed with.
-                    if (_activeNavigation == null)
+                    // A blocked attempt settles nothing, as React Router's blocked navigation completes nothing.
+                    if (_activeNavigation == null && result != NavigationResult.Blocked)
                     {
                         _blockerManager.SettleProceeding();
                     }
@@ -353,16 +514,16 @@ namespace Velvet
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
-            int redirectCount,
             PendingNavigation? initiator,
-            RouteCancellationSource? takeover)
+            RouteCancellationSource? takeover,
+            Submission? submission)
         {
             if (_disposed)
             {
                 return NavigationResult.Cancelled;
             }
 
-            if (redirectCount >= MaxRedirects)
+            if (initiator?.Redirects >= MaxRedirects)
             {
                 WithdrawInitiatorsDestination(initiator);
                 ReportUnclaimedOutcome(RouterStatus.Error);
@@ -378,7 +539,7 @@ namespace Velvet
             // Ahead of the match and of everything that touches the router at large, as React Router consults
             // its blocker before it starts the navigation: a blocked attempt changes nothing but the Blocker's
             // state, not even the attempt already in flight. A redirect is part of an attempt that got past it.
-            if (!initiator.HasValue && Blocks(path, mode))
+            if (!initiator.HasValue && Blocks(path, mode, submission))
             {
                 return NavigationResult.Blocked;
             }
@@ -431,7 +592,7 @@ namespace Velvet
                         return NavigationResult.Cancelled;
                     }
                 }
-                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode));
+                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), redirects: 0);
             }
 
             // Built here rather than at the commit so the phases below have a destination to publish while
@@ -441,12 +602,16 @@ namespace Velvet
             // raises OnStatusChanged, and a navigation issued from inside it reaches ReportUnclaimedOutcome,
             // which reads this field to decide whether an attempt holds the claim.
             PendingLocation = location;
-            Status = RouterStatus.Matching;
+            // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
+            // does while it follows a redirect out of an action.
+            _pendingSubmission = initiator.HasValue ? _pendingSubmission : submission;
+            Claim(submission?.IsMutation == true ? RouterStatus.Submitting : RouterStatus.Matching);
 
             RouteLoaderRunner.LoaderRound round;
+            ActionOutcome? action = null;
             try
             {
-                var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken, redirectCount);
+                var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken);
                 if (guardResult.HasValue)
                 {
                     return guardResult.Value;
@@ -461,7 +626,17 @@ namespace Velvet
                     return NavigationResult.Cancelled;
                 }
 
-                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, pending, cancellationToken);
+                action = await RunAction(matches, path, submission, cancellationToken);
+                PublishActionData(matches, action);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ReleaseClaim(pending, RouterStatus.Idle);
+                    return NavigationResult.Cancelled;
+                }
+                mode = ModeAfterAction(mode, submission, action);
+
+                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, pending, cancellationToken,
+                    KeptFrom(path), LaunchLimit(matches, action));
                 if (loaderResult.HasValue)
                 {
                     return loaderResult.Value;
@@ -491,6 +666,8 @@ namespace Velvet
 
             CurrentLocation = location;
             PendingLocation = null;
+            _revalidationRequired = false;
+            CommitAction(matches, action);
             // Only now may the round's late results reach the live state: the republish they trigger reads
             // CurrentLocation, which describes this round's location from here on. This is also where the
             // round it replaces ends — up to this line that round's loaders were streaming into the route the
@@ -517,12 +694,17 @@ namespace Velvet
             internal readonly int Sequence;
             // The history slot this attempt commits into. Unused by a Push, which appends.
             internal readonly int CommitIndex;
+            // How many Guard redirects led to this attempt.
+            internal readonly int Redirects;
 
-            internal PendingNavigation(int sequence, int commitIndex)
+            internal PendingNavigation(int sequence, int commitIndex, int redirects)
             {
                 Sequence = sequence;
                 CommitIndex = commitIndex;
+                Redirects = redirects;
             }
+
+            internal PendingNavigation Redirected() => new(Sequence, CommitIndex, Redirects + 1);
         }
 
         // Same reason for the discard as StepHasNoEntryToLandOn: this runs before the commit, and the
@@ -582,8 +764,7 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
             PendingNavigation pending,
-            CancellationToken cancellationToken,
-            int redirectCount)
+            CancellationToken cancellationToken)
         {
             foreach (var match in matches)
             {
@@ -618,8 +799,7 @@ namespace Velvet
                         redirectTarget,
                         mode == NavigationMode.Push ? NavigationMode.Push : NavigationMode.Replace,
                         cancellationToken,
-                        redirectCount + 1,
-                        pending);
+                        pending.Redirected());
                 }
             }
             return null;
@@ -630,10 +810,10 @@ namespace Velvet
         #region Blocker check
 
         // Split from Consult so that nothing Consult builds is built for a router with no Blocker registered.
-        private bool Blocks(string path, NavigationMode mode) =>
-            _blockerManager.HasBlockers && Consult(path, mode);
+        private bool Blocks(string path, NavigationMode mode, Submission? submission) =>
+            _blockerManager.HasBlockers && Consult(path, mode, submission);
 
-        private bool Consult(string path, NavigationMode mode)
+        private bool Consult(string path, NavigationMode mode, Submission? submission)
         {
             var args = new BlockerFunctionArgs
             {
@@ -641,24 +821,26 @@ namespace Velvet
                 NextLocation = new RouterLocation { Path = path, Params = EmptyParams },
                 HistoryAction = mode,
             };
-            return _blockerManager.Check(args, () => ResumeAsync(path, mode).Forget());
+            return _blockerManager.Check(args, () => ResumeAsync(path, mode, submission).Forget());
         }
 
         private static readonly IReadOnlyDictionary<string, string> EmptyParams = new Dictionary<string, string>();
 
-        // Sends the released attempt through again as the caller made it: its path, and its mode, so a Back
-        // or Forward goes again as the same history step.
-        private async VelvetTask ResumeAsync(string path, NavigationMode mode)
+        // Sends the released attempt through again as the caller made it: its path, its mode, so a Back or
+        // Forward goes again as the same history step, and its submission.
+        private async VelvetTask ResumeAsync(string path, NavigationMode mode, Submission? submission)
         {
+            var result = NavigationResult.Cancelled;
             try
             {
-                await NavigateAsync(path, mode);
+                result = await Begin(path, mode, default, submission);
             }
             finally
             {
                 // A Back or Forward with no entry left to step onto is refused before it becomes an attempt,
-                // so the settle a navigation makes on its way out is not made for it.
-                if (_activeNavigation == null)
+                // so the settle a navigation makes on its way out is not made for it. A blocked one is
+                // NavigateInternalAsync's to leave unsettled.
+                if (_activeNavigation == null && result != NavigationResult.Blocked)
                 {
                     _blockerManager.SettleProceeding();
                 }
@@ -671,18 +853,20 @@ namespace Velvet
 
         // Returns a null outcome on a normal completion, leaving _loaderData/_loaderErrors set for the commit
         // along with the round that produced them; returns Cancelled when the run observes cancellation.
-        // A Back or Forward step runs the loaders as a Push does: React Router keeps no loader data per
-        // history entry, and a Deferred kept in one would have been cancelled when its round was retired.
+        // A Back or Forward step decides which loaders run as a Push does: React Router keeps no loader data
+        // per history entry.
         private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
             PendingNavigation pending,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyList<RouteMatch>? keptFrom,
+            int launchLimit)
         {
             Status = RouterStatus.Loading;
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
             // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
             // which is what the check below is reading.
-            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken);
+            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken, keptFrom, launchLimit);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -704,6 +888,22 @@ namespace Velvet
             _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
             return (null, round);
         }
+
+        // The committed chain a navigation may keep loader data from, as React Router's default
+        // shouldRevalidate (getMatchesToLoad) does; none when revalidation is required, the search changed or
+        // the URL did not.
+        private IReadOnlyList<RouteMatch>? KeptFrom(string path)
+        {
+            var current = CurrentLocation;
+            if (_revalidationRequired || current?.Matches == null || current.Path == path
+                || SearchOf(current.Path!) != SearchOf(path))
+            {
+                return null;
+            }
+            return current.Matches;
+        }
+
+        private static string SearchOf(string path) => path.Substring(RouteQuery.StripQuery(path).Length);
 
         #endregion
 
@@ -865,6 +1065,169 @@ namespace Velvet
         /// </summary>
         public IReadOnlyDictionary<string?, Exception> CurrentLoaderErrors => _loaderErrors;
 
+        /// <summary>
+        /// The result of the action the last committed navigation called, keyed by the action's
+        /// <see cref="RouteMatch.RouteId"/>; empty after any other navigation, and after an action that threw.
+        /// <c>V.RouterProvider</c> exposes it through <see cref="RouterContext.ActionData"/> for
+        /// <c>UseActionData</c>.
+        /// </summary>
+        public IReadOnlyDictionary<string?, object> CurrentActionData => _actionData;
+
+        internal sealed class Submission
+        {
+            // Upper-case, as an action's request carries it.
+            internal readonly string Method;
+            // As React Router 6.28 reports navigation.formMethod: lower-case.
+            internal readonly string FormMethod;
+            internal readonly string Action;
+            internal readonly object? FormData;
+            internal readonly bool? Replace;
+            // React Router's 405 for a method no form takes, committed in place of an action's result.
+            internal readonly Exception? Refusal;
+
+            internal Submission(string method, string action, object? formData, bool? replace)
+            {
+                Method = method.ToUpperInvariant();
+                FormMethod = method.ToLowerInvariant();
+                Action = action;
+                FormData = formData;
+                Replace = replace;
+                if (Array.IndexOf(FormMethods, Method) < 0)
+                {
+                    Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
+                }
+            }
+
+            private static readonly string[] FormMethods = { "GET", "POST", "PUT", "PATCH", "DELETE" };
+
+            // A method no form takes runs no action and its refusal takes the action's place.
+            internal bool Runs => Method != "GET";
+
+            internal bool IsMutation => Runs && Refusal == null;
+        }
+
+        // React Router's getTargetMatch: the leaf index route when the query string holds a bare index,
+        // otherwise the deepest route with a path.
+        private static int ActionTargetIndex(IReadOnlyList<RouteMatch> matches, string path)
+        {
+            var leaf = matches.Count - 1;
+            if (IsIndexRoute(matches[leaf].Route) && HasBareIndex(path))
+            {
+                return leaf;
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): the root iteration and the fallthrough below both answer 0.
+            for (var index = leaf; index > 0; index--)
+            {
+                if (!string.IsNullOrEmpty(matches[index].Route?.Path))
+                {
+                    return index;
+                }
+            }
+            return 0;
+        }
+
+        // What a submission's action produced, for the route at Target.
+        private sealed class ActionOutcome
+        {
+            internal object? Data;
+            internal Exception? Error;
+            internal int Target;
+        }
+
+        // React Router revalidates every loader after an action, and after a failed one only those above the
+        // route that renders the error, which keeps its own data (mergeLoaderData).
+        private static int LaunchLimit(IReadOnlyList<RouteMatch> matches, ActionOutcome? action) =>
+            action?.Error == null ? int.MaxValue : RouteOutlet.NearestErrorBoundary(matches, action.Target);
+
+        // React Router pushes after a failed action unless told to replace, so Back returns to the form.
+        private static NavigationMode ModeAfterAction(NavigationMode mode, Submission? submission, ActionOutcome? action)
+            => action?.Error == null || submission!.Replace == true ? mode : NavigationMode.Push;
+
+        // React Router's handleLoaders publishes an action's result with the loading navigation, before the
+        // loaders settle, so a route already on screen reads it while they run.
+        private void PublishActionData(IReadOnlyList<RouteMatch> matches, ActionOutcome? action)
+        {
+            if (action == null || action.Error != null)
+            {
+                return;
+            }
+            var routeId = matches[action.Target].RouteId;
+            _actionData = new Dictionary<string?, object> { [routeId] = action.Data! };
+            RepublishCurrentLocation(routeId);
+        }
+
+        // Status for an attempt taking the claim. Announced even where it is unchanged, since the destination
+        // and the submission it describes are the new attempt's: a second submission over a first is
+        // Submitting either way.
+        private void Claim(RouterStatus status)
+        {
+            if (_status == status)
+            {
+                OnStatusChanged?.Invoke(status);
+                return;
+            }
+            Status = status;
+        }
+
+        // Every commit clears the action data but the one an action produced, and records a failure as the error
+        // of the route it belongs to.
+        private void CommitAction(IReadOnlyList<RouteMatch> matches, ActionOutcome? action)
+        {
+            if (action?.Error == null)
+            {
+                _actionData = action == null ? EmptyActionData : _actionData;
+                return;
+            }
+            _actionData = EmptyActionData;
+            _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors)
+            {
+                [matches[action.Target].RouteId] = action.Error,
+            };
+        }
+
+        // Null for a navigation with no action to run.
+        private VelvetTask<ActionOutcome?> RunAction(
+            IReadOnlyList<RouteMatch> matches, string path, Submission? submission, CancellationToken cancellationToken)
+            => submission?.Runs == true
+                ? RunActionCore(matches, path, submission, cancellationToken)
+                : VelvetTask.FromResult<ActionOutcome?>(null);
+
+        private async VelvetTask<ActionOutcome?> RunActionCore(
+            IReadOnlyList<RouteMatch> matches, string path, Submission submission, CancellationToken cancellationToken)
+        {
+            if (submission.Refusal != null)
+            {
+                // React Router commits the refusal at the boundary nearest the leaf, running no action.
+                return new ActionOutcome { Target = matches.Count - 1, Error = submission.Refusal };
+            }
+            _revalidationRequired = true;
+            var outcome = new ActionOutcome { Target = ActionTargetIndex(matches, path) };
+            var match = matches[outcome.Target];
+            if (match.Route?.Action == null)
+            {
+                outcome.Error = new InvalidOperationException(
+                    $"You made a {submission.Method} request to \"{RouteQuery.StripQuery(path)}\" but did not provide an "
+                    + $"`action` for route \"{match.RouteId}\", so there is no way to handle the request.");
+                return outcome;
+            }
+            var context = new RouteActionContext
+            {
+                Params = match.Params,
+                Path = match.MatchedPath,
+                Method = submission.Method,
+                FormData = submission.FormData,
+            };
+            try
+            {
+                outcome.Data = await match.Route.Action(context, cancellationToken);
+            }
+            catch (Exception failure)
+            {
+                outcome.Error = failure;
+            }
+            return outcome;
+        }
+
         public void Dispose()
         {
             // Before the Cancel: a callback it runs can start a navigation, which NavigateCore then refuses.
@@ -892,9 +1255,9 @@ namespace Velvet
             }
             _activeNavigation = null;
             _loaderRunner.Dispose();
-            if (Current == this)
+            if (ReferenceEquals(s_newest, this))
             {
-                Current = null;
+                s_newest = null;
             }
         }
     }

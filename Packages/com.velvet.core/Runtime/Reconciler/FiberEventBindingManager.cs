@@ -217,14 +217,9 @@ namespace Velvet
         // Resolves element's own binding matching evt's runtime type and invokes its raw Handler
         // directly, bypassing UI Toolkit's dispatcher entirely: native RegisterCallback<T> plumbing
         // never runs here, since element may not even share a panel with evt's original target.
-        // ClickedBinding/ChangeEventBinding<T> are deliberately NOT handled here: Button.clicked has no
-        // underlying bubbling event to carry across the boundary (Clickable detects a click from
-        // PointerDown/Up internally and invokes its Action delegate directly, never dispatching a
-        // synthesizable event object of its own), and INotifyValueChanged<T>'s ChangeEvent<T> is
-        // field-implementation-specific in the same way — both stay panel-local until a dedicated
-        // design extends this.
-        // Returns true when a matching binding was invoked (informational only; the caller's walk
-        // continues regardless — a miss here does not stop propagation up the logical chain).
+        // Returns true when a matching pointer, key, focus or geometry binding was invoked (informational
+        // only; the caller's walk continues regardless — a miss here does not stop propagation up the
+        // logical chain).
         internal bool TryInvokeSynthetic(VisualElement element, EventBase evt)
         {
             if (element == null || evt == null || !_bindingsByElement.TryGetValue(element, out var bindings))
@@ -235,12 +230,46 @@ namespace Velvet
             var invoked = false;
             foreach (var binding in bindings)
             {
+                InvokeSyntheticField(element, binding, evt);
                 if (InvokeSyntheticDiscrete(binding, evt) || InvokeSyntheticContinuous(binding, evt))
                 {
                     invoked = true;
                 }
             }
             return invoked;
+        }
+
+        // ClickedBinding answers ClickEvent and ChangeEventBinding<T> answers ChangeEvent<T>, each only on the
+        // element kind RegisterFieldBinding binds it to, and a click only on an enabled Button, as Clickable
+        // and a disabled DOM button refuse one.
+        private void InvokeSyntheticField(VisualElement element, FiberEventBinding binding, EventBase evt)
+        {
+            switch (binding)
+            {
+                case ClickedBinding b when element is Button && evt is ClickEvent && element.enabledInHierarchy:
+                    RunDiscrete(b.Handler);
+                    break;
+                case ChangeEventBinding<float> b when element is INotifyValueChanged<float>:
+                    InvokeSyntheticChange(b.Handler, evt);
+                    break;
+                case ChangeEventBinding<bool> b when element is INotifyValueChanged<bool>:
+                    InvokeSyntheticChange(b.Handler, evt);
+                    break;
+                case ChangeEventBinding<string> b when element is INotifyValueChanged<string>:
+                    InvokeSyntheticChange(b.Handler, evt);
+                    break;
+                case ChangeEventBinding<int> b when element is INotifyValueChanged<int>:
+                    InvokeSyntheticChange(b.Handler, evt);
+                    break;
+            }
+        }
+
+        private void InvokeSyntheticChange<T>(Action<T>? handler, EventBase evt)
+        {
+            if (evt is ChangeEvent<T> change)
+            {
+                RunDiscrete(() => handler?.Invoke(change.newValue));
+            }
         }
 
         private bool InvokeSyntheticDiscrete(FiberEventBinding binding, EventBase evt)

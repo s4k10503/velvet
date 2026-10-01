@@ -31,7 +31,13 @@ namespace Velvet
         public LoaderMode LoaderMode { get; init; } = LoaderMode.Await;
 
         /// <summary>
-        /// Component shown when the Loader fails.
+        /// Called for a submission whose method is not <c>get</c>, when this is the route the submission targets:
+        /// React Router's route <c>action</c>. Its result is read via <c>UseActionData</c>.
+        /// </summary>
+        public Func<RouteActionContext, CancellationToken, VelvetTask<object>>? Action { get; init; }
+
+        /// <summary>
+        /// Component shown when the Loader or the Action fails.
         /// </summary>
         public ComponentNode? ErrorElement { get; init; }
 
@@ -45,8 +51,8 @@ namespace Velvet
         public string? RedirectTo { get; init; }
 
         /// <summary>
-        /// Returning null continues navigation; returning a path redirects. Runs after matching and before
-        /// Blockers and Loaders.
+        /// Returning null continues navigation; returning a path redirects. Runs after the Blocker and matching,
+        /// and before the Action and Loaders.
         /// </summary>
         public Func<RouteLoaderContext, string>? Guard { get; init; }
 

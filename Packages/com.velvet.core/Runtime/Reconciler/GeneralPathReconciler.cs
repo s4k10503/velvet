@@ -76,6 +76,10 @@ namespace Velvet
             public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
+            // The fibers a Suspense of this walk hid (true) or revealed (false), applied once FinalizeGeneralCommit
+            // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
+            // that rolls back or stops leaves on screen what was there.
+            public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
         }
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
@@ -209,7 +213,11 @@ namespace Velvet
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
                 var removalsRan = !_ctx.IsAborted;
-                if (removalsRan) FinalizeGeneralCommit(commit);
+                if (removalsRan)
+                {
+                    FinalizeGeneralCommit(commit);
+                    ApplyOffscreenChanges(commit);
+                }
                 else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
                 SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
@@ -966,8 +974,22 @@ namespace Velvet
                         "The repeated sibling is skipped; give each sibling a unique key.");
                     return;
                 }
-                var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                    component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
+                ComponentFiber fiber;
+                try
+                {
+                    fiber = _ctx.ComponentRegistry.GetOrCreateInline(
+                        component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    // The component whose render suspended stays in the new tree, which a Suspense above keeps
+                    // offscreen with its state, as React keeps it: left out of the walk's fibers, the pass's orphan
+                    // sweep would dispose it, and with it the read that is to reveal it.
+                    var suspended = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                        parentFiber, slotKey, identity, portalScope, walk.Parent);
+                    if (suspended != null) walk.NewFibers.Add(suspended);
+                    throw;
+                }
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
@@ -1277,7 +1299,6 @@ namespace Velvet
         {
             var result = walk.Result;
             var newFibers = walk.NewFibers;
-            var offscreenPrimaries = walk.OffscreenPrimaries;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
             var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
@@ -1308,6 +1329,7 @@ namespace Velvet
                 {
                     if (suspense.Children is { Length: > 0 })
                     {
+                        _ctx.SuspensePrimaryDepth++;
                         try
                         {
                             ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
@@ -1315,6 +1337,10 @@ namespace Velvet
                         catch (FiberSuspendSignal)
                         {
                             suspended = true;
+                        }
+                        finally
+                        {
+                            _ctx.SuspensePrimaryDepth--;
                         }
                     }
                     if (!suspended)
@@ -1324,18 +1350,13 @@ namespace Velvet
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
                     // their lane flush while suspended (their slot is occupied by the fallback). The
-                    // fallback subtree is expanded below, so this loop never reaches it and this Suspense
+                    // fallback subtree is expanded below, so this marking never reaches it and this Suspense
                     // leaves it flushable; what marks a nested Suspense's fallback subtree is the
                     // enclosing expansion, whose own fallback occupies that slot too.
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
                     // this delta contains them, so its answer stands.
-                    foreach (var f in newFibers)
-                    {
-                        if (fibersBefore.Contains(f)) continue;
-                        if (!offscreenPrimaries.Contains(f)) f.IsOffscreen = suspended;
-                        if (suspended) offscreenPrimaries.Add(f);
-                    }
+                    MarkPrimaryOffscreen(walk, fibersBefore, suspended);
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally
                     // would observe a Cleared / re-rented set, silently breaking the fibersBefore
@@ -1384,6 +1405,31 @@ namespace Velvet
                 reports.RemoveAt(i);
                 // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
                 FiberWorkLoop.RequestRenderFromHook(boundary);
+            }
+        }
+
+        private void MarkPrimaryOffscreen(InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended)
+        {
+            foreach (var f in walk.NewFibers)
+            {
+                if (fibersBefore.Contains(f)) continue;
+                if (!walk.OffscreenPrimaries.Contains(f))
+                {
+                    f.IsOffscreen = suspended;
+                    // A new-side walk always carries a commit: only ReconcileGeneral starts one.
+                    (walk.Commit!.OffscreenChanges ??= new()).Add((f, suspended));
+                }
+                if (suspended) walk.OffscreenPrimaries.Add(f);
+            }
+        }
+
+        private void ApplyOffscreenChanges(GeneralCommitState commit)
+        {
+            if (commit.OffscreenChanges == null) return;
+            foreach (var (fiber, hidden) in commit.OffscreenChanges)
+            {
+                if (hidden) FiberEffects.HideLayoutEffects(fiber);
+                else FiberEffects.ShowLayoutEffects(fiber, _ctx);
             }
         }
 
@@ -1992,7 +2038,19 @@ namespace Velvet
                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                 }
             }
-            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, RunExitComplete);
+            // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
+            // coming back drops its landings (MotionLayoutIdDriver.Present), and a presence retired since completes
+            // nothing, by the check SettleIfStillExiting makes.
+            var waits = 1;
+            void Settle()
+            {
+                if (--waits == 0) RunExitComplete();
+            }
+            waits += MotionLayoutIdDriver.Relegate(ghostAnchor, _ctx, () =>
+            {
+                if (_ctx.PresenceStates.ContainsValue(capturedState)) Settle();
+            });
+            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle);
         }
 
         // Plays one ghost's exits — its anchor's and its descendants' — under one wait that runs
@@ -2183,6 +2241,7 @@ namespace Velvet
                 if (wasExiting)
                 {
                     CancelInterruptedPresenceExit(anchor, motionElement, motion, presence, node);
+                    MotionLayoutIdDriver.Present(anchor, _ctx);
                 }
                 else if (wasExitComplete)
                 {
