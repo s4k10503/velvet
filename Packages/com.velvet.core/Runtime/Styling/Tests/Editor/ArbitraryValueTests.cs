@@ -2972,6 +2972,16 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 2f)));
         }
 
+        [Test]
+        public void Given_BareGrowOfTwoDigits_When_Parsed_Then_ResolvesThatFactor()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-12", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 12f)));
+        }
+
         // GREEN_ON_BASE(characterization): the base routes no bare grow factor inline, grow-0 included.
         // What reddens it is dropping the `whole != 0` check in TryGetFlexFactorPreset, which claims the zero
         // the USS class already carries.

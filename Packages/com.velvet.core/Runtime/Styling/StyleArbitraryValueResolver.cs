@@ -364,8 +364,12 @@ namespace Velvet
         private static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
+            // MUTANT_SURVIVES(equivalent): the boundary moves only a lone "0", whose whole of 0 the factor
+            // preset declines with `whole != 0` either way.
             if (digits.Length > 1 && digits[0] == '0')
             {
+                // MUTANT_SURVIVES(equivalent): a leading zero leaves whole at 0, which the factor preset
+                // declines with `whole != 0` whatever this returns.
                 return false;
             }
             return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out whole);

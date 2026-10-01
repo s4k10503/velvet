@@ -591,6 +591,93 @@ namespace Velvet.Tests
 
         #endregion
 
+        [Test]
+        public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
+        {
+            // Arrange — the class reaches the child alone, so only the container watching the child re-applies.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var child = scope.Root[0][1];
+            var divided = child.style.borderRightWidth.value;
+
+            // Act
+            StyleClassProjection.Add(child, "border-r-2", StyleLayerPriority.Base);
+
+            // Assert — the divider before the class rides along, since an edge never divided reads Null too.
+            Assert.That((divided, child.style.borderRightWidth.keyword), Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-r-[3px]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — the dash binding rides along, since a solid divider yields through another path, and so
+            // does the start edge, which a divider on the wrong edge would take instead.
+            var child = scope.Root[0][1];
+            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(child),
+                    child.style.borderRightWidth.value, child.style.borderLeftWidth.keyword),
+                Is.EqualTo((true, 3f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_Reconciled_Then_ADividedChildsOtherEdgesTakeTheColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — the dash binding rides along, since a solid divider colors the edges through another path.
+            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]),
+                    scope.Root[0][1].style.borderTopColor.value),
+                Is.EqualTo((true, gray200)));
+        }
+
+        [Test]
+        public void Given_AColoredDivideRow_When_ADividedChildCarriesAnArbitraryBorderColor_Then_ThatColorWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-[#ff0000]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — every edge, so a divider that overwrites the color on whichever edge it sits on reddens it.
+            var style = scope.Root[0][1].style;
+            Assert.That((style.borderTopColor.value, style.borderRightColor.value, style.borderBottomColor.value,
+                    style.borderLeftColor.value),
+                Is.EqualTo((Color.red, Color.red, Color.red, Color.red)));
+        }
+
+        [Test]
+        public void Given_AColoredDivideRow_When_ItsDivideClassesLeave_Then_TheChildrensOtherEdgesAreHandedBack()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var colored = scope.Root[0][1].style.borderTopColor.keyword;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-row", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the color before the patch rides along, since an edge never colored reads Null too.
+            Assert.That((colored, scope.Root[0][1].style.borderTopColor.keyword),
+                Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
         private static VNode DividerRowWithColoredChild(string className, string childBorderClass)
             => V.Div(className: className, children: new VNode[]
             {

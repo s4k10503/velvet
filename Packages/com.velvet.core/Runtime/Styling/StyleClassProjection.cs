@@ -39,7 +39,7 @@ namespace Velvet
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
         }
 
-        private static void AddToModel(VisualElement element, string cls, int priority)
+        private static void AddToModel(VisualElement element, string cls, long priority)
         {
             CornerRadiusFit.TrackClass(element, cls);
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
@@ -62,7 +62,7 @@ namespace Velvet
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
         }
 
-        private static void RemoveFromModel(VisualElement element, string cls, int priority)
+        private static void RemoveFromModel(VisualElement element, string cls, long priority)
         {
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model != null)

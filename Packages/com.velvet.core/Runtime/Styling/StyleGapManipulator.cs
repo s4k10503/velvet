@@ -384,7 +384,6 @@ namespace Velvet
             var container = ChildContainer;
             if (container != null)
             {
-                ResetStaleMargined(container);
                 if (_containerHeld)
                 {
                     HandBackMargins(ClipPathLayoutBox.Of(container));
