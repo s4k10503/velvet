@@ -61,7 +61,7 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
         private const string FlexClassReader =
             "Velvet.StyleArbitraryValueResolver/FlexClassRanks Velvet.StyleArbitraryValueResolver.RankFlexClasses("
-            + "UnityEngine.UIElements.VisualElement, Velvet.StyleClassProjection/Model, System.String)";
+            + "UnityEngine.UIElements.VisualElement, Velvet.StyleClassProjection/Model)";
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";

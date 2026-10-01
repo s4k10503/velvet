@@ -58,7 +58,7 @@ namespace Velvet
                 return tokens;
             }
 
-            tokens = classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            tokens = FiberNodePatcher.DropShadowedValues(classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries));
             var hash = classNames.GetHashCode();
             if (_seenRecent.Contains(hash) || _seenOlder.Contains(hash))
             {

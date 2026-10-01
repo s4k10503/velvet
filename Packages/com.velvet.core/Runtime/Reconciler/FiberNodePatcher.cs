@@ -1482,6 +1482,87 @@ namespace Velvet
                 || StyleSupportsVariantClass.IsSupports(rawCls)
                 || StyleChildVariantClass.IsChildVariant(rawCls);
 
+        // Of two values one className gives one property at one importance, Tailwind keeps the one whose
+        // spelling, bang included, sorts later (StyleCandidateOrder) whatever the list order, and the other is
+        // dropped here, while the className is still one list. Ranking them at Apply instead would rank a Motion's pose against its
+        // base too: the two arrive at one priority, and the pose applied after the base has to win.
+        // A value is what TryParse reads from a token AddClass resolves inline, or a class of the flex
+        // shorthand's own family, which ranks against a flex shorthand. A filter-[name:…] is not one: each name
+        // is a layer of its own, so two of different names both apply.
+        internal static string[] DropShadowedValues(string[] tokens)
+        {
+            var keyed = 0;
+            foreach (var token in tokens)
+            {
+                if (TryGetShadowKey(token, out _))
+                {
+                    keyed++;
+                }
+            }
+            if (keyed < 2)
+            {
+                return tokens;
+            }
+            var keys = new (ArbitraryProperty, bool)?[tokens.Length];
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                if (TryGetShadowKey(tokens[i], out var key))
+                {
+                    keys[i] = key;
+                }
+            }
+            var kept = new List<string>(tokens.Length);
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                if (!IsShadowed(tokens, keys, i))
+                {
+                    kept.Add(tokens[i]);
+                }
+            }
+            return kept.Count == tokens.Length ? tokens : kept.ToArray();
+        }
+
+        private static bool IsShadowed(string[] tokens, (ArbitraryProperty, bool)?[] keys, int index)
+        {
+            var key = keys[index];
+            if (key == null)
+            {
+                return false;
+            }
+            for (var j = 0; j < tokens.Length; j++)
+            {
+                if (keys[j] == key && StyleCandidateOrder.Compare(tokens[index], tokens[j]) < 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and importance a token writes, for a token DropShadowedValues ranks.
+        private static bool TryGetShadowKey(string rawCls, out (ArbitraryProperty, bool) key)
+        {
+            key = default;
+            if (IsManipulatorOwnedClass(rawCls))
+            {
+                return false;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(rawCls, out var important);
+            if (!StyleArbitraryValueResolver.IsInlineResolved(core))
+            {
+                StyleUtilityProperties.TryGet(core, out var rule);
+                key = (ArbitraryProperty.Flex, important);
+                return StyleArbitraryValueResolver.WritesWholeFlex(rule.Properties);
+            }
+            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out _))
+            {
+                return false;
+            }
+            var parsed = StyleArbitraryValueResolver.TryParse(core, out var style);
+            key = (style.Property, important);
+            return parsed;
+        }
+
         private static bool SequenceEqual(string[] a, string[] b)
         {
             if (a.Length != b.Length)

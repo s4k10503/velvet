@@ -58,18 +58,8 @@ namespace Velvet
         public static bool IsInlineResolved(string core)
             => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
 
-        public static bool TryParse(string className, out ArbitraryStyle result)
-        {
-            if (!TryParseClass(className, out result))
-            {
-                return false;
-            }
-            result = result.WithCandidate(className);
-            return true;
-        }
-
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
-        private static bool TryParseClass(string className, out ArbitraryStyle result)
+        public static bool TryParse(string className, out ArbitraryStyle result)
         {
             result = default;
             if (className == null)
@@ -885,17 +875,17 @@ namespace Velvet
             return true;
         }
 
-        // TryWinningLayer, with the rank the winner sits at.
+        // TryWinningLayer, with the key the winner sits at: its rank, then its rule's className position.
         private static bool TryTopLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style,
-            out long priority)
+            out long key)
         {
-            priority = 0;
+            key = 0;
             if (!TryWinningLayer(map, property, out style))
             {
                 return false;
             }
             var layers = map[property];
-            priority = StyleLayerPriority.RankOf(layers.Keys[layers.Count - 1]);
+            key = layers.Keys[layers.Count - 1];
             return true;
         }
 
@@ -916,22 +906,11 @@ namespace Velvet
                     layers = new SortedList<long, ArbitraryStyle>();
                     map[style.Property] = layers;
                 }
-                if (!layers.TryGetValue(priority, out var held) || !SortsAfter(held, style))
-                {
-                    layers[priority] = style;
-                }
+                layers[priority] = style;
             }
             ResolveAndApply(element, style.Property, map);
             Reproject(element, map);
         }
-
-        // Two values of one property written without a variant share a layer key, and keep the one Tailwind
-        // emits later (StyleCandidateOrder), whichever was applied last. A style no class was parsed into carries no candidate and replaces the
-        // layer. The loser is not kept: a class diff that removes the winner re-applies the survivors.
-        private static bool SortsAfter(in ArbitraryStyle held, in ArbitraryStyle incoming)
-            => held.Candidate != null && incoming.Candidate != null
-                // MUTANT_SURVIVES(equivalent): a zero means the same class twice, which parses to the same value.
-                && StyleCandidateOrder.Compare(held.Candidate, incoming.Candidate) > 0;
 
         // Re-runs the class verdict after a layer changed. A new layer can outrank a class that was winning,
         // and a departing one can hand a property back to a class that was suppressed, so the two halves have
@@ -1329,14 +1308,14 @@ namespace Velvet
             var found = false;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
-                if (!TryTopLayer(map, writer, out var style, out var priority))
+                if (!TryTopLayer(map, writer, out var style, out var key))
                 {
                     continue;
                 }
-                if (priority >= best)
+                if (key >= best)
                 {
                     winner = style;
-                    best = priority;
+                    best = key;
                     found = true;
                 }
             }
@@ -1521,13 +1500,13 @@ namespace Velvet
         private static void ApplyCombinedFlex(VisualElement element, LayerMap map)
         {
             long? shorthandPriority = null;
-            if (TryTopLayer(map, ArbitraryProperty.Flex, out var shorthand, out var top))
+            if (TryTopLayer(map, ArbitraryProperty.Flex, out var shorthand, out var key))
             {
-                shorthandPriority = top;
+                shorthandPriority = StyleLayerPriority.RankOf(key);
             }
             var classes = shorthandPriority == null
                 ? default
-                : RankFlexClasses(element, map.Projection, shorthand.Candidate!);
+                : RankFlexClasses(element, map.Projection);
             var style = ClipPathLayoutBox.StyleFor(element, ArbitraryProperty.Flex);
             if (ShorthandSets(element, map, ArbitraryProperty.FlexGrow, shorthandPriority, classes.Grow))
             {
@@ -1550,8 +1529,8 @@ namespace Velvet
         private static bool ShorthandSets(VisualElement element, LayerMap map, ArbitraryProperty longhand,
             long? shorthandPriority, long? classPriority)
         {
-            var hasOwn = TryTopLayer(map, longhand, out var own, out var ownPriority);
-            if (hasOwn && !(ownPriority < shorthandPriority))
+            var hasOwn = TryTopLayer(map, longhand, out var own, out var ownKey);
+            if (hasOwn && !(StyleLayerPriority.RankOf(ownKey) < shorthandPriority))
             {
                 ApplyInline(element, own);
                 return false;
@@ -1575,11 +1554,12 @@ namespace Velvet
 
         // Per flex longhand, the priority of the highest live class writing it. The live list is read rather
         // than the projection, and a class the projection holds no entry for is a base one, so a class a
-        // gesture, motion or drag channel wrote counts the same with a projection as without one. A class
-        // writing all three is the shorthand's own family, and counts only where it sorts after the
-        // shorthand's candidate.
-        private static FlexClassRanks RankFlexClasses(VisualElement element, StyleClassProjection.Model? model,
-            string shorthandCandidate)
+        // gesture, motion or drag channel wrote counts the same with a projection as without one. A class of
+        // the shorthand's own family is not counted: above the shorthand's priority the projection's floor
+        // has already stood the shorthand down, at or below it the inline value wins as an inline value of
+        // one property does over its class, and FiberNodePatcher.DropShadowedValues has settled the two
+        // within one className.
+        private static FlexClassRanks RankFlexClasses(VisualElement element, StyleClassProjection.Model? model)
         {
             var ranks = default(FlexClassRanks);
             var classes = element.GetClasses() as IReadOnlyList<string> ?? new List<string>(element.GetClasses());
@@ -1588,10 +1568,7 @@ namespace Velvet
                 var cls = classes[i];
                 StyleUtilityProperties.TryGet(cls, out var rule);
                 var properties = rule.Properties;
-                // MUTANT_SURVIVES(equivalent): a class and the shorthand never share a candidate, since no class
-                // writing all three flex longhands is parsed inline, so the comparison is never zero.
-                if (properties.Union(s_flexLonghands) == properties
-                    && StyleCandidateOrder.Compare(cls, shorthandCandidate) < 0)
+                if (WritesWholeFlex(properties))
                 {
                     continue;
                 }
@@ -1602,6 +1579,8 @@ namespace Velvet
             }
             return ranks;
         }
+
+        internal static bool WritesWholeFlex(StyleLonghandSet properties) => properties.Union(s_flexLonghands) == properties;
 
         private static long? Raise(long? top, bool writes, long priority)
             => writes ? Math.Max(top ?? priority, priority) : top;

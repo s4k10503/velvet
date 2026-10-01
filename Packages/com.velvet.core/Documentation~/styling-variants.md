@@ -135,10 +135,11 @@ rather than a class, and the two mechanisms agree: an inline layer outranked by 
 class stands down so the class shows through, and a class outranked by a higher-priority inline layer
 comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The filter
 family is the exception — filters compose rather than override, so a `filter` class and a
-`blur-[6px]` layer both apply. Two inline values of one property written without a variant —
-`w-[2px] w-[1px]`, `flex-[3] flex-2` — resolve as Tailwind orders their names, the later one winning
-whatever the className lists last: `w-[2px]` and `flex-[3]` here. A repeated `filter-[name:…]` is the
-exception: [styling-filters.md](styling-filters.md) gives what it does.
+`blur-[6px]` layer both apply. Two inline values of one property that one className writes without a
+variant — `w-[2px] w-[1px]`, `flex-[3] flex-2` — resolve as Tailwind orders their names, a bang
+included, the later one winning whatever the className lists last: `w-[2px]` and `flex-[3]` here, and
+`w-[1px]` in `!w-[2px] w-[1px]!`. A repeated `filter-[name:…]` is the exception:
+[styling-filters.md](styling-filters.md) gives what it does.
 
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
 `shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is

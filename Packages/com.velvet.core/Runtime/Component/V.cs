@@ -2747,6 +2747,7 @@ namespace Velvet
         /// <summary>
         /// Splits a space-separated class name string into an array.
         /// "btn btn--active" → ["btn", "btn--active"]
+        /// A value another of its tokens shadows is left out (<see cref="FiberNodePatcher.DropShadowedValues"/>).
         /// The array is shared with other callers passing the same string, so it must not be mutated;
         /// <see cref="ClassNameParseCache"/> owns how long it stays shared.
         /// </summary>

@@ -1193,24 +1193,43 @@ namespace Velvet.Tests
                 Is.EqualTo((15f, 60f)));
         }
 
-        [Test]
-        public void Given_DuplicateSamePropertyClass_When_OneRemoved_Then_SurvivingValueIsPreserved()
+        private static readonly Dictionary<string, MotionVariant> s_shortPose = new()
         {
-            // Arrange — both h-[10%] and h-[20%] are present (h-[20%] sorts later and wins); removing h-[10%]
-            // re-applies h-[20%]
+            ["open"] = "h-[10%]",
+            ["closed"] = "",
+        };
+
+        // One className drops the value of a pair it shadows (FiberNodePatcher.DropShadowedValues), so the two
+        // values of one property a removal has to leave one of are taken here from a Motion's className and
+        // its pose.
+        private static float HeightAfterLeavingThePose(string className)
+        {
             using var reconciler = new Reconciler();
             var root = new VisualElement();
-            var oldTree = new VNode[] { V.Div("h-[10%] h-[20%]") };
-            var newTree = new VNode[] { V.Div("h-[20%]") };
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            var open = new VNode[]
+            {
+                V.Motion(className: className, variants: s_shortPose, animate: "open", transition: StyleTransitionConfig.None),
+            };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), open);
+            reconciler.Reconcile(root, open,
+                new VNode[]
+                {
+                    V.Motion(className: className, variants: s_shortPose, animate: "closed",
+                        transition: StyleTransitionConfig.None),
+                });
+            return root.ElementAt(0).style.height.value.value;
+        }
 
-            // Act
-            reconciler.Reconcile(root, oldTree, newTree);
+        // GREEN_ON_BASE(characterization): the base re-applies the className's value when the pose leaves.
+        // What reddens it is dropping the ReapplyArbitraryValues call from DiffClassList.
+        [Test]
+        public void Given_APoseRepeatingItsClassNamesProperty_When_ThePoseIsLeft_Then_TheClassNamesValueIsPreserved()
+        {
+            // Act — removing h-[10%] clears the height layer both values share, and re-applies h-[20%].
+            var height = HeightAfterLeavingThePose("h-[20%]");
 
             // Assert
-            var el = root.ElementAt(0);
-            Assert.That((el.style.height.value.value, el.style.height.value.unit),
-                Is.EqualTo((20f, LengthUnit.Percent)));
+            Assert.That(height, Is.EqualTo(20f));
         }
 
         [Test]
@@ -1232,23 +1251,16 @@ namespace Velvet.Tests
                 Is.EqualTo((20f, LengthUnit.Percent)));
         }
 
+        // GREEN_ON_BASE(characterization): the base re-applies the className's value when the pose leaves.
+        // What reddens it is dropping the ReapplyArbitraryValues call from DiffClassList.
         [Test]
-        public void Given_HashSetDiffPath_When_DuplicateSamePropertyClassRemoved_Then_SurvivingValueIsPreserved()
+        public void Given_HashSetDiffPath_When_APoseRepeatingItsClassNamesPropertyIsLeft_Then_TheClassNamesValueIsPreserved()
         {
-            // Arrange — 9+ classes select the hash-set diff path (linear threshold is 8)
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var oldTree = new VNode[] { V.Div("a b c d e f g h h-[10%] h-[20%]") };
-            var newTree = new VNode[] { V.Div("a b c d e f g h h-[20%]") };
-            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
-
-            // Act
-            reconciler.Reconcile(root, oldTree, newTree);
+            // Act — 9+ classes select the hash-set diff path (linear threshold is 8).
+            var height = HeightAfterLeavingThePose("a b c d e f g h h-[20%]");
 
             // Assert
-            var el = root.ElementAt(0);
-            Assert.That((el.style.height.value.value, el.style.height.value.unit),
-                Is.EqualTo((20f, LengthUnit.Percent)));
+            Assert.That(height, Is.EqualTo(20f));
         }
 
         [Test]
@@ -3528,12 +3540,65 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, 1f, new Length(0f, LengthUnit.Percent))));
         }
 
-        [Test]
-        public void Given_AFlexClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheShorthandSetsTheGrow()
+        private static VisualElement MountDiv(Velvet.TestUtilities.ReconcilerScope scope, string className)
         {
-            // Arrange — Tailwind orders flex-1 before flex-2, so the shorthand wins over it.
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: className) });
+            return scope.Root[0];
+        }
+
+        [Test]
+        public void Given_AFlexNumberBeforeAFlexOneInOneClassName_When_Mounted_Then_TheShorthandSetsTheGrow()
+        {
+            // Arrange — Tailwind orders flex-1 before flex-2, so the shorthand wins wherever it is listed.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "flex-2 flex-1");
+
+            // Assert
+            Assert.That(div.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base does not parse flex-2, so flex-none sets all three there.
+        // What reddens it is DropShadowedValues keeping both tokens: the shorthand then wins at their one
+        // priority.
+        [Test]
+        public void Given_AFlexNoneClassBeforeAFlexNumberInOneClassName_When_Mounted_Then_TheClassSetsAllThree()
+        {
+            // Arrange — Tailwind orders flex-none after flex-2, so the class wins wherever it is listed.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "flex-none flex-2");
+
+            // Assert
+            var style = div.style;
+            Assert.That((style.flexGrow.keyword, style.flexShrink.keyword, style.flexBasis.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base does not parse flex-0, so flex-1 sets the grow there.
+        // What reddens it is DropShadowedValues keeping both tokens, as in the case above.
+        [Test]
+        public void Given_AFlexOneClassBeforeAFlexZeroInOneClassName_When_Mounted_Then_TheClassSetsTheGrow()
+        {
+            // Arrange — Tailwind orders flex-0 before flex-1.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "flex-1 flex-0");
+
+            // Assert
+            Assert.That(div.style.flexGrow.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AFlexNoneClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheShorthandSetsTheGrow()
+        {
+            // Arrange — the two arrive from different classNames, so no spelling ranks them.
             var el = new VisualElement();
-            el.AddToClassList("flex-1");
+            el.AddToClassList("flex-none");
 
             // Act
             StyleArbitraryValueResolver.Apply(el, FlexTwo);
@@ -3543,93 +3608,207 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFlexKeywordClass_When_AFlexShorthandIsAppliedAtItsPriority_Then_TheClassSetsAllThree()
+        public void Given_ALaterSortingWidthListedFirst_When_Mounted_Then_ItKeepsTheWidth()
         {
-            // Arrange — Tailwind orders flex-none after flex-2, so the class wins over the shorthand.
+            // Arrange — Tailwind orders w-[1px] before w-[2px].
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "w-[2px] w-[1px]");
+
+            // Assert
+            Assert.That(div.style.width.value.value, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AFlexBracketListedBeforeAFlexNumber_When_Mounted_Then_TheBracketKeepsTheGrow()
+        {
+            // Arrange — Tailwind orders flex-2 before flex-[3].
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "flex-[3] flex-2");
+
+            // Assert
+            Assert.That(div.style.flexGrow.value, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_TwoImportantWidthsWithTheBangOnEitherSide_When_Mounted_Then_TheSpellingWithTheBangDecides()
+        {
+            // Arrange — Tailwind compares the spellings bang included, and `!` sorts before `w`.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "w-[1px]! !w-[2px]");
+
+            // Assert
+            Assert.That(div.style.width.value.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AnImportantFlexNoneBesideAnImportantFlexNumber_When_Mounted_Then_TheSpellingWithTheBangDecides()
+        {
+            // Arrange — `!flex-none` sorts before `flex-2!`.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "flex-2! !flex-none");
+
+            // Assert
+            Assert.That(div.style.flexGrow.value, Is.EqualTo(2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base applies each width on its own layer.
+        // What reddens it is DropShadowedValues ranking the two without their importance, which drops !w-[1px].
+        [Test]
+        public void Given_AnImportantWidthBesideALaterSortingPlainOne_When_Mounted_Then_TheImportantOneKeepsTheWidth()
+        {
+            // Arrange — the bang puts the two on different layers, so neither shadows the other.
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+
+            // Act
+            var div = MountDiv(scope, "!w-[1px] w-[2px]");
+
+            // Assert
+            Assert.That(div.style.width.value.value, Is.EqualTo(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops no token.
+        // What reddens it is IsShadowed counting a token DropShadowedValues does not rank as shadowed.
+        [Test]
+        public void Given_APlainClassBesideTwoWidths_When_TheClassNameIsParsed_Then_ThePlainClassIsKept()
+        {
+            // Act
+            var tokens = V.ParseClassNames("card w-[2px] w-[1px]");
+
+            // Assert
+            Assert.That(tokens, Does.Contain("card"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops no token.
+        // What reddens it is TryGetShadowKey ranking a variant token, which its manipulator applies, among the
+        // className's values.
+        [Test]
+        public void Given_TwoVariantWidths_When_TheClassNameIsParsed_Then_BothAreKept()
+        {
+            // Act
+            var tokens = V.ParseClassNames("hover:w-[1px] focus:w-[2px]");
+
+            // Assert
+            Assert.That(tokens, Is.EqualTo(new[] { "hover:w-[1px]", "focus:w-[2px]" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drops no token.
+        // What reddens it is TryGetShadowKey ranking a filter-[name:…] among the className's values.
+        [Test]
+        public void Given_TwoCustomFiltersOfDifferentNames_When_TheClassNameIsParsed_Then_BothAreKept()
+        {
+            // Act
+            var tokens = V.ParseClassNames("filter-[halo:1] filter-[speckle:2]");
+
+            // Assert
+            Assert.That(tokens, Is.EqualTo(new[] { "filter-[halo:1]", "filter-[speckle:2]" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base parses no flex-2 and leaves the grow to the class.
+        // What reddens it is dropping Flex's longhands from StyleArbitraryLonghands, which the projection's floor
+        // stands the shorthand down by.
+        [Test]
+        public void Given_AFlexNoneClassAboveTheBase_When_AFlexShorthandIsAppliedAtTheBase_Then_TheClassSetsTheGrow()
+        {
+            // Arrange
             var el = new VisualElement();
-            el.AddToClassList("flex-none");
+            StyleClassProjection.Add(el, "flex-none", StyleLayerPriority.ResponsiveMd);
 
             // Act
             StyleArbitraryValueResolver.Apply(el, FlexTwo);
 
             // Assert
-            var style = el.style;
-            Assert.That((style.flexGrow.keyword, style.flexShrink.keyword, style.flexBasis.keyword),
-                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
-        }
-
-        [Test]
-        public void Given_AFlexOneClass_When_AFlexZeroShorthandIsAppliedAtItsPriority_Then_TheClassSetsTheGrow()
-        {
-            // Arrange — Tailwind orders flex-0 before flex-1, so the class wins over the shorthand.
-            var el = new VisualElement();
-            el.AddToClassList("flex-1");
-
-            // Act
-            StyleArbitraryValueResolver.Apply(el, Parsed("flex-0"));
-
-            // Assert
             Assert.That(el.style.flexGrow.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        [Test]
-        public void Given_AWidthBracket_When_ALowerSortingOneIsAppliedAtItsPriority_Then_TheLaterSortingOneKeepsTheWidth()
+        private static readonly Dictionary<string, MotionVariant> s_narrowPose = new()
         {
-            // Arrange — Tailwind orders w-[1px] before w-[2px], so w-[2px] wins whichever is applied last.
-            var el = new VisualElement();
-            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+            ["open"] = "w-[100px] flex-2",
+            ["closed"] = "",
+        };
 
-            // Act
-            StyleArbitraryValueResolver.Apply(el, Parsed("w-[1px]"));
-
-            // Assert
-            Assert.That(el.style.width.value.value, Is.EqualTo(2f));
+        private static VisualElement MountMotion(Velvet.TestUtilities.ReconcilerScope scope, string className,
+            string label)
+        {
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
+                new VNode[]
+                {
+                    V.Motion(className: className, variants: s_narrowPose, animate: label,
+                        transition: StyleTransitionConfig.None),
+                });
+            return scope.Root[0];
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps the value applied last, which here is also the one
-        // sorting later. What reddens it is dropping the candidate comparison from SortsAfter, which keeps
-        // whichever value a priority held first.
+        // GREEN_ON_BASE(characterization): the base keeps the pose's values, applied after its className.
+        // What reddens it is ranking the pose's values against the className's by spelling, where w-[200px] and
+        // flex-[3] sort after w-[100px] and flex-2.
         [Test]
-        public void Given_AWidthBracket_When_AHigherSortingOneIsAppliedAtItsPriority_Then_ItTakesTheWidth()
+        public void Given_AMotionWhosePoseSortsBeforeItsClassName_When_MountedAtThePose_Then_ThePoseSetsWidthAndGrow()
         {
             // Arrange
-            var el = new VisualElement();
-            StyleArbitraryValueResolver.Apply(el, Parsed("w-[1px]"));
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
 
             // Act
-            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+            var motion = MountMotion(scope, "w-[200px] flex-[3]", "open");
 
             // Assert
-            Assert.That(el.style.width.value.value, Is.EqualTo(2f));
+            Assert.That((motion.style.width.value.value, motion.style.flexGrow.value), Is.EqualTo((100f, 2f)));
         }
 
+        // GREEN_ON_BASE(characterization): as the mounted case above, on the swap into the pose.
         [Test]
-        public void Given_AFlexBracket_When_AFlexNumberIsAppliedAtItsPriority_Then_TheBracketKeepsTheGrow()
+        public void Given_AMotionWhosePoseSortsBeforeItsClassName_When_SwappedIntoThePose_Then_ThePoseSetsWidthAndGrow()
         {
-            // Arrange — Tailwind orders flex-2 before flex-[3].
-            var el = new VisualElement();
-            StyleArbitraryValueResolver.Apply(el, Parsed("flex-[3]"));
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var closed = new VNode[]
+            {
+                V.Motion(className: "w-[200px] flex-[3]", variants: s_narrowPose, animate: "closed",
+                    transition: StyleTransitionConfig.None),
+            };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), closed);
 
             // Act
-            StyleArbitraryValueResolver.Apply(el, Parsed("flex-2"));
+            scope.Reconciler.Reconcile(scope.Root, closed,
+                new VNode[]
+                {
+                    V.Motion(className: "w-[200px] flex-[3]", variants: s_narrowPose, animate: "open",
+                        transition: StyleTransitionConfig.None),
+                });
 
             // Assert
-            Assert.That(el.style.flexGrow.value, Is.EqualTo(3f));
+            var motion = scope.Root[0];
+            Assert.That((motion.style.width.value.value, motion.style.flexGrow.value), Is.EqualTo((100f, 2f)));
         }
 
+        // GREEN_ON_BASE(characterization): as the mounted case above, on a settling driver's re-apply.
         [Test]
-        public void Given_WidthsBuiltWithoutAClass_When_AppliedBetweenParsedOnes_Then_EachReplacesTheLayer()
+        public void Given_AMotionAtAPoseThatSortsBeforeItsClassName_When_ASettledDriverReappliesItsValues_Then_ThePoseKeepsWidthAndGrow()
         {
-            // Arrange — a style no class was parsed into carries no candidate to order by.
-            var el = new VisualElement();
-            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 3f, LengthUnit.Pixel));
-            StyleArbitraryValueResolver.Apply(el, Parsed("w-[2px]"));
+            // Arrange
+            using var scope = new Velvet.TestUtilities.ReconcilerScope();
+            var motion = MountMotion(scope, "w-[200px] flex-[3]", "open");
+            var reapply = typeof(StyleAnimationScheduler).GetMethod("ReapplyMotionOwnedInlineValues",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            // As a play that moved classes leaves the element: the pose's tokens on the class list, and the slots
+            // the driver wrote cleared.
+            motion.AddToClassList("w-[100px]");
+            motion.AddToClassList("flex-2");
+            motion.style.width = StyleKeyword.Null;
+            motion.style.flexGrow = StyleKeyword.Null;
 
             // Act
-            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 1f, LengthUnit.Pixel));
+            reapply.Invoke(null, new object[] { motion });
 
             // Assert
-            Assert.That(el.style.width.value.value, Is.EqualTo(1f));
+            Assert.That((motion.style.width.value.value, motion.style.flexGrow.value), Is.EqualTo((100f, 2f)));
         }
 
         [Test]
