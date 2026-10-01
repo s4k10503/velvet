@@ -38,7 +38,7 @@ namespace Velvet
             }
             else if (hasGesture)
             {
-                var manipulator = new StyleGestureClassManipulator(hoverClasses, tapClasses, focusClasses);
+                var manipulator = new StyleGestureClassManipulator(hoverClasses, tapClasses, focusClasses, _ctx);
                 element.AddManipulator(manipulator);
                 _ctx.GestureManipulators[element] = manipulator;
             }

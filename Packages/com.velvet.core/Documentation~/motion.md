@@ -9,9 +9,9 @@ own config as the default a pose overrides** (and the instant opt-out; see the l
 
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
 `whileHoverClass` / `whileTapClass` gestures are covered in the README; everything below uses
-**variants**. One limit applies to those gesture channels and to the classes a play applies while it
-runs: they carry ordinary USS utilities only, not the few Velvet realises itself — see
-[styling-variants.md](styling-variants.md#payloads-velvet-realises-itself).
+**variants**. The gesture channels apply their classes as `hover:`, `active:` and `focus:` payloads, but
+draw none of the paints Velvet draws itself, and the classes a play applies while it runs carry ordinary
+USS utilities only — see [styling-variants.md](styling-variants.md#payloads-velvet-realises-itself).
 
 ## Variants & labels
 
