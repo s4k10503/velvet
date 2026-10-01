@@ -256,7 +256,10 @@ namespace Velvet
 
             internal Awaiter(VelvetTask task) => _task = task;
 
-            public bool IsCompleted =>
+            // A completed task still yields inside a transition callback — see FiberWorkLoop.DefersAwaitContinuations.
+            public bool IsCompleted => IsSettled && !FiberWorkLoop.DefersAwaitContinuations;
+
+            private bool IsSettled =>
                 _task._source == null || _task._source.GetStatus(_task._version).IsCompleted();
 
             public void GetResult()
@@ -267,7 +270,15 @@ namespace Velvet
                 }
             }
 
-            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+            public void OnCompleted(Action continuation)
+            {
+                if (IsSettled && FiberWorkLoop.DefersAwaitContinuations)
+                {
+                    FiberWorkLoop.DeferAwaitContinuation(continuation);
+                    return;
+                }
+                OnCompleted(continuation, VelvetMainThread.IsCurrent);
+            }
 
             internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {
@@ -343,13 +354,13 @@ namespace Velvet
 
             internal Awaiter(VelvetTask<T> task) => _task = task;
 
-            public bool IsCompleted =>
-                _task._source == null || _task._source.GetStatus(_task._version).IsCompleted();
+            // Read through the untyped view, whose awaiter owns the transition deferral.
+            public bool IsCompleted => ((VelvetTask)_task).GetAwaiter().IsCompleted;
 
             public T GetResult() =>
                 _task._source == null ? _task._result : _task._source.GetResult(_task._version);
 
-            public void OnCompleted(Action continuation) => OnCompleted(continuation, VelvetMainThread.IsCurrent);
+            public void OnCompleted(Action continuation) => ((VelvetTask)_task).GetAwaiter().OnCompleted(continuation);
 
             internal void OnCompleted(Action continuation, bool resumeOnMainThread)
             {

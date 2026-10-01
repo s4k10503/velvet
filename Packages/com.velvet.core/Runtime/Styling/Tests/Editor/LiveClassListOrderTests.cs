@@ -56,6 +56,9 @@ namespace Velvet.Tests
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string OwnSlotReader =
+            "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
+            + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
@@ -366,9 +369,10 @@ namespace Velvet.Tests
                 "this reading resolves whichever clip token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list.
-        // What shows the case can fail is a `break` after the first match in StyleGapClass.TryExtract:
-        // measured, each arrangement then takes the gap it was handed first and the pair inverts.
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through
+        // the scan the gap manipulator now reads its gaps from too. What shows the case can fail is a `break`
+        // after the first match in StyleGridClass.ExtractGaps: each arrangement then takes the gap it was
+        // handed first and the pair inverts.
         [Test]
         [ReaderVerdict(LiveClassesReader)]
         public void Given_TwoGapTokensOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheGapTheReSyncResolvesIsTheOneAddedLast()
@@ -379,8 +383,8 @@ namespace Velvet.Tests
             var reversed = Carrying("gap-8", "gap-4");
 
             // Act
-            StyleGapClass.TryExtract(LiveClasses(added), out var fromAdded, out _);
-            StyleGapClass.TryExtract(LiveClasses(reversed), out var fromReversed, out _);
+            StyleGridClass.ExtractGaps(LiveClasses(added), out var fromAdded, out _);
+            StyleGridClass.ExtractGaps(LiveClasses(reversed), out var fromReversed, out _);
 
             // Assert — 16px and 32px are the shared spacing scale's own values for the two tokens.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((32f, 16f)),
@@ -595,6 +599,26 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
+        }
+
+        // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
+        // overwrites: the arrangement ending on w-32 then answers false.
+        [Test]
+        [ReaderVerdict(OwnSlotReader)]
+        public void Given_AMarginTokenBesideAWidthToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheOwnSlotVerdictIsTheSameBothWays()
+        {
+            // Arrange — w-32 writes no margin, so a reading that took the last class rather than any of them
+            // answers differently depending on which arrived second.
+            var added = Carrying("mr-2", "w-32");
+            var reversed = Carrying("w-32", "mr-2");
+
+            // Act
+            var fromAdded = StyleArbitraryValueResolver.DeclaresOwn(added, HeldSlot.MarginRight);
+            var fromReversed = StyleArbitraryValueResolver.DeclaresOwn(reversed, HeldSlot.MarginRight);
+
+            // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
+                "a space margin or a divider gives way to the child's own class wherever it sits in the list");
         }
 
         [Test]
