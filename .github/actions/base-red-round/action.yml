@@ -24,7 +24,7 @@ runs:
           --replan plan.json --results base-results --base-tree base-tree | tee again.txt
         grep '^fixtures=' again.txt >> "$GITHUB_OUTPUT" || true
 
-    - uses: game-ci/unity-test-runner@32e57712352b500e17974b245a6dce9e11a73213 # v4
+    - uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
       if: steps.replan.outputs.fixtures != ''
       continue-on-error: true
       with:
