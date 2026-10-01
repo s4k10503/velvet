@@ -146,8 +146,8 @@ namespace Velvet
 
         // As Reconcile, for an error boundary reconciling its own rows: a render error below it is caught inside
         // this reconcile and handed back, for the boundary to show its fallback once the reconcile has returned.
-        // The catch has to sit inside the pass's top-level finally: that finally completes the enters the pass
-        // queued and drains the Portal mounts it deferred, and neither may run under the catch.
+        // The catch sits in the try whose finally ends a top-level pass, ahead of that finally: it completes the enters
+        // the pass queued and drains the Portal mounts it deferred, and neither may run under the catch.
         internal BoundaryCaughtSignal? ReconcileCatching(VisualElement? parent, VNode?[] oldChildren,
             VNode?[] newChildren, double frameBudgetMs, int slotStart, int slotLimit,
             ComponentFiber? catchingBoundary = null)

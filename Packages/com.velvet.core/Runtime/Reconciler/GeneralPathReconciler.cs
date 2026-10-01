@@ -1367,9 +1367,11 @@ namespace Velvet
             }
         }
 
-        // A catch a boundary in the primary took is discarded with the render the primary suspends in, as React
-        // discards a capture with the render that suspended: the boundary reports nothing for it and renders its
-        // children again rather than the fallback it would otherwise keep (FiberErrorBoundary.OutputOf).
+        // A catch a boundary the Suspense's own walk reached in the primary took is discarded with the render the
+        // primary suspends in, as React discards a capture with the render that suspended: that boundary reports
+        // nothing for it and renders its children again rather than the fallback it would otherwise keep
+        // (FiberErrorBoundary.OutputOf). A boundary inside a host element of the primary is expanded by that
+        // element's own reconcile, which this walk does not reach.
         private void ForgetCatchesOfTheDiscardedPrimary(
             int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers)
         {
