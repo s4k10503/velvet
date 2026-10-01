@@ -33,7 +33,7 @@ namespace Velvet
         // tie by declaration order with or without a model, so building one for the overwhelming majority of
         // elements (a class list with no variant, no important modifier and no bracket value) would buy
         // nothing.
-        public static void Add(VisualElement element, string cls, int priority)
+        public static void Add(VisualElement element, string cls, long priority)
         {
             AddToModel(element, cls, priority);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
@@ -56,7 +56,7 @@ namespace Velvet
             model.Add(element, cls, priority);
         }
 
-        public static void Remove(VisualElement element, string cls, int priority)
+        public static void Remove(VisualElement element, string cls, long priority)
         {
             RemoveFromModel(element, cls, priority);
             StyleArbitraryValueResolver.NotifyClassesChanged(element);
@@ -97,14 +97,14 @@ namespace Velvet
 
             void CollectLayers(List<InlineLayer> into);
 
-            void ApplyFloors(VisualElement element, Dictionary<ArbitraryProperty, int> floors);
+            void ApplyFloors(VisualElement element, Dictionary<ArbitraryProperty, long> floors);
         }
 
         private static readonly int s_gateCount = System.Enum.GetValues(typeof(StyleUtilityGate)).Length;
 
         // Stand-ins handed to readers when the lazily allocated field is still null. Never mutated.
         private static readonly List<InlineLayer> s_noInlineLayers = new();
-        private static readonly Dictionary<ArbitraryProperty, int> s_noFloors = new();
+        private static readonly Dictionary<ArbitraryProperty, long> s_noFloors = new();
 
         // One element's layers. Lives on the arbitrary-value LayerMap (see
         // StyleArbitraryValueResolver.GetOrCreateProjection) so the class half and the inline half of the
@@ -119,7 +119,7 @@ namespace Velvet
             // gone even while the model still records the layer that asked for it.
             private HashSet<string>? _suppressed;
             private List<InlineLayer>? _inline;
-            private Dictionary<ArbitraryProperty, int>? _floors;
+            private Dictionary<ArbitraryProperty, long>? _floors;
             private Dictionary<string, bool>? _verdict;
             private int _deadCount;
 
@@ -143,7 +143,7 @@ namespace Velvet
                 }
             }
 
-            public void Add(VisualElement element, string cls, int priority)
+            public void Add(VisualElement element, string cls, long priority)
             {
                 if (IndexOf(cls, priority) < 0)
                 {
@@ -157,7 +157,7 @@ namespace Velvet
                 }
             }
 
-            public void Remove(VisualElement element, string cls, int priority)
+            public void Remove(VisualElement element, string cls, long priority)
             {
                 var index = IndexOf(cls, priority);
                 if (index >= 0)
@@ -189,7 +189,7 @@ namespace Velvet
                 _floors?.Clear();
                 _deadCount = 0;
 
-                var cutoff = int.MaxValue;
+                var cutoff = long.MaxValue;
                 while (TryNextBand(cutoff, out var priority))
                 {
                     JudgeBand(priority);
@@ -210,9 +210,9 @@ namespace Velvet
                 }
             }
 
-            private bool TryNextBand(int cutoff, out int priority)
+            private bool TryNextBand(long cutoff, out long priority)
             {
-                priority = int.MinValue;
+                priority = long.MinValue;
                 var found = false;
                 foreach (var entry in _entries)
                 {
@@ -234,7 +234,7 @@ namespace Velvet
             }
 
             // Ties WITHIN the band are deliberately left alone: source order decides them, as it always has.
-            private void JudgeBand(int priority)
+            private void JudgeBand(long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
@@ -258,7 +258,7 @@ namespace Velvet
                     }
                     // A property's layers die from the bottom up (the claims a lower layer faces are a
                     // superset of the ones above it), so the highest dead priority is the whole floor.
-                    _floors ??= new Dictionary<ArbitraryProperty, int>();
+                    _floors ??= new Dictionary<ArbitraryProperty, long>();
                     _floors[layer.Property] = _floors.TryGetValue(layer.Property, out var floor) && floor > priority
                         ? floor
                         : priority;
@@ -267,7 +267,7 @@ namespace Velvet
 
             // A dead layer's properties are by definition already claimed, so claiming the whole band rather
             // than only its survivors gives the same set for less work.
-            private void ClaimBand(int priority)
+            private void ClaimBand(long priority)
             {
                 foreach (var entry in _entries)
                 {
@@ -359,7 +359,7 @@ namespace Velvet
                 return -1;
             }
 
-            private int IndexOf(string cls, int priority)
+            private int IndexOf(string cls, long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)
                 {
@@ -376,7 +376,9 @@ namespace Velvet
         // map: two payloads of the same priority naming the same class share it.
         private readonly struct Entry
         {
-            public Entry(string cls, int priority, StyleLonghandSet properties, int gate, bool dead = false)
+            // MUTANT_SURVIVES(equivalent): every entry is added on a path that recomputes before anything reads
+            // it, and Recompute writes each entry's Dead.
+            public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false)
             {
                 Class = cls;
                 Priority = priority;
@@ -387,7 +389,7 @@ namespace Velvet
 
             public string Class { get; }
 
-            public int Priority { get; }
+            public long Priority { get; }
 
             public StyleLonghandSet Properties { get; }
 
@@ -403,7 +405,7 @@ namespace Velvet
         // One registered arbitrary-value layer, as the projection sees it.
         internal readonly struct InlineLayer
         {
-            public InlineLayer(ArbitraryProperty property, int priority)
+            public InlineLayer(ArbitraryProperty property, long priority)
             {
                 Property = property;
                 Priority = priority;
@@ -411,7 +413,7 @@ namespace Velvet
 
             public ArbitraryProperty Property { get; }
 
-            public int Priority { get; }
+            public long Priority { get; }
         }
     }
 }

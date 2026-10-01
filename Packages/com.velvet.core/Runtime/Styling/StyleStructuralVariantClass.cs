@@ -5,8 +5,8 @@ namespace Velvet
 {
     /// <summary>
     /// Position among siblings, for the structural variants. Mirrors the CSS child-position pseudo
-    /// classes: <c>first:</c> / <c>last:</c> / <c>only:</c> / <c>odd:</c> / <c>even:</c> and the arbitrary
-    /// selector form <c>[&amp;:nth-child(N)]:</c> / <c>[&amp;:nth-last-child(N)]:</c> (+ the named
+    /// classes: <c>first:</c> / <c>last:</c> / <c>only:</c> / <c>odd:</c> / <c>even:</c>, the functional
+    /// <c>nth-N:</c> / <c>nth-last-N:</c>, and the arbitrary selector form <c>[&amp;:nth-child(N)]:</c> / <c>[&amp;:nth-last-child(N)]:</c> (+ the named
     /// <c>[&amp;:first-child]</c> etc. aliases).
     /// </summary>
     internal enum StyleStructuralKind
@@ -38,6 +38,29 @@ namespace Velvet
     internal static class StyleStructuralVariantClass
     {
         private const string ArbitraryPrefix = "[&:";
+        private const string NthPrefix = "nth-";
+        private const string NthLastPrefix = "nth-last-";
+
+        /// <summary>
+        /// The family-level rank a structural token's rule takes: every arbitrary [&amp;:…]: selector shares the
+        /// arbitrary one, and a named token takes its kind's.
+        /// </summary>
+        internal static long PriorityOf(string token, StyleStructuralKind kind) =>
+            token.StartsWith(ArbitraryPrefix, StringComparison.Ordinal) ? StyleLayerPriority.ArbitrarySelector
+            : NamedPriorityOf(kind);
+
+#pragma warning disable CS8524 // no discard arm: a new kind has to state its rank
+        private static long NamedPriorityOf(StyleStructuralKind kind) => kind switch
+        {
+            StyleStructuralKind.First => StyleLayerPriority.First,
+            StyleStructuralKind.Last => StyleLayerPriority.Last,
+            StyleStructuralKind.Only => StyleLayerPriority.Only,
+            StyleStructuralKind.Odd => StyleLayerPriority.Odd,
+            StyleStructuralKind.Even => StyleLayerPriority.Even,
+            StyleStructuralKind.NthChild => StyleLayerPriority.Nth,
+            StyleStructuralKind.NthLastChild => StyleLayerPriority.NthLast,
+        };
+#pragma warning restore CS8524
 
         /// <summary>True if <paramref name="token"/> is a recognized structural variant token.</summary>
         public static bool IsStructural(string? token) => TryParse(token, out _, out _, out _);
@@ -75,7 +98,12 @@ namespace Velvet
                 case "only": kind = StyleStructuralKind.Only; break;
                 case "odd": kind = StyleStructuralKind.Odd; break;
                 case "even": kind = StyleStructuralKind.Even; break;
-                default: return false;
+                default:
+                    if (!TryParseNamedNth(token.Substring(0, colon), out kind, out n))
+                    {
+                        return false;
+                    }
+                    break;
             }
 
             payload = token.Substring(colon + 1);
@@ -123,6 +151,23 @@ namespace Velvet
 
             payload = null;
             return false;
+        }
+
+        // nth-3 / nth-last-2: the functional forms. Tailwind takes a value only in its canonical spelling, so
+        // nth-01 is refused and nth-0 is accepted and matches no child.
+        private static bool TryParseNamedNth(string prefix, out StyleStructuralKind kind, out int n)
+        {
+            var last = prefix.StartsWith(NthLastPrefix, StringComparison.Ordinal);
+            kind = last ? StyleStructuralKind.NthLastChild : StyleStructuralKind.NthChild;
+            n = 0;
+            if (!prefix.StartsWith(NthPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var digits = prefix.Substring(last ? NthLastPrefix.Length : NthPrefix.Length);
+            return int.TryParse(digits, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out n)
+                && digits == n.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // Parses the positive integer N out of "<fn>N)" (e.g. "nth-child(3)" → 3). Only a bare 1-based

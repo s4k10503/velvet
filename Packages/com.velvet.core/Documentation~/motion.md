@@ -77,6 +77,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
+- A key whose Motion is created again while the key stays, as an `elementType` change does, enters
+  again, unless `initial: false` still withholds that key's enter (below).
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
@@ -96,8 +98,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   presence.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
-  Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A
-  `V.Fragment` cannot be the keyed child itself; it is refused with an error.
+  Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A keyed
+  `V.Fragment` child holds every element it places until its Motions' exits finish.
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no
   pose plays the classic exit instead.
@@ -114,7 +116,8 @@ V.AnimatePresence(mode: AnimatePresenceMode.PopLayout, children: items);
 Framer's `mode="popLayout"`: the exiting child is pinned **out of flow** (absolute, at its last
 laid-out rect, margins accounted for) so surviving siblings reflow *immediately* while the ghost
 plays its exit in place. The `gap-*` / `grid-cols-*` / `divide-*` emulations skip pinned ghosts
-in their index math, so spacing recomputes as if the child were already gone. Note the ghost
+in their index math, so spacing recomputes as if the child were already gone. A keyed `V.Fragment` is not
+pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
 keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
 
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
@@ -179,8 +182,10 @@ new StyleTransitionConfig
 ```
 
 Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"translate"`,
-`"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config.
-Completion is sized off the **slowest** overridden property, so a long override finishes instead
+`"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config, and a
+property no override names animates on the enclosing config's timing, as a value missing from Framer's
+per-value map takes the default transition.
+Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween` reads them on every variant swap:
 mount enters, label changes and exits.
 
@@ -257,8 +262,8 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
   (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
   modes, not magnitudes; `rounded-full` is a saturating radius sentinel; `shadow-*`, `skew-*` and
-  gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
-  `transition-filter`; `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
+  gradients are baked silhouette paints; `filter-*` transitions by its own path
+  ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.

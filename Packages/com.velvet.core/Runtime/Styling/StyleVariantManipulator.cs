@@ -10,13 +10,15 @@ namespace Velvet
         public static readonly VariantDeclarations None = new(
             Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>());
 
-        public VariantDeclarations(int[] hover, int[] focus, int[] focusVisible, int[] active, int[] @checked)
+        public VariantDeclarations(int[] hover, int[] focus, int[] focusVisible, int[] active, int[] @checked,
+            int[]? disabled = null)
         {
             Hover = hover ?? Array.Empty<int>();
             Focus = focus ?? Array.Empty<int>();
             FocusVisible = focusVisible ?? Array.Empty<int>();
             Active = active ?? Array.Empty<int>();
             Checked = @checked ?? Array.Empty<int>();
+            Disabled = disabled ?? Array.Empty<int>();
         }
 
         public int[] Hover { get; }
@@ -28,6 +30,8 @@ namespace Velvet
         public int[] Active { get; }
 
         public int[] Checked { get; }
+
+        public int[] Disabled { get; }
     }
 
     // A relational binding has no focus-visible state of its own, so its focus-WITHIN payloads ride the
@@ -36,13 +40,14 @@ namespace Velvet
     internal readonly struct VariantPayloads
     {
         public VariantPayloads(string[] hover, string[] focus, string[] focusVisible, string[] active,
-            string[] @checked)
+            string[] @checked, string[]? disabled = null)
         {
             Hover = hover ?? Array.Empty<string>();
             Focus = focus ?? Array.Empty<string>();
             FocusVisible = focusVisible ?? Array.Empty<string>();
             Active = active ?? Array.Empty<string>();
             Checked = @checked ?? Array.Empty<string>();
+            Disabled = disabled ?? Array.Empty<string>();
         }
 
         public string[] Hover { get; }
@@ -54,10 +59,12 @@ namespace Velvet
         public string[] Active { get; }
 
         public string[] Checked { get; }
+
+        public string[] Disabled { get; }
     }
 
-    // Toggles utility payloads in response to hover / focus / active state, implementing the general
-    // hover: / focus: / active: variants for any utility (a USS class such as
+    // Toggles utility payloads in response to hover / focus / active / disabled state, implementing the general
+    // hover: / focus: / active: / disabled: variants for any utility (a USS class such as
     // bg-blue-500 or an arbitrary value such as w-[200px]).
     // Mirrors StyleGestureClassManipulator's lifecycle: the reconciler attaches one per
     // element that has variant tokens, keeps it in ReconcilerContext.VariantManipulators, and
@@ -84,23 +91,27 @@ namespace Velvet
         private string[] _focusVisible;
         private string[] _active;
         private string[] _checked;
+        private string[] _disabled;
         // Each payload's position in the className, kept per state alongside the payloads themselves so a
-        // payload can be ranked against one a DIFFERENT owner applied at the same layer — a stacked
-        // dark:hover: shares this manipulator's hover layer. Identified by reference, like PriorityFor.
+        // payload can be ranked against one a DIFFERENT owner applied at the same rank. Identified by reference,
+        // like PriorityFor.
         private int[] _hoverDeclarations;
         private int[] _focusDeclarations;
         private int[] _focusVisibleDeclarations;
         private int[] _activeDeclarations;
         private int[] _checkedDeclarations;
+        private int[] _disabledDeclarations;
         private bool _isHovered;
         private bool _isFocused;
         private bool _isFocusVisible;
         private bool _isActive;
         private bool _isChecked;
+        private bool _isDisabled;
 
         // Owns the element-local signal detection (pointer/focus/checked edges, focus-visible heuristic,
         // worldBound bubbling); this manipulator keeps the per-state payload bookkeeping below.
         private ElementLocalVariantSignals _signals = null!;
+        private DisabledVariantSignal? _disabledSignal;
 
         private readonly ReconcilerContext _ctx;
 
@@ -113,11 +124,13 @@ namespace Velvet
             _focusVisible = payloads.FocusVisible;
             _active = payloads.Active;
             _checked = payloads.Checked;
+            _disabled = payloads.Disabled;
             _hoverDeclarations = declarations.Hover;
             _focusDeclarations = declarations.Focus;
             _focusVisibleDeclarations = declarations.FocusVisible;
             _activeDeclarations = declarations.Active;
             _checkedDeclarations = declarations.Checked;
+            _disabledDeclarations = declarations.Disabled;
         }
 
         // Applies (on) or clears (off) the payloads for every state currently flagged active, under the
@@ -130,6 +143,7 @@ namespace Velvet
             if (_isFocusVisible) ApplyPayloads(_focusVisible, on);
             if (_isActive) ApplyPayloads(_active, on);
             if (_isChecked) ApplyPayloads(_checked, on);
+            if (_isDisabled) ApplyPayloads(_disabled, on);
         }
 
         // Swaps the payload sets, re-applying any currently-active state under the new sets.
@@ -142,13 +156,58 @@ namespace Velvet
             _focusVisible = payloads.FocusVisible;
             _active = payloads.Active;
             _checked = payloads.Checked;
+            _disabled = payloads.Disabled;
             _hoverDeclarations = declarations.Hover;
             _focusDeclarations = declarations.Focus;
             _focusVisibleDeclarations = declarations.FocusVisible;
             _activeDeclarations = declarations.Active;
             _checkedDeclarations = declarations.Checked;
+            _disabledDeclarations = declarations.Disabled;
 
-            if (target != null) ReapplyActiveStates(true);
+            if (target != null)
+            {
+                ReapplyActiveStates(true);
+                SyncDisabledSignal();
+            }
+        }
+
+        // Watches the ancestor chain only while a disabled: payload exists, since every element on it carries
+        // a callback for as long as the watch lasts.
+        private void SyncDisabledSignal()
+        {
+            if (_disabled.Length > 0)
+            {
+                _disabledSignal ??= new DisabledVariantSignal(OnDisabled);
+                if (!_disabledSignal.IsHooked) _disabledSignal.Hook(target);
+            }
+            else if (_disabledSignal is { IsHooked: true })
+            {
+                _disabledSignal.Unhook();
+                _isDisabled = false;
+            }
+        }
+
+        // Whether the element-local state a stacked inner of this kind reacts to is held right now. A stacked
+        // manipulator is created only when its outer gate first opens, and hover, focus and active arrive only
+        // as edges, so one opened while the pointer already rests on the element would otherwise wait for the
+        // next edge.
+        internal bool Holds(StyleVariantKind kind) =>
+            kind == StyleVariantKind.Hover ? _isHovered
+            : kind == StyleVariantKind.Focus ? _isFocused
+            : kind == StyleVariantKind.FocusVisible ? _isFocusVisible
+            : kind == StyleVariantKind.Active && _isActive;
+
+        // The same question asked of an element with no manipulator tracking it, such as a child a [&>*]:hover:
+        // payload lands on, answered from UI Toolkit's own pseudo-states. Focus-visible reads none here and seeds
+        // off, as checked and disabled need no seed (their inners read their state at hook time).
+        internal static bool LiveHolds(VisualElement element, StyleVariantKind kind) =>
+            kind == StyleVariantKind.Hover ? element.hasHoverPseudoState
+            : kind == StyleVariantKind.Focus ? element.hasFocusPseudoState
+            : kind == StyleVariantKind.Active && element.hasActivePseudoState;
+
+        private void OnDisabled(bool on)
+        {
+            if (on != _isDisabled) { _isDisabled = on; ApplyPayloads(_disabled, on); }
         }
 
         protected override void RegisterCallbacksOnTarget()
@@ -157,6 +216,7 @@ namespace Velvet
             // seedChecked lights up an already-checked control on attach: ChangeEvent fires only on a
             // change, so a Toggle mounted with value == true is read at hook time.
             _signals.Hook(target, seedChecked: _checked.Length > 0, registerChecked: true);
+            SyncDisabledSignal();
         }
 
         protected override void UnregisterCallbacksFromTarget()
@@ -167,8 +227,12 @@ namespace Velvet
             _isFocusVisible = false;
             _isActive = false;
             _isChecked = false;
+            // MUTANT_SURVIVES(unreachable): a detached manipulator is dropped from the context's table
+            // ReconcilerContext.VariantManipulators, the only path that reads one or attaches it again.
+            _isDisabled = false;
 
             _signals?.Unhook();
+            _disabledSignal?.Unhook();
         }
 
         // Forwards a drag session's synthetic release to the shared signal source (see
@@ -214,7 +278,8 @@ namespace Velvet
         // The className positions belonging to the state whose payload array this is, paired the same way
         // PriorityFor pairs the layer.
         private int[] DeclarationsFor(string[] payloads) =>
-            ReferenceEquals(payloads, _checked) ? _checkedDeclarations
+            ReferenceEquals(payloads, _disabled) ? _disabledDeclarations
+            : ReferenceEquals(payloads, _checked) ? _checkedDeclarations
             : ReferenceEquals(payloads, _active) ? _activeDeclarations
             : ReferenceEquals(payloads, _focusVisible) ? _focusVisibleDeclarations
             : ReferenceEquals(payloads, _focus) ? _focusDeclarations
@@ -222,8 +287,9 @@ namespace Velvet
 
         // Arbitrary-value layering priority for the state whose payload array this is (identified by reference),
         // so e.g. an active arbitrary value layers over a hover one, and clearing active falls back to hover.
-        private int PriorityFor(string[] payloads) =>
-            ReferenceEquals(payloads, _checked) ? StyleLayerPriority.Checked
+        private long PriorityFor(string[] payloads) =>
+            ReferenceEquals(payloads, _disabled) ? StyleLayerPriority.Disabled
+            : ReferenceEquals(payloads, _checked) ? StyleLayerPriority.Checked
             : ReferenceEquals(payloads, _active) ? StyleLayerPriority.Active
             : ReferenceEquals(payloads, _focusVisible) ? StyleLayerPriority.FocusVisible
             : ReferenceEquals(payloads, _focus) ? StyleLayerPriority.Focus

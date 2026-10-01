@@ -203,12 +203,11 @@ namespace Velvet
         // on the PARENT, so a position would index a different class list from the one every payload the
         // CHILD declares is indexed in, and the two would be compared as if they were the same.
         //
-        // What makes that safe is the rank they fall back to being the WEAKEST (see
-        // StyleVariantPayload.NoDeclaration), not the layer they are applied at: a state-variant payload
-        // here is promoted onto the inner variant's own layer, where the child's own payloads sit, so
-        // ranking these strongest would let the container's blanket rule beat the child's own. Among
-        // themselves they tie and fall back to arrival, which for one swept array is the parent's className
-        // order — their source order.
+        // What makes that safe is that every payload applied from here carries the child-combinator variant in
+        // its rank, a stacked one included (see StyleLayerPriority.Stack), and no payload the child declares
+        // does, so the two never tie. Among themselves they tie and fall back to arrival (see
+        // StyleVariantPayload.NoDeclaration), which for one swept array is the parent's className order — their
+        // source order.
         private void ApplyPayloads(VisualElement child, bool on)
             => StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this);
 
