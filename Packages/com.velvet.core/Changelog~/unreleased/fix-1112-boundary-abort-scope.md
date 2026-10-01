@@ -6,6 +6,8 @@
   a boundary inside an element left that element and everything around it unrendered and a sibling's passive
   effect never ran, and on an update the siblings the render had not reached kept their previous output. A
   boundary that is a `V.VirtualList` row, mounting in its host's render, no longer stops that render either.
+  One catch still stops the other render: a boundary that catches while finishing an update of its own a
+  time-sliced pass had parked, which that render reached, discards that render as before.
   The fallback takes over no element the failed children held, and an `AnimatePresence` or a Portal target
   the failed children rendered into keeps nothing of them. The catch is reported once the fallback has
   rendered. Where the fallback's own content throws, that error goes to the boundary above, as in React; the
