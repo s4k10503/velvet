@@ -226,6 +226,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFailingActionWhoseLoadersStillRun_When_TheRouterIsRead_Then_ThePreviousActionDataStands()
+        {
+            // Arrange — the first submission succeeds; the second fails while the root's loader holds.
+            var submissions = 0;
+            var loads = 0;
+            var router = BuildRouter("/items",
+                Route("/", loader: (_, _) => ++loads < 3
+                    ? VelvetTask.FromResult<object>("root")
+                    : new VelvetTaskCompletionSource<object>().Task, children: new[]
+                {
+                    ActionRoute("items", (_, _) => ++submissions == 1
+                        ? VelvetTask.FromResult<object>("saved")
+                        : throw new InvalidOperationException("rejected"), errorElement: V.Component(StubB)),
+                }));
+            Submit(router, "first", PostToItems);
+
+            // Act
+            router.SubmitAsync("second", PostToItems).Forget();
+
+            // Assert
+            Assert.That((router.Status, router.CurrentActionData["/items"]), Is.EqualTo((RouterStatus.Loading, (object)"saved")));
+        }
+
+        [Test]
         public void Given_ASubmissionStillRunning_When_ANavigationTakesOver_Then_ItRunsEveryLoader()
         {
             // Arrange
@@ -370,6 +394,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMethodNoFormTakes_When_Submitted_Then_ItIsReportedAsALoadAndNotASubmission()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var statuses = new List<RouterStatus>();
+            router.OnStatusChanged += status => statuses.Add(status);
+
+            // Act
+            Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
+
+            // Assert
+            Assert.That(string.Join(",", statuses), Is.EqualTo("Matching,Loading,Ready"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionWhoseLoaderIsStillRunning_When_TheRouterIsRead_Then_ItReportsTheSubmission()
+        {
+            // Arrange
+            var router = BuildRouter("/start", Route("start"),
+                Route("search", loader: (_, _) => new VelvetTaskCompletionSource<object>().Task));
+            var query = new SearchParams();
+            query.Append("q", "lamp");
+
+            // Act
+            router.SubmitAsync(query, new SubmitOptions { Action = "/search" }).Forget();
+
+            // Assert
+            Assert.That(router.PendingSubmission?.FormMethod, Is.EqualTo("get"));
+        }
+
+        [Test]
         public void Given_AnEmptyMethod_When_Submitted_Then_ItIsAGetSubmission()
         {
             // Arrange
@@ -464,6 +519,37 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((router.CurrentLocation!.Path, string.Join(",", _log)), Is.EqualTo(("/?index=5&flag=", "layout")));
+        }
+
+        [Test]
+        public void Given_ASearchWithNoBareIndex_When_ALayoutSubmitsWithoutNamingAnAction_Then_TheSearchIsKeptAsWritten()
+        {
+            // Arrange
+            var router = IndexRouter("/?flag");
+
+            // Act
+            router.SubmitAsync(null, new SubmitOptions { Method = "post" }, baseRouteIndex: 0, default)
+                .GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/?flag"));
+        }
+
+        [Test]
+        public void Given_AnIndexRouteDeclaringAnEmptyChildList_When_ItSubmitsWithoutNamingAnAction_Then_ItsOwnActionRuns()
+        {
+            // Arrange — an empty list declares no child, so the route is still an index route.
+            var router = BuildRouter("/", ActionRoute("/", Logged("layout"), children: new[]
+            {
+                ActionRoute("", Logged("index"), children: new RouteDefinition[0]),
+            }));
+
+            // Act
+            router.SubmitAsync(null, new SubmitOptions { Method = "post" }, baseRouteIndex: 1, default)
+                .GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(string.Join(",", _log), Is.EqualTo("index"));
         }
 
         [TestCase(".")]

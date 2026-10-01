@@ -93,6 +93,28 @@ namespace Velvet.Tests
             Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Error status=Error"));
         }
 
+        // GREEN_ON_BASE(characterization): the base refuses the fifth redirect at the same bound.
+        [Test]
+        public void Given_AChainOfFiveRedirects_When_NavigatingToItsStart_Then_TheFifthIsRefused()
+        {
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("a", redirectTo: "/b"),
+                Route("b", redirectTo: "/c"),
+                Route("c", redirectTo: "/d"),
+                Route("d", redirectTo: "/e"),
+                Route("e", redirectTo: "/f"),
+                Route("f"),
+            });
+
+            // Act
+            var result = router.NavigateSync("/a");
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.Error));
+        }
+
         #endregion
 
         #region Guard

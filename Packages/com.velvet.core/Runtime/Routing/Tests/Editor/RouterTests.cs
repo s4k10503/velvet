@@ -976,6 +976,59 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(Router.Current, later), Is.True);
         }
 
+        private static void ForgetEveryRouter() => typeof(Router).GetMethod("ForgetEveryRouter",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+
+        // GREEN_ON_BASE(characterization): the base names no router once the newest is disposed.
+        [Test]
+        public void Given_TheOnlyTwoRoutersRegistered_When_BothAreDisposed_Then_CurrentNamesNone()
+        {
+            // Arrange — the registry starts empty, so the earlier router is its first entry.
+            ForgetEveryRouter();
+            var earlier = new Router(new[] { Route("/") });
+            var later = new Router(new[] { Route("/") });
+            earlier.Dispose();
+
+            // Act
+            later.Dispose();
+
+            // Assert
+            Assert.That(Router.Current, Is.Null);
+        }
+
+        [Test]
+        public void Given_RoutersConstructedAndDisposedInTurn_When_AnotherIsConstructed_Then_TheRegistryHoldsOnlyIt()
+        {
+            // Arrange
+            ForgetEveryRouter();
+            for (var i = 0; i < 3; i++)
+            {
+                new Router(new[] { Route("/") }).Dispose();
+            }
+
+            // Act
+            using var live = new Router(new[] { Route("/") });
+
+            // Assert
+            var registry = typeof(Router).GetField("s_constructed",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.GetValue(null);
+            Assert.That((registry as System.Collections.ICollection)?.Count ?? -1, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base clamps a route level past the matched chain the same way.
+        [Test]
+        public void Given_ARouteLevelPastTheMatchedChain_When_NavigatingToTheCurrentRoute_Then_ItAnchorsAtTheLeaf()
+        {
+            // Arrange
+            var router = BuildRouter("/users/7", Route("/", children: new[] { Route("users/:id") }));
+
+            // Act
+            router.NavigateAsync(".", NavigationMode.Push, baseRouteIndex: 9).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/users/7"));
+        }
+
         [Test]
         public void Given_ALiveRouter_When_TheSubsystemsAreRegisteredAgain_Then_CurrentNamesNone()
         {
