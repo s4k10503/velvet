@@ -2647,8 +2647,10 @@ def digestible(text):
 
 
 def code_text(text):
-    """The file with every comment and string literal blanked, newlines kept: what the compiler binds."""
-    mask = code_mask(text)
+    """The file with its comments and its string literals blanked, newlines kept. An interpolated literal
+    is kept whole, since its holes are code and reading its text as well only finds more."""
+    mask = code_mask(text, [(start, end, kind) for start, end, kind in mask_spans(text)
+                            if not text.startswith("$", start)])
     return "".join(character if mask[offset] or character == "\n" else " "
                    for offset, character in enumerate(text))
 
@@ -2787,7 +2789,7 @@ def carry(args, project, targets, mutants, base):
         print("{}: nothing carried, since git could not diff {} against the tree".format(
             args.platform, args.previous_head))
         return 0
-    refused, reached = campaign_carry.touched(project, paths)
+    refused, reached = campaign_carry.touched(project, args.previous_head, paths, code_text)
     if refused:
         print("{}: nothing carried from {}: {}".format(args.platform, origin, refused))
         return 0

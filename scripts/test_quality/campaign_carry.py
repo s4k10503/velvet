@@ -11,6 +11,8 @@ that test can have changed. So this answers from the paths the push changed, in 
   source is an input to its assembly without anything naming it: the IL post-processor weaves or leaves
   the assembly by what any of its files declares, and a case can reflect over the assembly it runs in.
   A kill carries only on a case whose fixture lives in an assembly the push did not reach.
+- A changed test source spelling one of `DOMAIN_HOOKS`, before or after the push, stops every kill from
+  carrying: the hook runs when the domain loads, and what it writes any assembly's cases can read.
 
 A case whose fixture's source reads across the loaded assemblies, directly or through a type declared
 outside the test sources and `CodeGen/` that does, can read a test assembly the push did reach, so a
@@ -32,6 +34,10 @@ DELEGATE = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[
 # What reads the loaded assemblies rather than the one a case runs in.
 ACROSS_ASSEMBLIES = re.compile(
     r"\bGetAssemblies\b|\bTypeCache\.|\bAssembly\.Load\w*|\bAppDomain\.CurrentDomain\b|\bCompilationPipeline\b")
+# What Unity or the runtime calls for the whole domain when it loads, whatever cases then run.
+DOMAIN_HOOKS = re.compile(
+    r"\b(?:InitializeOnLoad(?:Method)?|RuntimeInitializeOnLoadMethod|InitializeOnEnterPlayMode"
+    r"|DidReloadScripts|ModuleInitializer)(?:Attribute)?\b")
 # Words DECLARED can capture that are not a type's name: `where T : class where U : struct`.
 KEYWORDS = {"where", "class", "struct", "new", "unmanaged", "notnull", "default", "enum", "interface"}
 GUID = re.compile(r"^guid:\s*([0-9a-f]{32})\s*$", re.M)
@@ -110,6 +116,30 @@ def declared(text):
     return names - KEYWORDS
 
 
+def top_level(text):
+    """The types `declared` finds in `text` (code, comments blanked) outside every other type's braces.
+
+    Only such a name binds from another file on its own: a nested type is spelt there through its outer
+    type's name, which is the one a reader of that file then follows.
+    """
+    namespace = re.compile(r"\bnamespace\s+[\w.]+\s*$")
+    events = [(match.start(), match.group(), None) for match in re.finditer(r"[{}]", text)]
+    events += [(match.start(), "type", match.group(1))
+               for match in list(DECLARED.finditer(text)) + list(DELEGATE.finditer(text))]
+    stack, names, cursor = [], set(), 0
+    for offset, kind, name in sorted(events, key=lambda event: (event[0], event[1] != "type")):
+        if kind == "{":
+            stack.append(bool(namespace.search(text[cursor:offset])))
+            cursor = offset + 1
+        elif kind == "}":
+            if stack:
+                stack.pop()
+            cursor = offset + 1
+        elif all(stack):
+            names.add(name)
+    return names - KEYWORDS
+
+
 def references(project):
     """Assembly name -> the names its .asmdef references, every GUID reference resolved by .meta."""
     asmdefs = {}
@@ -152,6 +182,11 @@ def tracked(project, pattern):
             if name and not any(part.endswith("~") for part in PurePosixPath(name).parts)]
 
 
+def show(project, revision, relative):
+    found = git(project, "show", "{}:{}".format(revision, relative))
+    return found.stdout if found.returncode == 0 else None
+
+
 def current(project, relative):
     try:
         return (project / relative).read_text(encoding="utf-8")
@@ -159,13 +194,22 @@ def current(project, relative):
         return None
 
 
-def touched(project, paths):
+def touched(project, previous, paths, code=lambda text: text):
     """(the reason nothing can carry, None) or (None, the test assemblies the push reached) for the paths
-    `changed_paths` listed."""
+    `changed_paths` listed since `previous`."""
     for relative in paths:
         reason = blocker(project, relative)
         if reason is not None:
             return "{} changed, and {}".format(relative, reason), None
+    for relative in paths:
+        source = relative[:-len(".meta")] if relative.endswith(".cs.meta") else relative
+        if not source.endswith(".cs"):
+            continue
+        # Either side of the push: a hook it removed stops running for every assembly as well.
+        for text in (show(project, previous, source), current(project, source)):
+            if text is not None and DOMAIN_HOOKS.search(code(text)):
+                return ("{} changed, and it declares a hook that runs for the whole domain, where any "
+                        "assembly's cases can read what it writes".format(source)), None
     return None, referencing(project, {assembly(project, relative) for relative in paths})
 
 
@@ -208,8 +252,9 @@ def sources(project):
 
 def reflecting(texts):
     """The paths among `texts` (path -> code) that can read a test assembly other than their own: a
-    source spelling `ACROSS_ASSEMBLIES`, a runtime source naming a type such a runtime source declares,
-    followed to every runtime source naming one in turn, and a test source naming any of those types.
+    source spelling `ACROSS_ASSEMBLIES`, a runtime source naming a type such a runtime source declares
+    at its top level, followed to every runtime source naming one in turn, and a test source naming any
+    of those types.
 
     `CodeGen/` is no runtime source here: the post-processor's reads happen while an assembly compiles,
     over that assembly and its references, and a push reaching that assembly reaches it whole already.
@@ -218,7 +263,7 @@ def reflecting(texts):
     found = {relative for relative, text in texts.items() if ACROSS_ASSEMBLIES.search(text)}
     names, pattern = set(), None
     while True:
-        grown = set().union(*(declared(texts[relative]) for relative in found & runtime)) - names
+        grown = set().union(*(top_level(texts[relative]) for relative in found & runtime)) - names
         if not grown:
             break
         names |= grown

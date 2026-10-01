@@ -55,6 +55,26 @@ class AcrossAssembliesTests(unittest.TestCase):
         self.assertEqual(found, [False] * len(WITHIN))
 
 
+HOOKS = [
+    "[InitializeOnLoad] internal static class Boot { }",
+    "[UnityEditor.InitializeOnLoadAttribute] internal static class Boot { }",
+    "[InitializeOnLoadMethod] private static void Boot() { }",
+    "[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)] private static void Boot() { }",
+    "[InitializeOnEnterPlayMode] private static void Boot() { }",
+    "[UnityEditor.Callbacks.DidReloadScripts] private static void Boot() { }",
+    "[ModuleInitializer] internal static void Boot() { }",
+]
+
+
+class DomainHookTests(unittest.TestCase):
+    def test_Given_EachDomainLoadHookSpelling_When_Read_Then_EveryOneIsFound(self):
+        # Act
+        found = [bool(campaign_carry.DOMAIN_HOOKS.search(text)) for text in HOOKS]
+
+        # Assert
+        self.assertEqual(found, [True] * len(HOOKS))
+
+
 class DeclaredTests(unittest.TestCase):
     def test_Given_EachKindOfTypeDeclaration_When_Read_Then_EachNameIsFound(self):
         # Arrange
@@ -77,6 +97,20 @@ class DeclaredTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, set())
+
+
+class TopLevelTests(unittest.TestCase):
+    def test_Given_TypesNestedAndNot_When_Read_Then_OnlyThoseOutsideAnotherTypeAreFound(self):
+        # Arrange — a block namespace, a file-scoped one, and members nested two deep.
+        texts = ["namespace A\n{\n    internal sealed class Outer\n    {\n        private sealed class Inner { }\n"
+                 "        internal delegate void Handler(int x);\n    }\n    internal enum Mode { X }\n}\n",
+                 "namespace A.B;\ninternal static class Holder { private struct Item { class Deeper { } } }\n"]
+
+        # Act
+        found = [sorted(campaign_carry.top_level(text)) for text in texts]
+
+        # Assert
+        self.assertEqual(found, [["Mode", "Outer"], ["Holder"]])
 
 
 class FixtureOfTests(unittest.TestCase):

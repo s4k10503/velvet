@@ -5696,6 +5696,59 @@ class ReachedAssemblyTests(unittest.TestCase):
         # Assert
         self.assertFalse(measured)
 
+    def test_Given_AKillerReadingTheLoadedAssembliesInsideAnInterpolatedString_When_Measured_Then_ItsKillIsMeasuredAgain(self):
+        # Act — the hole is code, though the literal around it is not.
+        measured = self.elsewhere({ELSEWHERE + "/ElsewhereTests.cs": fixture_source(
+            "ElsewhereTests",
+            "        internal string Count => $\"{System.AppDomain.CurrentDomain.GetAssemblies().Length}\";\n")})
+
+        # Assert
+        self.assertTrue(measured)
+
+    def test_Given_APushAddingADomainLoadHook_When_Measured_Then_AnotherAssemblysKillIsMeasuredAgain(self):
+        # Act
+        measured = self.after_probe(EDITED + "[UnityEditor.InitializeOnLoad] internal static class Boot { }\n")
+
+        # Assert
+        self.assertTrue(measured)
+
+    def test_Given_APushRemovingADomainLoadHook_When_Measured_Then_AnotherAssemblysKillIsMeasuredAgain(self):
+        # Arrange — what the hook wrote at the earlier head is no longer written at this one.
+        hooked = fixture_source("ProbeTests") + "[UnityEditor.InitializeOnLoad] internal static class Boot { }\n"
+
+        # Act
+        measured = self.after_probe(EDITED, {TESTS + "/ProbeTests.cs": hooked})
+
+        # Assert
+        self.assertTrue(measured)
+
+    def test_Given_APushNamingADomainLoadHookOnlyInAComment_When_Measured_Then_AnotherAssemblysKillCarries(self):
+        # Act
+        measured = self.after_probe(EDITED + "// no [InitializeOnLoad] here\n")
+
+        # Assert
+        self.assertFalse(measured)
+
+    def after_probe(self, probe, files=None):
+        """Whether the other assembly's kill was measured again after a push writing `probe` as
+        `ProbeTests`."""
+        campaign = CarryCampaign(files)
+        measured = campaign.after({TESTS + "/ProbeTests.cs": probe})
+        return "mutant-003.xml" in measured
+
+    def test_Given_AKillerSpellingOnlyANestedTypeNameOfARuntimeReader_When_Measured_Then_ItsKillCarries(self):
+        # Arrange — `Item` here is the fixture's own; the reader's `Item` is spelt `Scanner.Item` elsewhere.
+        scanner = ("namespace Velvet\n{\n    internal static class Scanner\n    {\n        internal sealed class Item { }\n"
+                   "        internal static object All() => System.AppDomain.CurrentDomain.GetAssemblies();\n    }\n}\n")
+
+        # Act
+        measured = self.elsewhere({"Packages/com.velvet.core/Runtime/Scanner.cs": scanner,
+                                   ELSEWHERE + "/ElsewhereTests.cs": fixture_source(
+                                       "ElsewhereTests", "        private sealed class Item { }\n")})
+
+        # Assert
+        self.assertFalse(measured)
+
     def test_Given_AKillerNamingAPostProcessorTypeThatReadsAssemblies_When_Measured_Then_ItsKillCarries(self):
         # Arrange — the post-processor reads while an assembly compiles, which a push reaching that
         # assembly reaches already.

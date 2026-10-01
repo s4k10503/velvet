@@ -237,7 +237,8 @@ the EditMode one whose PlayMode kill carried. A kill carries when all three hold
 - the merge base and every mutated source are what that campaign measured: a record is read under this
   head's key, which covers both;
 - every path the push changed is C# compiled into a test assembly, or that C#'s or its directory's
-  `.meta`. Anything else carries nothing —
+  `.meta`, and no such C# spells, before or after the push, one of the domain-load hooks
+  `campaign_carry.py` lists. Anything else carries nothing —
   a production source, a comment in one included, the tooling under `scripts/`, a workflow,
   `TestUtilities/`, an `.asmdef` or `csc.rsp`, a stylesheet, markdown, anything under a `~` directory;
 - a case that failed on it there is still not a text reader's at this head, and runs under a fixture
@@ -246,9 +247,9 @@ the EditMode one whose PlayMode kill carried. A kill carries when all three hold
   post-processor weaves or leaves an assembly by what any of its files declares, and a case can reflect
   over the assembly it runs in. Nor does a kill carry on a case whose fixture's source can read a
   reached assembly from an unreached one: it spells a read across the loaded assemblies that
-  `campaign_carry.py` lists, or it names a type declared outside the test sources and `CodeGen/` by a
-  source that spells one, followed through such sources naming one in turn. Comments and string
-  literals are not read for either.
+  `campaign_carry.py` lists, or it names a type declared, outside any other type, by a source outside
+  the test sources and `CodeGen/` that spells one, followed through such sources naming one in turn. Comments and string
+  literals other than interpolated ones are not read for either, nor for the hooks above.
 
 Only a kill a failing case named carries; every other verdict is measured again. What a test does to
 shared state while it runs is not read, the same as for a kill an area's own assemblies took. The
