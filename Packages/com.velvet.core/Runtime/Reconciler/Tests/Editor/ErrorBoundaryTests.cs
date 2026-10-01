@@ -23,17 +23,16 @@ namespace Velvet.Tests
     /// children mount, and the fallback factory does not restart.</item>
     /// <item>A catch rewrites the boundary's own slot range rather than the first slots of its
     /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
-    /// <item>Where the pass that catches was itself re-placing the boundary, the rows rewritten are the
-    /// ones the container is still holding rather than the ones that pass was moving them to; where such
-    /// a pass has already committed, they are the rows it placed.</item>
-    /// <item>A catch that aborts its parent's render leaves a component that render never reached mounted,
-    /// with its state and its effect: a sibling behind the boundary, one inside a child that re-rendered in
-    /// that render, one the discarded render itself dropped, and the fallback a Suspense behind the boundary
-    /// is showing.</item>
-    /// <item>A component the aborted render did reach and drop is cleaned up, whether a child that
-    /// re-rendered dropped it, with its own children, or an element that child owns did. The one a child
-    /// dropped comes back as a new instance when rendered again, and so does one whose own cleanup threw into
-    /// the boundary that caught it.</item>
+    /// <item>Where the pass that catches is itself re-placing the boundary, the rest of that pass commits and
+    /// the fallback takes the rows it gives the boundary; where such a pass has already committed and a later
+    /// render of the thrower throws, the rows rewritten are the ones it placed. Where the catch is of an element
+    /// callback's error, which aborts that pass, the rows rewritten are the ones the container still holds.</item>
+    /// <item>A catch inside its parent's render leaves the rest of that render to commit: a sibling behind the
+    /// boundary, one inside a child that re-rendered in that render, and the fallback a Suspense behind the
+    /// boundary is showing keep their state and their effect.</item>
+    /// <item>A component that render drops is cleaned up, whether the parent itself, a child that re-rendered,
+    /// with its own children, or an element that child owns dropped it, and it comes back as a new instance
+    /// when rendered again, as does one whose own cleanup threw into the boundary that caught it.</item>
     /// <item>A catch leaves no fiber on the reconciler's fiber stack once the pass ends.</item>
     /// </list>
     /// </summary>
@@ -644,6 +643,7 @@ namespace Velvet.Tests
         #region A catch on either side of the expansion that re-places the boundary
 
         private static bool s_movedShouldThrow;
+        private static bool s_movedThrowsInCallback;
         private static Action<int> s_movedSetOrder;
         private static Action<int> s_movedSetLeading;
         private static Action<int> s_movedSetGrow;
@@ -652,18 +652,15 @@ namespace Velvet.Tests
         private static void ResetMoved()
         {
             s_movedShouldThrow = false;
+            s_movedThrowsInCallback = false;
             s_movedSetOrder = null;
             s_movedSetLeading = null;
             s_movedSetGrow = null;
             s_movedSetTick = null;
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already leaves this container's sibling alone.
-        // It writes the fallback from row 0 of the mount point and this boundary's rows start there, so
-        // the two coincide for a reason this arrangement does not test. Writing the fallback from the offset an
-        // uncommitted placement recorded is what loses it, and this is the case that says so.
         [Test]
-        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -676,11 +673,11 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
-                Is.EqualTo("moved-fallback,moved-ahead"));
+                Is.EqualTo("moved-ahead,moved-fallback"));
         }
 
         [Test]
-        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -693,15 +690,75 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
-                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
+                Is.EqualTo("moved-lead0,moved-fallback"));
         }
 
         [Test]
-        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
+
+            // Act
+            s_movedSetGrow.Invoke(3);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
+        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        [Test]
+        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_movedShouldThrow = true;
+            s_movedThrowsInCallback = true;
+
+            // Act
+            s_movedSetOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-fallback,moved-ahead"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
+        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        [Test]
+        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_movedShouldThrow = true;
+            s_movedThrowsInCallback = true;
+
+            // Act
+            s_movedSetLeading.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
+        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        [Test]
+        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_movedShouldThrow = true;
+            s_movedThrowsInCallback = true;
 
             // Act
             s_movedSetGrow.Invoke(3);
@@ -737,6 +794,10 @@ namespace Velvet.Tests
         {
             var (_, setTick) = Hooks.UseState(0);
             s_movedSetTick = setTick;
+            if (s_movedShouldThrow && s_movedThrowsInCallback)
+            {
+                return V.ScrollView(name: "moved-thrown", onCreated: _ => throw new InvalidOperationException("Moved boundary throw"));
+            }
             if (s_movedShouldThrow) throw new InvalidOperationException("Moved boundary throw");
             return V.Label(name: "moved-thrown", text: "ok");
         }
@@ -795,7 +856,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region A sibling the aborted pass never reached
+        #region A catch inside its parent's render
 
         private static bool s_unreachedShouldThrow;
         private static Action<int> s_unreachedSetHostTick;
@@ -814,8 +875,10 @@ namespace Velvet.Tests
             s_throwingSetValue = null;
         }
 
+        // GREEN_ON_BASE(characterization): the merge base keeps this sibling by stopping the pass short of it.
+        // The catch taken in the walk keeps it by rendering it with its state, which this pins.
         [Test]
-        public void Given_ASiblingBehindACatchingBoundary_When_TheCatchAbortsTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
+        public void Given_ASiblingBehindACatchingBoundary_When_ItCatchesInTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -826,16 +889,16 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
-            var cleanupsAfterAbort = s_unreachedCleanups;
+            var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
 
             // Act
             s_unreachedSetHostTick.Invoke(2);
             mounted.FlushStateForTest();
 
-            // Assert — the fallback term says the boundary caught, which is what raises the abort.
+            // Assert — the fallback term says the boundary caught.
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
                 Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
         }
@@ -851,7 +914,7 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the fallback term says the catch that disposes the thrower mid-render happened.
+            // Assert — the fallback term says the catch happened.
             Assert.That(
                 (_root.FindLabelByText("unreached-fallback") != null ? "fell back" : "never fell back")
                     + ", stack depth " + mounted.Root.Reconciler.Context.FiberStack.Depth,
@@ -884,8 +947,8 @@ namespace Velvet.Tests
         private static int s_droppedCleanups;
         private static Action<int> s_droppedSetValue;
 
-        // GREEN_ON_BASE(characterization): the merge base sweeps every orphan of an aborted walk, this one included.
-        // Keeping every orphan such a walk leaves is what hands this instance back with its state.
+        // GREEN_ON_BASE(characterization): the merge base sweeps the dropped child with the orphans of the walk it stops.
+        // The catch taken in the walk leaves that walk to complete, and the child going in its sweep is what this pins.
         [Test]
         public void Given_AChildThatDropsItsOwnChildAheadOfACatch_When_TheChildRendersItAgain_Then_ItMountsAfresh()
         {
@@ -898,7 +961,7 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
-            var cleanupsAfterAbort = s_droppedCleanups;
+            var cleanupsAfterCatch = s_droppedCleanups;
             s_unreachedShouldThrow = false;
 
             // Act
@@ -906,23 +969,23 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
 
-            // Assert — the fallback term says the boundary caught, which is what raises the abort; the value
-            // says which instance came back: a new one starts at 0, the one the abort left registered holds 5.
-            // The component behind the boundary makes the walk skip a node, and the great-grandchild is the
-            // dropped child's own child, so both cleanups count. Only the grandchild's label is read: the
-            // dropped instance's elements stay behind after the abort, which the other labels show.
+            // Assert — the fallback term says the boundary caught; the value says which instance came back: a
+            // new one starts at 0, one left registered holds 5. The great-grandchild is the dropped child's own
+            // child, so both cleanups count. Only the grandchild's label is read.
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)
                         .Where(text => text.StartsWith("grandchild"))),
                 Is.EqualTo("fell back, cleanups 2, grandchild:0"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base keeps this sibling by stopping the pass short of it.
+        // The catch taken in the walk keeps it by rendering it with its state, which this pins.
         [Test]
-        public void Given_ASiblingBehindACatchInsideAChildThatReRendered_When_TheCatchAbortsTheRender_Then_TheSiblingKeepsItsStateAndEffect()
+        public void Given_ASiblingBehindACatchInsideAChildThatReRendered_When_ItCatchesInThatRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
             // Arrange — the same sibling as the case above it, two components further in: the child holding the
-            // boundary and the sibling, and the one above it, both render in the stopped pass.
+            // boundary and the sibling, and the one above it, both render in the pass the catch is taken in.
             using var mounted = V.Mount(_root, V.Component(NestingHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedSetCount.Invoke(1);
@@ -931,7 +994,7 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
-            var cleanupsAfterAbort = s_unreachedCleanups;
+            var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
 
             // Act
@@ -940,15 +1003,15 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
                 Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base sweeps every orphan of an aborted walk, this one included.
-        // Keeping the orphans whose parent owns the stopped walk is what leaves this one's cleanup unrun.
+        // GREEN_ON_BASE(characterization): the merge base sweeps this component with the orphans of the walk it stops.
+        // The catch taken in the walk leaves that walk to complete, and its sweep is what this pins.
         [Test]
-        public void Given_AChildWhoseOwnElementDropsAComponentBehindACatch_When_TheCatchAbortsTheRender_Then_TheDroppedComponentIsCleanedUp()
+        public void Given_AChildWhoseOwnElementDropsAComponentBehindACatch_When_ItCatchesInThatRender_Then_TheDroppedComponentIsCleanedUp()
         {
             // Arrange — the boundary and the dropped component sit in an element the child renders, so the
             // walk that stops is that element's, and the child that owns it re-rendered in the enclosing one.
@@ -997,10 +1060,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParentWhoseAbortedRenderDropsAChild_When_ItRendersTheChildAgain_Then_TheChildKeptItsState()
+        public void Given_AParentWhoseRenderDropsAChildBesideACatch_When_ItRendersTheChildAgain_Then_TheChildMountsAfresh()
         {
-            // Arrange — the parent is the render the abort discards, and the child it drops comes ahead of the
-            // boundary, so the stopped walk never met a node for it.
+            // Arrange — the parent's render drops the child ahead of the boundary, and the catch leaves that
+            // render to commit.
             using var mounted = V.Mount(_root, V.Component(DiscardedDropHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedSetCount.Invoke(1);
@@ -1009,7 +1072,7 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
-            var cleanupsAfterAbort = s_unreachedCleanups;
+            var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
 
             // Act
@@ -1018,20 +1081,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
-                Is.EqualTo("fell back, cleanups 0, count:1,thrower"));
+                Is.EqualTo("fell back, cleanups 1, count:0,thrower"));
         }
 
         private static VelvetTaskCompletionSource<string> s_pendingResource;
         private static Action<int> s_shownFallbackSetValue;
         private static int s_shownFallbackCleanups;
 
+        // GREEN_ON_BASE(characterization): the merge base keeps this fallback by stopping the pass short of it.
+        // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
         [Test]
-        public void Given_ASuspenseShowingItsFallbackBehindACatch_When_TheCatchAbortsTheRender_Then_TheFallbackKeepsItsStateAndEffect()
+        public void Given_ASuspenseShowingItsFallbackBehindACatch_When_ItCatchesInThatRender_Then_TheFallbackKeepsItsStateAndEffect()
         {
-            // Arrange — the Suspense comes after the boundary inside a child that re-renders, so the stopped walk
-            // meets it without rendering anything under it.
+            // Arrange — the Suspense comes after the boundary inside a child that re-renders, and its reader is
+            // still pending when that render reaches it.
             s_pendingResource = new VelvetTaskCompletionSource<string>();
             s_shownFallbackCleanups = 0;
             using var mounted = V.Mount(_root, V.Component(SuspenseAfterCatchHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -1042,7 +1107,7 @@ namespace Velvet.Tests
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
-            var cleanupsAfterAbort = s_shownFallbackCleanups;
+            var cleanupsAfterCatch = s_shownFallbackCleanups;
             s_unreachedShouldThrow = false;
 
             // Act
@@ -1051,7 +1116,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)
                         .Where(text => text.StartsWith("waiting"))),
                 Is.EqualTo("fell back, cleanups 0, waiting:5"));

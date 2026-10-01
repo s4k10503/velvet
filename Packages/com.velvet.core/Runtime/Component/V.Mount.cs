@@ -49,10 +49,11 @@ namespace Velvet
             // so ring predictions are never computed from a non-root subtree.
             FiberFocusNavigator.EnsureAttached(target, ctx);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
+            var focusScrub = PanelFocusMemory.ForgetWhenLeaving(target);
 #if UNITY_EDITOR
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif
-            return new MountedTree(rootFiber, root, sheetWatch);
+            return new MountedTree(rootFiber, root, sheetWatch, focusScrub);
         }
 
         internal sealed class RootTree
@@ -98,13 +99,15 @@ namespace Velvet
         internal readonly ComponentFiber Root;
         private readonly V.RootTree _tree;
         private readonly IDisposable _sheetWatch;
+        private readonly IDisposable _focusScrub;
         private bool _disposed;
 
-        internal MountedTree(ComponentFiber root, V.RootTree tree, IDisposable sheetWatch)
+        internal MountedTree(ComponentFiber root, V.RootTree tree, IDisposable sheetWatch, IDisposable focusScrub)
         {
             Root = root ?? throw new ArgumentNullException(nameof(root));
             _tree = tree;
             _sheetWatch = sheetWatch;
+            _focusScrub = focusScrub;
         }
 
         // React's root.render(element): the new tree is reconciled against the committed one, so a component
@@ -126,6 +129,7 @@ namespace Velvet
             if (_disposed) return;
             _disposed = true;
             _sheetWatch.Dispose();
+            _focusScrub.Dispose();
             // Unmounting a root is terminal — subsequent hook setters / async
             // continuations must not resurrect the tree. FiberRenderer.Dispose sets IsDisposed
             // before unmounting so IsDisposed-gated closures (UseMutation continuations,

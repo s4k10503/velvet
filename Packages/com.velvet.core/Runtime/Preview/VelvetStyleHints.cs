@@ -17,6 +17,14 @@ namespace Velvet
         /// among the sheets already there is decided by whoever attaches them, not here.
         /// </summary>
         public static StyleSheet? PreviewStyleSheet { get; set; }
+
+        // Clearing as it reads keeps a sheet from reaching a second consumer.
+        internal static StyleSheet? Take()
+        {
+            var sheet = PreviewStyleSheet;
+            PreviewStyleSheet = null;
+            return sheet;
+        }
     }
 }
 #endif

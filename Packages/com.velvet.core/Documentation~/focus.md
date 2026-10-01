@@ -19,15 +19,18 @@ existing container. Four independent knobs, mirroring React Aria's props:
   clears focus to nothing first (no focus event ever lands anywhere), so that path re-focuses the
   scope on the panel's next scheduler tick. Focus that moves to another panel — a layer or
   world-space host, another mounted tree's panel, or a panel Velvet does not manage — is pulled back
-  on that same tick. Neither pull-back applies to content of a portal declared inside the scope, in
-  whatever panel the portal renders, an element-valued `V.Portal(target:)` included. When two contained
+  on that same tick. Content of a portal declared inside the scope counts as inside it, in whatever
+  panel the portal renders, an element-valued `V.Portal(target:)` included: focus moving there stands,
+  and focus leaving it for an element outside the scope, other than one in a newer contained scope, is
+  pulled back, across panels on the scope's panel's next tick. A blur to nothing from that content is
+  not pulled back, as React Aria listens for one on the scope's own elements only. When two contained
   scopes are live at once — in one panel, across panels, or across mounted trees — the one created
   later wins: a landing in it stands, and a landing in the older one is pulled back. A scope nested
   in another is created before the scope around it when both mount in the same render.
 - **`restoreFocus`** — when the scope unmounts while holding focus, focus returns to the element
-  it came FROM when it first entered the scope, skipped if that element is gone or can no longer
-  take focus (an unmounted origin is dropped rather than chased into pool reuse). Pair with
-  `contain` for dialogs.
+  that held focus when the scope mounted, React Aria's `nodeToRestore`, skipped if that element is
+  gone or can no longer take focus (an unmounted one is dropped rather than chased into pool reuse).
+  Pair with `contain` for dialogs.
 - **`autoFocus`** — on mount, the scope's first focusable descendant takes focus (skipped when
   focus already sits inside). Mount-once, like React's `autoFocus`: a reorder that moves the scope's
   element physically re-attaches it and must not steal focus back, so a re-attach never re-fires it.
@@ -40,7 +43,10 @@ existing container. Four independent knobs, mirroring React Aria's props:
   wraps within the nearest containing scope when the group is nested in one, and a group covering
   every reachable focusable holds position (in a `Chained` host panel it exits across the panel
   boundary instead — see below). Members keep their `tabIndex`, so spatial navigation INSIDE the
-  group is untouched.
+  group is untouched. Of groups nested in each other, the outermost one below the nearest contain
+  scope decides, as the outermost of nested toolbars does in React Aria's `useToolbar`: Tab leaves all
+  of them, arrows move across the nested ones, and entry lands on the member last used at any depth.
+  A plain scope nested in a group is part of the group.
 
 Arrows/d-pad move between a group's members by their on-screen geometry and never leave the group:
 a spatial move that lands outside it returns to the member it started from. An element outside the
@@ -68,15 +74,41 @@ delegating focus to the input beneath it — so a constant would hand one type a
 
 ## Focus-visible styling and state
 
-The `focus-visible:` class variant covers keyboard/gamepad-only focus styling: it lights for
-focus NOT caused by a pointer press on the element (keyboard, gamepad navigation, or
-programmatic focus) and stays dark for click-to-focus, mirroring CSS `:focus-visible`.
+The `focus-visible:` class variant covers keyboard/gamepad-only focus styling, mirroring CSS
+`:focus-visible` with React Aria's input modality: one reading, written by every panel Velvet renders
+into. A pointer press, release or move switches it to pointer, and a key press or release or a
+navigation move switches it back. Focus lights the variant unless the reading is pointer — so a
+click-to-focus stays dark, and so does a programmatic `Focus()` that follows pointer use, in the same
+panel or another, such as a dialog's `autoFocus` in a layer host opened by a click. While the element
+holds focus, the variant follows the reading: a key press lights it and a pointer press darkens it. A
+key typed into a text input other than Tab or Escape leaves it as it was. A Shift, Ctrl or Command key
+pressed alone, a Ctrl or Command chord, and an Alt chord off a Mac are not key presses here, as React
+Aria's `isValidKey` has it.
 
 `Hooks.UseFocusRing` is the render-state channel for the same distinction — React Aria's
 `useFocusRing` parity: it returns the element's `IsFocused` / `IsFocusVisible` as re-rendering
 component state plus a `Ref` to pass as the element's `refCallback:`. Reach for it when the
 component must render differently (say, a "press A to select" hint), not just restyle; it rides
-the same element-local heuristic as the `focus-visible:` variant.
+the same heuristic as the `focus-visible:` variant.
+
+## Moving focus from code (`UseFocusManager`)
+
+`Hooks.UseFocusManager` is React Aria's `useFocusManager`: it returns a `FocusManager` for the focus
+scope around the calling component — the nearest `V.FocusScope` or `FocusScope` element prop above it,
+where a component inside a portal reaches the scope the portal is declared in. `FocusNext`,
+`FocusPrevious`, `FocusFirst` and `FocusLast` focus an element of that scope and return it, or return
+null and leave focus alone when there is none to move to or the component is in no scope.
+
+The elements are the scope's descendants in hierarchy order. A field such as a `TextField` or a
+`Toggle` is one element. A disabled element, anything
+under an element that is not displayed, and an element other than a field that delegates its focus
+are skipped.
+`FocusManagerOptions` carries React Aria's four options: `Tabbable` skips a negative `TabIndex`,
+`Accept` filters, and — for `FocusNext` and `FocusPrevious` — `Wrap` continues past the scope's end
+from its other end and `From` moves from that element instead of the focused one, into its own
+descendants first. When focus is outside the scope, `FocusNext` lands on the first element and
+`FocusPrevious` on the last. A portal's content is not among the elements of the scope it is declared
+in, as React Aria's scope walker reaches only the scope's own DOM.
 
 ## Cross-panel Tab order (`PanelFocusOrder`)
 
@@ -98,9 +130,6 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 
 ## Scope cuts
 
-- No imperative focus-manager handle.
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
 - No orientation/wrap options on `singleTabStop`; spatial navigation handles in-group movement.
-- No global input-modality tracker. The focus-visible heuristic is element-local, so a
-  programmatic focus right after pointer use shows the ring.

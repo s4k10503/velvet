@@ -54,13 +54,8 @@
 /* transition-filter — hands filter-* changes (blur-*, brightness-*, ...) to Velvet's own tween rather
  * than to the engine's native filter animation, which transition-all / a bare duration-* would get.
  *
- * transition-property is pinned to `filter` so the scheduler-driven tween (StyleFilterTransitionDriver)
- * owns the motion outright. The inline-filter setter runs a write as an UNCANCELLABLE native animation
- * wherever a transition runs for background-size, which `all` covers, and takes a plain direct-write
- * path otherwise; only the latter lets a per-frame tween write paint what it wrote, so leaving this at
- * the initial `all` would have each tween frame restart a native chase over the same value. A
- * hand-authored list running one beside filter leaves the change to the engine: the driver stands its
- * tween down there.
+ * transition-property is pinned to `filter` so the entry that runs for filter is not an `all` the engine
+ * animates the inline filter by; StyleFilterTransitionDriver says which lists the tween runs under.
  * Pinning one property also means this class transitions ONLY filter, and it does not combine with
  * another transition-* utility: they set the same property, so the later-declared one wins outright.
  * duration-* / ease-* still override, declared later.

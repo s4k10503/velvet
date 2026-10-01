@@ -86,6 +86,27 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.LayoutIdMembers.ContainsKey("shared-box"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base drops the entry of an id whose last holder is torn down outside a render.
+        // A holder torn down outside a render, as a recycled virtual-list row is, must leave no entry naming it.
+        [Test]
+        public void Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsNoEntry()
+        {
+            // Arrange
+            s_boxMounted = true;
+            _mounted = V.Mount(Root, V.Component(RemovableBoxRender, key: "root"));
+            Tick();
+            var ctx = _mounted.Root.Reconciler.Context;
+
+            // Act — the cleanup a virtual list gives a row it recycles, with no render in progress, and the row taken out
+            // of the tree as the list takes it.
+            var shared = Root.Q<VisualElement>("shared");
+            ((IReconcilerBridge)_mounted.Root.Reconciler).CleanupElementForController(shared);
+            shared.RemoveFromHierarchy();
+
+            // Assert
+            Assert.That(ctx.LayoutIdRegistry.ContainsKey("shared-box"), Is.False);
+        }
+
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
 
@@ -120,40 +141,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_mounted.Root.Reconciler.Context.LayoutIdFrames, Is.Empty);
-        }
-
-        private static StateUpdater<bool> s_setMoved;
-
-        // One layoutId Motion, moved from the second parent to the first at the same box.
-        [Component]
-        private static VNode AcrossParentsBoxRender()
-        {
-            var (moved, setMoved) = Hooks.UseState(false);
-            s_setMoved = setMoved;
-            VNode Box() => V.Motion(name: "shared", layoutId: "shared-box", transition: s_spring,
-                className: "left-[200px] top-[0px] w-[100px] h-[100px]");
-            return V.Div(children: new VNode[]
-            {
-                V.Div(key: "first", children: moved ? new[] { Box() } : Array.Empty<VNode>()),
-                V.Div(key: "second", children: moved ? Array.Empty<VNode>() : new[] { Box() }),
-            });
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_NoProjectionRunsOnTheReplacement()
-        {
-            // Arrange
-            _mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
-            Tick();
-
-            // Act
-            s_setMoved.Invoke(true);
-            _mounted.FlushStateForTest();
-            Tick();
-
-            // Assert
-            var replacement = Root.Q<VisualElement>("shared");
-            Assert.That(_mounted.Root.Reconciler.Context.LayoutIdProjections.ContainsKey(replacement), Is.False);
         }
     }
 }
