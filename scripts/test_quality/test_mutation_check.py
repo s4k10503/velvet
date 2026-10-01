@@ -3609,6 +3609,8 @@ def failing_count():
 class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
     """An editor left running over a tree the harness has put back measures a change that is gone."""
 
+    # GREEN_ON_BASE(refactor): the branch's kill starts a `ps` listing where there is no /proc, and
+    # this case now leaves those out of what it reads; the editor it pins is the base's.
     def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
         # Arrange
         with lingering_editor() as (editor, started), mock.patch.object(mutation_check, "unity_busy",
@@ -3619,7 +3621,7 @@ class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
                 raised = False
             except OSError:
                 raised = True
-            left_running = [process.poll() is None for process in started]
+            left_running = [process.poll() is None for process in started if editor in process.args]
 
         # Assert
         self.assertEqual((raised, left_running), (True, [False]))
@@ -3757,6 +3759,61 @@ class ProjectLockTests(unittest.TestCase):
         # Assert
         self.assertEqual(state, (True, "free"))
 
+    def lock_after_a_kill(self, starter):
+        """Whether the editor's lock holder had taken the lock, and the lock's state up to ten seconds
+        after a run that killed the editor at its bound returned; then what the run printed. The editor
+        runs the holder through `starter`, a script handed HOLD_LOCK's command line."""
+        body = textwrap.dedent("""\
+            holding = subprocess.Popen([sys.executable, "-c", {!r}, sys.executable, "-c", {!r},
+                                        os.path.join(project, "Temp", "UnityLockfile"), "flock",
+                                        os.path.join(holders, "inside"), "600"],
+                                       stdout=subprocess.PIPE, text=True)
+            holding.stdout.readline()
+            open(os.path.join(project, "taken"), "w").write("")
+            time.sleep(60)
+            """).format(starter, HOLD_LOCK)
+        with scripted_editor(body) as (editor, project, root, _):
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                mutation_check.run_suite(editor, str(project), "EditMode", [], root / "results.xml",
+                                         root / "run.log", 3)
+            deadline = time.time() + 10
+            while lock_state(str(project)) == "held" and time.time() < deadline:
+                time.sleep(0.2)
+            return ((project / "taken").exists(), lock_state(str(project))), printed.getvalue()
+
+    # A holder outside the editor's process group. On CI an editor killed at its bound went on writing
+    # its log and its results for minutes, which no process the kill reached could have done.
+    LEFT_THE_GROUP = ("import subprocess, sys\n"
+                      "sys.exit(subprocess.call(sys.argv[1:], start_new_session=True))\n")
+
+    def test_Given_AnEditorWhoseLockHolderLeftItsProcessGroup_When_TheRunKillsTheEditorAtItsBound_Then_TheLockIsFree(self):
+        # Act
+        state, _ = self.lock_after_a_kill(self.LEFT_THE_GROUP)
+
+        # Assert
+        self.assertEqual(state, (True, "free"))
+
+    def test_Given_AnEditorWhoseLockHolderLeftItsProcessGroup_When_TheRunKillsTheEditorAtItsBound_Then_ItSaysSo(self):
+        # Act
+        _, printed = self.lock_after_a_kill(self.LEFT_THE_GROUP)
+
+        # Assert
+        self.assertIn("killed 1 process(es) the editor left outside its process group", printed)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "the watchdog becomes a subreaper on Linux alone")
+    def test_Given_ALockHolderOrphanedBeforeTheEditorIsKilled_When_TheRunKillsTheEditorAtItsBound_Then_TheLockIsFree(self):
+        # Arrange — what started the holder exits at once, so by the kill the holder's parent is no
+        # process the editor started.
+        starter = ("import subprocess, sys\n"
+                   "subprocess.Popen(sys.argv[1:], start_new_session=True)\n")
+
+        # Act
+        state, _ = self.lock_after_a_kill(starter)
+
+        # Assert
+        self.assertEqual(state, (True, "free"))
+
     def test_Given_AnEditorRefusedTheLockOnce_When_ItIsRun_Then_TheNextLaunchsResultStands(self):
         # Arrange
         body = textwrap.dedent("""\
@@ -3832,6 +3889,8 @@ HARNESS = textwrap.dedent("""\
 
         def starting(*arguments, **options):
             process = real(*arguments, **options)
+            # Once: what the handler then starts itself is not an editor starting.
+            subprocess.Popen = real
             os.kill(os.getpid(), signal.SIGTERM)
             return process
 
@@ -3850,9 +3909,21 @@ class EditorOutlivingItsHarnessTests(unittest.TestCase):
         time.sleep(600)
         """)
 
-    def left_running(self, mode, stop):
-        """Whether the editor was still up ten seconds after `stop` was done to a harness in `mode`."""
-        with scripted_editor(self.EDITOR) as (editor, project, root, holders):
+    # A process the editor starts in a session of its own, which records itself where the editor's
+    # pid would go, so that it is what `left_running` reads.
+    ESCAPING = textwrap.dedent("""\
+        subprocess.Popen([sys.executable, "-c",
+                          "import os, sys, time\\n"
+                          "open(sys.argv[1], 'w').write(str(os.getpid()))\\n"
+                          "time.sleep(600)\\n",
+                          os.path.join(holders, "editor")], start_new_session=True)
+        time.sleep(600)
+        """)
+
+    def left_running(self, mode, stop, body=EDITOR):
+        """Whether what `body` recorded was still up ten seconds after `stop` was done to a harness in
+        `mode`."""
+        with scripted_editor(body) as (editor, project, root, holders):
             harness = subprocess.Popen([sys.executable, "-c", HARNESS, str(Path(mutation_check.__file__)),
                                         editor, str(project), str(root), mode],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -3908,6 +3979,20 @@ class EditorOutlivingItsHarnessTests(unittest.TestCase):
     def test_Given_ASignalArrivingWhileTheEditorStarts_When_TheHarnessDiesOfIt_Then_TheEditorGoesWithIt(self):
         # Act — the harness sends itself the signal inside the call that starts the editor.
         running = self.left_running("signal-while-starting", lambda harness: None)
+
+        # Assert
+        self.assertFalse(running)
+
+    def test_Given_AHarnessKilledWithSigkill_When_ItsEditorStartedAProcessOutsideItsGroup_Then_ThatProcessGoesToo(self):
+        # Act — nothing in the harness runs after a SIGKILL, so this is the watchdog's own kill.
+        running = self.left_running("plain", lambda harness: harness.kill(), self.ESCAPING)
+
+        # Assert
+        self.assertFalse(running)
+
+    def test_Given_AHarnessEndedBySigterm_When_ItsEditorStartedAProcessOutsideItsGroup_Then_ThatProcessGoesToo(self):
+        # Act — the harness's handler kills the watchdog before the watchdog can see its parent go.
+        running = self.left_running("plain", lambda harness: harness.terminate(), self.ESCAPING)
 
         # Assert
         self.assertFalse(running)

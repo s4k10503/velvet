@@ -42,6 +42,7 @@ import bisect
 import fcntl
 import functools
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -1601,7 +1602,7 @@ class Holder:
                 self.pending = number
                 return
             if self.child is not None and self.child.poll() is None:
-                kill_group(self.child)
+                kill_launch(self.child)
             self.release()
             signal.signal(number, signal.SIG_DFL)
             os.kill(os.getpid(), number)
@@ -1680,32 +1681,108 @@ def wait_for_release(project, seconds):
     return True
 
 
+def process_table():
+    """pid -> (parent pid, process group, whether it has exited and waits only to be reaped): read from
+    /proc where there is one, and otherwise from `ps`, leaving that `ps` out."""
+    table = {}
+    if os.path.isdir("/proc/self"):
+        for entry in filter(str.isdigit, os.listdir("/proc")):
+            try:
+                with open("/proc/{}/stat".format(entry), "rb") as stat:
+                    text = stat.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            fields = text[text.rfind(")") + 2:].split()
+            if len(fields) >= 3:
+                table[int(entry)] = (int(fields[1]), int(fields[2]), fields[0] == "Z")
+        return table
+    lister = subprocess.Popen(["ps", "-Ao", "pid=,ppid=,pgid=,stat="], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL)
+    listing = lister.communicate()[0].decode("utf-8", "replace")
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 4 and all(field.isdigit() for field in fields[:3]):
+            table[int(fields[0])] = (int(fields[1]), int(fields[2]), fields[3].startswith("Z"))
+    table.pop(lister.pid, None)
+    return table
+
+
+def live_descendants(root, table):
+    children = {}
+    for pid, (parent, _, _) in table.items():
+        children.setdefault(parent, []).append(pid)
+    found, frontier = [], [root]
+    while frontier:
+        for pid in children.get(frontier.pop(), ()):
+            found.append(pid)
+            frontier.append(pid)
+    return [pid for pid in found if not table[pid][2]]
+
+
+def kill_descendants(root, seconds):
+    """SIGKILLs every live process below `root`, found by ancestry rather than by group, and lists
+    again until a listing finds none or `seconds` have passed. Returns pid -> process group for each
+    process it signalled."""
+    deadline = time.time() + seconds
+    signalled = {}
+    while True:
+        table = process_table()
+        alive = live_descendants(root, table)
+        if not alive or time.time() > deadline:
+            return signalled
+        for pid in alive:
+            signalled[pid] = table[pid][1]
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        time.sleep(0.1)
+
+
 def kill_group(child):
-    """Kills the watchdog `launch` starts and every process still in the group it leads."""
     try:
         os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 
-def reap(child):
+def kill_launch(child):
+    """Kills the watchdog `launch` starts, every process below it, and every process still in the
+    group it leads."""
+    outside = [pid for pid, group in kill_descendants(child.pid, SETTLE_AFTER_KILL).items()
+               if group != child.pid]
+    if outside:
+        print("killed {} process(es) the editor left outside its process group".format(len(outside)),
+              flush=True)
     kill_group(child)
+
+
+def reap(child):
+    kill_launch(child)
     child.wait()
 
 
-# Leads the editor's group: runs the editor, exits with it, and kills the group once the process that
-# started it has gone, which no handler here can do for a SIGKILL.
-WATCHDOG = """\
-import os, signal, subprocess, sys
+# Leads the editor's group: runs the editor, exits with it, and once the process that started it has
+# gone kills everything below it, which no handler here can do for a SIGKILL. On Linux it is a
+# subreaper as well, so a process orphaned below the editor is reparented to it rather than to init
+# and a kill below the watchdog still reaches it.
+WATCHDOG = "import ctypes, os, signal, subprocess, sys, time\n" + "".join(
+    inspect.getsource(function) for function in (process_table, live_descendants, kill_descendants)
+) + """\
 parent = int(sys.argv[1])
+try:
+    ctypes.CDLL(None).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+except AttributeError:
+    pass
 editor = subprocess.Popen(sys.argv[2:])
 while True:
     try:
         sys.exit(editor.wait(timeout=1))
     except subprocess.TimeoutExpired:
         if os.getppid() != parent:
+            kill_descendants(os.getpid(), {})
             os.killpg(0, signal.SIGKILL)
-"""
+""".format(SETTLE_AFTER_KILL)
 
 
 def relay(stream, said):
