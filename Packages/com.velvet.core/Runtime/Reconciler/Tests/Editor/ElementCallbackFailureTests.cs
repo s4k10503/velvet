@@ -215,8 +215,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "fallback")));
         }
 
-        // Measured, reporting the drain's abort to the pass boundary instead of to the fiber whose
-        // fallback it is reddens this case, and no other case in this fixture or RefAttachOrderingTests.
         [Test]
         public void Given_ADescendantBoundaryCaughtInTheDrain_When_ThePassEnds_Then_TheDrainingFiberStillCommitsItsTree()
         {
