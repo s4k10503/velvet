@@ -741,6 +741,40 @@ namespace Velvet.Tests
                 Is.EqualTo("outside,fallback|0"));
         }
 
+        [Test]
+        public void Given_APresenceTheHostRendersBesideTheBoundary_When_TheBoundarysOwnUpdateFailsAndIsCaught_Then_TheHostsPresenceKeepsItsState()
+        {
+            // Arrange — the boundary's failed render adds a presence of its own, which the catch drops
+            using var mounted = V.Mount(_root, V.Component(HostPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read beside the count, since a boundary that never caught keeps its own
+            // presence's state as well
+            Assert.That(Texts() + "|" + mounted.Root.Reconciler.Context.PresenceStates.Count,
+                Is.EqualTo("outside,fallback|1"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWithAPresenceWhoseOwnUpdateAddsASecondAndFails_When_TheBoundaryCatches_Then_TheFallbackReplacesTheFirstAndNeitherStateIsKept()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var items = _root.Q("host").Children().Count(child => child.name.StartsWith("item-"));
+            Assert.That(Texts() + "|" + items + "|" + mounted.Root.Reconciler.Context.PresenceStates.Count,
+                Is.EqualTo("outside,fallback|0|0"));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
         // reconcile retires the Suspense's record as this branch's does. What this pins is that the catch keeps
         // the record until that reconcile has read it.
@@ -835,6 +869,53 @@ namespace Velvet.Tests
             {
                 V.Label(text: "outside"),
                 V.Component(NewPresenceBoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode HostPresenceHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "host-presence", children: new VNode[]
+                {
+                    V.Motion(name: "host-item", key: "h", variants: s_fade, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                }),
+                V.Label(text: "outside"),
+                V.Component(NewPresenceBoundaryRender, key: "boundary"),
+            });
+
+        // Keeps its first presence across its own update, whose render adds a second and then fails.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode TwoPresenceBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRecordTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            var first = V.AnimatePresence(key: "first", children: new VNode[]
+            {
+                V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            });
+            return tick == 0
+                ? V.Fragment(new VNode[] { first })
+                : V.Fragment(new VNode[]
+                {
+                    first,
+                    V.AnimatePresence(key: "second", children: new VNode[]
+                    {
+                        V.Motion(name: "item-b", key: "b", variants: s_fade, animate: "visible", exit: "hidden",
+                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    }),
+                    V.Component(ThrowerRender, key: "thrower"),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode TwoPresenceHostRender()
+            => V.Div(name: "host", children: new VNode[]
+            {
+                V.Label(text: "outside"),
+                V.Component(TwoPresenceBoundaryRender, key: "boundary"),
             });
 
         [Component(Compiler = false, IsErrorBoundary = true)]
