@@ -255,7 +255,20 @@ added the PlayMode pass, over three mutants only a PlayMode fixture kills — on
 reported all three surviving, then two PlayMode shards, which killed all three — the EditMode shard
 took 13m05s with each mutant 144–149 s; the PlayMode shards took 20m35s and 14m32s, spending 97–130 s
 before activation, 32–37 s activating, 358–374 s on a baseline of the same 209 cases `Test ▸
-unity-tests` passed, and 340–364 s on each mutant; plan to verdict took 34m20s. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
+unity-tests` passed, and 340–364 s on each mutant; plan to verdict took 34m20s.
+
+Over the shards of the campaigns dispatched from 09:06 to 19:56 UTC on 2026-10-01 — 200 EditMode and
+67 PlayMode, and every one of them that measured a mutant ran a session — a shard spent at most 202 s
+before its baseline, 375 s on an EditMode baseline and 625 s on a PlayMode one, and 145 s on an area's own
+launch. A shard that finished spent at most 12 s after its last verdict, and from the end of its
+baseline to its last verdict, less its areas' own launches, a median of 145 s a mutant on EditMode and 790 s on
+PlayMode, where 84 of the 115 mutants those shards held took a launch of their own. The slowest
+PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 476 s a
+mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
+median of those it had; its session's confirmation under the unmutated program failed, and 15 of its
+16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these.
+
+`Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
 than one it silently refuses.
 
