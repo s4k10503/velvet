@@ -92,7 +92,7 @@ namespace Velvet
             var style = element.style;
             var lists = new TransitionLists(style.transitionProperty.value, style.transitionDuration.value,
                 style.transitionDelay.value, style.transitionTimingFunction.value);
-            var listed = style.transitionDuration.keyword == StyleKeyword.Undefined;
+            var listed = MotionNativeTransitionGuard.HoldsAForeignValue(element);
             projection.RotateCarry.Hold(lists, listed, "rotate", null);
             for (var corner = 0; corner < 4; corner++)
             {
@@ -175,7 +175,8 @@ namespace Velvet
                 projection.OwnInlineRotate = element.style.rotate;
                 projection.StartRotate = own;
                 projection.RotateCarry.Land(own);
-                MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
+                RunningStyleTransition.TakeOverRotate(element, projection.RotateCarry);
+                MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Rotate);
             }
             projection.DrawnRotate = float.IsNaN(rotate) ? OwnRotate(element, projection, dtSec) : rotate;
             element.style.rotate = new Rotate(new Angle(projection.DrawnRotate, AngleUnit.Degree));
@@ -210,9 +211,10 @@ namespace Velvet
                 {
                     projection.RadiusCarries[corner].Land(own[corner].value);
                     projection.RadiusUnits[corner] = own[corner].unit;
+                    RunningStyleTransition.TakeOverRadius(element, corner, projection.RadiusCarries[corner], own[corner].unit);
                 }
                 CornerRadiusFit.Hold(element);
-                MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Radius);
+                MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
             projection.DrawnRadii = radii ?? OwnRadii(element, projection, dtSec);
             for (var corner = 0; corner < 4; corner++)

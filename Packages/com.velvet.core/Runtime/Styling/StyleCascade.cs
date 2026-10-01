@@ -46,28 +46,36 @@ namespace Velvet
             return ((float)s_opacity!.GetValue(style), durationSec, delaySec, easing);
         }
 
-        // The transition the element runs a property by: the rules' transition-property with the inline duration,
-        // delay and curve lists wherever the element holds them, as UI Toolkit combines the two, the inline
-        // transition-property being a suspension's (MotionNativeTransitionGuard). None where the cached style cannot
-        // be read or names no entry for the property.
+        // The transition the element runs a property by (Lists). None where the cached style cannot be read or names no
+        // entry for the property.
         public static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, string property,
             string? shorthand) =>
             Style(element) is { } style ? Transition(element, style, property, shorthand) : (0f, 0f, EasingMode.Ease);
 
         private static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, object style,
-            string property, string? shorthand)
-        {
-            var inline = element.style;
-            var lists = new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
-                inline.transitionDuration.keyword == StyleKeyword.Undefined ? inline.transitionDuration.value : s_duration!.GetValue(style) as List<TimeValue>,
-                inline.transitionDelay.keyword == StyleKeyword.Undefined ? inline.transitionDelay.value : s_delay!.GetValue(style) as List<TimeValue>,
-                inline.transitionTimingFunction.keyword == StyleKeyword.Undefined
-                    ? inline.transitionTimingFunction.value
-                    : s_curve!.GetValue(style) as List<EasingFunction>);
-            return StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing)
+            string property, string? shorthand) =>
+            StyleFilterTransitionDriver.TryFindTransition(Lists(element, style), property, shorthand, out var durationMs, out var delayMs, out var easing)
                 ? (durationMs / 1000f, delayMs / 1000f, easing)
                 : (0f, 0f, EasingMode.Ease);
+
+        // The lists the element runs its transitions by: the rules' transition-property with the element's own inline
+        // duration, delay and curve lists wherever it holds them, as UI Toolkit combines the two, the inline
+        // transition-property being a suspension's or a narrowing's (MotionNativeTransitionGuard). Null where the
+        // cached style cannot be read.
+        public static TransitionLists? Lists(VisualElement element) => Style(element) is { } style ? Lists(element, style) : null;
+
+        private static TransitionLists Lists(VisualElement element, object style)
+        {
+            var (duration, delay, curve) = MotionNativeTransitionGuard.OwnTiming(element);
+            return new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
+                duration.keyword == StyleKeyword.Undefined ? duration.value : s_duration!.GetValue(style) as List<TimeValue>,
+                delay.keyword == StyleKeyword.Undefined ? delay.value : s_delay!.GetValue(style) as List<TimeValue>,
+                curve.keyword == StyleKeyword.Undefined ? curve.value : s_curve!.GetValue(style) as List<EasingFunction>);
         }
+
+        // The key UI Toolkit caches the element's matched rules under, which changes with them; null where it cannot be
+        // read.
+        public static long? RulesHash(VisualElement element) => s_readable ? (long)s_hash!.GetValue(s_style!.GetValue(element)) : null;
 
         // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
         // be read.

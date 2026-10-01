@@ -425,7 +425,7 @@ namespace Velvet
                 if (!projection.WritesTranslate)
                 {
                     projection.WritesTranslate = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                 }
                 var own = projection.OwnTranslate;
                 element.style.translate = new Translate(new Length(own.x + translate.x), new Length(own.y + translate.y), own.z);
@@ -436,7 +436,7 @@ namespace Velvet
                 if (!projection.WritesScale)
                 {
                     projection.WritesScale = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                 }
                 var own = projection.OwnScale;
                 element.style.scale = new Scale(new Vector3(own.x * projection.Scale.x, own.y * projection.Scale.y, own.z));
@@ -783,7 +783,7 @@ namespace Velvet
         {
             if (ctx.LayoutIdFollows.ContainsKey(element)) return;
             ctx.LayoutIdFollows[element] = element.style.visibility;
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
         }
 
         private static void Unfollow(VisualElement element, ReconcilerContext ctx)
@@ -1157,8 +1157,8 @@ namespace Velvet
             (_reversingStart, _shortening) = reversing;
         }
 
-        // Read as the swap writes the list, before the projection takes the property out of it. The swap writes the
-        // list's durations with it and clears both as it ends: listed is whether the inline durations are held.
+        // Read as the swap writes the list, before the projection takes the property out of it: listed is whether the
+        // slot holds a swap's list (MotionNativeTransitionGuard.HoldsAForeignValue).
         public void Hold(TransitionLists lists, bool listed, string property, string? shorthand)
         {
             if (!listed)
@@ -1187,6 +1187,7 @@ namespace Velvet
                     ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
                 _durationSec *= _shortening;
+                if (_delaySec < 0f) _delaySec *= _shortening;
             }
             _elapsedSec += dtSec;
             var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));

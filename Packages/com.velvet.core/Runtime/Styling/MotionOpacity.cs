@@ -158,7 +158,7 @@ namespace Velvet
             ReadCascade(element, drawing);
             var intercepted = drawing.CascadeDurationSec > 0f
                 || (MotionNativeTransitionGuard.DeclaredSlots(element) & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None;
-            MotionNativeTransitionGuard.SyncSuspension(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
+            MotionNativeTransitionGuard.Narrow(element, s_owner, MotionTransitionSlots.Opacity, intercepted);
             Carry(element, drawing, dtSec);
             Apply(element, drawing);
         }
@@ -180,14 +180,13 @@ namespace Velvet
         }
 
         // A list a variant swap holds inline names the timing the engine would have run opacity by. It is read as the
-        // swap writes it, before the suspension takes opacity out of it (Step). The swap writes the list's durations
-        // with it and clears both as it ends, while the suspension writes names alone.
+        // swap writes it, before the narrowing takes opacity out of it (Step).
         private static void HoldTiming(VisualElement element, Drawing drawing)
         {
-            var durations = element.style.transitionDuration;
-            var lists = new TransitionLists(element.style.transitionProperty.value, durations.value,
-                element.style.transitionDelay.value, element.style.transitionTimingFunction.value);
-            drawing.Own.Hold(lists, durations.keyword == StyleKeyword.Undefined, "opacity", null);
+            var style = element.style;
+            var lists = new TransitionLists(style.transitionProperty.value, style.transitionDuration.value,
+                style.transitionDelay.value, style.transitionTimingFunction.value);
+            drawing.Own.Hold(lists, MotionNativeTransitionGuard.HoldsAForeignValue(element), "opacity", null);
         }
 
         private static void ReadCascade(VisualElement element, Drawing drawing) =>
