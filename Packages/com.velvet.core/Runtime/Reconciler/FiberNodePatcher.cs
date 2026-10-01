@@ -604,10 +604,11 @@ namespace Velvet
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
             // holds for the swap to write. When the effective label actually changed WHICH
-            // variant classes are applied AND a transition resolved for the destination pose, replay that same
-            // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
-            // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
-            // no implicit default transition).
+            // variant classes are applied, replay that same swap on the scheduler on the destination pose's
+            // transition (ResolvePlayedSwap) — a transition should apply to every animate update, not just the
+            // first. V.Motion gives a Motion that declares none StyleTransition.Fade; a swap whose transition
+            // lands at once (StyleAnimationScheduler.LandsAtOnce), StyleTransitionConfig.None among them, writes
+            // its pose within this patch.
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
