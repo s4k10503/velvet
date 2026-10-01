@@ -1088,6 +1088,8 @@ namespace Velvet
 
         internal void RunPendingEnterCompletions()
         {
+            // MUTANT_SURVIVES(equivalent, guard removed): an empty list copies out nothing and the loop runs no
+            // callback; the guard spares that copy where nothing is queued.
             if (PendingEnterCompletions.Count == 0) return;
             // Copied out first: a callback can start a pass whose own end reaches this list.
             var completions = PendingEnterCompletions.ToArray();

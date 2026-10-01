@@ -20,16 +20,17 @@ namespace Velvet.Tests
     /// cleaned up once, in the commit, after the rest of the pass has rendered.</item>
     /// <item>A boundary with no fallback passes the error on, and the boundary above replaces its own whole
     /// output with its fallback.</item>
-    /// <item>The fallback never takes over an element the failed output held, so nothing that output wrote
-    /// to it stays, while a sibling's element is kept. The failed output's pooled nodes go back to the pool,
-    /// and a boundary catches again on a later update.</item>
+    /// <item>The fallback never takes over an element the failed output held, so nothing that output wrote to it
+    /// stays and a row of the boundary's own is replaced, while a sibling's element is kept. The failed output's
+    /// pooled nodes go back to the pool, and a boundary catches again on a later update.</item>
     /// <item>Where the fallback's own content throws, it renders once, and the content's error goes to the
     /// boundary above whether that boundary catches in the walk or aborts its own render. The original error
     /// goes on after it where no boundary above caught the content's — to a boundary that declined the
     /// content's error, with the component stack starting at the component that threw, or to the log.</item>
     /// <item>What the failed output left behind goes with it: an AnimatePresence it rendered keeps no child
-    /// of it, an enter it completed without playing reports no completion, and a Portal target keeps none of
-    /// the rows it inserted.</item>
+    /// of it, an enter it completed without playing reports no completion while one ahead of the boundary
+    /// still reports its own, a Suspense fallback it showed is no longer recorded as shown, and a Portal target
+    /// keeps none of the rows it inserted.</item>
     /// <item>An element callback's error below a boundary leaves no effect set up under that element.</item>
     /// </list>
     /// </summary>
@@ -346,6 +347,24 @@ namespace Velvet.Tests
                 Is.EqualTo("row"));
         }
 
+        [Test]
+        public void Given_ARowOfTheBoundarysOwnOutput_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RowHostRender, key: "host"), CaughtErrors.Unlogged);
+            var rowBefore = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "t0");
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the row is read as found, since a row never found differs from every element
+            var fallbackRow = _root.Query<Label>().ToList().FirstOrDefault(label => label.text == "fallback");
+            Assert.That((rowBefore != null, fallbackRow != null && !ReferenceEquals(fallbackRow, rowBefore)),
+                Is.EqualTo((true, true)));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base stops the pass short of this sibling and leaves it alone.
         // The catch taken in the walk patches it in place, and that its element is kept is what this pins.
         [Test]
@@ -610,6 +629,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEnterWithNothingToPlayAheadOfABoundary_When_TheBoundaryCatchesOnMount_Then_ThatEnterCompletesOnce()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(EnterAheadHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert — the fallback is read with the count, since a boundary that never caught takes nothing back
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 1"));
+        }
+
+        [Test]
+        public void Given_ASuspenseShowingItsFallbackInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoSuspenseFallbackIsRecordedAsShown()
+        {
+            // Arrange
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(
+                _root, V.Component(SuspenseFailedHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert — the screen is read beside the record, since a mount that rendered nothing records nothing
+            Assert.That(Texts() + "|" + mounted.Root.Reconciler.Context.AnyBoundaryShowingFallback,
+                Is.EqualTo("fallback|False"));
+        }
+
+        [Test]
         public void Given_APortalWhoseChildrenGrowAheadOfAThrow_When_TheBoundaryCatchesOnAnUpdate_Then_TheTargetKeepsNothing()
         {
             // Arrange
@@ -664,6 +711,42 @@ namespace Velvet.Tests
                 V.Component(ThrowerRender, key: "thrower"),
             });
         }
+
+        [Component(Compiler = false)]
+        private static VNode EnterAheadHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                {
+                    V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_enterCompletions++),
+                }),
+                V.Component(BoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SuspenseFailedBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(PendingReaderRender, key: "reader") }),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PendingReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => new VelvetTaskCompletionSource<int>().Task, "pending");
+            return V.Label(text: "value " + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspenseFailedHostRender()
+            => V.Div(children: new VNode[] { V.Component(SuspenseFailedBoundaryRender, key: "boundary") });
 
         [Component(Compiler = false)]
         private static VNode EnterHostRender() => V.Div(children: new VNode[] { V.Component(EnterBoundaryRender, key: "boundary") });

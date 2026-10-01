@@ -426,18 +426,16 @@ namespace Velvet
 
         // A boundary whose own reconcile runs inside another component's pass — a VirtualList row mounting
         // during that pass — catches on the aborting path, and the abort it raises belongs to this reconcile
-        // alone: the enclosing pass goes on, as it does around a boundary caught in the walk.
+        // alone: the enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what
+        // tells that abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of
+        // the body, so only a fallback this reconcile swapped in has set it.
         private static void ReconcileRenderedTree(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
-            var abortEndsHere = fiber.IsErrorBoundary && !deferReconcile && InsideAnUnabortedPass(passContext);
             FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
-            if (abortEndsHere && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
+            if (fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
-
-        private static bool InsideAnUnabortedPass(ReconcilerContext? context)
-            => context is { SharedReconcileDepth: > 0, IsAborted: false };
 
         internal static void RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {

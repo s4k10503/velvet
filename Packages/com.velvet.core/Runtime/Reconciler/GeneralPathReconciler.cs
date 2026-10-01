@@ -1129,6 +1129,8 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): an empty tree sets and restores the walk's fiber and tree
+            // around a descent that expands no node.
             if (tree == null || tree.Length == 0) return;
 
             _ctx.FiberStack.Push(fiber);
@@ -2363,6 +2365,8 @@ namespace Velvet
         // completes at once, since no pass end would reach it.
         private void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundaryFiber)
         {
+            // MUTANT_SURVIVES(equivalent, guard removed): both callers pass a motion they have resolved an enter for,
+            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
             if (motion?.OnEnterComplete == null) return;
             if (_ctx.SharedReconcileDepth == 0) InvokeEnterComplete(motion, boundaryFiber);
             else _ctx.PendingEnterCompletions.Add((motion, boundaryFiber));
