@@ -151,7 +151,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoundaryThatCaughtOnItsOwnUpdate_When_ItsParentsRenderMakesItsFallbacksContentThrowOnce_Then_ItShowsTheFallbackForThatError()
+        public void Given_ABoundaryThatCaughtOnItsOwnUpdate_When_ItsNextOwnUpdateMakesItsFallbacksContentThrowOnce_Then_ItShowsTheFallbackForThatError()
         {
             // Arrange — the first catch is the one the boundary's own reconcile takes
             using var mounted = V.Mount(_root, V.Component(OwnRecoveringHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -163,11 +163,11 @@ namespace Velvet.Tests
             s_fallbackContentThrows = true;
 
             // Act
-            s_setTick.Invoke(1);
+            s_setOwnTick.Invoke(2);
             mounted.FlushStateForTest();
 
-            // Assert — the fallback after the own update is read with it, since a boundary that never caught there
-            // shows its children and catches the content's error as a first catch
+            // Assert — the fallback after the first own update is read with it, since a boundary that never caught
+            // there shows its children and catches the content's error as a first catch
             Assert.That((afterOwnUpdate, Texts()), Is.EqualTo(("inner-fallback", "content-error-fallback")));
         }
 
