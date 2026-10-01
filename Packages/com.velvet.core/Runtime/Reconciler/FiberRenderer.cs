@@ -439,7 +439,6 @@ namespace Velvet
             var catchesHere = fiber.IsErrorBoundary && !deferReconcile;
             var passContext = fiber.Reconciler?.Context;
             fiber.CatchesInTheWalk = catchesHere;
-            var enterCompletionsBefore = passContext?.PendingEnterCompletions.Count ?? 0;
             BoundaryCaughtSignal? caught = null;
             try
             {
@@ -455,8 +454,11 @@ namespace Velvet
             }
             if (caught != null)
             {
-                passContext!.PendingEnterCompletions.RemoveRange(
-                    enterCompletionsBefore, passContext.PendingEnterCompletions.Count - enterCompletionsBefore);
+                // React runs nothing for work that never committed. The AnimatePresence and Suspense records kept
+                // against the boundary are not pruned here as the walk's catch prunes them: the fallback's own
+                // reconcile reads them for the rows it replaces, and without them leaves those rows on screen
+                // (BoundaryCatchScopeTests' own-update cases).
+                passContext!.DropEnterCompletions(passContext.EnterCompletionsBelow(fiber));
                 FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             }
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;

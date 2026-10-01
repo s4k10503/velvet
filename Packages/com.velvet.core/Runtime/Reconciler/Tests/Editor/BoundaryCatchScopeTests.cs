@@ -55,6 +55,7 @@ namespace Velvet.Tests
             s_innerEffects = 0;
             s_innerCleanups = 0;
             s_setTick = null;
+            s_setOwnRecordTick = null;
             s_brokenFallbackRenders = 0;
             s_setOwnerTick = null;
             s_enterCompletions = 0;
@@ -705,6 +706,97 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",
         };
+
+        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
+        // reconcile retires the Suspense's record as this branch's does. What this pins is that the catch keeps
+        // the record until that reconcile has read it.
+        [Test]
+        public void Given_ABoundaryShowingItsOwnSuspensesFallback_When_ItsOwnUpdateThrows_Then_TheFallbackReplacesThoseRowsAndNothingIsRecordedAsShown()
+        {
+            // Arrange — the boundary's committed output is its Suspense showing its own fallback
+            using var mounted = V.Mount(_root, V.Component(ShownSuspenseHostRender, key: "host"), CaughtErrors.Unlogged);
+            var before = Texts();
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(before + "|" + Texts() + "|" + mounted.Root.Reconciler.Context.AnyBoundaryShowingFallback,
+                Is.EqualTo("outside,loading|outside,fallback|False"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base takes this catch on the aborting path, whose fallback
+        // reconcile retires the presence and its child as this branch's does. What this pins is that the catch
+        // keeps the presence's record until that reconcile has read it.
+        [Test]
+        public void Given_APresenceInTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsChildrenLeaveAndNoStateOfItIsKept()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OwnPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+
+            // Act
+            s_setOwnRecordTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var items = _root.Q("host").Children().Count(child => child.name.StartsWith("item-"));
+            Assert.That(Texts() + "|" + items + "|" + mounted.Root.Reconciler.Context.PresenceStates.Count,
+                Is.EqualTo("outside,fallback|0|0"));
+        }
+
+        private static Action<int> s_setOwnRecordTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ShownSuspenseBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRecordTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(PendingReaderRender, key: "reader") }),
+                tick == 0 ? null : V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ShownSuspenseHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(text: "outside"),
+                V.Component(ShownSuspenseBoundaryRender, key: "boundary"),
+            });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OwnPresenceBoundaryRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnRecordTick = setTick;
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            var key = tick == 0 ? "a" : "b";
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    V.Motion(name: "item-" + key, key: key, variants: s_fade, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                }),
+                tick == 0 ? null : V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwnPresenceHostRender()
+            => V.Div(name: "host", children: new VNode[]
+            {
+                V.Label(text: "outside"),
+                V.Component(OwnPresenceBoundaryRender, key: "boundary"),
+            });
 
         [Test]
         public void Given_APresenceInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoStateOfItIsKept()

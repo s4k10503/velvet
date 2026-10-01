@@ -1106,8 +1106,8 @@ namespace Velvet
             else PendingEnterCompletions.Add((motion, boundary));
         }
 
-        // The entries a render below boundary queued: read before a catch on the aborting path detaches what that
-        // render created, since an entry's owner is placed by its parent chain.
+        // The entries a render below boundary queued: read before a catch detaches what that render created, since
+        // an entry's owner is placed by its parent chain.
         internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
         {
             List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
