@@ -231,8 +231,7 @@ a push, and before the label.
 cancelled, measured a head this one descends from, and left records — `scripts/ci/previous_campaign.py`
 picks it — and downloads those records; `mutation_check.py --carry-to` writes each kill it keeps to the
 `Mutation carried` artifact, which the shards, the PlayMode pass and the verdict read through
-`--carried-in`. The plan sizes the
-shards by the mutants left, the shards measure only those, and the PlayMode pass skips a survivor of
+`--carried-in`. The plan sizes the shards by the mutants left, the shards measure only those, and the PlayMode pass skips a survivor of
 the EditMode one whose PlayMode kill carried. A kill carries when all three hold:
 
 - the merge base and every mutated source are what that campaign measured: a record is read under this
@@ -242,12 +241,14 @@ the EditMode one whose PlayMode kill carried. A kill carries when all three hold
   a production source, a comment in one included, the tooling under `scripts/`, a workflow,
   `TestUtilities/`, an `.asmdef` or `csc.rsp`, a stylesheet, markdown, anything under a `~` directory;
 - a case that failed on it there is still not a text reader's at this head, and runs under a fixture
-  declared in one test assembly that no changed source declares and no changed source reaches whole.
-  A changed source reaches its assembly, and every assembly referencing that one, where another file
-  under `Packages/` or `Assets/` names a type it declares outside a comment and outside markdown, where
-  it opens a namespace no other source opens or opens more than one, where another file holds the GUID
-  it is imported under, and where it declares an extension method, an assembly or module attribute, a
-  `global using`, a `[SetUpFixture]`, or one of the load-time hooks `campaign_carry.py` lists.
+  declared in one test assembly that the push did not reach. A changed test source reaches its whole
+  assembly, and every assembly referencing that one, whether or not anything names it: the IL
+  post-processor weaves or leaves an assembly by what any of its files declares, and a case can reflect
+  over the assembly it runs in. Nor does a kill carry on a case whose fixture's source can read a
+  reached assembly from an unreached one: it spells a read across the loaded assemblies that
+  `campaign_carry.py` lists, or it names a type declared outside the test sources and `CodeGen/` by a
+  source that spells one, followed through such sources naming one in turn. Comments and string
+  literals are not read for either.
 
 Only a kill a failing case named carries; every other verdict is measured again. What a test does to
 shared state while it runs is not read, the same as for a kill an area's own assemblies took. The

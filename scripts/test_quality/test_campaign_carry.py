@@ -22,48 +22,37 @@ def load_module():
 
 campaign_carry = load_module()
 
-# One spelling of each construct `BEYOND_THE_FILE` names, as a source in this repository writes it.
-REACHING = [
-    "[assembly: InternalsVisibleTo(\"Velvet.Tests\")]",
-    "[module: SkipLocalsInit]",
-    "global using NUnit.Framework;",
-    "internal static int Twice(this int value) => value;",
-    "internal static void Poke([NotNull] this VisualElement element) { }",
-    "[SetUpFixture] internal sealed class Setup { }",
-    "[InitializeOnLoad] internal static class Hook { }",
-    "[InitializeOnLoadMethod] private static void Hook() { }",
-    "[RuntimeInitializeOnLoadMethod] private static void Hook() { }",
-    "[InitializeOnEnterPlayMode] private static void Hook() { }",
-    "[DidReloadScripts] private static void Hook() { }",
-    "[ModuleInitializer] internal static void Hook() { }",
-    "internal sealed class Importer : AssetPostprocessor { }",
-    "[PrebuildSetup(typeof(Setup))] internal sealed class FooTests { }",
-    "[PostBuildCleanup(typeof(Setup))] internal sealed class FooTests { }",
+# One spelling of each read `ACROSS_ASSEMBLIES` names, as a source in this repository writes it.
+ACROSS = [
+    "foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())",
+    "var types = TypeCache.GetTypesWithAttribute<VelvetPreviewAttribute>();",
+    "var loaded = Assembly.Load(name);",
+    "var loaded = Assembly.LoadFrom(path);",
+    "var wanted = CompilationPipeline.GetAssemblies(AssembliesType.Player);",
 ]
 
-# What a fixture writes that reaches nothing past its own file.
-CONTAINED = [
-    "var self = Resolve(this);",
-    "Assert.That(this.value, Is.EqualTo(1));",
-    "internal sealed class FooTests { }",
-    "using NUnit.Framework;",
+# What reads the assembly a case runs in, or nothing at all.
+WITHIN = [
+    "var own = typeof(FooTests).Assembly.GetTypes();",
+    "var own = Assembly.GetExecutingAssembly();",
+    "var cache = new TypeCacheProbe();",
 ]
 
 
-class BeyondTheFileTests(unittest.TestCase):
-    def test_Given_EachConstructReachingPastItsFile_When_Read_Then_EveryOneIsFound(self):
+class AcrossAssembliesTests(unittest.TestCase):
+    def test_Given_EachReadAcrossTheLoadedAssemblies_When_Read_Then_EveryOneIsFound(self):
         # Act
-        found = [bool(campaign_carry.BEYOND_THE_FILE.search(text)) for text in REACHING]
+        found = [bool(campaign_carry.ACROSS_ASSEMBLIES.search(text)) for text in ACROSS]
 
         # Assert
-        self.assertEqual(found, [True] * len(REACHING))
+        self.assertEqual(found, [True] * len(ACROSS))
 
-    def test_Given_CodeReachingNothingPastItsFile_When_Read_Then_NoneIsFound(self):
+    def test_Given_ReadsOfACasesOwnAssembly_When_Read_Then_NoneIsFound(self):
         # Act
-        found = [bool(campaign_carry.BEYOND_THE_FILE.search(text)) for text in CONTAINED]
+        found = [bool(campaign_carry.ACROSS_ASSEMBLIES.search(text)) for text in WITHIN]
 
         # Assert
-        self.assertEqual(found, [False] * len(CONTAINED))
+        self.assertEqual(found, [False] * len(WITHIN))
 
 
 class DeclaredTests(unittest.TestCase):

@@ -111,16 +111,19 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
           PREVIOUS_RUN: ${{ steps.previous.outputs.run }}
           PREVIOUS_HEAD: ${{ steps.previous.outputs.head }}
+        # The output goes under Logs/, which git ignores: an untracked file anywhere else is a path the
+        # push changed, and the carry would refuse on it.
         run: |
+          mkdir -p Logs
           status=0
           for platform in EditMode PlayMode; do
             python3 scripts/test_quality/mutation_check.py --base "$BASE" --platform "$platform" \
               --carry-to Logs/mutation-carried --previous-head "$PREVIOUS_HEAD" --previous-run "$PREVIOUS_RUN" \
               --previous "Logs/previous/Mutation $platform shard "* "Logs/previous/Mutation carried/$platform" \
-              >> carry.txt 2>&1 || status=$?
+              >> Logs/carry.txt 2>&1 || status=$?
           done
-          cat carry.txt
-          { echo '### Mutation campaign carry'; echo '```'; cat carry.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cat Logs/carry.txt
+          { echo '### Mutation campaign carry'; echo '```'; cat Logs/carry.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
       # The summary is written before the status is read, and carries stderr, where a refusal other

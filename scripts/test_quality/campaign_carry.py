@@ -7,13 +7,16 @@ that test can have changed. So this answers from the paths the push changed, in 
 
 - A change to anything but a test assembly's C#, or its `.meta`, stops every kill from carrying. That
   is an allowlist, so a path nobody thought of lands on the side that measures everything.
-- A changed test source stops the kills resting on the fixtures it declares. Where something outside
-  the file can reach what it declares -- another source names one of its types, it declares an
-  extension method, it opens a namespace, it declares something NUnit or Unity applies beyond the
-  file -- the kills resting on its whole assembly stop instead, and on every assembly referencing it.
+- A changed test source reaches its whole test assembly, and every assembly referencing that one. A
+  source is an input to its assembly without anything naming it: the IL post-processor weaves or leaves
+  the assembly by what any of its files declares, and a case can reflect over the assembly it runs in.
+  A kill carries only on a case whose fixture lives in an assembly the push did not reach.
 
-What a test does to shared state while it runs is not read: a kill taken by an area's own assemblies
-already stands in `mutation_check.py` without the rest of the suite running beside it.
+A case whose fixture's source reads across the loaded assemblies, directly or through a type declared
+outside the test sources and `CodeGen/` that does, can read a test assembly the push did reach, so a
+kill resting on one does not carry either. What a test
+does to shared state while it runs is not read: a kill taken by an area's own assemblies already stands
+in `mutation_check.py` without the rest of the suite running beside it.
 """
 
 import json
@@ -26,14 +29,9 @@ DECLARED = re.compile(
     r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)(?:\s|/\*.*?\*/|//[^\n]*\n)+@?"
     r"([A-Za-z_]\w*)", re.S)
 DELEGATE = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
-NAMESPACE = re.compile(r"\bnamespace\s+([A-Za-z_][\w.]*)")
-# What reaches past the file it is written in without any other source naming it: an attribute on the
-# assembly, a using every file of it sees, an extension method, a fixture NUnit applies to a namespace,
-# and the load-time hooks of Unity and its test runner named here.
-BEYOND_THE_FILE = re.compile(
-    r"\[\s*(?:assembly|module)\s*:|\bglobal\s+using\b|\(\s*(?:\[[^\]]*\]\s*)*this\s+[A-Za-z_@]"
-    r"|\b(?:SetUpFixture|InitializeOnLoad\w*|RuntimeInitializeOnLoadMethod|InitializeOnEnterPlayMode"
-    r"|DidReloadScripts|ModuleInitializer|AssetPostprocessor|PrebuildSetup|PostBuildCleanup)\b")
+# What reads the loaded assemblies rather than the one a case runs in.
+ACROSS_ASSEMBLIES = re.compile(
+    r"\bGetAssemblies\b|\bTypeCache\.|\bAssembly\.Load\w*|\bAppDomain\.CurrentDomain\b|\bCompilationPipeline\b")
 # Words DECLARED can capture that are not a type's name: `where T : class where U : struct`.
 KEYWORDS = {"where", "class", "struct", "new", "unmanaged", "notnull", "default", "enum", "interface"}
 GUID = re.compile(r"^guid:\s*([0-9a-f]{32})\s*$", re.M)
@@ -154,11 +152,6 @@ def tracked(project, pattern):
             if name and not any(part.endswith("~") for part in PurePosixPath(name).parts)]
 
 
-def show(project, revision, relative):
-    found = git(project, "show", "{}:{}".format(revision, relative))
-    return found.stdout if found.returncode == 0 else None
-
-
 def current(project, relative):
     try:
         return (project / relative).read_text(encoding="utf-8")
@@ -166,90 +159,14 @@ def current(project, relative):
         return None
 
 
-def named_elsewhere(project, word, own, uncommented):
-    """Whether any file but `own` under Packages/ or Assets/ holds `word` where it can bind: in code
-    rather than in a comment of a C# source, and anywhere in any other text file but markdown and
-    .meta files."""
-    found = git(project, "grep", "-l", "-w", "-I", "--untracked", "-F", "-e", word, "--",
-                "Packages", "Assets")
-    for relative in found.stdout.splitlines():
-        if relative in own or relative.endswith((".md", ".meta")):
-            continue
-        if any(part.endswith("~") for part in PurePosixPath(relative).parts):
-            continue
-        if not relative.endswith(".cs"):
-            return True
-        text = current(project, relative)
-        if text is None or re.search(r"\b{}\b".format(re.escape(word)), uncommented(text)):
-            return True
-    return False
-
-
-def guid_held_elsewhere(project, relative, previous):
-    """Whether a file other than the source's own .meta names the GUID the source is imported under, as
-    a prefab, scene or asset holding one of its components does."""
-    meta = relative + ".meta"
-    for text in (current(project, meta), show(project, previous, meta)):
-        found = GUID.search(text or "")
-        if not found:
-            continue
-        hits = git(project, "grep", "-l", "-I", "--untracked", "-F", "-e", found.group(1))
-        if any(hit != meta for hit in hits.stdout.splitlines()):
-            return True
-    return False
-
-
-def self_contained(project, relative, previous, texts, names, uncommented):
-    """Whether nothing outside the source can reach what either side of the change declares."""
-    if any(BEYOND_THE_FILE.search(text) for text in texts):
-        return False
-    spaces = {space for text in texts for space in NAMESPACE.findall(text)}
-    if any(len(NAMESPACE.findall(text)) > 1 for text in texts):
-        return False
-    own = {relative}
-    for space in spaces:
-        # A namespace no other source opens is a name an existing reference can start binding to.
-        opened = git(project, "grep", "-l", "-E", r"namespace[[:space:]]+{}([^.[:alnum:]_]|$)".format(
-            re.escape(space)), "--", "*.cs")
-        if not [hit for hit in opened.stdout.splitlines() if hit not in own]:
-            return False
-    if any(named_elsewhere(project, name, own, uncommented) for name in names):
-        return False
-    return not guid_held_elsewhere(project, relative, previous)
-
-
-class Touched:
-    """What a push reached among the test sources: the fixtures by name, and the assemblies whole."""
-
-    def __init__(self, classes=(), assemblies=()):
-        self.classes = set(classes)
-        self.assemblies = set(assemblies)
-
-
-def touched(project, previous, paths, uncommented=lambda text: text):
-    """(the reason nothing can carry, None) or (None, `Touched`) for the paths `changed_paths` listed."""
+def touched(project, paths):
+    """(the reason nothing can carry, None) or (None, the test assemblies the push reached) for the paths
+    `changed_paths` listed."""
     for relative in paths:
         reason = blocker(project, relative)
         if reason is not None:
             return "{} changed, and {}".format(relative, reason), None
-    reach = Touched()
-    for relative in paths:
-        name = PurePosixPath(relative).name
-        owner = assembly(project, relative)
-        if name.endswith(".meta") and not name.endswith(".cs.meta"):
-            reach.assemblies.add(owner)
-            continue
-        source = relative[:-len(".meta")] if name.endswith(".meta") else relative
-        # Read without comments, where a sentence like "the class is a term" declares a type `is`.
-        texts = [uncommented(text) for text in (show(project, previous, source), current(project, source))
-                 if text is not None]
-        names = set().union(*(declared(text) for text in texts)) if texts else set()
-        if self_contained(project, source, previous, texts, names, uncommented):
-            reach.classes |= names
-        else:
-            reach.assemblies.add(owner)
-    reach.assemblies = referencing(project, reach.assemblies)
-    return None, reach
+    return None, referencing(project, {assembly(project, relative) for relative in paths})
 
 
 def strip_arguments(name):
@@ -280,27 +197,61 @@ def fixture_of(case):
     return outer or None
 
 
-class FixtureIndex:
-    """Class name -> the test assemblies whose sources declare a type of that name."""
-
-    def __init__(self, project):
-        self.project = project
-        self.owners = {}
-        for relative in tracked(project, "*.cs"):
-            if not test_source(relative):
-                continue
+def sources(project):
+    """(relative path, text) of every C# source Unity compiles under Packages/ and Assets/."""
+    for relative in tracked(project, "*.cs"):
+        if relative.startswith(("Packages/", "Assets/")):
             text = current(project, relative)
-            if text is None:
+            if text is not None:
+                yield relative, text
+
+
+def reflecting(texts):
+    """The paths among `texts` (path -> code) that can read a test assembly other than their own: a
+    source spelling `ACROSS_ASSEMBLIES`, a runtime source naming a type such a runtime source declares,
+    followed to every runtime source naming one in turn, and a test source naming any of those types.
+
+    `CodeGen/` is no runtime source here: the post-processor's reads happen while an assembly compiles,
+    over that assembly and its references, and a push reaching that assembly reaches it whole already.
+    """
+    runtime = {relative for relative in texts if not test_source(relative) and "/CodeGen/" not in relative}
+    found = {relative for relative, text in texts.items() if ACROSS_ASSEMBLIES.search(text)}
+    names, pattern = set(), None
+    while True:
+        grown = set().union(*(declared(texts[relative]) for relative in found & runtime)) - names
+        if not grown:
+            break
+        names |= grown
+        pattern = re.compile(r"\b(?:{})\b".format("|".join(sorted(map(re.escape, names)))))
+        found |= {relative for relative in runtime if pattern.search(texts[relative])}
+    if pattern is not None:
+        found |= {relative for relative, text in texts.items() if test_source(relative) and pattern.search(text)}
+    return found
+
+
+class FixtureIndex:
+    """Class name -> the test assemblies whose sources declare a type of that name, and the names declared
+    in a test source `reflecting` holds."""
+
+    def __init__(self, project, code=lambda text: text):
+        texts = {relative: code(text) for relative, text in sources(project)}
+        across = reflecting(texts)
+        self.owners = {}
+        self.reflecting = set()
+        for relative, text in texts.items():
+            if not test_source(relative):
                 continue
             owner = assembly(project, relative)
             for name in declared(text):
                 self.owners.setdefault(name, set()).add(owner)
+                if relative in across:
+                    self.reflecting.add(name)
 
-    def stands(self, case, reach):
+    def stands(self, case, reached):
         """Whether a case's kill can be taken at this head: its fixture is declared in one test assembly,
-        which the push did not reach, and is no type a changed source declares."""
+        which the push did not reach, and in no source reflecting across the loaded assemblies."""
         fixture = fixture_of(case)
         owners = self.owners.get(fixture, set())
         if len(owners) != 1 or None in owners:
             return False
-        return fixture not in reach.classes and not owners & reach.assemblies
+        return fixture not in self.reflecting and not owners & reached

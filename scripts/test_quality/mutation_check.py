@@ -2646,6 +2646,13 @@ def digestible(text):
     return "\n".join(line for line, held_a_span in lines if line.strip() or held_a_span)
 
 
+def code_text(text):
+    """The file with every comment and string literal blanked, newlines kept: what the compiler binds."""
+    mask = code_mask(text)
+    return "".join(character if mask[offset] or character == "\n" else " "
+                   for offset, character in enumerate(text))
+
+
 def scope_digest(base, targets, project, platform):
     """What a campaign measured, in a form a later check can compare a tree against.
 
@@ -2764,8 +2771,9 @@ def carry(args, project, targets, mutants, base):
 
     A record is read under this head's key, which covers the merge base and every mutated source, so
     one the push could have moved a mutant under is not found. What the key leaves out is the tests:
-    `campaign_carry` says which of them the push reached, and a kill is kept on the cases it rests on
-    that the push did not reach. A survivor is never carried, nor a kill no failing case names.
+    `campaign_carry` says which test assemblies the push reached, and a kill is kept on the cases it
+    rests on outside them that read no other assembly. A survivor is never carried, nor a kill no
+    failing case names.
     """
     destination = Path(args.carry_to).resolve() / args.platform
     destination.mkdir(parents=True, exist_ok=True)
@@ -2779,13 +2787,13 @@ def carry(args, project, targets, mutants, base):
         print("{}: nothing carried, since git could not diff {} against the tree".format(
             args.platform, args.previous_head))
         return 0
-    refused, reach = campaign_carry.touched(project, args.previous_head, paths, digestible)
+    refused, reached = campaign_carry.touched(project, paths)
     if refused:
         print("{}: nothing carried from {}: {}".format(args.platform, origin, refused))
         return 0
     campaign = scope_digest(base, targets, project, args.platform)
     text_readers = text_reading_fixtures(project)
-    fixtures = campaign_carry.FixtureIndex(project)
+    fixtures = campaign_carry.FixtureIndex(project, code_text)
     found = kills = kept = 0
     for index, mutant in enumerate(mutants, start=1):
         held = None
@@ -2800,7 +2808,7 @@ def carry(args, project, targets, mutants, base):
             continue
         kills += 1
         standing = [case for case in killed_by_behaviour(held.get("killers") or [], text_readers)
-                    if fixtures.stands(case, reach)]
+                    if fixtures.stands(case, reached)]
         if not standing:
             continue
         kept += 1
