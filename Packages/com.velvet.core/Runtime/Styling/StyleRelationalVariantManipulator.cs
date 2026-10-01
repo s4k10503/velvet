@@ -260,14 +260,6 @@ namespace Velvet
             {
                 Unhook();
 
-                // peer-checked and the disabled states are seeded at hook time rather than arriving only as
-                // edges. Clear any prior application up front so each Resolve re-derives them from scratch
-                // against the (possibly changed) source.
-                var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
-                if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
-                var disabledSlot = (int)StyleVariantClass.RelationalState.Disabled;
-                if (_applied[disabledSlot]) { _applied[disabledSlot] = false; Apply(disabledSlot, false); }
-
                 var source = _isPeer
                     ? FindPrevSiblingWithClass(target, SourceClass, _owner._ctx)
                     : FindAncestorWithClass(target, SourceClass);
@@ -277,10 +269,13 @@ namespace Velvet
                 }
 
                 _signals ??= new RelationalVariantSignals(OnSignal);
+                // MUTANT_SURVIVES(equivalent, boundary): seeding with no peer-checked payload applies an empty
+                // payload list, as each checked change this binding already receives does.
+                var seedChecked = _payloads[(int)StyleVariantClass.RelationalState.Checked].Length > 0;
                 // registerChecked only for peer (group has no checked state). seedChecked reflects an
-                // already-checked peer immediately (the slot was cleared above, so no double-apply).
-                _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer,
-                    trackDisabled: _payloads[disabledSlot].Length > 0);
+                // already-checked peer immediately.
+                _signals.Hook(source, seedChecked, registerChecked: _isPeer,
+                    trackDisabled: _payloads[(int)StyleVariantClass.RelationalState.Disabled].Length > 0);
             }
 
             public void Unhook()

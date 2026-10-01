@@ -364,6 +364,8 @@ namespace Velvet
         // map: two payloads of the same priority naming the same class share it.
         private readonly struct Entry
         {
+            // MUTANT_SURVIVES(equivalent): every entry is added on a path that recomputes before anything reads
+            // it, and Recompute writes each entry's Dead.
             public Entry(string cls, long priority, StyleLonghandSet properties, int gate, bool dead = false)
             {
                 Class = cls;

@@ -2169,11 +2169,7 @@ namespace Velvet
         // own payload is its first inner, so the chain is read from there.
         private static bool StacksElementLocalInner(string[] classNames)
         {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var className in classNames)
+            foreach (var className in classNames ?? Array.Empty<string>())
             {
                 string? rest = null;
                 if (!StyleVariantClass.TryParse(className, out _, out rest)

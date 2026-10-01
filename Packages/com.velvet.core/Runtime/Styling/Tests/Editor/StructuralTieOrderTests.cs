@@ -28,7 +28,22 @@ namespace Velvet.Tests
         public override void TearDown()
         {
             base.TearDown();
+            s_setFirstClass = default;
             VelvetTheme.IsDark = _darkBefore;
+        }
+
+        private static StateUpdater<string> s_setFirstClass;
+
+        [Component]
+        private static VNode RenderRows()
+        {
+            var (className, setClass) = Hooks.UseState("first:bg-cold");
+            s_setFirstClass = setClass;
+            return V.Div(children: new VNode?[]
+            {
+                V.Div(name: "first", className: className),
+                V.Div(name: "second"),
+            });
         }
 
         private (VisualElement Group, VisualElement Leaf) MountFirstChild(string leafClassName,
@@ -181,6 +196,44 @@ namespace Velvet.Tests
             // Assert
             Assert.That((leaf.style.width.value.value, leaf.style.height.keyword),
                 Is.EqualTo((20f, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): a render swapping a first: payload takes the old one off, as the base
+        // already does.
+        [Test]
+        public void Given_AFirstPayload_When_ARenderSwapsItsClass_Then_TheOldClassComesOff()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderRows));
+            var first = _window.rootVisualElement.Q<VisualElement>("first");
+
+            // Act
+            s_setFirstClass.Invoke("first:bg-hot");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That((first.ClassListContains("bg-cold"), first.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnNthValueWithALeadingZero_When_TheFirstRowCarriesIt_Then_ItIsRefused()
+        {
+            // Act — nth-1: beside it shows the row is one an nth-1 rule matches.
+            var (first, _) = MountRows("nth-1:bg-cold nth-01:bg-hot");
+
+            // Assert
+            Assert.That((first.ClassListContains("bg-cold"), first.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a child nothing presses stays off under [&>*]:active:, as on the base.
+        [Test]
+        public void Given_AChildActiveVariant_When_TheChildIsMountedUnpressed_Then_OnlyTheUngatedChildVariantApplies()
+        {
+            // Act — [&>*]:bg-cold beside it shows the child variant reached the child at all.
+            var (_, leaf) = MountUnderChildVariant("[&>*]:bg-cold [&>*]:active:bg-hot", "");
+
+            // Assert
+            Assert.That((leaf.ClassListContains("bg-cold"), leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
         }
     }
 }

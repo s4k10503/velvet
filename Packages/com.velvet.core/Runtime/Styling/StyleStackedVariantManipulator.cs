@@ -288,13 +288,6 @@ namespace Velvet
             {
                 return;
             }
-            // A checked or disabled inner's value is seeded at hook time rather than arriving as an edge, so a
-            // re-resolve has to drop what the previous source seeded before reading the new one — the same order
-            // StyleRelationalVariantManipulator's Binding.Resolve keeps.
-            if (TracksChecked || TracksRelationalDisabled)
-            {
-                SetInner(false);
-            }
             // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
             var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
             var source = rel.IsPeer

@@ -491,10 +491,12 @@ namespace Velvet
             }
 
             UnhookChain();
+            // MUTANT_SURVIVES(equivalent, line removed): an unhooked signal has no target, so a stale OnAttach
+            // walks no chain and evaluates nothing, and a later Hook running it twice ends where once does.
             _target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            // MUTANT_SURVIVES(equivalent, line removed): a stale OnDetach only empties a chain already emptied.
             _target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             _target = null;
-            _disabled = false;
         }
 
         private void OnAttach(AttachToPanelEvent evt)
