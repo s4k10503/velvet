@@ -50,7 +50,7 @@ namespace Velvet.Editor.DevTools
         private Vector2 _leftScrollPos;
         private Vector2 _rightScrollPos;
         private Vector2 _historyScrollPos;
-        private int _selectedEntryIndex = -1;
+        private ComponentFiber _selectedFiber;
         private double _lastRefreshTime;
         private bool _autoRefresh = true;
         #endregion
@@ -102,11 +102,8 @@ namespace Velvet.Editor.DevTools
 
         private void OnRegistryChanged()
         {
-            if (_selectedEntryIndex >= VelvetDevToolsRegistry.Entries.Count)
-            {
-                _selectedEntryIndex = -1;
-                InvalidateCache();
-            }
+            // Dropped rather than kept, so an entry that leaves does not come back selected if registered again.
+            if (SelectedEntry() == null) _selectedFiber = null;
             UpdateRegisteredLabel();
             Repaint();
         }
@@ -116,7 +113,7 @@ namespace Velvet.Editor.DevTools
             if (state == PlayModeStateChange.EnteredEditMode)
             {
                 _historyMap.Clear();
-                _selectedEntryIndex = -1;
+                _selectedFiber = null;
                 InvalidateCache();
                 Repaint();
             }
@@ -169,7 +166,7 @@ namespace Velvet.Editor.DevTools
             {
                 VelvetDevToolsRegistry.Clear();
                 _historyMap.Clear();
-                _selectedEntryIndex = -1;
+                _selectedFiber = null;
                 InvalidateCache();
             }
 
@@ -229,7 +226,7 @@ namespace Velvet.Editor.DevTools
             for (var i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
-                var isSelected = i == _selectedEntryIndex;
+                var isSelected = ReferenceEquals(entry.Fiber, _selectedFiber);
                 var label = entry.Label;
 
                 EditorGUILayout.BeginHorizontal();
@@ -237,7 +234,7 @@ namespace Velvet.Editor.DevTools
                 var nowSelected = GUILayout.Toggle(isSelected, GUIContent.none, GUILayout.Width(EntryToggleWidth));
                 if (nowSelected != isSelected)
                 {
-                    _selectedEntryIndex = isSelected ? -1 : i;
+                    _selectedFiber = isSelected ? null : entry.Fiber;
                     InvalidateCache();
                     RefreshSelectedComponent();
                 }
@@ -256,13 +253,12 @@ namespace Velvet.Editor.DevTools
         #region Right Pane
         private void DrawRightPane(IReadOnlyList<VelvetDevToolsRegistry.ComponentEntry> entries)
         {
-            if (_selectedEntryIndex < 0 || _selectedEntryIndex >= entries.Count)
+            var entry = SelectedEntry(entries);
+            if (entry is null)
             {
                 EditorGUILayout.HelpBox("Select a fiber from the left pane.", MessageType.None);
                 return;
             }
-
-            var entry = entries[_selectedEntryIndex];
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(entry.Label, EditorStyles.boldLabel);
@@ -412,15 +408,23 @@ namespace Velvet.Editor.DevTools
         #endregion
 
         #region Cache Management
-        private void RefreshSelectedComponent()
+        internal VelvetDevToolsRegistry.ComponentEntry SelectedEntry() => SelectedEntry(VelvetDevToolsRegistry.Entries);
+
+        private VelvetDevToolsRegistry.ComponentEntry SelectedEntry(
+            IReadOnlyList<VelvetDevToolsRegistry.ComponentEntry> entries)
         {
-            var entries = VelvetDevToolsRegistry.Entries;
-            if (_selectedEntryIndex < 0 || _selectedEntryIndex >= entries.Count)
+            foreach (var entry in entries)
             {
-                return;
+                if (ReferenceEquals(entry.Fiber, _selectedFiber)) return entry;
             }
 
-            UpdateCache(entries[_selectedEntryIndex].Fiber);
+            return null;
+        }
+
+        private void RefreshSelectedComponent()
+        {
+            var entry = SelectedEntry();
+            if (entry != null) UpdateCache(entry.Fiber);
         }
 
         private void UpdateCache(ComponentFiber fiber)

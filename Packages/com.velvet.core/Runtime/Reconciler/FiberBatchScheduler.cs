@@ -248,7 +248,7 @@ namespace Velvet
             }
         }
 
-        private void DrainDelayed()
+        internal void DrainDelayed()
         {
             _delayedScheduled = false;
             // Reuse the immediate drain's pins ONLY when continuing its wave; a SOLO delayed drain (no immediate

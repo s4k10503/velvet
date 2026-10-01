@@ -184,12 +184,12 @@ namespace Velvet
         // Arbitrary-value layering priority: dark, or a responsive breakpoint (a larger min-width wins). Keyed
         // by reference to the payload array passed, so a higher breakpoint's arbitrary value layers over a lower
         // one and over the base, and dropping it falls back rather than wiping the property.
-        private int PriorityFor(string[] payloads)
+        private long PriorityFor(string[] payloads)
         {
             if (ReferenceEquals(payloads, _dark)) return StyleLayerPriority.Dark;
             for (var i = 0; i < _responsive.Length; i++)
             {
-                if (ReferenceEquals(payloads, _responsive[i])) return StyleLayerPriority.ResponsiveSm + i;
+                if (ReferenceEquals(payloads, _responsive[i])) return StyleLayerPriority.ForVariant(Breakpoints[i]);
             }
             return StyleLayerPriority.Base;
         }

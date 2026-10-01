@@ -83,6 +83,8 @@ namespace Velvet.Tests
             Assert.IsTrue(element.ClassListContains("gap-4"));
         }
 
+        // GREEN_ON_BASE(refactor): the structural layer this named is split per variant now, and the has- layer
+        // stands in for it, one of the families the arrangement names.
         [Test]
         public void Given_ALiteralTokenAndAPayloadThatNeverApplied_When_ThePayloadEvaluatesOff_Then_TheLiteralStays()
         {
@@ -91,7 +93,7 @@ namespace Velvet.Tests
             var element = WithBaseClasses("gap-4");
 
             // Act
-            StyleVariantPayload.Apply(element, new string?[] { "gap-4" }, false, StyleLayerPriority.Structural);
+            StyleVariantPayload.Apply(element, new string?[] { "gap-4" }, false, StyleLayerPriority.Has);
 
             // Assert
             Assert.IsTrue(element.ClassListContains("gap-4"));

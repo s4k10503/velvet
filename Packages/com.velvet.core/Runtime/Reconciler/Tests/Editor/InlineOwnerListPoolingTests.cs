@@ -9,8 +9,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that the lists a container's old-side expansion fills with the fiber each leaf was emitted
-    /// under and the key it was emitted under go back to <see cref="ReconcilerBufferPool"/> when the pass that
-    /// rented them ends, so a reconcile does not leave them behind for the collector on every pass.
+    /// under and the key it was emitted under, and the sets its walk fills with the old leaves it took and the
+    /// keys it committed, go back to <see cref="ReconcilerBufferPool"/> when the pass that rented them ends, so
+    /// a reconcile does not leave them behind for the collector on every pass.
     /// </summary>
     [TestFixture]
     internal sealed class InlineOwnerListPoolingTests
@@ -76,6 +77,53 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (ReferenceEquals(pool.RentLeafKeyList(), borrowed), left),
+                Is.EqualTo((true, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base returned the index set its walk rented as well.
+        // Drop `pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);` and the set is left holding the old
+        // leaves the walk kept.
+        [Test]
+        public void Given_AWalkThatTookAnOldLeaf_When_ItEnds_Then_TheIndexSetIsBackInThePool()
+        {
+            // Arrange — a Fragment on both sides sends the pass through the walk, which rents the set.
+            var pool = _reconciler.Context.BufferPool;
+            var mounted = new VNode[] { V.Fragment(new VNode[] { V.Label(text: "a") }) };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
+            var borrowed = pool.RentOrphanedIndexSet();
+            pool.ReturnOrphanedIndexSet(borrowed);
+            borrowed.Add(-1);
+
+            // Act
+            _reconciler.Reconcile(_root, mounted, new VNode[] { V.Fragment(new VNode[] { V.Label(text: "b") }) });
+            var left = borrowed.Count;
+
+            // Assert
+            Assert.That(
+                (ReferenceEquals(pool.RentOrphanedIndexSet(), borrowed), left),
+                Is.EqualTo((true, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base returned the key set its walk rented as well.
+        // Drop `pool.ReturnKeySet(commit.NewKeys);` and the set is left holding the keys the walk committed.
+        [Test]
+        public void Given_AWalkThatCommittedALeaf_When_ItEnds_Then_TheKeySetIsBackInThePool()
+        {
+            // Arrange
+            var pool = _reconciler.Context.BufferPool;
+            var mounted = new VNode[] { V.Fragment(new VNode[] { V.Label(text: "a") }) };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
+            var borrowed = pool.RentKeySet();
+            pool.ReturnKeySet(borrowed);
+            borrowed.Add(ChildKey.Explicit("mark"));
+
+            // Act
+            _reconciler.Reconcile(_root, mounted, new VNode[] { V.Fragment(new VNode[] { V.Label(text: "b") }) });
+            var left = borrowed.Count;
+
+            // Assert
+            Assert.That(
+                (ReferenceEquals(pool.RentKeySet(), borrowed), left),
                 Is.EqualTo((true, 0)));
         }
     }

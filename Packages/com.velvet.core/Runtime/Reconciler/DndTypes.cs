@@ -18,14 +18,14 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Constraint before a press becomes a drag, so clicks keep working on draggable elements.
-    /// <see cref="Distance"/> is panel px of travel before activation. A <see cref="DelaySec"/> &gt; 0
-    /// switches from distance-based to hold-to-drag activation: activation happens after the hold,
-    /// aborted if the observed travel exceeds <see cref="Tolerance"/> first. The default is Distance = 4,
-    /// not 0, because a zero threshold would race UI Toolkit's own Clickable capture-at-down and kill
-    /// clicks on draggable buttons; <see cref="None"/> restores unconstrained (zero-threshold) activation.
+    /// Constraint before a press becomes a drag. <see cref="Distance"/> is panel px of travel before
+    /// activation; zero (the default, and <see cref="None"/>) makes the press itself the drag, as dnd-kit's
+    /// <c>PointerSensor</c> does with no constraint — so a press on a draggable control is a drag and not
+    /// a click. A <see cref="DelaySec"/> &gt; 0 switches from distance-based to hold-to-drag activation:
+    /// activation happens after the hold, aborted if the observed travel exceeds <see cref="Tolerance"/>
+    /// first.
     /// </summary>
-    public sealed record DragActivation(float Distance = 4f, float DelaySec = 0f, float Tolerance = 5f)
+    public sealed record DragActivation(float Distance = 0f, float DelaySec = 0f, float Tolerance = 5f)
     {
         public static readonly DragActivation Default = new();
         public static readonly DragActivation None = new(Distance: 0f);

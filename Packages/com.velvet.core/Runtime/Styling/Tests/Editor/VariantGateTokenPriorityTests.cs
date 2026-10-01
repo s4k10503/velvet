@@ -150,7 +150,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoAttributeRulesOfTheShadowFamily_When_TheSameStateIsReachedByEitherRuleOrder_Then_TheSameShadowPaints()
         {
-            // Arrange — both rules layer at the SAME priority (every data-/aria- rule does), so the
+            // Arrange — both rules layer at the SAME priority (every data- rule does), so the
             // precedence table cannot separate them and the className's own declaration order is what
             // decides, exactly as source order decides a tie between two equal-specificity CSS rules. The
             // later-declared shadow-sm is what both orders owe.
@@ -189,15 +189,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AContainerBlanketHoverRule_When_TheChildDeclaresItsOwnHoverRule_Then_TheChildsRuleWins()
+        public void Given_AContainerBlanketHoverRule_When_TheChildDeclaresItsOwnHoverRule_Then_TheContainersRuleWins()
         {
-            // Arrange — a [&>*]: payload that is itself a state variant is promoted out of the child-variant
-            // layer onto the hover layer, where the child's OWN hover: payload also sits. The promoted one is
-            // positioned in the PARENT's className, which cannot be compared with the child's, so it has to
-            // lose the tie: the child-variant layer exists to rank a container's blanket rule BELOW a rule
-            // the child declares for itself.
+            // Arrange — [&>*]:hover: is `.p > *:hover` on the child: hover's specificity, and an arbitrary variant,
+            // which Tailwind emits after every named one, so it outranks the child's own hover:.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
             {
@@ -216,14 +213,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStackedVariantBesideThePlainOneItWraps_When_BothAreLit_Then_TheLaterWrittenOneWins()
+        public void Given_AStackedVariantBesideThePlainOneItWraps_When_BothAreLit_Then_TheStackedOneWins()
         {
-            // Arrange — dark:hover: layers at the stronger of its two parts, which is the plain hover: layer,
-            // so the two payloads share a layer while dark and hover are both on. They arrive from different
-            // manipulators, whose order is when each was attached; only the className can rank them, and
-            // shadow-sm is written later.
+            // Arrange — dark:hover: carries hover's specificity and sorts after plain hover:, as Tailwind emits
+            // it, so it wins while dark and hover are both on even though shadow-sm is written later.
             using var oracleScope = new ReconcilerScope();
-            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-sm"));
+            var expected = BlurOf(oracleScope, Mount(oracleScope, "bg-[#FFFFFF] shadow-lg"));
             using var scope = new ReconcilerScope();
             var card = Mount(scope, "bg-[#FFFFFF] dark:hover:shadow-lg hover:shadow-sm");
 

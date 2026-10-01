@@ -33,21 +33,91 @@ namespace Velvet.Tests
         private void ResolveAt(float width, VisualElement leaf)
         {
             _window.position = new Rect(0, 0, width, 600);
+            // Pinned as well as requested: the host window does not always get the width it asks for.
+            leaf.panel.visualTree.style.width = width;
             ForcePanelUpdate(leaf.panel);
             using var evt = EventBase<GeometryChangedEvent>.GetPooled();
             leaf.panel.visualTree.SimulateEvent(evt);
         }
 
+        // GREEN_ON_BASE(characterization): the payload lands above the breakpoint on the base too; what
+        // changed is that a host narrower than requested now fails, where it read as Inconclusive.
         [Test]
         public void Given_AnMdVariantLeaf_When_TheRootIsWiderThanTheMdBreakpoint_Then_ThePayloadIsApplied()
         {
             // Arrange/Act — an md:bg-wide leaf in a 1000px-wide panel (≥ md 768).
             var leaf = MountAndResolveAt(1000f, "md:bg-wide");
-            Assume.That(leaf.panel.visualTree.resolvedStyle.width, Is.GreaterThanOrEqualTo(MdBreakpoint),
-                "Precondition: the panel root resolved at least the md breakpoint wide");
 
-            // Assert — the md payload is applied above the breakpoint.
-            Assert.IsTrue(leaf.ClassListContains("bg-wide"));
+            // Assert — the md payload is applied above the breakpoint. The width the host got rides along, so a
+            // host narrower than requested fails here rather than passing on a breakpoint it never crossed.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): hover: already outranks md: on the base; the ladder rework keeps it,
+        // since a media query adds no specificity and :hover adds a class's worth.
+        [Test]
+        public void Given_MdAndHoverWidths_When_TheRootIsWiderThanMdAndTheLeafIsHovered_Then_TheHoverWidthWins()
+        {
+            // Arrange
+            var leaf = MountAndResolveAt(1000f, "md:w-[10px] hover:w-[20px]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 20f)));
+        }
+
+        // GREEN_ON_BASE(characterization): md already outranked sm on the base; the case pins it under the rank
+        // rework, where the two sharing a rank would hand the width to the later-written sm.
+        [Test]
+        public void Given_MdWrittenBeforeSm_When_TheRootIsWiderThanMd_Then_TheMdWidthWins()
+        {
+            // Arrange / Act — md's rank is above sm's, so written first it still wins; on one rank the later sm
+            // would.
+            var leaf = MountAndResolveAt(1000f, "md:w-[20px] sm:w-[10px]");
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 20f)));
+        }
+
+        [Test]
+        public void Given_SmHoverAndMdHoverWidths_When_TheRootShrinksBelowMdWhileHovered_Then_TheSmWidthRemains()
+        {
+            // Arrange — above md both stacks hold and md's wins; they are two rules, so md's turning off must leave
+            // sm's value standing.
+            var leaf = MountAndResolveAt(1000f, "sm:hover:w-[10px] md:hover:w-[20px]");
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            var widthAboveMd = leaf.style.width.value.value;
+
+            // Act
+            ResolveAt(700f, leaf);
+
+            // Assert
+            Assert.That((widthAboveMd, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
+        }
+
+        [Test]
+        public void Given_AChildMdWidthUnderAParentChildVariant_When_TheRootIsWiderThanMd_Then_TheParentWidthWins()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 1000f, 600);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "[&>*]:w-[20px]", children: new VNode?[]
+                {
+                    V.Label(name: "leaf", className: "md:w-[10px]", text: "x"),
+                }));
+            var leaf = _window.rootVisualElement.Q<Label>("leaf");
+
+            // Act — md: lands after the parent's payload, so a shared layer would leave the md width.
+            ResolveAt(1000f, leaf);
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.width.value.value),
+                Is.EqualTo((true, 20f)));
         }
 
         [Test]
@@ -105,20 +175,24 @@ namespace Velvet.Tests
             widthSource.SimulateEvent(evt);
         }
 
-        // A panel-width-wide leaf with a responsive variant but NO scope ancestor: the regression guard that
-        // unscoped trees keep evaluating against the panel root.
+        // GREEN_ON_BASE(characterization): unscoped trees evaluate against the panel root on the base too;
+        // what changed is that a host narrower than requested now fails, where it read as Inconclusive.
         [Test]
         public void Given_NoScope_When_PanelIsWiderThanMd_Then_PanelWidthStillDrivesTheBreakpoint()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "leaf", className: "md:bg-wide", text: "x"));
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
-            Resolve(leaf, leaf.panel.visualTree);
-            Assume.That(leaf.panel.visualTree.resolvedStyle.width, Is.GreaterThanOrEqualTo(MdBreakpoint),
-                "Precondition: panel root resolved at least the md breakpoint wide");
+            // Pinned as well as requested: the host window does not always get the width it asks for.
+            leaf.panel.visualTree.style.width = PanelWidth;
 
-            // Assert — without a scope the panel width (≥ md) drives the breakpoint on, exactly as before.
-            Assert.IsTrue(leaf.ClassListContains("bg-wide"));
+            // Act
+            Resolve(leaf, leaf.panel.visualTree);
+
+            // Assert — without a scope the panel root's width (≥ md) turns the breakpoint on. The width the host
+            // got rides along, so a host narrower than requested fails here rather than passing unmeasured.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, true)));
         }
 
         // A narrow scope around a leaf in a wide panel: the scope's width (< md), not the panel's (≥ md), decides.
