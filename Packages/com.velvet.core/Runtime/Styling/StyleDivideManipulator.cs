@@ -35,9 +35,8 @@ namespace Velvet
     // Limitations: a child whose border face is owned by a higher paint layer — a skew
     // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
     // documented known limitation, mirroring the element-level border-dashed gate which defers to either).
-    // An IMPLICIT (no divide-{color}) dashed divider takes its color from the divided child's would-be border
-    // color, captured and re-resolved on the CONTAINER's Apply (reconcile / GeometryChanged / attach, and a
-    // USS class of the child's own changing — see IChildClassWatcher) — the same cadence the gap manipulator runs on.
+    // A dashed / dotted divider's color is read when the child paints, not when the container applies — see
+    // DivideDashPainter.PaintColor.
     //
     // Out-of-flow children (position: absolute) are excluded from the index walk — see
     // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
@@ -217,9 +216,9 @@ namespace Velvet
                 return;
             }
 
-            // Dashed / dotted divider: resolve the paint color BEFORE masking.
+            // Dashed / dotted divider: read any inline color of the child's own BEFORE masking.
             _ctx.DivideDashBindings.TryGetValue(child, out var binding);
-            var paintColor = DashColor(child, edge, binding, out var source);
+            var inline = InlineOwnColor(child, edge, binding);
 
             // Reserve the gutter as a solid divider would, but mask the native border color so only the dashed /
             // dotted paint shows.
@@ -229,22 +228,15 @@ namespace Velvet
 
             if (binding != null)
             {
-                DivideDashPainter.Update(child, binding, edge, paintColor, _spec.Style);
+                DivideDashPainter.Update(child, binding, edge, _spec.Style);
             }
             else
             {
-                binding = DivideDashPainter.Attach(child, edge, paintColor, _spec.Style);
+                binding = DivideDashPainter.Attach(child, edge, _spec.Style);
                 _ctx.DivideDashBindings[child] = binding;
             }
-            binding.FromInline = source == DashColorSource.Inline;
-            DivideDashPainter.SyncProbe(child, binding, source == DashColorSource.Probe);
-        }
-
-        private enum DashColorSource
-        {
-            Fixed,
-            Inline,
-            Probe,
+            binding.Divider = _spec.HasColor ? _spec.Color : (Color?)null;
+            binding.Inline = inline;
         }
 
         // Holds the divider's width on edge, giving way to a layer of the child's own, or hands the slot back.
@@ -261,35 +253,23 @@ namespace Velvet
             }
         }
 
-        // The child's own color on the edge wins over divide-{color}, as its class does over Tailwind's
-        // zero-specificity one. Where neither decides it: a color written inline on the child, kept once the
-        // mask takes its slot; else the color the child's classes resolve to, which the binding reads off its
-        // probe at paint time because the child's own slot holds the mask.
-        private Color DashColor(VisualElement child, DivideEdge edge, DivideDashChildBinding? binding,
-            out DashColorSource source)
+        // A color written inline on the child's edge by code of its own, kept once the mask takes the slot: the
+        // mask is this manipulator's, so the value it replaced is only readable before the first one lands. A
+        // value a layer or a hold wrote is not one: PaintColor reads layers itself, and a hold is a divider's.
+        private static Color? InlineOwnColor(VisualElement child, DivideEdge edge, DivideDashChildBinding? binding)
         {
-            source = DashColorSource.Fixed;
-            if (StyleArbitraryValueResolver.TryOwnColor(child, ColorSlot(edge), out var own, out var declared))
-            {
-                return own;
-            }
-            if (_spec.HasColor && !declared)
-            {
-                return _spec.Color;
-            }
+            var slot = ColorSlot(edge);
             var inline = InlineColor(child, edge);
-            if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
+            if (SilhouetteFace.IsSentinel(inline))
             {
-                source = DashColorSource.Inline;
-                return inline;
+                return binding?.Inline;
             }
-            if (SilhouetteFace.IsSentinel(inline) && binding is { FromInline: true })
+            if (SilhouetteFace.IsUnset(inline) || StyleArbitraryValueResolver.IsHeld(child, slot)
+                || StyleArbitraryValueResolver.ResolveLayered(child, slot) != null)
             {
-                source = DashColorSource.Inline;
-                return binding.Color;
+                return null;
             }
-            source = DashColorSource.Probe;
-            return default;
+            return inline;
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
@@ -345,7 +325,7 @@ namespace Velvet
             DivideEdge.Bottom => HeldSlot.BorderBottomWidth,
         };
 
-        private static HeldSlot ColorSlot(DivideEdge edge) => edge switch
+        internal static HeldSlot ColorSlot(DivideEdge edge) => edge switch
         {
             DivideEdge.Left => HeldSlot.BorderLeftColor,
             DivideEdge.Right => HeldSlot.BorderRightColor,

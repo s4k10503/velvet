@@ -627,7 +627,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What
-        // reddens it is TryOwnColor reporting a declared color on a child whose classes set none.
+        // reddens it is DivideDashPainter.PaintColor passing over the divider color.
         [Test]
         public void Given_AColoredDashedDivideRow_When_Reconciled_Then_TheDashTakesTheDividerColor()
         {
@@ -644,9 +644,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAColorClassWithoutAPaletteName_Then_TheDividerColorStandsDown()
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAColorClassOfItsOwn_Then_TheDividerColorStandsDown()
         {
-            // Arrange — border-default has no palette color to paint with, but it still outranks the divide color.
+            // Arrange — border-default outranks the zero-specificity divide color, as it does under a solid divider.
             ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
@@ -662,21 +662,27 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAPaletteBorderClass_Then_TheDashTakesItsColor()
+        public void Given_AColoredDashedDivideRow_When_AHoverPayloadGivesADividedChildABracketColor_Then_TheDashTakesIt()
         {
             // Arrange
-            VelvetPalette.TryResolveColorToken("red-500", out var red500);
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
             {
-                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "border-red-500"),
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", "hover:border-[#ff0000]"),
             };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var child = scope.Root[0][1];
+            var before = scope.Reconciler.Context.DivideDashBindings[child].Color;
 
             // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(red500));
+            // Assert — the color before the hover rides along, since a dash that always took red would pass too.
+            Assert.That((before == Color.red, scope.Reconciler.Context.DivideDashBindings[child].Color),
+                Is.EqualTo((false, Color.red)));
         }
 
         [Test]
@@ -1139,6 +1145,65 @@ namespace Velvet.Tests
             // Assert — the theme color differing from the divide color rides along, since equal colors would
             // pass whichever the dash took.
             Assert.That((DashColorOf(child), theme == gray200), Is.EqualTo((theme, false)));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildCarriesAPaletteBorderClass_Then_TheDashTakesItsColor()
+        {
+            // Arrange / Act
+            var (child, references) = MountColoredDashRow("border-red-500", "border-red-500");
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(references[0].resolvedStyle.borderRightColor));
+        }
+
+        [Test]
+        public void Given_ADashTakingAThemeColorClass_When_TheChildsHoverRuleApplies_Then_TheDashTakesItsColor()
+        {
+            // Arrange — the pseudo-state is set directly: no pointer reaches an EditMode panel.
+            var (child, references) = MountColoredDashRow("border-default hover-border-strong", "border-strong");
+            var strong = references[0].resolvedStyle.borderRightColor;
+            var before = DashColorOf(child);
+            var pseudoStates = typeof(VisualElement).GetProperty("pseudoStates",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var hover = System.Enum.Parse(pseudoStates!.PropertyType, "Hover");
+
+            // Act
+            pseudoStates.SetValue(child, hover);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the color before the hover rides along, since a dash that always took the strong color
+            // would pass too.
+            Assert.That((before == strong, DashColorOf(child)), Is.EqualTo((false, strong)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AGestureClassGivesADividedChildAColor_Then_TheDashTakesIt()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]", whileHoverClass: "border-red-500"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }),
+                V.Div(name: "ref0", className: "border-r border-red-500"),
+            }));
+            var child = _window.rootVisualElement.Q("b");
+            var reference = _window.rootVisualElement.Q("ref0");
+            ForcePanelUpdate(child.panel);
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(reference.resolvedStyle.borderRightColor));
         }
 
         [Test]

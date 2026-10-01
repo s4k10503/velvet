@@ -1105,7 +1105,17 @@ namespace Velvet
                 yielded |= StyleHeldSlots.Bit(slot);
             }
             holds.Reassert(element.style, slots & ~yielded);
+            // A dashed divider paints its color from these layers rather than from the slot it holds, so a layer
+            // moving under a held color slot has to repaint the element.
+            if (holds.HoldsAny(slots & s_colorSlots))
+            {
+                element.MarkDirtyRepaint();
+            }
         }
+
+        private static readonly int s_colorSlots = StyleHeldSlots.Bit(HeldSlot.BorderTopColor)
+            | StyleHeldSlots.Bit(HeldSlot.BorderRightColor) | StyleHeldSlots.Bit(HeldSlot.BorderBottomColor)
+            | StyleHeldSlots.Bit(HeldSlot.BorderLeftColor);
 
         private static StyleHeldSlots HoldsOf(VisualElement element)
         {
@@ -1137,6 +1147,9 @@ namespace Velvet
             }
         }
 
+        internal static bool IsHeld(VisualElement element, HeldSlot slot)
+            => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.IsHeld(slot);
+
         // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
         // otherwise: an inline value nothing here wrote is not this layer's to clear.
         internal static void HandBackIfHeld(VisualElement element, HeldSlot slot)
@@ -1167,40 +1180,6 @@ namespace Velvet
                 }
             }
             return false;
-        }
-
-        // The color element's own classes or layers give slot: a layer's color, else the palette color of the one
-        // bundled class that sets it. False when neither decides it — no class sets the slot, the class names
-        // no palette color (border-default), or two classes set it, which only the stylesheet's order ranks;
-        // declared says whether a class sets it at all.
-        internal static bool TryOwnColor(VisualElement element, HeldSlot slot, out Color color, out bool declared)
-        {
-            color = default;
-            declared = false;
-            if (ResolveLayered(element, slot) is { } layered)
-            {
-                color = layered.Color;
-                return true;
-            }
-            var longhand = HeldSlotGroups.LonghandOf(slot);
-            var setting = 0;
-            var named = false;
-            foreach (var cls in element.GetClasses())
-            {
-                StyleUtilityProperties.TryGet(cls, out var rule);
-                if (rule.Gate != StyleUtilityGate.None || !rule.Properties.Contains(longhand))
-                {
-                    continue;
-                }
-                setting++;
-                named = cls.StartsWith("border-", StringComparison.Ordinal);
-                if (named)
-                {
-                    named = VelvetPalette.TryResolveColorToken(cls.Substring("border-".Length), out color);
-                }
-            }
-            declared = setting > 0;
-            return setting == 1 && named;
         }
 
         internal static void Watch(VisualElement element, IChildClassWatcher watcher)

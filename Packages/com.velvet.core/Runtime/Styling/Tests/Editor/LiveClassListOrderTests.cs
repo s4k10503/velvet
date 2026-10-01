@@ -59,12 +59,6 @@ namespace Velvet.Tests
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
-        private const string OwnColorReader =
-            "System.Boolean Velvet.StyleArbitraryValueResolver.TryOwnColor("
-            + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot, UnityEngine.Color&, System.Boolean&)";
-        private const string DashProbeReader =
-            "System.Void Velvet.DivideDashPainter.SyncProbeClasses("
-            + "UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement)";
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
@@ -625,52 +619,6 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
-        }
-
-        // What shows the case can fail is answering with whichever setting class came first or last instead of
-        // declining two: both arrangements then answer true.
-        [Test]
-        [ReaderVerdict(DashProbeReader)]
-        public void Given_TwoClassesOnADividedChild_When_TheOrderTheyWereAddedInIsReversed_Then_ItsProbeCarriesTheSameClasses()
-        {
-            // Arrange
-            var added = Carrying("border-default", "w-32");
-            var reversed = Carrying("w-32", "border-default");
-            var probeOfAdded = new VisualElement();
-            var probeOfReversed = new VisualElement();
-
-            // Act
-            DivideDashPainter.SyncProbeClasses(added, probeOfAdded);
-            DivideDashPainter.SyncProbeClasses(reversed, probeOfReversed);
-
-            // Assert — both hold the pair rather than merely agree: two empty lists would agree too.
-            Assert.That((SortedClassList(probeOfAdded), SortedClassList(probeOfReversed)),
-                Is.EqualTo(("border-default velvet-divide-dash-probe w-32", "border-default velvet-divide-dash-probe w-32")),
-                "a dash probe takes the set of the child's classes, whatever order they arrived in");
-        }
-
-        [Test]
-        [ReaderVerdict(OwnColorReader)]
-        public void Given_TwoBorderColorClassesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_NeitherOrderNamesAColor()
-        {
-            // Arrange — only the stylesheet's order ranks two color classes, so the reading declines rather
-            // than taking one by its place in the list.
-            var added = Carrying("border-red-500", "border-blue-500");
-            var reversed = Carrying("border-blue-500", "border-red-500");
-
-            var lone = Carrying("border-red-500");
-            var unnamed = Carrying("border-default");
-
-            // Act
-            var fromAdded = StyleArbitraryValueResolver.TryOwnColor(added, HeldSlot.BorderRightColor, out _, out _);
-            var fromReversed = StyleArbitraryValueResolver.TryOwnColor(reversed, HeldSlot.BorderRightColor, out _, out _);
-            var alone = StyleArbitraryValueResolver.TryOwnColor(lone, HeldSlot.BorderRightColor, out _, out _);
-            var withoutAName = StyleArbitraryValueResolver.TryOwnColor(unnamed, HeldSlot.BorderRightColor, out _, out _);
-
-            // Assert — a lone class naming its color rides along, so a reading that never answers cannot pass,
-            // and so does one naming none, which a reading that answered for any setting class would accept.
-            Assert.That((alone, withoutAName, fromAdded, fromReversed), Is.EqualTo((true, false, false, false)),
-                "two color classes are ranked only by the stylesheet, so neither order names one");
         }
 
         [Test]

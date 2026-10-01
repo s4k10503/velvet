@@ -66,6 +66,8 @@ namespace Velvet
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
+        public bool HoldsAny(int slots) => (_mask & slots) != 0;
+
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)
         {
