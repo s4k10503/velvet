@@ -102,7 +102,7 @@ element does: a heading, the exception's message and its stack trace. In the edi
 development build it also logs the exception.
 
 An error thrown below a route's `element` — while rendering, from an effect or its cleanup, or from an
-element's ref or creation callback — goes to the same place, as React Router's `RenderErrorBoundary` sends
+element's ref or creation callback — goes to the same place, as React Router's RenderErrorBoundary sends
 it: the nearest route at or above it that carries an `errorElement` renders it in place of its `element`,
 and the root renders the default one where none does. `Hooks.UseRouteError` returns that error there, and
 a `V.Outlet` inside that `errorElement` renders nothing. The error stays until the router publishes a new
@@ -164,7 +164,7 @@ public static class Product
 `Hooks.UseAsyncValue`. Its `errorElement` renders when the deferred value's task fails or rendering the
 value throws, and `Hooks.UseAsyncError` returns the exception beneath it; without one the exception
 propagates to the nearest error boundary. After a throw while rendering the value, the `errorElement` stays
-for whatever deferred value that `V.Await` is handed next, as React Router's `AwaitErrorBoundary` keeps it,
+for whatever deferred value that `V.Await` is handed next, as React Router's AwaitErrorBoundary keeps it,
 until the `V.Await` remounts — give it a new `key`. Any number of `V.Await` may read one `Deferred<T>`.
 
 ## Pending UI
