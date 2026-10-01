@@ -376,6 +376,79 @@ namespace Velvet
             return callback;
         }
 
+        // The overloads below name delegate shapes so a C# 9 caller, which has no natural type for a lambda,
+        // can leave the type argument off as TypeScript's useCallback does. None of them takes one type
+        // argument: beside UseCallback<T>, such an overload is a candidate for every existing explicit call,
+        // which a Func<TResult> one binds to itself for a null or a lambda returning a delegate
+        // (UseCallback<Action>(null) returning a Func<Action>), and an Action<T1> one makes ambiguous (CS0121).
+        // UseCallbackInferenceTests compiles both at C# 9.
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action UseCallback(Action callback) => UseCallback<Action>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action UseCallback(Action callback, params object?[]? deps) => UseCallback<Action>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback) => UseCallback<Action<T1, T2>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback, params object?[]? deps) => UseCallback<Action<T1, T2>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback) => UseCallback<Action<T1, T2, T3>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback, params object?[]? deps) => UseCallback<Action<T1, T2, T3>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback) => UseCallback<Func<T1, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback) => UseCallback<Func<T1, T2, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback) => UseCallback<Func<T1, T2, T3, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, T3, TResult>>(callback, deps);
+
         #endregion
 
         #region UseMemo
@@ -1637,7 +1710,10 @@ namespace Velvet
                 var existing = slots[index];
                 // AreEqualObjects, not AreEqual: ResourceKey is declared object, which is exactly the
                 // erasure the comment over AreEqualObjects warns against.
-                if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey))
+                // The StrictMode re-run of the render that read this resource is the same attempt, and React's
+                // second invocation keeps the thenable the first one tracked, whatever key it passes.
+                if (existing is FiberAsyncResource<T> typed
+                    && (ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey) || IsStrictDiagnosticPass(fiber)))
                 {
                     resource = typed;
                 }
@@ -1662,12 +1738,16 @@ namespace Velvet
                 }
             }
 
-            return resource.Status switch
+            switch (resource.Status)
             {
-                FiberAsyncResourceStatus.Success => resource.Result,
-                FiberAsyncResourceStatus.Error => throw resource.Error!,
-                _ => throw FiberSuspendSignal.Instance,
-            };
+                case FiberAsyncResourceStatus.Success:
+                    return resource.Result;
+                case FiberAsyncResourceStatus.Error:
+                    throw resource.Error!;
+                default:
+                    fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    throw FiberSuspendSignal.Instance;
+            }
         }
 
         #endregion
@@ -1754,9 +1834,28 @@ namespace Velvet
             }
 
             var existing = fiber.TransitionSlots[index];
+            ThrowPendingError(fiber, existing);
             // See HookTransitionSlot.LastRenderedPending for why a read site writes.
             existing.LastRenderedPending = existing.IsPending;
             return (existing.IsPending, existing.Starter);
+        }
+
+        // A render off the Transition lane asks for it again rather than throwing, since React throws the error
+        // where the isPending update carrying it renders.
+        private static void ThrowPendingError(ComponentFiber fiber, HookTransitionSlot slot)
+        {
+            var error = slot.PendingError;
+            if (error == null)
+            {
+                return;
+            }
+            if (!FiberWorkLoop.IsRenderingTransitionLane)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+                return;
+            }
+            slot.PendingError = null;
+            error.Throw();
         }
 
         #endregion

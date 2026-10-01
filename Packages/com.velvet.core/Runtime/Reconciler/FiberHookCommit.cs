@@ -112,6 +112,7 @@ namespace Velvet
                 }
                 slot.HandleRef?.Set(slot.Handle);
                 slot.LastDeps = slot.NextDeps;
+                slot.Factory = slot.NextFactory;
                 slot.NextFactory = null;
             }
         }

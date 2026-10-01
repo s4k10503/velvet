@@ -1098,6 +1098,14 @@ namespace Velvet
         // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
         public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
 
+        // The fiber whose Hooks.Use read threw the Suspense signal last, which is the read a pass the signal
+        // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
+        internal ComponentFiber? SuspendingReader;
+
+        // The Suspense primaries open on the walk, each of which catches a signal raised inside it, so a pass with
+        // none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
+        internal int SuspensePrimaryDepth;
+
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
         // ended — see CompleteEnterAfterThePass.
         internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
