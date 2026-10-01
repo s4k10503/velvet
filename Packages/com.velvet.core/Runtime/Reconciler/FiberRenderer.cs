@@ -777,9 +777,8 @@ namespace Velvet
         // Every pass on the walk that suspended on this fiber's read is retried, not only the outermost: an inner
         // one the outer retry would bail on, memoized with equal props, would otherwise never render what it
         // suspended on. The outer retry subsumes the inner ones it reaches, since they are then dirty.
-        private static bool RetrySuspendedPasses(ComponentFiber fiber)
+        private static void RetrySuspendedPasses(ComponentFiber fiber)
         {
-            var retried = false;
             for (var current = fiber; current != null; current = current.Parent)
             {
                 if (!ReferenceEquals(current.SuspendedOn, fiber))
@@ -789,9 +788,7 @@ namespace Velvet
                 current.SuspendedOn = null;
                 current.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(current);
-                retried = true;
             }
-            return retried;
         }
 
         // Commit path called by Hooks.Use (Suspense in function components) when an FiberAsyncResource resolves.
@@ -808,46 +805,37 @@ namespace Velvet
                 fiber.MountPoint?.schedule.Execute(() => NotifyAsyncResourceCompleted(fiber));
                 return;
             }
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
-            var underBoundary = boundary != null && !ReferenceEquals(boundary, fiber);
-            // The passes that suspended are what React retries: the rows this fiber sits between are theirs to
-            // commit.
-            if (!underBoundary && RetrySuspendedPasses(fiber))
+            // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a
+            // boundary this fiber renders itself wraps its output, never its own read.
+            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            if (boundary == null)
             {
-                fiber.IsDirty = true;
+                // What React retries is the work that suspended on this read; with none waiting on it, nothing
+                // renders, and a pass that suspended on another read takes this value up when it is retried.
+                RetrySuspendedPasses(fiber);
                 return;
             }
-            // Settle the child's subtree to its resolved output. Under a wrapper-less Suspense boundary the
-            // child's host slot is currently occupied by the fallback, so render WITHOUT committing
-            // (deferReconcile): the boundary's re-render below commits the fallback→children reveal in one
-            // pass: a resolved resource schedules the boundary itself, not the child. This single
-            // render handles all three resolve outcomes: a resolved child settles its PreviousTree for the
-            // boundary to reuse; a faulted child's Use<T> throws a real exception that routes to the error
-            // boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps the
-            // fallback. Without a boundary (plain async) the child commits its own slot directly.
+            // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
+            // the fallback, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
+            // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
+            // child. This single render handles all three resolve outcomes: a resolved child settles its
+            // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes
+            // to the error boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps
+            // the fallback.
             // Read before the render, which can dispose this fiber when an error boundary above it catches.
             var context = fiber.Reconciler!.Context;
             var catchesBeforeTheRender = context.NextCaughtErrorSequence;
             try
             {
-                RenderAndReconcile(fiber, deferReconcile: underBoundary);
+                RenderAndReconcile(fiber, deferReconcile: true);
             }
             catch (FiberSuspendSignal)
             {
                 return;
             }
-            if (!underBoundary && fiber.Reconciler?.HasPendingWork != true)
-            {
-                // Plain async (no Suspense boundary): the resolved child commits its own slot in the
-                // call above, so its effects, its UseImperativeHandle factory and the inline children that
-                // render mounted commit here. Under a boundary the child's commit is driven by the
-                // boundary's re-render below (Mount path = Run is invoked there); skipping the call avoids
-                // committing what the boundary's re-render is about to discard.
-                FiberEffects.CommitSubtreeEffects(fiber);
-            }
             // An error boundary that caught the render above has shown its fallback for this error already, and a
             // retry that renders the faulted child again has it caught and reported a second time.
-            if (underBoundary && context.NextCaughtErrorSequence == catchesBeforeTheRender)
+            if (context.NextCaughtErrorSequence == catchesBeforeTheRender)
             {
                 // Invalidate the (possibly memoized) boundary so its re-render re-walks the now-resolved
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.

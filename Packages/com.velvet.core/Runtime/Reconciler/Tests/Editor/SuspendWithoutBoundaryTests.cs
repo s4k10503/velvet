@@ -16,12 +16,16 @@ namespace Velvet.Tests
     /// <item>With no boundary above, the flush does not throw. A resource of the component whose read suspended
     /// the pass resolving retries that pass, an ancestor's included, and every pass on the way that suspended
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
-    /// The resolve commits nothing ahead of that retry. A component whose own render suspended before it
+    /// The resolve commits nothing ahead of that retry, and a resolve no suspended pass waits on renders
+    /// nothing: the pass retried later reads the value without starting the read again. A pass that suspended
+    /// commits none of the props it passed, so a later pass renders the component that suspended again, one the
+    /// suspended pass first mounted included. A component whose own render suspended before it
     /// reconciled anything shows what it showed before, and a transition whose render suspended stays
     /// pending.</item>
     /// <item>With a boundary above, that boundary renders again and shows its fallback, a boundary the compiler
     /// memoized included, and the component whose update suspended renders that update inside it, a memoized
-    /// one included.</item>
+    /// one included. The boundary is the nearest above the component whose read suspended, so one that renders
+    /// its own Suspense reveals through the boundary above it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -49,6 +53,92 @@ namespace Velvet.Tests
             s_twoReadersRenders = 0;
             s_indicatorFiber = null;
             s_indicatorStart = default;
+            s_selfSetOwn = default;
+            s_tickedSetKey = default;
+            s_tickedSetTick = default;
+            s_showSetShow = default;
+            s_pairSetA = default;
+            s_pairSetB = default;
+            s_sourceA = null;
+            s_sourceB = null;
+        }
+
+        [Test]
+        public void Given_AComponentRenderingItsOwnSuspenseWhoseUpdateSuspendsUnderAnOuterBoundary_When_TheResourceResolves_Then_TheOuterBoundaryRevealsIt()
+        {
+            // Arrange — the component's own update suspends, and the boundary above it shows its fallback
+            using var mounted = V.Mount(_root, V.Component(OuterSuspenseHostRender, key: "outer-host"));
+            s_selfSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("self:5"),
+                "React takes the nearest Suspense above the component that suspended, not the one it renders");
+        }
+
+        [Test]
+        public void Given_AParentUpdateThatSuspendedItsMemoizedChildWithNoBoundary_When_AnotherParentUpdateRendersFirst_Then_NothingCommits()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(TickedHostRender, key: "ticked-host"));
+            s_tickedSetKey.Invoke(1);
+            mounted.FlushStateForTest();
+            var whileSuspended = Texts();
+
+            // Act
+            s_tickedSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo(whileSuspended),
+                "The later render passes the child its new props again and suspends again, as React keeps the old UI");
+        }
+
+        [Test]
+        public void Given_AMemoizedComponentWhoseFirstMountSuspendsWithNoBoundary_When_TheResourceResolves_Then_ItRendersTheValue()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(ShowParentRender, key: "show-parent"));
+            s_showSetShow.Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("reader:5|shown:True"),
+                "The retried pass renders the component its suspended pass mounted, whose props it never committed");
+        }
+
+        [Test]
+        public void Given_AReadNoSuspendedPassWaitsOn_When_ItsResourceResolves_Then_ThePassRetriedLaterReadsItsValueWithoutReadingAgain()
+        {
+            // Arrange — the first update suspends on A's read; the second suspends on B's, ahead of A's
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(PairParentRender, key: "pair-parent"));
+            s_pairSetA.Invoke(1);
+            mounted.FlushStateForTest();
+            s_pairSetB.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            s_sourceB.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("b:7|a:5"),
+                "A's resolve renders nothing, and the retry of the pass that suspended on B reads A's value");
         }
 
         [Test]
@@ -457,6 +547,121 @@ namespace Velvet.Tests
             var (isPending, start) = Hooks.UseTransition();
             s_indicatorStart = start;
             return V.Label(text: "pending:" + isPending);
+        }
+
+        private static StateUpdater<int> s_selfSetOwn;
+
+        // Renders a Suspense of its own around its output, so its read is caught by the one above it.
+        [Component]
+        private static VNode SelfSuspenseRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_selfSetOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_source = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Suspense(
+                fallback: V.Label(text: "inner-loading"),
+                children: new VNode[] { V.Label(text: "self:" + value) });
+        }
+
+        [Component]
+        private static VNode OuterSuspenseHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[] { V.Component(SelfSuspenseRender, key: "self") }),
+            });
+
+        private static StateUpdater<int> s_tickedSetKey;
+        private static StateUpdater<int> s_tickedSetTick;
+
+        [Component]
+        private static VNode TickedParentRender()
+        {
+            var (key, setKey) = Hooks.UseState(0);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_tickedSetKey = setKey;
+            s_tickedSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(KeyedChildRender, key, key: "child"),
+                V.Label(text: "parent:" + key + ":" + tick),
+            });
+        }
+
+        // The Suspense beside the parent is expanded in this mount ahead of the parent's update, so that update
+        // suspends after a Suspense expansion has closed; it catches nothing of it, since another component renders it.
+        [Component]
+        private static VNode TickedHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(TickedParentRender, key: "ticked-parent"),
+                V.Component(StaticSuspenseRender, key: "static"),
+            });
+
+        [Component]
+        private static VNode StaticSuspenseRender()
+            => V.Suspense(fallback: V.Label(text: "static-loading"), children: new VNode[] { V.Label(text: "static") });
+
+        private static StateUpdater<bool> s_showSetShow;
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "reader");
+            return V.Label(text: "reader:" + value);
+        }
+
+        [Component]
+        private static VNode ShowParentRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_showSetShow = setShown;
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Component(MemoizedReaderRender, key: "reader") : null,
+                V.Label(text: "shown:" + shown),
+            });
+        }
+
+        private static StateUpdater<int> s_pairSetA;
+        private static StateUpdater<int> s_pairSetB;
+        private static VelvetTaskCompletionSource<int> s_sourceA;
+        private static VelvetTaskCompletionSource<int> s_sourceB;
+
+        [Component(Memoize = true)]
+        private static VNode PairReaderARender(int key)
+        {
+            var value = Hooks.Use<int>(_ => key == 0
+                ? VelvetTask.FromResult(0)
+                : (s_sourceA = new VelvetTaskCompletionSource<int>()).Task, key);
+            return V.Label(text: "a:" + value);
+        }
+
+        [Component(Memoize = true)]
+        private static VNode PairReaderBRender(int key)
+        {
+            var value = Hooks.Use<int>(_ => key == 0
+                ? VelvetTask.FromResult(0)
+                : (s_sourceB = new VelvetTaskCompletionSource<int>()).Task, key);
+            return V.Label(text: "b:" + value);
+        }
+
+        // B sits ahead of A, so the second update suspends on B before it reaches A.
+        [Component]
+        private static VNode PairParentRender()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            s_pairSetA = setA;
+            s_pairSetB = setB;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(PairReaderBRender, b, key: "b"),
+                V.Component(PairReaderARender, a, key: "a"),
+            });
         }
 
         [Component]

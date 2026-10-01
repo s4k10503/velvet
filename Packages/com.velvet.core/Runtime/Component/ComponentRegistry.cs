@@ -156,6 +156,8 @@ namespace Velvet
             // ref never re-runs UseImperativeHandle. Capture the identity change before overwriting and
             // force a re-render below so RunImperativeHandleSlots adopts the new ref.
             var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
+            var committed = (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
+                existingFiber.SourceTree, existingFiber.Props);
             existingFiber.ExternalRef = node.ExternalRef;
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
@@ -211,7 +213,20 @@ namespace Velvet
                     // coalescing), and the settle un-enrols those and drops the fiber from the batch
                     // scheduler so a later drain does not redundantly re-render it or silently drop a
                     // stranded higher-priority lane — merely clearing IsDirty would leave both behind.
-                    FiberRenderer.SubsumeFiberIntoThisPass(existingFiber);
+                    try
+                    {
+                        FiberRenderer.SubsumeFiberIntoThisPass(existingFiber);
+                    }
+                    catch (FiberSuspendSignal) when (_ctx.SuspensePrimaryDepth == 0)
+                    {
+                        // No Suspense on the walk catches this, so the pass is abandoned, and React discards its work
+                        // in progress: the fiber keeps what its last committed render was given, and the next pass
+                        // reaching it renders it again. A Suspense that catches it commits its fallback with the
+                        // pass, whose output gave the fiber these inputs.
+                        (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
+                            existingFiber.SourceTree, existingFiber.Props) = committed;
+                        throw;
+                    }
                 }
             }
             else if (propsChanged || refChanged)
@@ -250,6 +265,9 @@ namespace Velvet
             catch (FiberSuspendSignal)
             {
                 RegisterFiber(in site, identity, fiber);
+                // Nothing of this fiber has committed, so the next pass reaching it renders it rather than
+                // bailing on the props this mount was given.
+                fiber.IsDirty = true;
                 throw;
             }
             // Dispose BEFORE any detach: Dispose's Unmount retires the committed tree with the parent

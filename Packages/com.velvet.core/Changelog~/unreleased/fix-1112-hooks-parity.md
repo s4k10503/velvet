@@ -16,3 +16,12 @@
   when something in it suspends, in any slice of a time-sliced render. The nearest boundary above renders
   again, and the updated component renders again inside it; with none, each render that suspended is
   retried when a resource of the component whose read suspended it resolves.
+
+- A render that suspends with no boundary above leaves none of the props it passed to the component that
+  suspended committed, as React discards its work in progress, and a component that render first mounted is
+  rendered by the next render that reaches it: a later update renders the component again and suspends again
+  while the resource is pending, where it skipped a memoized one and committed the rest around it.
+
+- A component that renders its own `V.Suspense` and whose read suspends below an outer boundary reveals
+  through that boundary when the resource resolves, as React takes the nearest Suspense above the component
+  that suspended. It committed its own rows while the outer boundary kept showing its fallback.

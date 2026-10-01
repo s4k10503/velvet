@@ -1163,6 +1163,7 @@ namespace Velvet
                 {
                     if (suspense.Children is { Length: > 0 })
                     {
+                        _ctx.SuspensePrimaryDepth++;
                         try
                         {
                             ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
@@ -1170,6 +1171,10 @@ namespace Velvet
                         catch (FiberSuspendSignal)
                         {
                             suspended = true;
+                        }
+                        finally
+                        {
+                            _ctx.SuspensePrimaryDepth--;
                         }
                     }
                     if (!suspended)

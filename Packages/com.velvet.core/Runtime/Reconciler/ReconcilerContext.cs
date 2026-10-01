@@ -1086,6 +1086,10 @@ namespace Velvet
         // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
         internal ComponentFiber? SuspendingReader;
 
+        // The Suspense primaries open on the walk, each of which catches a signal raised inside it, so a pass with
+        // none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
+        internal int SuspensePrimaryDepth;
+
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
         // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
         // NextCaughtErrorSequence at the catch.

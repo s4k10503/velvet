@@ -315,7 +315,12 @@ Where an update's render suspends with no Suspense expansion inside it to catch 
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced
 render — the nearest boundary above the updated component renders again, and the updated component renders
 again inside it. With no boundary above it, the Editor logs a warning, and each render that suspended is
-retried when a resource of the component whose read suspended it resolves.
+retried when a resource of the component whose read suspended it resolves; a resource no suspended render
+waits on renders nothing when it resolves, and the render retried later reads its value. A render that
+suspends with no boundary above commits none of the props it passed to the component that suspended, so a
+later render passes them again and, while the resource is pending, suspends again, as React keeps the
+previous UI. The boundary is the nearest one above the component whose read suspended, so a component that
+renders its own `V.Suspense` reveals through the boundary above it.
 
 > **Note — Error Boundary mapping**  
 > Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper is ideal for a root boundary directly under mount. For cases where the fallback / children values change dynamically, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
