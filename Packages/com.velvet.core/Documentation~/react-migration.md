@@ -312,7 +312,8 @@ Portals sharing one target. Updating a suspended primary keeps its fallback visi
 resolves. A component whose render suspended keeps its state meanwhile where no host element sits between it
 and the Suspense — one inside such an element is disposed with it — and the layout effects and imperative
 handles of one the boundary had shown are taken down in the commit that shows the fallback until the
-boundary reveals it again, while one first mounted under the fallback sets nothing up until then, as React
+boundary reveals it again, while one first mounted under the fallback runs none of its effects, passive ones
+included, and creates no imperative handle until then, as React
 disconnects and mounts them. Removing the boundary releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render

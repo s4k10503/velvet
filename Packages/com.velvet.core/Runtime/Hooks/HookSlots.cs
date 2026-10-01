@@ -167,6 +167,9 @@ namespace Velvet
         public object?[]? LastDeps;
         public object?[]? NextDeps;
         public Func<object>? NextFactory;
+        // The factory the last commit consumed, which a reveal the fiber does not render creates the handle from
+        // again (FiberEffects.ShowLayoutEffects).
+        public Func<object>? Factory;
         public IHookRefSetter? NextHandleRef;
         public bool NextNeedsRecompute;
     }

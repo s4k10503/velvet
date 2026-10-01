@@ -29,7 +29,7 @@ namespace Velvet.Tests
     /// state offscreen with its layout effects and imperative handle taken down in the commit that shows the
     /// fallback — a pass that never commits it leaves them connected — none of the layout work of the render
     /// that hid it committing, and they come back, the handle created again, when the boundary reveals it; one
-    /// first mounted under the fallback sets nothing up until then.</item>
+    /// first mounted under the fallback runs none of its effects and creates no handle until then.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -77,6 +77,72 @@ namespace Velvet.Tests
             s_otherSource = null;
             s_mountEffectSetups = 0;
             s_mountHostSetShown = default;
+            s_mountPassiveSetups = 0;
+            s_memoHandle.Set(null);
+            s_memoHandleCreates = 0;
+            s_nestedHandle.Set(null);
+            s_nestedSource = null;
+            s_nestedSetOwn = default;
+            s_nestedReaderSetOwn = default;
+        }
+
+        [Test]
+        public void Given_AComponentFirstMountedBesideAReaderThatSuspends_When_TheBoundaryShowsItsFallbackAndThenReveals_Then_ItsPassiveEffectRunsOnlyOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MountInSuspenseHostRender, key: "mount-host"));
+            s_mountHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var whileHidden = s_mountPassiveSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_mountPassiveSetups), Is.EqualTo((0, 1)),
+                "React runs no effect of a tree it has not mounted, and runs it on reveal");
+        }
+
+        [Test]
+        public void Given_AMemoizedComponentWithAHandleTheBoundaryHid_When_TheRevealBailsOnIt_Then_ItsHandleIsCreatedAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MemoHandleBoundaryHostRender, key: "memo-host"));
+            s_effectSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var whileHidden = s_memoHandle.Current;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_memoHandle.Current, s_memoHandleCreates), Is.EqualTo(((string)null, "memo", 2)),
+                "React creates a reconnected handle again, a component the reveal does not render included");
+        }
+
+        [Test]
+        public void Given_AHandleAnInnerBoundaryRevealsInThePassItsOuterBoundaryHides_When_ThatPassCommits_Then_TheHandleIsNotSet()
+        {
+            // Arrange — the inner boundary hides the handle it had shown; then its read resolves and, in the same
+            // pass, a sibling under the outer boundary suspends
+            using var mounted = V.Mount(_root, V.Component(NestedBoundaryHostRender, key: "nested-host"));
+            s_nestedReaderSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_nestedSource.TrySetResult(5);
+            s_nestedSetOwn.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Texts(), s_nestedHandle.Current), Is.EqualTo(("outer-loading", (string)null)),
+                "A handle revealed and hidden again in one pass is hidden, as React reconnects nothing it hides");
         }
 
         [Test]
@@ -788,6 +854,86 @@ namespace Velvet.Tests
         private static int s_handleCreates;
         private static StateUpdater<int> s_otherHostSetTick;
         private static int s_mountEffectSetups;
+        private static int s_mountPassiveSetups;
+        private static readonly Ref<string> s_memoHandle = new();
+        private static int s_memoHandleCreates;
+        private static readonly Ref<string> s_nestedHandle = new();
+        private static VelvetTaskCompletionSource<int> s_nestedSource;
+        private static StateUpdater<int> s_nestedSetOwn;
+        private static StateUpdater<int> s_nestedReaderSetOwn;
+
+        // Memoized with no props, so a walk reaching it unchanged bails on it.
+        [Component(Memoize = true)]
+        private static VNode MemoHandleRender()
+        {
+            Hooks.UseImperativeHandle(s_memoHandle, () =>
+            {
+                s_memoHandleCreates++;
+                return "memo";
+            }, Array.Empty<object>());
+            return V.Label(text: "memo");
+        }
+
+        [Component]
+        private static VNode MemoHandleBoundaryHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(MemoHandleRender, key: "memo"),
+                        V.Component(EffectReaderRender, key: "reader"),
+                    }),
+            });
+
+        [Component]
+        private static VNode NestedHandleRender()
+        {
+            Hooks.UseImperativeHandle(s_nestedHandle, () => "nested", Array.Empty<object>());
+            return V.Label(text: "nested");
+        }
+
+        [Component]
+        private static VNode NestedReaderRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_nestedReaderSetOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_nestedSource = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "inner:" + value);
+        }
+
+        [Component]
+        private static VNode NestedSiblingRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_nestedSetOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : new VelvetTaskCompletionSource<int>().Task, own);
+            return V.Label(text: "sibling:" + value);
+        }
+
+        [Component]
+        private static VNode NestedBoundaryHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Suspense(
+                            fallback: V.Label(text: "inner-loading"),
+                            children: new VNode[]
+                            {
+                                V.Component(NestedHandleRender, key: "handle"),
+                                V.Component(NestedReaderRender, key: "reader"),
+                            }),
+                        V.Component(NestedSiblingRender, key: "sibling"),
+                    }),
+            });
         private static StateUpdater<bool> s_mountHostSetShown;
 
         // Keeps a handle up beside its layout effect, so a disconnect shows on either.
@@ -837,6 +983,11 @@ namespace Velvet.Tests
             Hooks.UseLayoutEffect(() =>
             {
                 s_mountEffectSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            Hooks.UseEffect(() =>
+            {
+                s_mountPassiveSetups++;
                 return (Action)null;
             }, Array.Empty<object>());
             return V.Label(text: "mounted");

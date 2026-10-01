@@ -86,10 +86,10 @@ namespace Velvet
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
         }
 
-        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, and has
-        // that commit create every imperative handle again, as React calls create() on reconnect: the hidden
-        // elements were removed, and a handle built over one would outlive it. The committed handle stands in
-        // until then.
+        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, has that
+        // commit create every imperative handle again — from the last committed factory where the reveal does not
+        // render the fiber — as React calls create() on reconnect: the hidden elements were removed, and a handle
+        // built over one would outlive it. The passive work held while hidden is scheduled with them.
         internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
         {
             if (!fiber.LayoutEffectsHidden) return;
@@ -106,11 +106,16 @@ namespace Velvet
             {
                 foreach (var slot in fiber.ImperativeHandleSlots)
                 {
-                    slot.HandleRef?.Set(slot.Handle);
+                    if (slot.NextFactory == null)
+                    {
+                        slot.NextFactory = slot.Factory;
+                        slot.NextHandleRef = slot.HandleRef;
+                    }
                     slot.NextNeedsRecompute = true;
                 }
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
+            ScheduleRunEffects(fiber);
         }
 
         // Commits the inline fibers on the deferred stack and the pending caught-error reports where no commit
@@ -520,6 +525,9 @@ namespace Velvet
             var ordered = OrderFibersPostOrder(context.PendingPassiveEffectFibers);
             context.PendingPassiveEffectFibers.Clear();
             context.PendingPassiveEffectFiberSet.Clear();
+            // A tree a Suspense hides runs none of the passive work its render queued, as React commits none of
+            // that render; ShowLayoutEffects schedules what is held for the reveal.
+            ordered.RemoveAll(HoldWhileHidden);
 
             // Phase 1: all cleanups, post-order. Clear EffectFlushScheduled here so a cleanup that
             // re-stages the same fiber re-arms scheduling cleanly.
@@ -551,6 +559,13 @@ namespace Velvet
                 HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingEffects);
 #endif
             }
+        }
+
+        private static bool HoldWhileHidden(ComponentFiber fiber)
+        {
+            if (!fiber.LayoutEffectsHidden) return false;
+            fiber.EffectFlushScheduled = false;
+            return true;
         }
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary
