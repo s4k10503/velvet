@@ -3317,6 +3317,301 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps a record only for an owner that suspends the element.
+        // Recording a driver that suspends nothing must not leave one behind once it is released.
+        [Test]
+        public void Given_ADriverWhoseSlotsAnElementsClassesDoNotTransition_When_ItIsReleased_Then_TheGuardKeepsNoRecordOfTheElement()
+        {
+            // Arrange — the bundled sheet; an element transitioning its colors, and a driver writing its opacity.
+            VelvetStyleUtilities.AttachTo(Root);
+            var element = new VisualElement();
+            element.AddToClassList("transition-colors");
+            Root.Add(element);
+            Tick();
+            var owner = new object();
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, owner, MotionTransitionSlots.Opacity);
+
+            // Act
+            MotionNativeTransitionGuard.Release(element, owner);
+
+            // Assert
+            Assert.That(GuardKeepsARecordOf(element), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears the slot a tween ends in where no owner suspends.
+        // A driver recorded without suspending must not have the cascade's list written there.
+        [Test]
+        public void Given_AnAnimateDriverWhoseSlotsAnElementsClassesDoNotTransition_When_ATweenEnds_Then_NoTransitionIsLeftInline()
+        {
+            // Arrange — the bundled sheet; an element transitioning its colors, and an animate-* driver writing its opacity
+            // for as long as it is bound.
+            VelvetStyleUtilities.AttachTo(Root);
+            var element = new VisualElement();
+            element.AddToClassList("transition-colors");
+            Root.Add(element);
+            Tick();
+            MotionNativeTransitionGuard.SyncSuspension(element, new object(), MotionTransitionSlots.Opacity);
+
+            // Act
+            MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
+
+            // Assert
+            Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves no list inline once both plays have ended.
+        // Recording the spring's slots must not pin the classes' transitions inline past the tween.
+        [Test]
+        public void Given_AMotionWhoseSpringPoseDroveNothingItsClassesTransition_When_ATweenPoseEndsAndItsClassesTurnIt_Then_ItTurnsOnItsTransition()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, transitioning their colors linearly over a
+            // second; "a" swaps its pose on a spring, then on a fifth of a second's tween, and both end.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = (null, 0, true, false);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 300f, Damping = 35f, Mass = 1f });
+            (s_aClasses, s_controlClasses) = ("transition-colors duration-1000 ease-linear", "transition-colors duration-1000 ease-linear");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(2f);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear });
+            RenderShared(mounted);
+            AdvancePast(1f);
+
+            // Act — both take a turn on transitions of everything; some 0.2 s on.
+            (s_aClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear rotate-90", "transition-all duration-1000 ease-linear rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — "a" turned as far as the control, which is part way round.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.rotate.angle.ToDegrees();
+            var gap = Mathf.Abs(Root.Q<VisualElement>("a").resolvedStyle.rotate.angle.ToDegrees() - control);
+            Assert.That((gap < 3f, control > 5f && control < 45f), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes a duration-[x] into the slot whatever played before.
+        // Recording the spring's slots must not route that write anywhere else.
+        [Test]
+        public void Given_AMotionWhoseSpringPoseDroveNothingItsClassesTransition_When_ATweenPoseEndsAndItTakesAnArbitraryDuration_Then_ItsBackgroundTransitionsOnIt()
+        {
+            // Arrange — the bundled sheet; "a", and a control holding no id, transitioning their colors linearly and black;
+            // "a" swaps its pose on a spring, then on a fifth of a second's tween, and both end; both take a second's
+            // arbitrary duration.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = (null, 0, true, false);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 300f, Damping = 35f, Mass = 1f });
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-black", "transition-colors ease-linear bg-black");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(2f);
+            (s_aPose, s_aTransition) = ("hidden", new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear });
+            RenderShared(mounted);
+            AdvancePast(1f);
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-black duration-[1000ms]", "transition-colors ease-linear bg-black duration-[1000ms]");
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — both turn white; some 0.3 s on.
+            (s_aClasses, s_controlClasses) = ("transition-colors ease-linear bg-white duration-[1000ms]", "transition-colors ease-linear bg-white duration-[1000ms]");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — "a" as far along as the control, which is part way.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            var gap = Mathf.Abs(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r - control);
+            Assert.That((gap < 0.05f, control > 0.1f && control < 0.9f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWithAnArbitraryDuration_When_ItChangesMidMove_Then_ItsBackgroundTransitionsOnTheNewOne()
+        {
+            // Arrange — the bundled sheet; "a", alone under "card" and transitioning everything linearly over a second of
+            // its own, and a control holding no id over a fifth; "a" some way into a three-second move.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            (s_aClasses, s_controlClasses) = ("transition-all duration-[1000ms] ease-linear bg-black", "transition-all duration-[200ms] ease-linear bg-black");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "a" takes the control's duration, and both turn white; some 0.1 s on.
+            (s_aClasses, s_controlClasses) = ("transition-all duration-[200ms] ease-linear bg-white", "transition-all duration-[200ms] ease-linear bg-white");
+            RenderShared(mounted);
+            for (var i = 0; i < 6; i++) Tick();
+
+            // Assert — "a" as far along as the control, which is part way.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            var gap = Mathf.Abs(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r - control);
+            Assert.That((gap < 0.05f, control > 0.1f && control < 0.9f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWithAnArbitraryDurationWhosePoseTweenEndsMidMove_When_ItsBackgroundChanges_Then_ItTransitionsOnThatDuration()
+        {
+            // Arrange — the bundled sheet; "a", alone under "card" and transitioning everything linearly over a second of
+            // its own, and a control holding no id doing the same; "a" swaps its pose on a fifth of a second's tween some
+            // way into a three-second move, and that tween ends.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aPose = "hidden";
+            s_aTransition = new StyleTransitionConfig { DurationSec = 0.2f, Easing = EasingMode.Linear, Layout = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear } };
+            (s_aClasses, s_controlClasses) = ("transition-all duration-[1000ms] ease-linear bg-black", "transition-all duration-[1000ms] ease-linear bg-black");
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(0.5f);
+
+            // Act — both turn white mid-move; some 0.3 s on.
+            (s_aClasses, s_controlClasses) = ("transition-all duration-[1000ms] ease-linear bg-white", "transition-all duration-[1000ms] ease-linear bg-white");
+            RenderShared(mounted);
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert — "a" as far along as the control, which is part way.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            var gap = Mathf.Abs(Root.Q<VisualElement>("a").resolvedStyle.backgroundColor.r - control);
+            Assert.That((gap < 0.05f, control > 0.1f && control < 0.9f), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone.
+        // A narrowing must hand back only the timing lists it wrote itself.
+        [Test]
+        public void Given_AMotionWhoseCodeWroteItsTiming_When_AMoveLands_Then_ItsTimingIsItsOwnStill()
+        {
+            // Arrange — the bundled sheet; "a", alone under "card" and transitioning everything over a second, with a
+            // duration, curve and delay its code writes.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = "transition-all duration-1000";
+            using var mounted = MountAAlone();
+            for (var i = 0; i < 5; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDuration = new List<TimeValue> { new(0.5f, TimeUnit.Second) };
+            a.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            a.style.transitionDelay = new List<TimeValue> { new(0.1f, TimeUnit.Second) };
+            Tick();
+
+            // Act — a move of its own, past its landing.
+            s_aLeft = 100;
+            RenderShared(mounted);
+            AdvancePast(1.5f);
+
+            // Assert
+            Assert.That((a.style.transitionDuration.keyword, a.style.transitionTimingFunction.keyword, a.style.transitionDelay.keyword),
+                Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Undefined, StyleKeyword.Undefined)));
+        }
+
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose on a tenth of a second's tween, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenWithAPropertyOverrideEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("visible", "duration-[400ms]");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+            };
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose, its opacity on an override of its own, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.4f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseArbitraryDurationChangesMidVariantTween_When_TheTweenEnds_Then_TheNewDurationIsItsOwn()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants, swapping to its hidden pose on a second's
+            // tween.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_slowTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act — its duration class changes mid-tween; past the tween's end.
+            s_aClasses = "duration-[700ms]";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+
+            // Assert
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.7f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWroteItsDelay_When_ItsPresetExitIsCancelled_Then_ItsDelayIsItsOwnAgain()
+        {
+            // Arrange — "entering" mounted inside its V.AnimatePresence, its enter over, and a delay its code writes.
+            (s_enterMounted, s_enterLeft) = (true, 0);
+            s_enterTransition = new StyleTransitionConfig { DurationSec = 0.3f, ExitFromClass = "opacity-0" };
+            using var mounted = V.Mount(Root, V.Component(EnteringHolderRender, key: "root"));
+            AdvancePast(0.3f);
+            var entering = Root.Q<VisualElement>("entering");
+            entering.style.transitionDelay = new List<TimeValue> { new(0.1f, TimeUnit.Second) };
+
+            // Act — its exit plays on the preset's own timing, and is cancelled as it comes back mid-exit.
+            s_enterMounted = false;
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            s_enterMounted = true;
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            AdvancePast(0.5f);
+
+            // Assert
+            var delay = entering.style.transitionDelay;
+            Assert.That((delay.keyword, delay.value?.Count == 1 && Mathf.Approximately(delay.value[0].value, 0.1f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        // Whether MotionNativeTransitionGuard keeps a suspension record for the element (s_suspensions).
+        private static bool GuardKeepsARecordOf(VisualElement element)
+        {
+            var table = typeof(MotionNativeTransitionGuard).GetField("s_suspensions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetValue(null);
+            var args = new object[] { element, null };
+            return (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
+        }
+
         [Test]
         public void Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions()
         {
@@ -3611,75 +3906,6 @@ namespace Velvet.Tests
             });
         }
 
-        [Test]
-        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
-        {
-            // Arrange — "a" carrying duration-[400ms], visible on its variants.
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
-            using var mounted = MountAAlone();
-
-            // Act — a swap to its hidden pose on a tenth of a second's tween, and past its end.
-            s_aPose = "hidden";
-            RenderShared(mounted);
-            AdvancePast(0.3f);
-
-            // Assert — its own four tenths, rather than none.
-            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
-            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
-                Is.EqualTo((StyleKeyword.Undefined, true)));
-        }
-
-        [Test]
-        public void Given_AMotionWhoseArbitraryDurationChangesMidVariantTween_When_TheTweenEnds_Then_TheNewDurationIsItsOwn()
-        {
-            // Arrange — "a" carrying duration-[400ms], visible on its variants, swapping to its hidden pose on a second's
-            // tween.
-            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
-            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_slowTween, "duration-[400ms]");
-            using var mounted = MountAAlone();
-            s_aPose = "hidden";
-            RenderShared(mounted);
-            for (var i = 0; i < 5; i++) Tick();
-
-            // Act — its duration class changes mid-tween; past the tween's end.
-            s_aClasses = "duration-[700ms]";
-            RenderShared(mounted);
-            AdvancePast(1.2f);
-
-            // Assert
-            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
-            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.7f)),
-                Is.EqualTo((StyleKeyword.Undefined, true)));
-        }
-
-        [Test]
-        public void Given_AMotionWhoseCodeWroteItsDelay_When_ItsPresetExitIsCancelled_Then_ItsDelayIsItsOwnAgain()
-        {
-            // Arrange — "entering" mounted inside its V.AnimatePresence, its enter over, and a delay its code writes.
-            (s_enterMounted, s_enterLeft) = (true, 0);
-            s_enterTransition = new StyleTransitionConfig { DurationSec = 0.3f, ExitFromClass = "opacity-0" };
-            using var mounted = V.Mount(Root, V.Component(EnteringHolderRender, key: "root"));
-            AdvancePast(0.3f);
-            var entering = Root.Q<VisualElement>("entering");
-            entering.style.transitionDelay = new List<TimeValue> { new(0.1f, TimeUnit.Second) };
-
-            // Act — its exit plays on the preset's own timing, and is cancelled as it comes back mid-exit.
-            s_enterMounted = false;
-            s_setStep.Invoke(1);
-            mounted.FlushStateForTest();
-            for (var i = 0; i < 5; i++) Tick();
-            s_enterMounted = true;
-            s_setStep.Invoke(2);
-            mounted.FlushStateForTest();
-            AdvancePast(0.5f);
-
-            // Assert
-            var delay = entering.style.transitionDelay;
-            Assert.That((delay.keyword, delay.value?.Count == 1 && Mathf.Approximately(delay.value[0].value, 0.1f)),
-                Is.EqualTo((StyleKeyword.Undefined, true)));
-        }
-
         // GREEN_ON_BASE(characterization): the base's suspension never writes the duration, delay or curve slots, so
         // nothing is left of the enter's once it ends. A narrowing that began under the enter must not hand the enter's
         // back.
@@ -3765,8 +3991,8 @@ namespace Velvet.Tests
             Assert.That(projection.DrawnRotate, Is.EqualTo(Mathf.LerpUnclamped(45f, spin, progress)).Within(0.5f));
         }
 
-        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone. Narrowing writes all
-        // four lists, and must hand back the element's own duration.
+        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone, so the duration the
+        // resolver wrote stays. A narrowing that writes the duration list must hand that one back.
         [Test]
         public void Given_ATransitionAllMotionWithAnArbitraryDurationThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItsOwnDurationIsHandedBack()
         {
@@ -3961,6 +4187,35 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base hands the transitions back as the move lands.
+        // Running the rotate on past the landing must take a change of the classes as it comes.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsClassesTurnItsTransitionsOff_Then_ItsBackgroundChangesAtOnce()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything linearly over a
+            // second and black; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and the
+            // move lands while "b"'s turn runs on.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-linear bg-black", "transition-all duration-1000 ease-linear bg-black");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both stop transitioning, keeping their duration, and turn white.
+            (s_bClasses, s_controlClasses) = ("transition-none duration-1000 ease-linear bg-white rotate-90", "transition-none duration-1000 ease-linear bg-white rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Assert — "b" white with the control.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.backgroundColor.r;
+            var gap = Mathf.Abs(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r - control);
+            Assert.That((gap < 0.05f, control), Is.EqualTo((true, 1f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands the element's transitions back as the move lands, before the
+        // translate changes. Running the rotate on past the landing must not keep the translate from transitioning.
         [Test]
         public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChanges_Then_TheTranslateTransitions()
         {

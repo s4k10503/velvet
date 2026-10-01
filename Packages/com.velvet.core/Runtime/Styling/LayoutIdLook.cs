@@ -323,6 +323,7 @@ namespace Velvet
 
         private static void StepTail(VisualElement element, LayoutIdProjection projection, float dtSec)
         {
+            MotionNativeTransitionGuard.Refresh(element);
             Adopt(element, projection);
             Narrow(element, projection);
             if (projection.WritesRotate) WriteRotate(element, projection, float.NaN, dtSec);

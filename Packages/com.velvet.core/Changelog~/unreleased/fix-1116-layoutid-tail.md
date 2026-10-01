@@ -1,5 +1,5 @@
 ### Fixed
 
-- An element's own inline transition duration, delay and easing — a `duration-[x]` utility's, or one written to
-  its `style` before the tween started — are kept through a variant or preset tween. The tween's end cleared all
-  three, so the element's transitions fell back to its classes until something wrote them again.
+- A `layoutId` Motion's own rotate or border radius still running on a transition as its move lands runs on to
+  its end as UI Toolkit runs it, through any move that starts on the Motion meanwhile. It was handed back as the
+  move landed instead.
