@@ -786,7 +786,6 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
-                current.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(current);
             }
         }
