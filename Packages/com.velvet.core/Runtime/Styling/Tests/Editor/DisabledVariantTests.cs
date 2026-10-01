@@ -476,6 +476,60 @@ namespace Velvet.Tests
             Assert.That((withHoverOnly, AnnouncementCallbackCount(group) > withHoverOnly), Is.EqualTo((0, true)));
         }
 
+        // The leaf sits behind peer a; moving it after a new peer b re-resolves it, which re-points its one
+        // disabled watch from a to b.
+        private (VisualElement Parent, VisualElement FormerPeer, VisualElement NewPeer, VisualElement Leaf) MountReResolvedToNewPeer()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", children: new VNode?[]
+                {
+                    V.Div(name: "a", className: "peer"),
+                    V.Div(name: "leaf", className: "peer-disabled:bg-hot"),
+                }));
+            var root = _window.rootVisualElement;
+            var parent = root.Q<VisualElement>("parent");
+            var leaf = root.Q<VisualElement>("leaf");
+            var newPeer = new VisualElement { name = "b" };
+            newPeer.AddToClassList("peer");
+            parent.Insert(1, newPeer);
+            parent.Remove(leaf);
+            parent.Add(leaf);
+            return (parent, root.Q<VisualElement>("a"), newPeer, leaf);
+        }
+
+        [Test]
+        public void Given_APeerDisabledLeafReResolvedToANewPeer_When_ItsFormerPeerLeavesAndTheNewOneIsDisabled_Then_ThePayloadIsApplied()
+        {
+            // Arrange
+            var (parent, formerPeer, newPeer, leaf) = MountReResolvedToNewPeer();
+            parent.Remove(formerPeer);
+
+            // Act
+            newPeer.SetEnabled(false);
+
+            // Assert
+            Assert.That(leaf.ClassListContains("bg-hot"), Is.True);
+        }
+
+        [Test]
+        public void Given_APeerDisabledLeafWhoseNewPeerLeftAndWasDisabled_When_ItsFormerPeerIsMoved_Then_ThePayloadStaysOff()
+        {
+            // Arrange — the applied half shows the watch had moved to the new peer.
+            var (parent, formerPeer, newPeer, leaf) = MountReResolvedToNewPeer();
+            newPeer.SetEnabled(false);
+            var appliedWhileNewPeerDisabled = leaf.ClassListContains("bg-hot");
+            newPeer.SetEnabled(true);
+            parent.Remove(newPeer);
+            newPeer.SetEnabled(false);
+
+            // Act — the former peer, enabled, is again the leaf's nearest peer.
+            parent.Remove(formerPeer);
+            parent.Insert(0, formerPeer);
+
+            // Assert
+            Assert.That((appliedWhileNewPeerDisabled, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
+        }
+
         // GREEN_ON_BASE(characterization): the engine announcement DisabledVariantSignal reads, which the
         // base engine already makes; this is the case that fails where the engine stops making it.
         [Test]
