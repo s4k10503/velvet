@@ -1175,6 +1175,40 @@ namespace Velvet
             return false;
         }
 
+        // The color element's own classes or layers give slot: a layer's color, else the palette color of the one
+        // bundled class that sets it. False when neither decides it — no class sets the slot, the class names
+        // no palette color (border-default), or two classes set it, which only the stylesheet's order ranks;
+        // declared says whether a class sets it at all.
+        internal static bool TryOwnColor(VisualElement element, HeldSlot slot, out Color color, out bool declared)
+        {
+            color = default;
+            declared = false;
+            if (ResolveLayered(element, slot) is { } layered)
+            {
+                color = layered.Color;
+                return true;
+            }
+            var longhand = HeldSlotGroups.LonghandOf(slot);
+            var setting = 0;
+            var named = false;
+            foreach (var cls in element.GetClasses())
+            {
+                StyleUtilityProperties.TryGet(cls, out var rule);
+                if (rule.Gate != StyleUtilityGate.None || !rule.Properties.Contains(longhand))
+                {
+                    continue;
+                }
+                setting++;
+                named = cls.StartsWith("border-", StringComparison.Ordinal);
+                if (named)
+                {
+                    named = VelvetPalette.TryResolveColorToken(cls.Substring("border-".Length), out color);
+                }
+            }
+            declared = setting > 0;
+            return setting == 1 && named;
+        }
+
         internal static void Watch(VisualElement element, IChildClassWatcher watcher)
         {
             var watchers = s_layers.GetValue(element, static _ => new LayerMap()).Watchers ??= new List<IChildClassWatcher>();

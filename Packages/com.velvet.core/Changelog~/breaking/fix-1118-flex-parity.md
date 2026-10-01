@@ -16,7 +16,8 @@
 
 - A `space-*` margin and a divider give way to a class of the child's own that sets the same edge — `mr-2`,
   `mr-[5px]`, `border-r-4`, `border-red-500` — as Tailwind's zero-specificity rules do. They used to
-  overwrite it.
+  overwrite it. Under `divide-dashed` the child's own width is still drawn dashed, and the dash takes the
+  color of the child's own `border-[…]` or palette border class.
 
 - A `gap-*`, `gap-x-*` or `gap-y-*` no longer reads a `space-x-reverse` / `space-y-reverse` marker, since
   CSS `gap` has none. `flex flex-col gap-4 space-y-reverse` spaced its children on `margin-bottom`; it
