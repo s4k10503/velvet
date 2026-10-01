@@ -257,8 +257,11 @@ without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuse
 when a `refs/remotes/*` ref reaches HEAD, and when git could not say whether one does. Amending a
 commit git placed and found unpushed is the ordinary case, and is what the predicate leaves alone.
 
-**What the split costs.** A mutant is one editor launch, or two where its narrowed run did not kill
-it. Over the twenty commits ending at `48057c8`,
+**What the split costs.** A mutant the rewriter declines is one editor launch, or two where its narrowed
+run did not kill it; one it places costs a domain reload and the test framework's preparation of a job
+for each stage it runs in its shard's session, which [Generators~/README.md ▸ The Unity
+assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies) describes. The figures
+below were measured before sessions, over launches alone. Over the twenty commits ending at `48057c8`,
 ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
 launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
 branch run locally is around 41 minutes. `--plan` gives an EditMode shard six mutants and stops

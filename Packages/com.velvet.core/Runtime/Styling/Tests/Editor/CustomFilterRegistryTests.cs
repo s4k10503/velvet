@@ -467,6 +467,8 @@ namespace Velvet.Tests
             Assert.That((f.Count, f[0].type), Is.EqualTo((1, FilterFunctionType.Blur)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keyed the layer by rank alone, so its off-toggle matched; the
+        // case now passes a className position, which the key carries, so it pins that both toggles use it.
         [Test]
         public void Given_ANameUnregisteredWhileAHoverLayerIsActive_When_TheHoverTogglesOff_Then_TheBaseArgumentsAreRestored()
         {
@@ -474,13 +476,15 @@ namespace Velvet.Tests
             // the registry still knowing the name, or the hover layer survives the toggle.
             var el = new VisualElement();
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[dissolve:0.3]", StyleLayerPriority.Base);
-            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: true, StyleLayerPriority.Hover);
+            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: true, StyleLayerPriority.Hover,
+                declarations: new[] { 1 });
             Assume.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.9f),
                 "Precondition: the hover layer overrides the base while active");
             VelvetFilters.Unregister("dissolve");
 
-            // Act
-            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: false, StyleLayerPriority.Hover);
+            // Act — at a className position, as every production caller passes, so the key carries it.
+            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: false, StyleLayerPriority.Hover,
+                declarations: new[] { 1 });
 
             // Assert
             Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.3f));

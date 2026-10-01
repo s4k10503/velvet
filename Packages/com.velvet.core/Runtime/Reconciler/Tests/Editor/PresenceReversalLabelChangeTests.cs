@@ -270,6 +270,38 @@ namespace Velvet.Tests
             Assert.That(translateX, Is.EqualTo(40f));
         }
 
+        // GREEN_ON_BASE(characterization): the base landed the swap's held translate before a classic enter cancelled it.
+        [Test]
+        public void Given_AFollowerWhoseFadeExitCompletedWhileADescendantHoldsIt_When_ItReturnsAsItsLabelIsTakenAway_Then_ItsPoseTranslateIsTakenOff()
+        {
+            // Arrange — resting at a translate pose, removed, and past its own Fade exit while its descendant holds it.
+            s_followerTransition = StyleTransition.Fade;
+            using var store = new PresenceStore("hidden");
+            s_store = store;
+            s_followerPoses = FollowerPoses("translate-x-[40px]", "translate-x-[0px]");
+            using var mounted = V.Mount(Root, V.Component(FollowerHost, key: "root"));
+            Tick();
+            store.SetKeys(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            for (var i = 0; i < FramesPastTheFadeExit; i++)
+            {
+                Tick();
+            }
+            var stopped = Root.Q<VisualElement>("item");
+            var followerStopped = stopped != null
+                && !mounted.Root.Reconciler.Context.StyleAnimationScheduler.IsExiting(stopped);
+
+            // Act — back in the render that takes the parent's label away, so no pose applies and its classic Fade
+            // enter plays over the swap that leaves the translate pose.
+            store.Set("a", null);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert — gated on the follower's own exit having completed: a re-add inside it starts no swap.
+            var translateX = followerStopped ? TranslateX(Root.Q<VisualElement>("item")) : float.NaN;
+            Assert.That(translateX, Is.EqualTo(0f));
+        }
+
         [Test]
         public void Given_ASpringFollowerHeldByADescendantsExit_When_ItReturnsAsItsInheritedLabelChanges_Then_ItsPoseTranslateIsWritten()
         {

@@ -29,32 +29,43 @@ pooled element leaves with everything the session ever wrote restored.
   sized to the source at activation and tracks the pointer while a drag is active (hidden
   otherwise). What renders INSIDE it is ordinary user state — set an "active item" in
   `onDragStart`, clear it in `onDragEnd`/`onDragCancel`, and render the preview conditionally:
-  dnd-kit's own `activeId` recipe.
+  dnd-kit's own `activeId` recipe. Every overlay declared under the dragging scope and mounted
+  when the drag starts shows the preview, as every dnd-kit `DragOverlay` renders its children while
+  its own context's drag is active; an overlay under another scope stays hidden, and one that mounts
+  mid-drag stays hidden until the next drag.
 
 Any existing element can be a source, target, or scope through the corresponding
 `FiberElementProps` slots — the factories are sugar. An element carrying both `Draggable` and
 `Droppable` under the same id (the sortable-row shape) never collides with itself.
 
-## Activation: clicks keep working
+## Activation
 
-A press becomes a drag only after crossing an activation constraint (`DragActivation`). The
-default is 4 px of travel — a deliberate, documented deviation from dnd-kit's unconstrained
-`PointerSensor` default, because UI Toolkit's `Clickable` captures the pointer at pointer-down
-and a zero threshold would kill clicks on draggable buttons. A sub-threshold release is a plain
-click, completely untouched. `DragActivation.None` restores the raw dnd-kit behavior (the press
-is the drag); a `DelaySec` greater than zero switches to hold-to-drag (dnd-kit's either/or):
-activation after the hold, aborted if travel exceeds `Tolerance` first.
+With no activation constraint declared, the press is the drag, as with dnd-kit's `PointerSensor`
+default: a press on a draggable button starts a drag and does not click it. An activation
+constraint (`DragActivation`) keeps clicks working: `new DragActivation(Distance: 4f)` makes a
+press a drag only after 4 px of travel, and a sub-threshold release is a plain click, completely
+untouched. A `DelaySec` greater than zero switches to hold-to-drag (dnd-kit's either/or):
+activation after the hold, aborted if travel exceeds `Tolerance` first. `DragActivation.None` is
+the unconstrained default, for a draggable that overrides a constrained scope.
 
 After a REAL drag, the release is swallowed before `Clickable` sees it, so a draggable button
 does not also fire `clicked` — and the press-derived styling state (`whileTap`, `active:`) is
-settled synthetically, since the real pointer-up never reaches those listeners.
+settled synthetically on the pressed element, the draggable and its ancestors, since the real
+pointer-up never reaches those listeners.
 
-One engine ground truth to know: while an element holds pointer capture, captured pointer events
-are delivered to that element only. An interactive CHILD that captures at its own pointer-down (a
-button inside a draggable card) therefore blacks out the draggable's view of the gesture —
-interactive capturing children are non-drag zones in distance mode. Put the `Draggable` setting
-on the interactive element itself (a draggable `V.Button` works: the captured events land on the
-same element), or use delay activation.
+A press on an interactive child that captures the pointer at its own pointer-down (a button
+inside a draggable card) drags the card once the constraint is met, and the child's click is
+aborted; a sub-threshold release stays the child's click. The same holds for an interactive
+ancestor that captures (a draggable inside a button). A control that has a pointer gesture of
+its own — a slider, a scroller, a text field's selection — loses it to the drag the same way. Set
+`FiberElementProps.NoDrag` on the control or on an element around it
+(`V.Div(props: new FiberElementProps { NoDrag = true }, children: ...)`) and a press inside it
+never arms an enclosing draggable. That is this layer's spelling of dnd-kit's opt-out, a child that
+stops or prevents its pointer-down: a draggable arms before any of its children's own pointer-down
+callbacks run.
+
+When draggables nest, the innermost enabled one under the press takes it and the outer ones do not
+arm, as dnd-kit's innermost activator claims the press.
 
 ## Collision detection
 
@@ -102,6 +113,9 @@ to use instead.
   foreign-panel candidates. Content inside `V.Portal(layer:)` / `V.WorldSpace` gets working DnD
   within its own panel; the `DragOverlay` ghost is the one sanctioned cross-panel piece
   (display-only, picking-ignored).
+- **`DragOverlay` in an editor-hosted tree** — the overlay's `UILayer.Overlay` host is a runtime
+  panel, and Velvet converts no editor panel's pointer position (an `EditorWindow` mount) into it,
+  so the overlay stays hidden there and logs a warning once per overlay.
 - **Sortable preset** (`@dnd-kit/sortable`) — a separate package upstream, a separate issue here;
   `V.Motion(layoutId:)` already animates the post-drop reorder.
 - **`dropAnimation`** on the overlay, **`modifiers`** (axis/bounds restriction), and
@@ -113,6 +127,5 @@ to use instead.
   singular too); extra pointer-downs during a session do not arm.
 
 Composition caveats, documented rather than solved: draggables inside an engine `ListView` with
-`reorderable: true` conflict with its internal drag processor (unsupported); the delta is
-panel-space, so a scaled ancestor skews tracking (a caveat dnd-kit shares); and the
-interactive-capturing-children rule above.
+`reorderable: true` conflict with its internal drag processor (unsupported); and the delta is
+panel-space, so a scaled ancestor skews tracking (a caveat dnd-kit shares).
