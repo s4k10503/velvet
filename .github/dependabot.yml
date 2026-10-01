@@ -11,6 +11,10 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # Held at v5: v6 failed player-compile on main after its build method had exited 0.
+      - dependency-name: "game-ci/unity-builder"
+        update-types: ["version-update:semver-major"]
 
   # The composite action under .github/actions pins a SHA of its own, and the entry above reads only
   # the workflows.
