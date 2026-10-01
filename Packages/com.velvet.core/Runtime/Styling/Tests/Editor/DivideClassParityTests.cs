@@ -562,7 +562,7 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-[#FF0000]") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(red),
+            Assume.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(red),
                 "Precondition: the dashed divider captured the child's initial border color");
 
             // Act — change the child's own border color; the divider's implicit color must follow.
@@ -570,7 +570,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(green));
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(green));
         }
 
         [Test]
@@ -590,6 +590,86 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [Test]
+        public void Given_AColorTheChildsCodeWroteUnderASolidDivider_When_TheDividerTurnsDashed_Then_TheDashTakesIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var solid = new VNode[] { Row("flex flex-row divide-x", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), solid);
+            var child = scope.Root[0][1];
+            child.style.borderRightColor = Color.blue;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, solid, new VNode[] { Row("flex flex-row divide-x divide-dashed", 3) });
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]),
+                Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_AColoredSolidDivider_When_ItTurnsDashed_Then_TheDividerColorIsNotTakenForTheChildsOwn()
+        {
+            // Arrange — the solid divider holds its color on the edge, which the dashed one then finds there.
+            using var scope = new ReconcilerScope();
+            var solid = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), solid);
+            var child = scope.Root[0][1];
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, solid,
+                new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings[child].Inline, Is.Null);
+        }
+
+        [Test]
+        public void Given_ADashTransitionInsideItsDelay_When_Framed_Then_ItShowsTheStartColor()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding
+            {
+                From = Color.red, DelaySec = 0.2f, DurationSec = 1f, Easing = EasingMode.Linear,
+            };
+
+            // Act
+            var color = DivideDashPainter.Frame(binding, Color.blue, 0.1, out _);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_ALinearDashTransitionHalfwayThrough_When_Framed_Then_ItShowsTheMidpoint()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding
+            {
+                From = Color.black, DelaySec = 0.25f, DurationSec = 1f, Easing = EasingMode.Linear,
+            };
+
+            // Act
+            var color = DivideDashPainter.Frame(binding, Color.white, 0.75, out _);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new Color(0.5f, 0.5f, 0.5f, 1f)));
+        }
+
+        [Test]
+        public void Given_ADashTransitionPastItsEnd_When_Framed_Then_ItHasEndedAtTheEndColor()
+        {
+            // Arrange
+            var binding = new DivideDashChildBinding { From = Color.red, DurationSec = 1f, Easing = EasingMode.Linear };
+
+            // Act
+            var color = DivideDashPainter.Frame(binding, Color.blue, 2.0, out var ended);
+
+            // Assert
+            Assert.That((color, ended), Is.EqualTo((Color.blue, true)));
+        }
 
         [Test]
         public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
@@ -623,7 +703,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(Color.red));
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(Color.red));
         }
 
         // GREEN_ON_BASE(characterization): the base already paints a dashed divider in the divide color. What
@@ -640,7 +720,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(gray200));
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.EqualTo(gray200));
         }
 
         [Test]
@@ -658,7 +738,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.Not.EqualTo(gray200));
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]]), Is.Not.EqualTo(gray200));
         }
 
         [Test]
@@ -672,7 +752,7 @@ namespace Velvet.Tests
             };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var child = scope.Root[0][1];
-            var before = scope.Reconciler.Context.DivideDashBindings[child].Color;
+            var before = DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]);
 
             // Act
             using (var over = PointerOverEvent.GetPooled())
@@ -681,7 +761,7 @@ namespace Velvet.Tests
             }
 
             // Assert — the color before the hover rides along, since a dash that always took red would pass too.
-            Assert.That((before == Color.red, scope.Reconciler.Context.DivideDashBindings[child].Color),
+            Assert.That((before == Color.red, DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child])),
                 Is.EqualTo((false, Color.red)));
         }
 
@@ -1131,6 +1211,7 @@ namespace Velvet.Tests
             return (child, found);
         }
 
+        // The color the child's last paint drew its dash in.
         private Color DashColorOf(VisualElement child)
             => _mounted.Root.Reconciler.Context.DivideDashBindings[child].Color;
 
@@ -1177,10 +1258,11 @@ namespace Velvet.Tests
             Assert.That((before == strong, DashColorOf(child)), Is.EqualTo((false, strong)));
         }
 
-        [Test]
-        public void Given_ADashedDivideRow_When_AGestureClassGivesADividedChildAColor_Then_TheDashTakesIt()
+        // A colored dashed row whose middle child takes border-red-500 while hovered, beside a reference carrying
+        // that class alone. The class reaches the child through the gesture channel, which tells the divider
+        // nothing, and with all four edges held or masked no value the engine paints the child by moves.
+        private (VisualElement Child, Color Red) MountGestureColoredDashRow()
         {
-            // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
             {
                 V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
@@ -1192,8 +1274,15 @@ namespace Velvet.Tests
                 V.Div(name: "ref0", className: "border-r border-red-500"),
             }));
             var child = _window.rootVisualElement.Q("b");
-            var reference = _window.rootVisualElement.Q("ref0");
             ForcePanelUpdate(child.panel);
+            return (child, _window.rootVisualElement.Q("ref0").resolvedStyle.borderRightColor);
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_AGestureClassGivesADividedChildAColor_Then_TheDashIsPaintedInIt()
+        {
+            // Arrange
+            var (child, red) = MountGestureColoredDashRow();
 
             // Act
             using (var over = PointerOverEvent.GetPooled())
@@ -1203,7 +1292,127 @@ namespace Velvet.Tests
             ForcePanelUpdate(child.panel);
 
             // Assert
-            Assert.That(DashColorOf(child), Is.EqualTo(reference.resolvedStyle.borderRightColor));
+            Assert.That(DashColorOf(child), Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_ADashPaintedInAGestureColor_When_ThePointerLeaves_Then_TheDashIsPaintedInTheDivideColorAgain()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            var (child, red) = MountGestureColoredDashRow();
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+            ForcePanelUpdate(child.panel);
+            var hovered = DashColorOf(child);
+
+            // Act
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                child.SimulateEvent(leave);
+            }
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the hovered color rides along, since a dash that never took red would pass too.
+            Assert.That((hovered == red, DashColorOf(child)), Is.EqualTo((true, gray200)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_TheChildsCodeWritesItsEdgeColorAfterMount_Then_TheDashKeepsIt()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            child.style.borderRightColor = Color.blue;
+
+            // Act — the container applies again, as it does when the child's classes change.
+            StyleArbitraryValueResolver.NotifyClassesChanged(child);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(DashColorOf(child), Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ADashOnAChildWithAColorTransition_When_ItsColorClassChanges_Then_TheDashRunsFromTheOldColorToTheNew()
+        {
+            // Arrange
+            var (child, references) = MountColoredDashRow("border-default transition-colors", "border-default",
+                "border-accent");
+            var oldColor = references[0].resolvedStyle.borderRightColor;
+            var newColor = references[1].resolvedStyle.borderRightColor;
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            var started = DashColorOf(child);
+
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+
+            // Act — past the end of the transition.
+            binding.StartTime = double.NegativeInfinity;
+            child.MarkDirtyRepaint();
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the two classes resolving apart ride along, since equal colors would pass either way, and so
+            // does the tick, which stops repainting the child once the transition has ended.
+            Assert.That((started, DashColorOf(child), oldColor == newColor, binding.Tick.isActive),
+                Is.EqualTo((oldColor, newColor, false, false)));
+        }
+
+        // A dash on a child carrying border-default transition-colors, part way through its transition to
+        // border-accent.
+        private (VisualElement Child, DivideDashChildBinding Binding, VisualElement[] References)
+            MountRunningDashTransition()
+        {
+            var (child, references) = MountColoredDashRow("border-default transition-colors", "border-default",
+                "border-accent", "border-strong");
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            return (child, _mounted.Root.Reconciler.Context.DivideDashBindings[child], references);
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheColorChangesWithTheTransitionRemoved_Then_TheDashTakesTheNewColorAtOnce()
+        {
+            // Arrange
+            var (child, binding, references) = MountRunningDashTransition();
+            var running = binding.Tick.isActive;
+            var strong = references[2].resolvedStyle.borderRightColor;
+
+            // Act
+            StyleClassProjection.Remove(child, "transition-colors", StyleLayerPriority.Base);
+            StyleClassProjection.Remove(child, "border-accent", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-strong", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the transition running before the change rides along, since one that never ran would leave
+            // nothing to stop.
+            Assert.That((running, DashColorOf(child)), Is.EqualTo((true, strong)));
+        }
+
+        [Test]
+        public void Given_ARunningDashTransition_When_TheDashIsDetached_Then_ItsTickStopsAndItsMarkerClassGoes()
+        {
+            // Arrange
+            var (child, binding, _) = MountRunningDashTransition();
+            var running = binding.Tick.isActive;
+
+            // Act
+            DivideDashPainter.Detach(child, binding);
+
+            // Assert
+            Assert.That((running, binding.Tick.isActive, child.ClassListContains(DivideDashPainter.MarkerClass)),
+                Is.EqualTo((true, false, false)));
         }
 
         [Test]

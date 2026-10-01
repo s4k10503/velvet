@@ -16,6 +16,7 @@ namespace Velvet
     internal sealed class DivideDashChildBinding
     {
         public Action<MeshGenerationContext>? OnGenerate;
+        public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
         public VisualElement Child = null!;
         public DivideEdge Edge;
         public BorderLineStyle Style;
@@ -26,9 +27,18 @@ namespace Velvet
         // A color written inline on the child, kept once the mask replaced it.
         public Color? Inline;
 
-        // Read when the child paints, so a pseudo-state, a class or a variant layer that moves the child's own
-        // color after the divider last ran is still the color drawn.
-        public Color Color => DivideDashPainter.PaintColor(this);
+        // The color the dash heads for, null before the first paint, and the color the last paint drew.
+        public Color? Target;
+        public Color Color;
+
+        // The transition the child's own transition entry for the edge's color runs from From to Target; Tick
+        // repaints the child each frame while it runs, and is paused otherwise.
+        public Color From;
+        public double StartTime;
+        public float DelaySec;
+        public float DurationSec;
+        public EasingMode Easing;
+        public IVisualElementScheduledItem Tick = null!;
 
         // The width the child's border resolves to on Edge: the divider's own, or a width of the child's own that
         // the divider gave way to, so the dash is drawn as wide as the border it stands in for.
@@ -44,15 +54,30 @@ namespace Velvet
     // with an opaque background — the same reason SkewSilhouette paints on the skewed element itself. Keyed per
     // child in ReconcilerContext.DivideDashBindings; torn down by FiberElementCleaner (so a keyed-list reorder
     // recycling one child independently of its container is still caught) and swept by Reconciler.Dispose.
+    //
+    // The child's own slot on the edge holds the mask, so a restyle that moves the color the dash takes can leave
+    // every value the engine paints the child by where it was, and nothing repaints the child then
+    // (Given_ADashedDivideRow_When_AGestureClassGivesADividedChildAColor_Then_TheDashIsPaintedInIt). MarkerClass
+    // gives the child the custom property that makes UI Toolkit send it CustomStyleResolvedEvent on a restyle, as
+    // LeadingLengthProbe's does, and the child repaints when the color differs from the one the dash heads for.
     internal static class DivideDashPainter
     {
+        internal const string MarkerClass = "velvet-divide-dash";
+
         public static DivideDashChildBinding Attach(VisualElement child, DivideEdge edge, BorderLineStyle style)
         {
             var binding = new DivideDashChildBinding { Child = child, Edge = edge, Style = style };
             binding.OnGenerate = mgc => Draw(mgc, child, binding);
+            binding.OnStyleResolved = _ => OnStyleResolved(binding);
+            binding.Tick = child.schedule.Execute(child.MarkDirtyRepaint).Every(0);
+            // MUTANT_SURVIVES(equivalent, line removed): the first paint pauses the tick, its target being new
+            // and starting no transition, so a tick left running repaints only the frames before that paint.
+            binding.Tick.Pause();
             // Appended (not prepended): the divider sits ON the child's divider edge over its own content, the
             // same place a solid inline border paints (over the child's background edge).
             child.generateVisualContent += binding.OnGenerate;
+            child.RegisterCallback(binding.OnStyleResolved);
+            child.AddToClassList(MarkerClass);
             child.MarkDirtyRepaint();
             return binding;
         }
@@ -67,7 +92,20 @@ namespace Velvet
         public static void Detach(VisualElement child, DivideDashChildBinding binding)
         {
             child.generateVisualContent -= binding.OnGenerate;
+            // MUTANT_SURVIVES(equivalent, line removed): with the class removed below the callback is sent at most
+            // the restyle that removes it, and a repaint it asks for draws no dash, the paint callback being gone.
+            child.UnregisterCallback(binding.OnStyleResolved);
+            child.RemoveFromClassList(MarkerClass);
+            binding.Tick.Pause();
             child.MarkDirtyRepaint();
+        }
+
+        private static void OnStyleResolved(DivideDashChildBinding binding)
+        {
+            if (binding.Target != PaintColor(binding))
+            {
+                binding.Child.MarkDirtyRepaint();
+            }
         }
 
         // A layer of the child's own wins, then the divide-{color} where no class of the child's own sets the edge's
@@ -98,10 +136,10 @@ namespace Velvet
             {
                 return Color.clear;
             }
-            var style = access.Style.GetValue(child);
-            var hash = (long)access.Hash.GetValue(style);
-            var lookup = new object?[] { hash, null };
-            if (hash == 0 || !(bool)access.TryGet.Invoke(null, lookup)!)
+            var lookup = access.Lookup;
+            lookup[0] = access.Hash.GetValue(access.Style.GetValue(child));
+            lookup[1] = null;
+            if (!(bool)access.TryGet.Invoke(null, lookup)!)
             {
                 return Color.clear;
             }
@@ -117,6 +155,7 @@ namespace Velvet
             public PropertyInfo Right = null!;
             public PropertyInfo Top = null!;
             public PropertyInfo Bottom = null!;
+            public readonly object?[] Lookup = new object?[2];
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
             public PropertyInfo Edge(DivideEdge edge) => edge switch
@@ -144,14 +183,17 @@ namespace Velvet
             var right = styleType?.GetProperty("borderRightColor", instance);
             var top = styleType?.GetProperty("borderTopColor", instance);
             var bottom = styleType?.GetProperty("borderBottomColor", instance);
-            if (style == null || hash == null || tryGet == null || left == null || right == null || top == null
-                || bottom == null)
+            // A member of another type than the one read here would throw inside the paint, so it counts as missing.
+            if ((hash?.FieldType, tryGet?.ReturnType, left?.PropertyType, right?.PropertyType, top?.PropertyType,
+                    bottom?.PropertyType)
+                != (typeof(long), typeof(bool), typeof(Color), typeof(Color), typeof(Color), typeof(Color)))
             {
                 return null;
             }
             return new RulesAccess
             {
-                Style = style, Hash = hash, TryGet = tryGet, Left = left, Right = right, Top = top, Bottom = bottom,
+                Style = style!, Hash = hash!, TryGet = tryGet!, Left = left!, Right = right!, Top = top!,
+                Bottom = bottom!,
             };
         }
 
@@ -166,8 +208,65 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the property it transitions
+        private static string ColorProperty(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Left => "border-left-color",
+            DivideEdge.Right => "border-right-color",
+            DivideEdge.Top => "border-top-color",
+            DivideEdge.Bottom => "border-bottom-color",
+        };
+#pragma warning restore CS8524
+
+        // The color to paint now: the target, or a frame of the transition toward it. A target that differs from
+        // the last one starts a transition from the color last painted where the child carries an entry running
+        // for the edge's color; the first paint starts none.
+        internal static Color Advance(DivideDashChildBinding binding, Color target, double now)
+        {
+            if (binding.Target != target)
+            {
+                var runs = StyleFilterTransitionDriver.TryFindTransition(binding.Child, ColorProperty(binding.Edge),
+                    "border-color", out var durationMs, out var delayMs, out var easing);
+                if (binding.Target != null && runs)
+                {
+                    binding.From = binding.Color;
+                    binding.StartTime = now;
+                    binding.DurationSec = Mathf.Max(0, durationMs) / 1000f;
+                    binding.DelaySec = delayMs / 1000f;
+                    binding.Easing = easing;
+                    binding.Tick.Resume();
+                }
+                else
+                {
+                    binding.Tick.Pause();
+                }
+                binding.Target = target;
+            }
+            if (!binding.Tick.isActive)
+            {
+                return target;
+            }
+            var color = Frame(binding, target, now, out var ended);
+            if (ended)
+            {
+                binding.Tick.Pause();
+            }
+            return color;
+        }
+
+        // The color the binding's transition toward `to` shows at `now`, and whether it has ended: From through
+        // the delay, and a zero duration jumps to the end once the delay has passed.
+        internal static Color Frame(DivideDashChildBinding binding, Color to, double now, out bool ended)
+        {
+            var t = Mathf.Clamp01((float)((now - binding.StartTime - binding.DelaySec)
+                / Math.Max(binding.DurationSec, 1e-6)));
+            ended = t >= 1f;
+            return Color.LerpUnclamped(binding.From, to, UssEasing.Evaluate(binding.Easing, t));
+        }
+
         private static void Draw(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)
         {
+            binding.Color = Advance(binding, PaintColor(binding), Time.realtimeSinceStartupAsDouble);
             if (binding.Width <= 0.01f || binding.Color.a <= 0.004f)
             {
                 return;

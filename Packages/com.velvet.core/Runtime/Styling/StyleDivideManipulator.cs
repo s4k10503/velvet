@@ -253,9 +253,11 @@ namespace Velvet
             }
         }
 
-        // A color written inline on the child's edge by code of its own, kept once the mask takes the slot: the
-        // mask is this manipulator's, so the value it replaced is only readable before the first one lands. A
-        // value a layer or a hold wrote is not one: PaintColor reads layers itself, and a hold is a divider's.
+        // A color written inline on the child's edge by code of its own, kept once the mask takes the slot. On an
+        // edge the binding does not mask yet, a value a layer or a hold wrote is not one: PaintColor reads layers
+        // itself, and a hold is a divider's. On the edge it masks, a value other than the mask was written over it
+        // after the last Apply, and is taken as the child's own, as a solid divider without a divide color leaves
+        // a color written over its edge.
         private static Color? InlineOwnColor(VisualElement child, DivideEdge edge, DivideDashChildBinding? binding)
         {
             var slot = ColorSlot(edge);
@@ -264,7 +266,15 @@ namespace Velvet
             {
                 return binding?.Inline;
             }
-            if (SilhouetteFace.IsUnset(inline) || StyleArbitraryValueResolver.IsHeld(child, slot)
+            if (SilhouetteFace.IsUnset(inline))
+            {
+                return null;
+            }
+            if (binding?.Edge == edge)
+            {
+                return inline;
+            }
+            if (StyleArbitraryValueResolver.IsHeld(child, slot)
                 || StyleArbitraryValueResolver.ResolveLayered(child, slot) != null)
             {
                 return null;
