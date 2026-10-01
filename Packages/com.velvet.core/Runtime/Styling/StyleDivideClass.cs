@@ -7,7 +7,7 @@ namespace Velvet
 {
     // The axis a divide border runs along. divide-x divides columns, divide-y divides rows (mirrors GapAxis,
     // minus Auto — the divide utilities are always explicitly x or y). Which PHYSICAL edge of that axis
-    // carries the border is resolved separately, from the container's direction and the reverse marker — see
+    // carries the border is resolved separately, from the reverse marker — see
     // StyleDivideManipulator.ResolveEdge.
     internal enum DivideAxis
     {
@@ -27,7 +27,7 @@ namespace Velvet
     }
 
     // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, the line
-    // style, and whether the divider is reversed onto the axis's trailing edge. A divide is only active when
+    // style, and whether the divider is reversed onto the axis's start edge. A divide is only active when
     // an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is present — a lone divide-{color},
     // and a lone divide-x-reverse, do nothing (both need a width to show).
     internal readonly struct DivideSpec
@@ -38,10 +38,10 @@ namespace Velvet
         public readonly Color Color;
         public readonly BorderLineStyle Style;
 
-        // The divide-x-reverse / divide-y-reverse marker FOR THE AXIS THIS SPEC RESOLVED TO. Unlike gap's
-        // Auto axis, a divide always names its axis in the class itself, so the cross-axis marker can never
-        // become relevant later and is dropped at parse time rather than carried per axis: divide-y with a
-        // divide-x-reverse is simply not reversed.
+        // The divide-x-reverse / divide-y-reverse marker FOR THE AXIS THIS SPEC RESOLVED TO. A divide always
+        // names its axis in the class itself, so the cross-axis marker can never become relevant later and is
+        // dropped at parse time rather than carried per axis: divide-y with a divide-x-reverse is simply not
+        // reversed.
         public readonly bool Reverse;
 
         public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style, bool reverse)
@@ -58,8 +58,8 @@ namespace Velvet
     // Parses Velvet's divide-x / divide-y (and divide-x-{0,2,4,8} widths, the
     // divide-x-[Npx] JIT arbitrary form, divide-{color}, and the divide-x-reverse / divide-y-reverse
     // markers) into a DivideSpec for StyleDivideManipulator, which writes the inter-child border on
-    // every child except the first — the `> * + *` divider rule, which no USS selector can express
-    // (UI Toolkit has no :first-child and no `> *` child combinator).
+    // every child except the last — Tailwind v4's `> :not(:last-child)` divider rule, which no USS selector
+    // can express (UI Toolkit has no :last-child and no `> *` child combinator).
     //
     // Deviations (UI Toolkit constraints):
     //   - divide-dashed / divide-dotted have no UI Toolkit border-style, so they are painted by
@@ -172,12 +172,8 @@ namespace Velvet
             return true;
         }
 
-        // divide-x-reverse / divide-y-reverse. Each is an ABSOLUTE per-axis instruction — "put the divider on
-        // the trailing physical edge" — that Tailwind never conditions on flex-direction, so
-        // StyleDivideManipulator.ResolveEdge OR's it with a detected row-reverse / column-reverse rather than
-        // XOR'ing: the idiomatic flex-row-reverse divide-x divide-x-reverse still lands trailing instead of
-        // cancelling back to leading. Matched exactly, so a divide-x-reverse-something is left to the parses
-        // below rather than swallowed here.
+        // divide-x-reverse / divide-y-reverse. Matched exactly, so a divide-x-reverse-something is left to the
+        // parses below rather than swallowed here.
         private static bool TryParseReverse(string cls, out DivideAxis axis)
         {
             switch (cls)

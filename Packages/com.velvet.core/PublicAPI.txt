@@ -317,8 +317,20 @@
 [Velvet] method Velvet.Hooks.UseBlocker(System.Boolean): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean]): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseCallback(System.Action): System.Action
+[Velvet] method Velvet.Hooks.UseCallback(System.Action, System.Object?[]?): System.Action
 [Velvet] method Velvet.Hooks.UseCallback`1(T): T
 [Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
+[Velvet] method Velvet.Hooks.UseCallback`2(System.Action`2[T1, T2]): System.Action`2[T1, T2]
+[Velvet] method Velvet.Hooks.UseCallback`2(System.Action`2[T1, T2], System.Object?[]?): System.Action`2[T1, T2]
+[Velvet] method Velvet.Hooks.UseCallback`2(System.Func`2[T1, TResult]): System.Func`2[T1, TResult]
+[Velvet] method Velvet.Hooks.UseCallback`2(System.Func`2[T1, TResult], System.Object?[]?): System.Func`2[T1, TResult]
+[Velvet] method Velvet.Hooks.UseCallback`3(System.Action`3[T1, T2, T3]): System.Action`3[T1, T2, T3]
+[Velvet] method Velvet.Hooks.UseCallback`3(System.Action`3[T1, T2, T3], System.Object?[]?): System.Action`3[T1, T2, T3]
+[Velvet] method Velvet.Hooks.UseCallback`3(System.Func`3[T1, T2, TResult]): System.Func`3[T1, T2, TResult]
+[Velvet] method Velvet.Hooks.UseCallback`3(System.Func`3[T1, T2, TResult], System.Object?[]?): System.Func`3[T1, T2, TResult]
+[Velvet] method Velvet.Hooks.UseCallback`4(System.Func`4[T1, T2, T3, TResult]): System.Func`4[T1, T2, T3, TResult]
+[Velvet] method Velvet.Hooks.UseCallback`4(System.Func`4[T1, T2, T3, TResult], System.Object?[]?): System.Func`4[T1, T2, T3, TResult]
 [Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T): T
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T

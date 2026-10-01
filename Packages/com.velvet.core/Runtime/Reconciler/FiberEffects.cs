@@ -72,6 +72,53 @@ namespace Velvet
             CommitStrandedLayoutWork(ctx);
         }
 
+        // React disconnects the layout effects of a tree a Suspense hides — its imperative handles among them —
+        // keeping its state, and reconnects them when the tree is revealed. While hidden, the fiber's layout work
+        // is dropped from the commit (TakeBatch), a mount's included: one this render first mounted under the
+        // Suspense has set nothing up for the cleanups below to take down, and the reveal sets it up.
+        internal static void HideLayoutEffects(ComponentFiber fiber)
+        {
+            // Each pass that renders the boundary while it shows its fallback hides the fiber again, and must not
+            // clear a ref another component has written since.
+            if (fiber.LayoutEffectsHidden) return;
+            fiber.LayoutEffectsHidden = true;
+            HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
+            if (fiber.ImperativeHandleSlots == null) return;
+            foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
+        }
+
+        // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, has that
+        // commit create every imperative handle again — from the last committed factory where the reveal does not
+        // render the fiber — as React calls create() on reconnect: the hidden elements were removed, and a handle
+        // built over one would outlive it. The passive work held while hidden is scheduled with them.
+        internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
+        {
+            if (!fiber.LayoutEffectsHidden) return;
+            fiber.LayoutEffectsHidden = false;
+            if (fiber.LayoutEffects != null)
+            {
+                var pending = fiber.PendingLayoutEffects ??= new List<HookEffectSlot>();
+                foreach (var slot in fiber.LayoutEffects)
+                {
+                    if (!pending.Contains(slot)) pending.Add(slot);
+                }
+            }
+            if (fiber.ImperativeHandleSlots != null)
+            {
+                foreach (var slot in fiber.ImperativeHandleSlots)
+                {
+                    if (slot.NextFactory == null)
+                    {
+                        slot.NextFactory = slot.Factory;
+                        slot.NextHandleRef = slot.HandleRef;
+                    }
+                    slot.NextNeedsRecompute = true;
+                }
+            }
+            ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
+            ScheduleRunEffects(fiber);
+        }
+
         // Commits the inline fibers on the deferred stack and the pending caught-error reports where no commit
         // is on the stack to do it. An entry that commits, or that renders or runs effects, has to end with this
         // call: a follow-up commit its layout setups left waits here, and so does a fallback a boundary showed
@@ -245,6 +292,9 @@ namespace Velvet
                 // Its unmount cleared its effect lists and handles, the setup pass skips it, and detached, it
                 // precedes and follows nothing, so InsertInTreeOrder places nothing around it.
                 if (!entry.Fiber.IsMounted) continue;
+                // A tree a Suspense hides commits none of the layout work its render queued, as React discards
+                // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
+                if (entry.Fiber.LayoutEffectsHidden) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
@@ -476,6 +526,9 @@ namespace Velvet
             var ordered = OrderFibersPostOrder(context.PendingPassiveEffectFibers);
             context.PendingPassiveEffectFibers.Clear();
             context.PendingPassiveEffectFiberSet.Clear();
+            // A tree a Suspense hides runs none of the passive work its render queued, as React commits none of
+            // that render; ShowLayoutEffects schedules what is held for the reveal.
+            ordered.RemoveAll(HoldWhileHidden);
 
             // Phase 1: all cleanups, post-order. Clear EffectFlushScheduled here so a cleanup that
             // re-stages the same fiber re-arms scheduling cleanly.
@@ -507,6 +560,13 @@ namespace Velvet
                 HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingEffects);
 #endif
             }
+        }
+
+        private static bool HoldWhileHidden(ComponentFiber fiber)
+        {
+            if (!fiber.LayoutEffectsHidden) return false;
+            fiber.EffectFlushScheduled = false;
+            return true;
         }
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary
@@ -600,16 +660,11 @@ namespace Velvet
             fiber.EffectFlushScheduled = false;
         }
 
-        // Explicitly runs async effects from tests / Editor. In the normal flow they run automatically via
-        // schedule.Execute, so user code does not need to call this.
-        // fiber: Fiber whose pending async effects should be drained synchronously.
-        public static void FlushEffects(ComponentFiber fiber) => RunEffects(fiber);
-
         // Synchronously runs the tree-wide, 2-phase passive-effect drain for the reconcile context that
         // rootFiber belongs to (all cleanups before all setups, post-order). Mirrors the
         // production post-paint drain but fires immediately, so tests / Editor tooling observe the
         // passive ordering without waiting for the host scheduler. No-op when no passive effects are
-        // pending. Use this instead of per-fiber FlushEffects to preserve cross-fiber order.
+        // pending.
         public static void FlushPendingPassiveEffects(ComponentFiber rootFiber)
         {
             var context = rootFiber?.Reconciler?.Context;

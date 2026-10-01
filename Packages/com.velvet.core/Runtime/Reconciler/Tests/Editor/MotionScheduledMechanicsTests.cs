@@ -76,7 +76,7 @@ namespace Velvet.Tests
             (s_aPose, s_aTransition, s_bPose, s_bVariants) = (null, null, null, null);
             (s_aField, s_looseField, s_controlClasses) = (false, false, null);
             s_aVariants = null;
-            s_resizeFrom = 100;
+            (s_resizeFrom, s_resizeTo) = (100, null);
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             (s_modalLeft, s_moverLeft) = (300, -1);
             s_cardTransition = null;
@@ -882,6 +882,8 @@ namespace Velvet.Tests
 
         private static string s_resizeOrigin;
         private static int s_resizeFrom;
+        // The size step 1 lays the box out at, two hundred pixels square while null.
+        private static Vector2Int? s_resizeTo;
 
         // At step 0 the box is s_resizeFrom pixels square, and from step 1 two hundred, in place, its top-left corner
         // fixed; s_resizeOrigin holds its transform origin, or any other classes.
@@ -890,11 +892,11 @@ namespace Velvet.Tests
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            var size = step == 0 ? s_resizeFrom : 200;
+            var size = step == 0 ? new Vector2Int(s_resizeFrom, s_resizeFrom) : s_resizeTo ?? new Vector2Int(200, 200);
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_layoutSpring,
-                    className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] {s_resizeOrigin}"),
+                    className: $"left-[0px] top-[0px] w-[{size.x}px] h-[{size.y}px] {s_resizeOrigin}"),
             });
         }
 
@@ -920,6 +922,55 @@ namespace Velvet.Tests
                     UnityEngine.Mathf.Abs(element.style.translate.value.x.value + 50f) < 1f,
                     UnityEngine.Mathf.Abs(element.style.translate.value.y.value + 50f) < 1f),
                 Is.EqualTo((true, true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionWithAPixelRadius_When_ItsTweenStartsScaledDifferentlyOnEachAxis_Then_TheRadiusIsDividedByTheirGeometricMean()
+        {
+            // Arrange / Act — laid out at 400×200 from 100×100, so drawn at a quarter across and a half down.
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[20px]");
+
+            // Assert — twenty over the square root of an eighth.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(20f / Mathf.Sqrt(0.125f)).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox()
+        {
+            // Arrange / Act — round at 100×100, laid out at 400×200, so its radius divided by the scale would overlap its
+            // own on the 200px sides.
+            s_resizeTo = new Vector2Int(400, 200);
+            var element = ResizeBoxWithOrigin("rounded-[50px]");
+
+            // Assert — scaled down to half the 200px sides, as CSS scales radii that overlap.
+            Assert.That(element.style.borderTopLeftRadius.value.value, Is.EqualTo(100f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ARoundedLayoutIdMotionMidTween_When_ARadiusWrittenOverItIsClearedAgain_Then_ItIsDrawnAtTheRadiusItsRulesDeclare()
+        {
+            // Arrange — the bundled sheet; rounded-lg, some way into doubling in place.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_resizeOrigin = "rounded-lg";
+            using var mounted = V.Mount(Root, V.Component(ResizingBoxRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            for (var i = 0; i < 5; i++) Tick();
+            element.style.borderTopLeftRadius = 30f;
+            Tick();
+
+            // Act
+            element.style.borderTopLeftRadius = StyleKeyword.Null;
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert — the corner as the rules declare it, not none.
+            var declared = StyleCascade.Radius(element, 0)!.Value.value;
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[element].DrawnRadii[0].value;
+            Assert.That((declared > 1f, Mathf.Abs(drawn - declared) < 0.01f), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base starts a corner-origin resize at the old corner with no translate.

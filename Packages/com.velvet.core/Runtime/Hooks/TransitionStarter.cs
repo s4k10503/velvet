@@ -11,8 +11,12 @@ namespace Velvet
     /// write; for the async form, <c>isPending</c> stays true across awaits until the task completes, while
     /// the updates the action makes after an <c>await</c> that suspended it fall outside the scope this call
     /// opened — wrap them in a further <c>startTransition</c> to put them back in it. An <c>await</c> of a
-    /// task that had already completed does not suspend, so what follows it is still inside the scope; the
-    /// migration guide's <c>useTransition</c> row owns that rule. Nested calls join the outer transition.
+    /// <see cref="VelvetTask"/> suspends even where the task had already completed, as JavaScript's does; an
+    /// <c>await</c> of a completed <see cref="System.Threading.Tasks.Task"/> does not, so what follows it is
+    /// still inside the scope — the migration guide's <c>useTransition</c> row owns that rule. Nested calls
+    /// join the outer transition. An error the callback throws, or the action faults with, is not rethrown to
+    /// the caller: it is thrown from the declaring component's next Transition-lane render, or dropped once
+    /// that component has unmounted.
     /// </summary>
     /// <remarks>
     /// A struct (no allocation) wrapping the two cached closures built once per render slot. Reference-stable, so

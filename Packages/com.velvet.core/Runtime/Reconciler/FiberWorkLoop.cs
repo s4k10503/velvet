@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 
 namespace Velvet
 {
@@ -29,7 +30,19 @@ namespace Velvet
         // misclassified context's update still drains on its normal frame boundary. A context-scoped flag
         // would instead risk diverging lane classification from the actual synchronous-flush decision, so the
         // process-global flag is kept deliberately.
-        internal static bool IsInDiscreteEvent;
+        internal static bool IsInDiscreteEvent
+        {
+            get => s_isInDiscreteEvent;
+            set
+            {
+                s_isInDiscreteEvent = value;
+                // A handler bracketed by FiberDiscreteEventScope has drained the queue already; one that sets
+                // the flag itself would otherwise leave what it deferred to the next discrete event.
+                ScheduleDeferredAwaitContinuations();
+            }
+        }
+
+        private static bool s_isInDiscreteEvent;
 
         // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
         // made while these are open is credited to each of them that still owns its slot (see
@@ -95,6 +108,57 @@ namespace Velvet
             }
 
             ScheduleRerender(fiber, IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+        }
+
+        // JavaScript's await resumes in a microtask, once the code that called startTransition has returned, so
+        // nothing an action runs past an await is in the transition it started. An await of a VelvetTask that
+        // had already completed is held to that: its continuation runs once a discrete handler has returned,
+        // or on the next main-thread tick outside one. An awaiter Velvet does not own (Task, ValueTask,
+        // Awaitable) is not, since C# continues inline wherever the awaiter reports completion;
+        // UseTransitionTests pins that side with an await of Task.CompletedTask.
+        internal static bool DefersAwaitContinuations => OpenTransitionScopes.Count > 0 && VelvetMainThread.IsCurrent;
+
+        private static readonly Queue<Action> DeferredAwaitContinuations = new();
+
+        internal static void DeferAwaitContinuation(Action continuation) => DeferredAwaitContinuations.Enqueue(continuation);
+
+        // VelvetMainThread.Capture drops the drain it had posted, and this queue goes with it.
+        internal static void DiscardDeferredAwaitContinuations() => DeferredAwaitContinuations.Clear();
+
+        // Reached as each scope closes. Inside a discrete handler FiberDiscreteEventScope drains the queue once
+        // the handler returns, so the handler's own later writes land first; elsewhere the drain waits for the
+        // main thread's next tick.
+        private static void ScheduleDeferredAwaitContinuations()
+        {
+            // MUTANT_SURVIVES(equivalent): a drain posted with nothing queued, or one posted beside the discrete
+            // handler's own, finds the queue empty and runs nothing.
+            if (IsInDiscreteEvent || DeferredAwaitContinuations.Count == 0)
+            {
+                return;
+            }
+            VelvetMainThread.Post(static _ => DrainDeferredAwaitContinuations(), null);
+        }
+
+        // One continuation that throws must not keep the rest from running, nor end the discrete event whose
+        // flush follows the drain.
+        internal static void DrainDeferredAwaitContinuations()
+        {
+            while (DeferredAwaitContinuations.TryDequeue(out var continuation))
+            {
+                RunContained(continuation);
+            }
+        }
+
+        private static void RunContained(Action continuation)
+        {
+            try
+            {
+                continuation();
+            }
+            catch (Exception thrown)
+            {
+                VelvetTaskScheduler.PublishUnobservedException(thrown);
+            }
         }
 
         // Transition-lane re-render request dedicated to UseDeferredValue.
@@ -318,9 +382,16 @@ namespace Velvet
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
             IsRenderingTransitionLane = drainsTransitionWork;
+            var suspended = false;
             try
             {
                 FiberRenderer.RenderAndReconcile(fiber, flushBudget);
+            }
+            catch (FiberSuspendSignal)
+            {
+                // A flush of this fiber alone has no ancestor walk on the stack to hand the signal to.
+                FiberRenderer.SuspendPassOwner(fiber);
+                suspended = true;
             }
             finally
             {
@@ -329,7 +400,7 @@ namespace Velvet
             // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
             // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
             // would observe null. ContinueReconcile's terminal chunk runs these once the work completes.
-            if (fiber.Reconciler?.HasPendingWork != true)
+            if (!suspended && fiber.Reconciler?.HasPendingWork != true)
             {
                 SettleCompletedTransition(fiber);
                 // Bottom-up commit — descendant effects run before this fiber's so a
@@ -493,6 +564,14 @@ namespace Velvet
                 var abortedBaseline = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
                 FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
+                if (ex is FiberSuspendSignal)
+                {
+                    // Same exit as FlushState's: the transition this slice belonged to has not committed.
+                    FiberRenderer.SuspendPassOwner(fiber);
+                    var suspendedContext = fiber.Reconciler?.Context;
+                    if (suspendedContext != null) FiberEffects.CommitStrandedLayoutWork(suspendedContext);
+                    return;
+                }
                 if (fiber.PendingReconcileDrainsTransitionWork)
                 {
                     fiber.SettleTransitionPending();
@@ -552,7 +631,15 @@ namespace Velvet
             // skipped: the flag is read during a render, and a disposed component has none left.
             if (fiber.IsDisposed)
             {
-                RunInTransitionScope(slot, updates);
+                // React catches the callback's error whatever the fiber, and its dispatch to one that has
+                // unmounted does nothing, so the error goes nowhere.
+                try
+                {
+                    RunInTransitionScope(slot, updates);
+                }
+                catch (Exception)
+                {
+                }
                 return;
             }
 
@@ -563,14 +650,20 @@ namespace Velvet
             }
             var ownerGeneration = slot.OwnerGeneration;
             slot.OwnerDepth++;
+            ExceptionDispatchInfo? failure = null;
             try
             {
                 RunInTransitionScope(slot, updates);
+            }
+            catch (Exception ex)
+            {
+                failure = ExceptionDispatchInfo.Capture(ex);
             }
             finally
             {
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
+                    RecordOutcome(fiber, slot, Dispatch(slot), failure);
                     slot.OwnerDepth--;
                     // A callback that enrolled nothing has settled the moment it returns, whatever else the
                     // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
@@ -590,6 +683,29 @@ namespace Velvet
                     }
                 }
             }
+        }
+
+        // React's startTransition catches the callback's error and dispatches it as the isPending update, so the
+        // declaring component throws it from its Transition-lane render to the boundary above it, and the caller
+        // never sees it. That update takes its place in the queue where the callback returns, an async action's
+        // too, whose settlement only resolves it later, so the outcome rendered is that of the call whose callback
+        // returned last: a later return takes down an error not yet rendered, and an action settling behind a
+        // later return writes nothing.
+        private static int Dispatch(HookTransitionSlot slot)
+        {
+            slot.PendingError = null;
+            return ++slot.OutcomeSequence;
+        }
+
+        private static void RecordOutcome(
+            ComponentFiber fiber, HookTransitionSlot slot, int sequence, ExceptionDispatchInfo? failure)
+        {
+            if (failure == null || sequence != slot.OutcomeSequence)
+            {
+                return;
+            }
+            slot.PendingError = failure;
+            RequestTransitionRerender(fiber);
         }
 
         private static void MarkTransitionWorkQueued(ComponentFiber fiber)
@@ -617,6 +733,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                ScheduleDeferredAwaitContinuations();
             }
         }
 
@@ -635,6 +752,7 @@ namespace Velvet
             finally
             {
                 OpenTransitionScopes.RemoveAt(OpenTransitionScopes.Count - 1);
+                ScheduleDeferredAwaitContinuations();
             }
         }
 
@@ -657,10 +775,16 @@ namespace Velvet
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
-            // Same disposed guard as the sync overload: the scope, without the flag.
+            // Same disposed guard as the sync overload: the scope, without the flag or the error.
             if (fiber.IsDisposed)
             {
-                await RunInTransitionScope(slot, asyncUpdates);
+                try
+                {
+                    await RunInTransitionScope(slot, asyncUpdates);
+                }
+                catch (Exception)
+                {
+                }
                 return;
             }
 
@@ -676,16 +800,32 @@ namespace Velvet
             slot.OwnerDepth++;
             var ownerGeneration = slot.OwnerGeneration;
             var suspended = false;
+            var sequence = 0;
+            ExceptionDispatchInfo? failure = null;
             try
             {
                 // The call stays inside the try: asyncUpdates need not be an async method, and one that is not
                 // can throw before handing a task back, which must still reach the release below.
-                var action = RunInTransitionScope(slot, asyncUpdates);
+                VelvetTask action;
+                try
+                {
+                    action = RunInTransitionScope(slot, asyncUpdates);
+                }
+                finally
+                {
+                    sequence = Dispatch(slot);
+                }
                 // A task still pending where the scope has already closed is a callback that suspended, since
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
                 suspended = action.Status == VelvetTaskStatus.Pending;
                 await action;
+            }
+            catch (Exception ex)
+            {
+                // React chains the action's rejection into the isPending update; an unmount in the meantime
+                // leaves it nowhere to go, which the generation test below drops it for.
+                failure = ExceptionDispatchInfo.Capture(ex);
             }
             finally
             {
@@ -693,6 +833,7 @@ namespace Velvet
                 // must not write over whatever took the slot since — see ReleaseTransitionSlotOwnership.
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
+                    RecordOutcome(fiber, slot, sequence, failure);
                     slot.AsyncOwnerDepth--;
                     slot.OwnerDepth--;
                     // Same slot-scoped exit as the sync overload.

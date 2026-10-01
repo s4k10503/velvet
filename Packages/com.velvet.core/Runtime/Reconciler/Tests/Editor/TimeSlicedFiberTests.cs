@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -35,6 +36,8 @@ namespace Velvet.Tests
     /// resume neither holds: the host's output is committed while the slice is still parked, so a row the
     /// pass never reached is looked up by key alone and answers to whichever container the committed tree
     /// reaches first — the reading recorded here.</item>
+    /// <item>A suspend in a resumed slice asks the boundary above to render, leaves the transition pending, and
+    /// commits the layout effects of a row the parked pass mounted before the resume returns.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -60,6 +63,15 @@ namespace Velvet.Tests
             ResetRotation();
             ResetTransitionList();
             ResetSlowRowList();
+            s_slicedBoundaryFiber = null;
+            s_slicedSuspendFiber = null;
+            s_slicedSuspendSetCount = default;
+            s_slicedSuspendStart = default;
+            s_slicedRowLayoutEffects = 0;
+            s_slicedRetryFiber = null;
+            s_slicedRetrySetCount = default;
+            s_slicedRetryStart = default;
+            s_slicedRetrySource = null;
         }
 
         [TearDown]
@@ -1039,6 +1051,143 @@ namespace Velvet.Tests
             Assert.That(
                 (afterDrain, s_parkSeen[target], s_parkCount[target]),
                 Is.EqualTo(("g1-7", "g1-7", 1)));
+        }
+
+        #endregion
+
+        #region A suspend in a resumed slice
+
+        [Test]
+        public void Given_AParkedPassUnderABoundary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsAskedToRenderAndTheTransitionStaysPending()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
+            s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_slicedSuspendFiber.HasPendingReconcileWorkForTest();
+
+            // Act — the resumed slice reaches the second row, whose component suspends
+            FiberWorkLoop.ContinueReconcile(s_slicedSuspendFiber);
+
+            // Assert — the park is folded in, since a pass that finished in one slice suspended in its flush
+            Assert.That(
+                (parked, s_slicedBoundaryFiber.IsDirty, s_slicedSuspendFiber.IsTransitionPending),
+                Is.EqualTo((true, true, true)),
+                "A suspend in a resumed slice goes to the boundary above, and the transition it belonged to has not committed");
+        }
+
+        [Test]
+        public void Given_AParkedPassThatMountedAComponentRow_When_ItsResumedSliceSuspends_Then_ThatRowsLayoutEffectRunsBeforeTheResumeReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
+            s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
+            var ranWhileParked = s_slicedRowLayoutEffects;
+
+            // Act
+            FiberWorkLoop.ContinueReconcile(s_slicedSuspendFiber);
+
+            // Assert — the count while parked is folded in, since an effect the first slice already ran reads 1 too
+            Assert.That((ranWhileParked, s_slicedRowLayoutEffects), Is.EqualTo((0, 1)),
+                "The parked pass no longer holds the first row back once its resume suspends, and the resume commits it");
+        }
+
+        [Test]
+        public void Given_AResumedSliceThatSuspendedWithNoBoundary_When_TheResourceResolves_Then_EveryRowRenders()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedRetryRender, key: "sliced-retry"));
+            s_slicedRetryStart.Invoke(() => s_slicedRetrySetCount.Invoke(3));
+            s_slicedRetryFiber.FlushStateWithTinyBudgetForTest();
+            FiberWorkLoop.ContinueReconcile(s_slicedRetryFiber);
+
+            // Act
+            s_slicedRetrySource.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join("|", _root.Query<Label>().ToList().Select(label => label.text)), Is.EqualTo("0|7|2"),
+                "The render the resolve retries puts up every row the suspended slice did not reach");
+        }
+
+        private static ComponentFiber s_slicedRetryFiber;
+        private static StateUpdater<int> s_slicedRetrySetCount;
+        private static TransitionStarter s_slicedRetryStart;
+        private static VelvetTaskCompletionSource<int> s_slicedRetrySource;
+
+        // SlicedSuspendRender's rows with no boundary above, a source the case completes, and a third row the
+        // slice that suspends on the second never reaches.
+        [Component]
+        private static VNode SlicedRetryRender()
+        {
+            s_slicedRetryFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_slicedRetrySetCount = setCount;
+            s_slicedRetryStart = start;
+            var children = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                children[i] = V.Div(key: "sr" + i, children: new VNode?[] { V.Component(SlicedRetryRow, i, key: "row") });
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode SlicedRetryRow(int index)
+        {
+            var value = Hooks.Use<int>(_ => index == 1
+                ? (s_slicedRetrySource ??= new VelvetTaskCompletionSource<int>()).Task
+                : VelvetTask.FromResult(index), index);
+            return V.Label(text: value.ToString());
+        }
+
+        private static ComponentFiber s_slicedBoundaryFiber;
+        private static ComponentFiber s_slicedSuspendFiber;
+        private static StateUpdater<int> s_slicedSuspendSetCount;
+        private static TransitionStarter s_slicedSuspendStart;
+        private static int s_slicedRowLayoutEffects;
+
+        [Component]
+        private static VNode SlicedBoundaryHost()
+        {
+            s_slicedBoundaryFiber = FiberAmbientStack.Current;
+            return V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Component(SlicedSuspendRender, key: "sliced") });
+        }
+
+        // Each row is a keyed Div with a component one level down, so the host's reconcile takes the
+        // time-sliceable keyed path; the second row's component waits on a source nothing completes.
+        [Component]
+        private static VNode SlicedSuspendRender()
+        {
+            s_slicedSuspendFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_slicedSuspendSetCount = setCount;
+            s_slicedSuspendStart = start;
+            var children = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                children[i] = V.Div(key: "ss" + i, children: new VNode?[] { V.Component(SlicedSuspendRow, i, key: "row") });
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode SlicedSuspendRow(int index)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (index == 0) s_slicedRowLayoutEffects++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            var value = Hooks.Use<int>(_ => index == 0
+                ? VelvetTask.FromResult(0)
+                : new VelvetTaskCompletionSource<int>().Task, index);
+            return V.Label(text: value.ToString());
         }
 
         #endregion

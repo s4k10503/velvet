@@ -63,10 +63,8 @@ namespace Velvet
                 : (0f, 0f, EasingMode.Ease);
         }
 
-        // The lists the element runs its transitions by: the rules' transition-property with the element's own inline
-        // duration, delay and curve lists wherever it holds them, as UI Toolkit combines the two, the inline
-        // transition-property being a suspension's or a narrowing's (MotionNativeTransitionGuard). Null where the
-        // cached style cannot be read.
+        // The rules' transition-property with the element's own inline duration, delay and curve lists wherever it holds
+        // them (MotionNativeTransitionGuard.OwnTiming). Null where the cached style cannot be read.
         public static TransitionLists? Lists(VisualElement element) => Style(element) is { } style ? Lists(element, style) : null;
 
         private static TransitionLists Lists(VisualElement element, object style)

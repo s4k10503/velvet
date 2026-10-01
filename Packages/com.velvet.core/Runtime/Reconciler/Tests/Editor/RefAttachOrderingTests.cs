@@ -16,6 +16,8 @@ namespace Velvet.Tests
     /// then have the departing cleanup drop the arriving registration.
     /// <list type="bullet">
     /// <item>The departing element's cleanup runs before the arriving element's setup.</item>
+    /// <item>Refs that change identity on elements patched in place run every cleanup before any setup
+    /// too, though neither element departs, and a parked pass holds back the cleanup with the setup.</item>
     /// <item>A portal id registered by that idiom resolves to the arriving element afterwards.</item>
     /// <item>That order survives a pass split across slices, where the arrival is processed in one and
     /// the departure removed in a later one — including when an unrelated pass on the same context runs
@@ -32,6 +34,7 @@ namespace Velvet.Tests
     /// <item>That same synchronous write decides two more of the queue's answers: a setup queued behind
     /// the writer whose element the write leaves without a ref does not run, and one whose element the
     /// write re-binds to another callback runs that callback before the same drain ends.</item>
+    /// <item>An element a setup's writes create and then remove has its queued setup skipped.</item>
     /// <item>A ref dropped by one patch and carried again by a later one is attached again, rather than
     /// read as the ref still installed.</item>
     /// <item>A range update a patch drives hands its entries to the enclosing pass, whose removals are
@@ -79,6 +82,15 @@ namespace Velvet.Tests
             {
                 nodes[i] = V.Label(key: "filler" + i, text: "f" + i);
             }
+            return nodes;
+        }
+
+        // TrackedListOf with the leaf's key held, so a new name patches the leaf in place and changes only
+        // its ref's identity.
+        private static VNode[] RetrackedListOf(string which)
+        {
+            var nodes = TrackedListOf(which);
+            nodes[0] = V.Div(key: "leaf", name: "leaf", refCallback: Tracked(which));
             return nodes;
         }
 
@@ -179,6 +191,13 @@ namespace Velvet.Tests
             s_layoutEffectRuns = 0;
             s_targetAttaches = 0;
             s_reboundAttaches = 0;
+            s_transientAttaches = 0;
+            s_refA.Set(null);
+            s_refB.Set(null);
+            s_useRefA = true;
+            s_togglingChildFiber = null;
+            s_togglingParentFiber = null;
+            s_parentRenders = 0;
         }
 
         public override void TearDown()
@@ -255,6 +274,81 @@ namespace Velvet.Tests
             });
         }
 
+        private static int s_transientAttaches;
+
+        private static readonly Func<VisualElement, Action> s_showThenHide = ShowThenHide;
+
+        private static readonly Func<VisualElement, Action> s_countTransientAttach = CountTransientAttach;
+
+        // Two discrete events, two passes: the first creates an element whose setup it queues, and the
+        // second removes that element before the drain the setup was queued for reaches it.
+        private static Action ShowThenHide(VisualElement element)
+        {
+            element.parent?.Q<UnityEngine.UIElements.Button>("show-trigger")?.SimulateClick();
+            element.parent?.Q<UnityEngine.UIElements.Button>("hide-trigger")?.SimulateClick();
+            return null;
+        }
+
+        private static Action CountTransientAttach(VisualElement element)
+        {
+            s_transientAttaches++;
+            return null;
+        }
+
+        [Component]
+        private static VNode TransientHost()
+        {
+            var (shown, setShown) = Hooks.UseState(0);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "show-trigger", onClick: () => setShown.Invoke(1)),
+                V.Button(name: "hide-trigger", onClick: () => setShown.Invoke(2)),
+                V.Div(name: "clicker", refCallback: s_showThenHide),
+                shown == 1 ? V.Div(name: "transient", refCallback: s_countTransientAttach) : null,
+                V.Label(name: "transient-probe", text: shown.ToString()),
+            });
+        }
+
+        private static readonly Ref<VisualElement> s_refA = new();
+
+        private static readonly Ref<VisualElement> s_refB = new();
+
+        private static bool s_useRefA;
+
+        private static ComponentFiber s_togglingChildFiber;
+
+        private static ComponentFiber s_togglingParentFiber;
+
+        // Rows behind the toggled element give a Transition flush somewhere to park once it has patched it.
+        // The ref is picked from a static the compiler's memo does not key on, so it stays out.
+        [Component(Compiler = false)]
+        private static VNode RefTogglingChild(int tick)
+        {
+            s_togglingChildFiber = FiberAmbientStack.Current;
+            var nodes = new VNode[8];
+            nodes[0] = V.Div(name: "toggled", refCallback: s_useRefA ? s_refA.SetElement : s_refB.SetElement);
+            for (var i = 1; i < nodes.Length; i++)
+            {
+                nodes[i] = V.Label(key: "row" + i, text: tick + ":" + i);
+            }
+            return V.Fragment(children: nodes);
+        }
+
+        // A new tick at every render, so the parent's render renders the child again rather than bailing on
+        // it; the compiler's memo would hand back the first render's node and its tick, as it would for the
+        // child's ref.
+        [Component(Compiler = false)]
+        private static VNode RefTogglingParent()
+        {
+            s_togglingParentFiber = FiberAmbientStack.Current;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RefTogglingChild, s_parentRenders++, key: "child"),
+            });
+        }
+
+        private static int s_parentRenders;
+
         private static VNode ListOfThreeRows()
             => V.VirtualList(items: new[] { "a", "b", "c" }, keySelector: item => item, itemHeight: 50f,
                 renderer: item => V.Label(text: item, key: item), overscan: 0, key: "list");
@@ -280,6 +374,32 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("detach:departing,attach:arriving"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a replaced ref's cleanup where the walk patches the
+        // element, so every one of them is behind it by the time the drain runs a setup.
+        [Test]
+        public void Given_TwoElementsPatchedInPlace_When_BothRefsChangeIdentity_Then_BothCleanupsRunBeforeEitherSetup()
+        {
+            // Arrange
+            var before = new VNode[]
+            {
+                V.Div(name: "first", refCallback: Tracked("first-before")),
+                V.Div(name: "second", refCallback: Tracked("second-before")),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), before);
+            s_log.Clear();
+
+            // Act
+            Reconciler.Reconcile(Root, before, new VNode[]
+            {
+                V.Div(name: "first", refCallback: Tracked("first-after")),
+                V.Div(name: "second", refCallback: Tracked("second-after")),
+            });
+
+            // Assert
+            Assert.That(string.Join(",", s_log),
+                Is.EqualTo("detach:first-before,detach:second-before,attach:first-after,attach:second-after"));
         }
 
         [Test]
@@ -354,6 +474,34 @@ namespace Velvet.Tests
             // reaches the same order with nothing about the sibling measured.
             Assert.That((parkedWithASetupQueued, string.Join(",", s_log)),
                 Is.EqualTo((true, "detach:departing,attach:arriving")));
+        }
+
+        [Test]
+        public void Given_APassParkedWithARefChangeQueued_When_AnUnrelatedPassEndsOnTheSameContext_Then_TheOldRefIsStillInstalled()
+        {
+            // Arrange — sliced up to the boundary where the leaf's new setup is queued.
+            var before = RetrackedListOf("before");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), before);
+            s_log.Clear();
+            Reconciler.Reconcile(Root, before, RetrackedListOf("after"), frameBudgetMs: 0.001);
+            var slices = 0;
+            while (Reconciler.HasPendingWork && QueuedRefSetupCount() == 0)
+            {
+                if (slices++ >= 500) Assert.Fail("no slice boundary left the leaf's setup queued");
+                Reconciler.ContinueReconcile(frameBudgetMs: 0.001);
+            }
+            var parkedWithASetupQueued = Reconciler.HasPendingWork && QueuedRefSetupCount() == 1;
+
+            // Act
+            using (var sibling = new Velvet.Reconciler(Reconciler.Context))
+            {
+                sibling.Reconcile(new VisualElement(), Array.Empty<VNode>(),
+                    new VNode[] { V.Label(name: "unrelated") });
+            }
+
+            // Assert — the window is read beside the log, because a pass that finished before the sibling
+            // ran reads a log of its own with nothing about the parked entry measured.
+            Assert.That((parkedWithASetupQueued, string.Join(",", s_log)), Is.EqualTo((true, "")));
         }
 
         [Test]
@@ -437,12 +585,14 @@ namespace Velvet.Tests
 
         // -1 where the context holds no such queue, so a tree that never had one disagrees with the
         // assertion instead of raising out of this helper and carrying no reading at all.
-        private int QueuedRefSetupCount()
+        private int QueuedRefSetupCount() => QueuedRefSetupCount(Reconciler!.Context);
+
+        private static int QueuedRefSetupCount(ReconcilerContext context)
         {
             var field = typeof(ReconcilerContext)
                 .GetField("_pendingRefAttaches", BindingFlags.NonPublic | BindingFlags.Instance);
             if (field == null) return -1;
-            return ((ICollection)field.GetValue(Reconciler!.Context)).Count;
+            return ((ICollection)field.GetValue(context)).Count;
         }
 
         [Test]
@@ -518,6 +668,54 @@ namespace Velvet.Tests
             // Assert — the committed state is read beside the count, because a pass whose write never landed
             // re-bound nothing and would read zero for a reason this case is not about.
             Assert.That((Root!.Q<Label>("rebind-probe")?.text, s_reboundAttaches), Is.EqualTo(("1", 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base detaches the installed ref at the first patch, so the second
+        // patch finds none installed and its callback replaces the queued one.
+        [Test]
+        public void Given_AParkedPassQueuedARefChange_When_AParentRenderCarriesTheInstalledRefBack_Then_ThatRefStaysInstalled()
+        {
+            // Arrange — the child's own Transition render swaps the ref to B, sliced up to the boundary where it
+            // is parked with that setup queued.
+            s_useRefA = true;
+            using var mounted = V.Mount(Root, V.Component(RefTogglingParent, key: "parent"));
+            var toggled = Root!.Q<VisualElement>("toggled");
+            s_useRefA = false;
+            s_togglingChildFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_togglingChildFiber.FlushStateWithTinyBudgetForTest();
+            var context = mounted.Root.Reconciler.Context;
+            var slices = 0;
+            while (s_togglingChildFiber.HasPendingReconcileWorkForTest() && QueuedRefSetupCount(context) == 0)
+            {
+                if (slices++ >= 500) Assert.Fail("no slice boundary left the swap's setup queued");
+                FiberWorkLoop.ContinueReconcile(s_togglingChildFiber);
+            }
+            var parkedWithTheSwapQueued = s_togglingChildFiber.HasPendingReconcileWorkForTest()
+                && QueuedRefSetupCount(context) == 1;
+
+            // Act — the parent's render finishes the parked pass inside its own walk and renders the child
+            // again with A, the ref still installed.
+            s_useRefA = true;
+            s_togglingParentFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_togglingParentFiber);
+
+            // Assert
+            Assert.That(
+                (parkedWithTheSwapQueued, ReferenceEquals(s_refA.Current, toggled), s_refB.Current == null),
+                Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's drain skips the hole the removal leaves; this pins that
+        // what runs ahead of the setups of a batch the drain picks up mid-loop skips it too.
+        [Test]
+        public void Given_ASetupsTwoWritesCreateThenRemoveAnElement_When_TheDrainReachesItsEntry_Then_NothingRunsForIt()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(TransientHost, key: "host"));
+
+            // Assert — the committed state is read beside the count, because a pass whose writes never
+            // landed queued nothing and would read zero for a reason this case is not about.
+            Assert.That((Root!.Q<Label>("transient-probe")?.text, s_transientAttaches), Is.EqualTo(("2", 0)));
         }
 
         // GREEN_ON_BASE(refactor): the base's InvokeRefCallback drops the entry before firing the cleanup it

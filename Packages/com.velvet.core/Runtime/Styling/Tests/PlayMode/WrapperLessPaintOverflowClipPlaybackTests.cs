@@ -443,8 +443,9 @@ namespace Velvet.Tests
             // Act
             NewPanel("DivideClipped");
             _mounted = V.Mount(_host.Root, V.Div(name: "list", className: list, children: children()));
-            var second = _host.Root.Q<VisualElement>("second");
-            second.style.overflow = Overflow.Hidden;
+            // The divider sits on every child but the last, so the first child is the divided one.
+            var first = _host.Root.Q<VisualElement>("first");
+            first.style.overflow = Overflow.Hidden;
             yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var clippedDivider = CountAll(IsRed);
 

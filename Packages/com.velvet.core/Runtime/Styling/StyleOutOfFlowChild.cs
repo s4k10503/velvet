@@ -75,5 +75,28 @@ namespace Velvet
                 return hash;
             }
         }
+
+        // The index of container's last child that is the author's, -1 when there is none — the child the
+        // manipulators following Tailwind's `> :not(:last-child)` exempt. `:last-child` counts an absolutely
+        // positioned child, so only the children Velvet inserts itself, which SilhouetteBoundsSpacer.IsSpacer
+        // names, are passed over.
+        internal static int LastSpacedIndex(VisualElement container)
+        {
+            var last = -1;
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                if (!SilhouetteBoundsSpacer.IsSpacer(container[i]))
+                {
+                    last = i;
+                }
+            }
+            return last;
+        }
+
+        // Whether child is display:none — through the hidden utility or an inline display — and so has no box
+        // for CSS gap to space or to count as the first.
+        internal static bool HasNoBox(VisualElement child)
+            => child.ClassListContains("hidden") || child.style.display == DisplayStyle.None;
     }
 }

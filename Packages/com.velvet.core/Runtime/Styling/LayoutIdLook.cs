@@ -79,7 +79,7 @@ namespace Velvet
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
                 if (slot == projection.WrittenRadii[corner]) continue;
                 projection.OwnInlineRadii[corner] = slot;
-                projection.InlineRadii[corner] = true;
+                projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined;
             }
         }
 
@@ -223,14 +223,31 @@ namespace Velvet
                 MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
             projection.DrawnRadii = radii ?? OwnRadii(element, projection, dtSec);
+            var written = new Length[4];
             for (var corner = 0; corner < 4; corner++)
             {
                 var radius = projection.DrawnRadii[corner];
-                var written = radius.unit == LengthUnit.Percent ? radius
+                written[corner] = radius.unit == LengthUnit.Percent ? radius
                     : new Length(divisor > 0f ? radius.value / divisor : 0f, radius.unit);
-                projection.WrittenRadii[corner] = written;
-                Write(element.style, corner, written);
             }
+            // Scaled down together where adjacent ones overlap on a side, as CSS scales radii and CornerRadiusFit does for
+            // a radius the element declares: in the element's own box, which is the drawn box divided by the scale on each
+            // axis (Given_ALayoutIdMotionRoundedFullStartingAtAQuarterOfItsWidth_When_ItsTweenStarts_Then_ItsCornersFitItsBox).
+            var fit = CornerRadiusFit.ScaleFactor(element.layout.width, element.layout.height, Extent(written, element.layout));
+            for (var corner = 0; corner < 4; corner++)
+            {
+                projection.WrittenRadii[corner] = written[corner] = new Length(written[corner].value * fit, written[corner].unit);
+                Write(element.style, corner, written[corner]);
+            }
+        }
+
+        // Each corner's horizontal and vertical extent in the box, a percent one being of the box's width and height.
+        private static CornerRadii Extent(Length[] radii, Rect box)
+        {
+            Vector2 Of(Length radius) => radius.unit == LengthUnit.Percent
+                ? new Vector2(radius.value / 100f * box.width, radius.value / 100f * box.height)
+                : new Vector2(radius.value, radius.value);
+            return new CornerRadii { TopLeft = Of(radii[0]), TopRight = Of(radii[1]), BottomRight = Of(radii[2]), BottomLeft = Of(radii[3]) };
         }
 
         private static bool IsNone(Length[] radii) =>
