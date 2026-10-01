@@ -309,7 +309,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 
 Suspense boundaries in separate host elements or Portals keep independent pending state, including
 Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
-resolves. Removing the boundary releases that pending state when its displayed children are removed.
+resolves, and a component whose render suspended keeps its state meanwhile. Removing the boundary releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced

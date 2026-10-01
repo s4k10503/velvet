@@ -303,9 +303,8 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(IndicatorHostRender, key: "indicator-host"));
             s_indicatorStart.Invoke(() => s_setOwn.Invoke(1));
 
-            // Act
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            // Act — the flush renders the transition's update, on the lane it was queued on
+            mounted.FlushStateForTest();
 
             // Assert
             Assert.That(s_indicatorFiber.IsTransitionPending, Is.True,

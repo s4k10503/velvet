@@ -959,8 +959,22 @@ namespace Velvet
                         "The repeated sibling is skipped; give each sibling a unique key.");
                     return;
                 }
-                var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                    component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
+                ComponentFiber fiber;
+                try
+                {
+                    fiber = _ctx.ComponentRegistry.GetOrCreateInline(
+                        component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    // The component whose render suspended stays in the new tree, which a Suspense above keeps
+                    // offscreen with its state, as React keeps it: left out of the walk's fibers, the pass's orphan
+                    // sweep would dispose it, and with it the read that is to reveal it.
+                    var suspended = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                        parentFiber, slotKey, identity, portalScope, walk.Parent);
+                    if (suspended != null) walk.NewFibers.Add(suspended);
+                    throw;
+                }
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);

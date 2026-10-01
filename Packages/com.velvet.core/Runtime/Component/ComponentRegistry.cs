@@ -265,9 +265,10 @@ namespace Velvet
             catch (FiberSuspendSignal)
             {
                 RegisterFiber(in site, identity, fiber);
-                // Nothing of this fiber has committed, so the next pass reaching it renders it rather than
-                // bailing on the props this mount was given.
-                fiber.IsDirty = true;
+                // A pass the signal abandons has committed nothing of this fiber, so the next pass reaching it
+                // renders it rather than bailing on the props this mount was given. Under a Suspense that catches
+                // the signal, the boundary's reveal renders it instead — see ReconcileExistingFiber.
+                if (_ctx.SuspensePrimaryDepth == 0) fiber.IsDirty = true;
                 throw;
             }
             // Dispose BEFORE any detach: Dispose's Unmount retires the committed tree with the parent

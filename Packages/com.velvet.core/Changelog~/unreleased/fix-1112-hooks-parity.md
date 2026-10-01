@@ -22,6 +22,11 @@
   rendered by the next render that reaches it: a later update renders the component again and suspends again
   while the resource is pending, where it skipped a memoized one and committed the rest around it.
 
+- A component whose render suspends while another component's render reaches it below a `V.Suspense` keeps
+  its state while the boundary shows its fallback, as React keeps it offscreen, and the boundary reveals it
+  when its resource resolves. That render's pass disposed it, losing its state and the read the reveal
+  waited on.
+
 - A component that renders its own `V.Suspense` and whose read suspends below an outer boundary reveals
   through that boundary when the resource resolves, as React takes the nearest Suspense above the component
   that suspended. It committed its own rows while the outer boundary kept showing its fallback.
