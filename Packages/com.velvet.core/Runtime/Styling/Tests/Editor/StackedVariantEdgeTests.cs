@@ -316,6 +316,28 @@ namespace Velvet.Tests
                 // Assert
                 Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(2));
             }
+
+            // GREEN_ON_BASE(characterization): disposing a tree detaches every stacked manipulator, as the base
+            // already does for this chain.
+            [Test]
+            public void Given_AHoverFocusDarkChainHeldOpen_When_TheTreeIsDisposed_Then_EveryStackedManipulatorIsDetached()
+            {
+                // Arrange — hover: gates a focus: manipulator, which gates a dark: one that is dropped, not kept,
+                // when its own gate closes.
+                VelvetTheme.IsDark = true;
+                var leaf = MountLeaf("hover:focus:dark:bg-hot");
+                var context = _mounted.Root.Reconciler.Context;
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+                var built = new List<StyleStackedVariantManipulator>(context.StackedVariantManipulators.Values);
+
+                // Act
+                _mounted.Dispose();
+                _mounted = null;
+
+                // Assert — the chain's size rides along, so a chain that was never built cannot read as detached.
+                Assert.That((built.Count, built.Count(manipulator => manipulator.target != null)), Is.EqualTo((2, 0)));
+            }
         }
 
         // --- panel: worldBound-gated pointer-out, relational inners, and detach teardown ---
