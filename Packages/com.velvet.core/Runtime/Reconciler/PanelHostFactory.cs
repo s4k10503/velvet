@@ -87,6 +87,7 @@ namespace Velvet
             settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             return record;
         }
 
@@ -103,6 +104,7 @@ namespace Velvet
             record.Document.transform.SetPositionAndRotation(node.Position, node.Rotation);
             AttachDocument(record.Document, settings);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
             // settings are driven after the attach, with the mode round-tripped so the fixed

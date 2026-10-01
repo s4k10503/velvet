@@ -23,14 +23,13 @@ namespace Velvet
 
     // Reconciler-side bookkeeping for one focus-scope element, keyed in ReconcilerContext.FocusScopeBindings
     // by the scope root element itself. Mutable per-scope focus state the navigator maintains from FocusIn
-    // events: the member that last held focus (SingleTabStop re-entry / Contain snap-back target), and the
-    // element focus came FROM when it first entered the scope (RestoreFocus's target on unmount).
+    // events: the member that last held focus (SingleTabStop re-entry / Contain snap-back target). The
+    // element focused when the scope mounted, RestoreFocus's target on unmount, is React Aria's nodeToRestore.
     internal sealed class FocusScopeBinding
     {
         public FocusScopeSettings Settings;
         public VisualElement? LastFocusedMember;
         public VisualElement? RestoreTarget;
-        public bool RestoreCaptured;
         // AutoFocus is mount-once: the latch is set on the scope's FIRST attach no matter
         // what the setting held then, so neither a keyed reorder's re-attach nor a post-mount settings
         // flip can ever fire it again.
@@ -134,6 +133,8 @@ namespace Velvet
             {
                 return;
             }
+            // From the first render into a panel, so a press that opens the first focus-visible user counts.
+            InputModality.Track(root.panel);
             EventCallback<NavigationMoveEvent> onMove = evt => OnNavigationMove(evt, root, ctx);
             EventCallback<FocusInEvent> onFocusIn = evt => OnFocusIn(evt, ctx);
             EventCallback<FocusOutEvent> onFocusOut = evt => OnFocusOut(evt, ctx);
@@ -261,13 +262,10 @@ namespace Velvet
                 return;
             }
 
-            // Containment resolves through the NEAREST contain scope; the innermost scope of any kind
-            // decides SingleTabStop behavior. A scope that is both contain and singleTabStop behaves as
-            // contain (the pre-existing precedence).
+            // A scope that is both a group and the nearest contain scope behaves as contain.
             var containRoot = FindEnclosingContainScopeRoot(focused, ctx, out _);
-            var scopeRoot = FindEnclosingScopeRoot(focused, ctx, out var binding);
-            var singleTabStop = scopeRoot != null && binding is { Settings.SingleTabStop: true }
-                && !ReferenceEquals(scopeRoot, containRoot);
+            var groupRoot = FindOutermostSingleTabStopRoot(focused, ctx, out _);
+            var singleTabStop = groupRoot != null && !ReferenceEquals(groupRoot, containRoot);
 
             // Evaluated in this exact order — each mode is only reached once the earlier ones declined,
             // mirroring their real precedence (SingleTabStop group > Contain wrap > boundary escape >
@@ -281,7 +279,7 @@ namespace Velvet
                 Forward = forward,
                 Ctx = ctx,
             };
-            if (TryHandleSingleTabStopGroupExit(in move, containRoot, scopeRoot, singleTabStop))
+            if (TryHandleSingleTabStopGroupExit(in move, containRoot, groupRoot, singleTabStop))
             {
                 return;
             }
@@ -293,12 +291,11 @@ namespace Velvet
             {
                 return;
             }
-            TryHandleSingleTabStopGroupEntryPrediction(in move);
+            HandleSingleTabStopGroupEntryPrediction(in move);
         }
 
-        // Mode (a): the whole subtree acts as ONE tab stop. Applies only when the innermost scope is
-        // SingleTabStop and is not itself the nearest contain scope. Every reachable outcome inside this
-        // mode is a terminal move outcome (it never falls through to a later mode).
+        // Mode (a): the whole subtree acts as ONE tab stop. Every reachable outcome inside this mode is a
+        // terminal move outcome (it never falls through to a later mode).
         private static bool TryHandleSingleTabStopGroupExit(
             in NavigationMove move, VisualElement? containRoot, VisualElement? scopeRoot, bool singleTabStop)
         {
@@ -393,8 +390,8 @@ namespace Velvet
 
         // Mode (d): entering a SingleTabStop scope from outside — the group is one tab stop, so a move
         // predicted to land inside it is redirected to the group's roving stop instead. Reached only when
-        // no earlier mode claimed the move; this is the move's final word regardless of its own outcome.
-        private static bool TryHandleSingleTabStopGroupEntryPrediction(in NavigationMove move)
+        // no earlier mode claimed the move.
+        private static void HandleSingleTabStopGroupEntryPrediction(in NavigationMove move)
         {
             var focused = move.Focused;
             var ctx = move.Ctx;
@@ -404,23 +401,18 @@ namespace Velvet
             var panelRing = new VisualElementFocusRing(move.PanelRoot);
             var entryPredicted =
                 panelRing.GetNextFocusable(focused, ToRingDirection(move.Forward)) as VisualElement;
-            if (entryPredicted != null)
+            if (entryPredicted == null)
             {
-                var enteredRoot = FindEnclosingScopeRoot(entryPredicted, ctx, out var enteredBinding);
-                if (enteredRoot != null && enteredBinding is { Settings.SingleTabStop: true }
-                    && !enteredRoot.Contains(focused))
-                {
-                    var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
-                    if (!ReferenceEquals(landing, entryPredicted))
-                    {
-                        Redirect(move.Evt, move.Panel, landing);
-                        return true;
-                    }
-                    // Landing == predicted: the engine's own move already enters at the group's correct
-                    // stop (a forward move's raw prediction IS the group's ring-first).
-                }
+                return;
             }
-            return false;
+            // Focus sitting in a group never reaches this mode, so a group the prediction lands in is entered
+            // from outside. Landing == predicted: the engine's own move already enters at the group's correct
+            // stop (a forward move's raw prediction IS the group's ring-first), or lands outside any group.
+            var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
+            if (!ReferenceEquals(landing, entryPredicted))
+            {
+                Redirect(move.Evt, move.Panel, landing);
+            }
         }
 
         // A landing inside a SingleTabStop group must enter at the group's roving tab stop — the member
@@ -430,12 +422,12 @@ namespace Velvet
         // never the group's last member. Landings outside any SingleTabStop scope pass through untouched.
         private static VisualElement ResolveScopeEntryTarget(VisualElement candidate, ReconcilerContext ctx)
         {
-            var root = FindEnclosingScopeRoot(candidate, ctx, out var binding);
-            if (root == null || binding is not { Settings.SingleTabStop: true })
+            var root = FindOutermostSingleTabStopRoot(candidate, ctx, out var binding);
+            if (root == null)
             {
                 return candidate;
             }
-            var last = binding.LastFocusedMember;
+            var last = binding!.LastFocusedMember;
             if (last != null && last.panel != null && root.Contains(last) && last.canGrabFocus)
             {
                 return last;
@@ -599,7 +591,7 @@ namespace Velvet
 
         // Walks UP from `element` (inclusive) for the nearest ancestor currently registered as a z-managed
         // real element (ReconcilerContext.ZLayerMembers), returning it, its placeholder, and the layer
-        // container it currently lives in. Physical containment, mirroring FindEnclosingScopeRoot's own walk
+        // container it currently lives in. Physical containment, mirroring FindNearestScopeRootWhere's own walk
         // — robust across pool reuse and independent of any logical-tree bookkeeping.
         private static VisualElement? FindEnclosingZLayerReal(
             VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder, out VisualElement? container)
@@ -721,21 +713,13 @@ namespace Velvet
                 return;
             }
 
-            var scopeRoot = FindEnclosingScopeRoot(target, ctx, out var binding);
-            if (scopeRoot == null || binding == null)
+            // Every enclosing scope records the landing, not only the innermost: a scope nested inside a group or
+            // a modal must not hide the landing from the scope around it.
+            for (var scopeRoot = target; scopeRoot != null; scopeRoot = scopeRoot.parent)
             {
-                return;
-            }
-            binding.LastFocusedMember = target;
-            // First entry from outside (or from nothing): remember where focus came from, so RestoreFocus
-            // can return it there when the scope unmounts while holding focus.
-            if (!binding.RestoreCaptured)
-            {
-                var cameFrom = evt.relatedTarget as VisualElement;
-                if (cameFrom == null || !scopeRoot.Contains(cameFrom))
+                if (ctx.FocusScopeBindings.TryGetValue(scopeRoot, out var binding))
                 {
-                    binding.RestoreTarget = cameFrom;
-                    binding.RestoreCaptured = true;
+                    binding.LastFocusedMember = target;
                 }
             }
         }
@@ -753,13 +737,18 @@ namespace Velvet
             {
                 return false;
             }
-            var containRoot = FindEnclosingContainScopeRoot(relatedTarget, ctx, out var binding);
-            // MUTANT_SURVIVES(equivalent, logic): FindEnclosingContainScopeRoot hands back a binding exactly when
-            // it returns a root, so the two null tests agree, and joining them with && selects the same calls.
+            var containRoot = FindLogicalContainScopeRoot(relatedTarget, ctx, out var binding);
             if (containRoot == null || binding == null || IsLogicallyWithin(target, containRoot)
                 || LandsInANewerContainScope(target, binding))
             {
                 return false;
+            }
+            // Portal content in another panel than the scope's: handed back on the scope's tick, as OnFocusOut
+            // hands back a move across panels.
+            if (containRoot.panel != target.panel)
+            {
+                SchedulePullBack(containRoot, binding, relatedTarget, ctx);
+                return true;
             }
             var back = binding.LastFocusedMember;
             if (back == null || back.panel == null || !containRoot.Contains(back) || !back.canGrabFocus)
@@ -778,13 +767,12 @@ namespace Velvet
 
         // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
         // TryHandleSingleTabStopGroupExit owns. The engine's 2D search is not public, so the move is corrected
-        // after it lands rather than predicted: a landing outside the nearest group returns to the member the
+        // after it lands rather than predicted: a landing outside the group returns to the member the
         // move started from.
         private static bool TryHoldInSingleTabStopGroup(
             VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
         {
-            var groupRoot = FindNearestScopeRootWhere(
-                relatedTarget, ctx, static settings => settings.SingleTabStop, out _);
+            var groupRoot = FindOutermostSingleTabStopRoot(relatedTarget, ctx, out _);
             if (groupRoot == null || groupRoot.Contains(target))
             {
                 return false;
@@ -853,12 +841,24 @@ namespace Velvet
             {
                 return;
             }
-            var containRoot = FindEnclosingContainScopeRoot(leaving, ctx, out var armedBinding);
-            if (containRoot == null || armedBinding == null)
+            var containRoot = FindLogicalContainScopeRoot(leaving, ctx, out var armedBinding);
+            if (containRoot == null)
             {
                 return;
             }
-            var root = leaving.panel?.visualTree;
+            SchedulePullBack(containRoot, armedBinding!, leaving, ctx);
+        }
+
+        // Pulls focus that left `leaving` back into the scope on its panel's next tick, unless by then focus has
+        // moved within the scope's own panel, or the landing is inside the scope or inside a newer contain scope.
+        // Focus that went nowhere is pulled back only from the scope's own elements: React Aria listens for a blur
+        // on those alone, so a blur from portal content elsewhere is left.
+        private static void SchedulePullBack(
+            VisualElement containRoot, FocusScopeBinding armedBinding, VisualElement leaving, ReconcilerContext ctx)
+        {
+            var fromOwnContent = ReferenceEquals(FindEnclosingContainScopeRoot(leaving, ctx, out _), containRoot);
+            var fromScopePanel = leaving.panel == containRoot.panel;
+            var root = containRoot.panel?.visualTree;
             if (root == null)
             {
                 return;
@@ -872,13 +872,17 @@ namespace Velvet
                 {
                     return;
                 }
-                if (containRoot.panel.focusController?.focusedElement != null)
+                // A landing on the scope's panel from that same panel raised a FocusIn with a related target, which
+                // the snap-back there owns; from another panel it had none, so it is judged here.
+                var held = containRoot.panel.focusController?.focusedElement as VisualElement;
+                if (held != null && fromScopePanel)
                 {
                     return;
                 }
-                var elsewhere = FocusedElementInAnyTree();
-                if (elsewhere != null && (IsLogicallyWithin(elsewhere, containRoot)
-                    || LandsInANewerContainScope(elsewhere, binding)))
+                var elsewhere = held ?? FocusedElementInAnyTree() ?? FocusedElementInAnyDocument();
+                if (elsewhere == null
+                        ? !fromOwnContent
+                        : IsLogicallyWithin(elsewhere, containRoot) || LandsInANewerContainScope(elsewhere, binding))
                 {
                     return;
                 }
@@ -934,7 +938,7 @@ namespace Velvet
         // The physical parent, except that content an element was relocated out of its declared slot stands
         // at that slot: a z-managed element at its placeholder, and a portal target's child at the placeholder
         // whose slot range holds it.
-        private static VisualElement? LogicalParentOf(VisualElement current)
+        internal static VisualElement? LogicalParentOf(VisualElement current)
         {
             foreach (var ctx in s_attachedContexts)
             {
@@ -986,11 +990,29 @@ namespace Velvet
         internal static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
             => FocusedElementInManagedPanels(ctx) != null;
 
+        // The element holding focus in this tree's panels, else any other mounted tree's, else a panel no tree
+        // manages: UI Toolkit focus is per panel, where React Aria reads the document's one active element.
+        internal static VisualElement? FocusedElementAnywhere(ReconcilerContext ctx)
+            => FocusedElementInManagedPanels(ctx) ?? FocusedElementInAnyTree() ?? FocusedElementInAnyDocument();
+
         private static VisualElement? FocusedElementInAnyTree()
         {
             foreach (var ctx in s_attachedContexts)
             {
                 if (FocusedElementInManagedPanels(ctx) is { } held)
+                {
+                    return held;
+                }
+            }
+            return null;
+        }
+
+        // The focused element of a UIDocument's panel, managed by a mounted tree or not.
+        private static VisualElement? FocusedElementInAnyDocument()
+        {
+            foreach (var document in UnityEngine.Object.FindObjectsByType<UIDocument>(UnityEngine.FindObjectsSortMode.None))
+            {
+                if (document.rootVisualElement?.panel?.focusController?.focusedElement is VisualElement held)
                 {
                     return held;
                 }
@@ -1028,15 +1050,24 @@ namespace Velvet
             return held != null && (held == root || root.Contains(held));
         }
 
-        // Walks the parent chain from `element` (inclusive) to the first registered scope root. Physical
-        // containment is deliberately the membership definition — robust at event time, across pool reuse,
-        // and against the logical-tree caveats that limit userData-based resolution for bare portal children.
-        private static VisualElement? FindEnclosingScopeRoot(
+        // The nearest scope whose settings CONTAIN — an element inside a plain or SingleTabStop scope nested
+        // in a modal still belongs to the modal's containment.
+        private static VisualElement? FindEnclosingContainScopeRoot(
+            VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
+            => FindNearestScopeRootWhere(element, ctx, static settings => settings.Contain, out binding);
+
+        // The nearest contain scope through logical parents, so portal content reaches the scope its portal is
+        // declared in.
+        private static VisualElement? FindLogicalContainScopeRoot(
             VisualElement element, ReconcilerContext ctx, out FocusScopeBinding? binding)
         {
-            for (var current = element; current != null; current = current.parent)
+            for (var current = element; current != null; current = LogicalParentOf(current))
             {
-                if (ctx.FocusScopeBindings.TryGetValue(current, out var found))
+                if (!ctx.FocusScopeBindings.TryGetValue(current, out var found))
+                {
+                    continue;
+                }
+                if (found.Settings.Contain)
                 {
                     binding = found;
                     return current;
@@ -1046,12 +1077,37 @@ namespace Velvet
             return null;
         }
 
-        // Same walk, but resolving the nearest scope whose settings actually CONTAIN — an element inside a
-        // plain or SingleTabStop scope nested in a modal still belongs to the modal's containment.
-        private static VisualElement? FindEnclosingContainScopeRoot(
+        // The outermost group up to the nearest contain scope, that scope included. As in React Aria's useToolbar,
+        // only the outermost of nested groups handles keys: Tab leaves all of them, arrows move across the nested
+        // ones, and entry returns to the last member focused at any depth. A group around the contain scope is not
+        // reached: the containment decides there.
+        private static VisualElement? FindOutermostSingleTabStopRoot(
             VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
-            => FindNearestScopeRootWhere(element, ctx, static settings => settings.Contain, out binding);
+        {
+            VisualElement? outermost = null;
+            binding = null;
+            for (var current = element; current != null; current = current.parent)
+            {
+                if (!ctx.FocusScopeBindings.TryGetValue(current, out var found))
+                {
+                    continue;
+                }
+                if (found.Settings.SingleTabStop)
+                {
+                    outermost = current;
+                    binding = found;
+                }
+                if (found.Settings.Contain)
+                {
+                    break;
+                }
+            }
+            return outermost;
+        }
 
+        // Physical containment is deliberately the membership definition — robust at event time, across pool
+        // reuse, and against the logical-tree caveats that limit userData-based resolution for bare portal
+        // children.
         private static VisualElement? FindNearestScopeRootWhere(
             VisualElement? element, ReconcilerContext ctx, Func<FocusScopeSettings, bool> kind,
             out FocusScopeBinding? binding)
@@ -1091,7 +1147,7 @@ namespace Velvet
     {
         public static FocusScopeBinding Attach(VisualElement element, FocusScopeSettings settings, ReconcilerContext ctx)
         {
-            var binding = new FocusScopeBinding(settings);
+            var binding = new FocusScopeBinding(settings) { RestoreTarget = FiberFocusNavigator.FocusedElementAnywhere(ctx) };
             binding.OnAttach = _ =>
             {
                 FiberFocusNavigator.EnsureAttached(element, ctx);

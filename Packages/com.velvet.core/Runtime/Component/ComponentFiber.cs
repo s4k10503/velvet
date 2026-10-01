@@ -760,6 +760,10 @@ namespace Velvet
         /// </summary>
         internal bool IsShowingFallback { get; set; }
 
+        // Set while the walk expanding this boundary's output is on the stack to catch a render error below
+        // it: GeneralPathReconciler.ExpandBoundaryInline sets it and FiberErrorBoundary.TryCatch reads it.
+        internal bool CatchesInTheWalk { get; set; }
+
         /// <summary>
         /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is
         /// true (the re-entrant <see cref="FiberErrorBoundary.TryCatch"/> call this triggers declines and

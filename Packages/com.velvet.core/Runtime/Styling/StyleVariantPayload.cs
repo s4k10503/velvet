@@ -86,7 +86,7 @@ namespace Velvet
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
                 var (payloadGated, payloadReSync) =
-                    ToggleResolvedPayload(target, core, on, effectivePriority, ctx, declaration);
+                    ToggleResolvedPayload(target, payload, on, effectivePriority, ctx, declaration);
                 gateChanged |= payloadGated;
                 reSyncOnly |= payloadReSync;
 
@@ -113,13 +113,14 @@ namespace Velvet
             ClipPathLayoutBox.SyncClasses(target);
         }
 
-        // Applies or clears one payload whose important modifier is already stripped and whose priority is
-        // already resolved, reporting back the two things the caller must re-sync once the whole array is
-        // through: whether a gate token moved, and whether a USS-spelled width payload did.
+        // Applies or clears one payload whose priority is already resolved, reporting back the two things the
+        // caller must re-sync once the whole array is through: whether a gate token moved, and whether a
+        // USS-spelled width payload did.
         private static (bool GateChanged, bool ReSyncOnly) ToggleResolvedPayload(
-            VisualElement target, string core, bool on, long effectivePriority,
+            VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
+            var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
             // An inline layer is keyed by the rule as well as its rank, so a rule turning off clears its own value
             // and not that of another rule on the same rank (nth-1: beside nth-2:). Both inline paths below take it.
             var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
@@ -144,7 +145,9 @@ namespace Velvet
             if (StyleFontClass.IsArbitraryFontClass(core)
                 || StyleTextEffectClass.IsArbitraryLeadingClass(core))
             {
-                return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on), false);
+                // MUTANT_SURVIVES(equivalent): the re-sync this would add re-derives the passes from the composed
+                // source the tracked token set already describes, so it writes what is already there.
+                return (TrackVariantGate(ctx, target, payload, effectivePriority, declaration, on), false);
             }
 
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
@@ -164,7 +167,7 @@ namespace Velvet
                 StyleClassProjection.Remove(target, core, effectivePriority);
             }
 
-            return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on),
+            return (TrackVariantGate(ctx, target, payload, effectivePriority, declaration, on),
                 StyleTextBalanceClass.IsWidthDeclaringToken(core));
         }
 
@@ -205,11 +208,20 @@ namespace Velvet
 
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
-        // record into) and for the overwhelmingly common non-gate payload.
-        private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string core,
+        // record into) and for the overwhelmingly common non-gate payload. An important font or text-effect
+        // token keeps its bang, which is what lets it outrank the element's own important base token in the
+        // composed source; the other gate families read the bare core.
+        private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string payload,
             long priority, int declaration, bool on)
-            => ctx != null && IsVariantGateToken(core)
-                && ctx.TrackVariantGateClass(target, core, priority, declaration, on);
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+            return ctx != null && IsVariantGateToken(core)
+                && ctx.TrackVariantGateClass(target, IsImportanceAware(core) ? payload : core,
+                    priority, declaration, on);
+        }
+
+        private static bool IsImportanceAware(string core)
+            => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
         // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators), the six wrapper-less
