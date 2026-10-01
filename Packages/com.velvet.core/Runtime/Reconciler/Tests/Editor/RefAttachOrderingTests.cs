@@ -192,6 +192,12 @@ namespace Velvet.Tests
             s_targetAttaches = 0;
             s_reboundAttaches = 0;
             s_transientAttaches = 0;
+            s_refA.Set(null);
+            s_refB.Set(null);
+            s_useRefA = true;
+            s_togglingChildFiber = null;
+            s_togglingParentFiber = null;
+            s_parentRenders = 0;
         }
 
         public override void TearDown()
@@ -302,6 +308,46 @@ namespace Velvet.Tests
                 V.Label(name: "transient-probe", text: shown.ToString()),
             });
         }
+
+        private static readonly Ref<VisualElement> s_refA = new();
+
+        private static readonly Ref<VisualElement> s_refB = new();
+
+        private static bool s_useRefA;
+
+        private static ComponentFiber s_togglingChildFiber;
+
+        private static ComponentFiber s_togglingParentFiber;
+
+        // Rows behind the toggled element give a Transition flush somewhere to park once it has patched it.
+        // The ref is picked from a static the compiler's memo does not key on, so it stays out.
+        [Component(Compiler = false)]
+        private static VNode RefTogglingChild(int tick)
+        {
+            s_togglingChildFiber = FiberAmbientStack.Current;
+            var nodes = new VNode[8];
+            nodes[0] = V.Div(name: "toggled", refCallback: s_useRefA ? s_refA.SetElement : s_refB.SetElement);
+            for (var i = 1; i < nodes.Length; i++)
+            {
+                nodes[i] = V.Label(key: "row" + i, text: tick + ":" + i);
+            }
+            return V.Fragment(children: nodes);
+        }
+
+        // A new tick at every render, so the parent's render renders the child again rather than bailing on
+        // it; the compiler's memo would hand back the first render's node and its tick, as it would for the
+        // child's ref.
+        [Component(Compiler = false)]
+        private static VNode RefTogglingParent()
+        {
+            s_togglingParentFiber = FiberAmbientStack.Current;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RefTogglingChild, s_parentRenders++, key: "child"),
+            });
+        }
+
+        private static int s_parentRenders;
 
         private static VNode ListOfThreeRows()
             => V.VirtualList(items: new[] { "a", "b", "c" }, keySelector: item => item, itemHeight: 50f,
@@ -539,12 +585,14 @@ namespace Velvet.Tests
 
         // -1 where the context holds no such queue, so a tree that never had one disagrees with the
         // assertion instead of raising out of this helper and carrying no reading at all.
-        private int QueuedRefSetupCount()
+        private int QueuedRefSetupCount() => QueuedRefSetupCount(Reconciler!.Context);
+
+        private static int QueuedRefSetupCount(ReconcilerContext context)
         {
             var field = typeof(ReconcilerContext)
                 .GetField("_pendingRefAttaches", BindingFlags.NonPublic | BindingFlags.Instance);
             if (field == null) return -1;
-            return ((ICollection)field.GetValue(Reconciler!.Context)).Count;
+            return ((ICollection)field.GetValue(context)).Count;
         }
 
         [Test]
@@ -620,6 +668,41 @@ namespace Velvet.Tests
             // Assert — the committed state is read beside the count, because a pass whose write never landed
             // re-bound nothing and would read zero for a reason this case is not about.
             Assert.That((Root!.Q<Label>("rebind-probe")?.text, s_reboundAttaches), Is.EqualTo(("1", 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base detaches the installed ref at the first patch, so the second
+        // patch finds none installed and its callback replaces the queued one.
+        [Test]
+        public void Given_AParkedPassQueuedARefChange_When_AParentRenderCarriesTheInstalledRefBack_Then_ThatRefStaysInstalled()
+        {
+            // Arrange — the child's own Transition render swaps the ref to B, sliced up to the boundary where it
+            // is parked with that setup queued.
+            s_useRefA = true;
+            using var mounted = V.Mount(Root, V.Component(RefTogglingParent, key: "parent"));
+            var toggled = Root!.Q<VisualElement>("toggled");
+            s_useRefA = false;
+            s_togglingChildFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_togglingChildFiber.FlushStateWithTinyBudgetForTest();
+            var context = mounted.Root.Reconciler.Context;
+            var slices = 0;
+            while (s_togglingChildFiber.HasPendingReconcileWorkForTest() && QueuedRefSetupCount(context) == 0)
+            {
+                if (slices++ >= 500) Assert.Fail("no slice boundary left the swap's setup queued");
+                FiberWorkLoop.ContinueReconcile(s_togglingChildFiber);
+            }
+            var parkedWithTheSwapQueued = s_togglingChildFiber.HasPendingReconcileWorkForTest()
+                && QueuedRefSetupCount(context) == 1;
+
+            // Act — the parent's render finishes the parked pass inside its own walk and renders the child
+            // again with A, the ref still installed.
+            s_useRefA = true;
+            s_togglingParentFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_togglingParentFiber);
+
+            // Assert
+            Assert.That(
+                (parkedWithTheSwapQueued, ReferenceEquals(s_refA.Current, toggled), s_refB.Current == null),
+                Is.EqualTo((true, true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base's drain skips the hole the removal leaves; this pins that

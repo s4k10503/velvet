@@ -1263,6 +1263,14 @@ namespace Velvet
             if (RefCallbacks.TryGetValue(element, out var installed)
                 && refCallback != null && ReferenceEquals(installed.Callback, refCallback))
             {
+                // The installed ref stays until the drain, so an earlier patch can have queued another callback
+                // over it; this patch, carrying the installed one back, supersedes that. A setup queued for this
+                // same callback is still to be installed, and is kept.
+                if (_pendingRefAttachIndex.TryGetValue(element, out var superseded)
+                    && !ReferenceEquals(_pendingRefAttaches[superseded].Callback, refCallback))
+                {
+                    DropPendingRefAttach(element);
+                }
                 return;
             }
             if (refCallback == null)
@@ -1366,7 +1374,6 @@ namespace Velvet
                     catch (System.Exception exception)
                     {
                         ContainUserCallbackFailure(owner, exception);
-                        ConsumeAbortRaisedByASetup();
                     }
                     if (RefCallbacks.ContainsKey(element))
                     {
@@ -1383,7 +1390,6 @@ namespace Velvet
                         catch (System.Exception exception)
                         {
                             ContainUserCallbackFailure(owner, exception);
-                            ConsumeAbortRaisedByASetup();
                         }
                     }
                 }
@@ -1392,10 +1398,6 @@ namespace Velvet
             {
                 CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
-                // Repeated from the catch above so this loop leaves the flag clear whichever entrance ran
-                // it. Dropping it would rest on that catch being the only raise a setup can reach, which
-                // nothing here establishes.
-                IsAborted = false;
             }
         }
 
@@ -1451,15 +1453,6 @@ namespace Velvet
                 _pendingRefAttachIndex[_pendingRefAttaches[i].Element!] = i;
             }
         }
-
-        // A boundary that caught a setup's failure raised the abort with no walk left on the stack for it
-        // to stop. Consuming it here rather than once the loop ends is what leaves the setups queued behind
-        // it a context they can still work in: a later boundary's own TryShowFallback reconciles through
-        // ChildReconciler.Reconcile, and so does a state write a later setup commits synchronously, and
-        // its entry guard returns out of either having touched nothing. Not inside
-        // ContainUserCallbackFailure, which the create-path callbacks and DetachRefCallback reach as
-        // well: an abort raised through one of those is not this loop's to consume.
-        private void ConsumeAbortRaisedByASetup() => IsAborted = false;
 
         // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
         // The node identifies the branch when a context-spine walk reaches it through a nested host.

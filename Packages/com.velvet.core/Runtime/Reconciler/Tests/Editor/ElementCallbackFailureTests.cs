@@ -26,7 +26,7 @@ namespace Velvet.Tests
     /// something the tree holds rather than at an orphan.</item>
     /// <item>The cleanup a setup returned for an element that left while the setup ran is fired by the drain
     /// itself, and a throw out of that firing is contained on the same terms as the setup's own: it reaches
-    /// the boundary, and the abort the boundary raised is consumed before the next setup runs.</item>
+    /// the boundary, and the setups queued behind it still run.</item>
     /// <item>The fallback for a failed setup goes into the boundary's own slot range rather than the
     /// first slots of its container: with a sibling on each side, both stay.</item>
     /// </list>
@@ -34,12 +34,10 @@ namespace Velvet.Tests
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
     /// two moved.
     /// <para>
-    /// A case naming no boundary reads the console fall-through. The ones that register one read the
-    /// arrangement under which a caught failure calls SetAborted — and a ref setup runs at a point where
-    /// nothing downstream consumes that flag unless the drain does. Four of those read what the abort
-    /// reaches from there: the boundary's own committed tree when the pass being drained is its own, a
-    /// second boundary's fallback and a later setup's synchronous state write when it is not, and an
-    /// enclosing fiber's committed tree when the boundary that caught is below it.
+    /// A case naming no boundary reads the console fall-through. Four of the ones that register one read
+    /// what a catch in the drain leaves behind it: the boundary's own committed tree when the pass being
+    /// drained is its own, a second boundary's fallback and a later setup's synchronous state write when it
+    /// is not, and an enclosing fiber's committed tree when the boundary that caught is below it.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -246,7 +244,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(TwoBoundaryHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the first is read beside the second, because a pass where neither caught reads the
-            // same absent second fallback as one where the first's abort stopped it.
+            // same absent second fallback as one where the first's catch stopped it.
             Assert.That(
                 (Root!.Q<Label>("first-fallback") != null, Root.Q<Label>("second-fallback") != null),
                 Is.EqualTo((true, true)));
@@ -261,7 +259,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(AbortThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the first setup never
-            // threw reads the same committed probe as one where it threw and the abort was consumed.
+            // threw reads the same committed probe as one where it threw and the setups behind it still ran.
             Assert.That(
                 (Root!.Q<Label>("first-fallback") != null, Root.Q<Label>("probe")?.text),
                 Is.EqualTo((true, "after")));
@@ -557,7 +555,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(OrphanedCleanupThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the cleanup never threw
-            // reads the same committed probe as one where it threw and the abort was consumed.
+            // reads the same committed probe as one where it threw and the setups behind it still ran.
             Assert.That((Root!.Q<Label>("orphan-fallback") != null, Root.Q<Label>("probe")?.text),
                 Is.EqualTo((true, "after")));
         }
