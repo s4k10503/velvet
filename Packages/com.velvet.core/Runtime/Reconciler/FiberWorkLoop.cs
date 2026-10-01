@@ -35,11 +35,10 @@ namespace Velvet
             get => s_isInDiscreteEvent;
             set
             {
-                var ending = s_isInDiscreteEvent && !value;
                 s_isInDiscreteEvent = value;
                 // A handler bracketed by FiberDiscreteEventScope has drained the queue already; one that sets
                 // the flag itself would otherwise leave what it deferred to the next discrete event.
-                if (ending) ScheduleDeferredAwaitContinuations();
+                ScheduleDeferredAwaitContinuations();
             }
         }
 

@@ -761,7 +761,6 @@ namespace Velvet
                 SuspendWithoutBoundary(fiber);
                 return;
             }
-            fiber.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(fiber);
             boundary.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(boundary);

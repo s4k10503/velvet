@@ -35,6 +35,8 @@ namespace Velvet.Tests
     /// resume neither holds: the host's output is committed while the slice is still parked, so a row the
     /// pass never reached is looked up by key alone and answers to whichever container the committed tree
     /// reaches first — the reading recorded here.</item>
+    /// <item>A suspend in a resumed slice asks the boundary above to render, leaves the transition pending, and
+    /// commits the layout effects of a row the parked pass mounted before the resume returns.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -64,6 +66,7 @@ namespace Velvet.Tests
             s_slicedSuspendFiber = null;
             s_slicedSuspendSetCount = default;
             s_slicedSuspendStart = default;
+            s_slicedRowLayoutEffects = 0;
         }
 
         [TearDown]
@@ -1068,10 +1071,28 @@ namespace Velvet.Tests
                 "A suspend in a resumed slice goes to the boundary above, and the transition it belonged to has not committed");
         }
 
+        [Test]
+        public void Given_AParkedPassThatMountedAComponentRow_When_ItsResumedSliceSuspends_Then_ThatRowsLayoutEffectRunsBeforeTheResumeReturns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
+            s_slicedSuspendStart.Invoke(() => s_slicedSuspendSetCount.Invoke(2));
+            s_slicedSuspendFiber.FlushStateWithTinyBudgetForTest();
+            var ranWhileParked = s_slicedRowLayoutEffects;
+
+            // Act
+            FiberWorkLoop.ContinueReconcile(s_slicedSuspendFiber);
+
+            // Assert — the count while parked is folded in, since an effect the first slice already ran reads 1 too
+            Assert.That((ranWhileParked, s_slicedRowLayoutEffects), Is.EqualTo((0, 1)),
+                "The parked pass no longer holds the first row back once its resume suspends, and the resume commits it");
+        }
+
         private static ComponentFiber s_slicedBoundaryFiber;
         private static ComponentFiber s_slicedSuspendFiber;
         private static StateUpdater<int> s_slicedSuspendSetCount;
         private static TransitionStarter s_slicedSuspendStart;
+        private static int s_slicedRowLayoutEffects;
 
         [Component]
         private static VNode SlicedBoundaryHost()
@@ -1103,6 +1124,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode SlicedSuspendRow(int index)
         {
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (index == 0) s_slicedRowLayoutEffects++;
+                return (Action)null;
+            }, Array.Empty<object>());
             var value = Hooks.Use<int>(_ => index == 0
                 ? VelvetTask.FromResult(0)
                 : new VelvetTaskCompletionSource<int>().Task, index);

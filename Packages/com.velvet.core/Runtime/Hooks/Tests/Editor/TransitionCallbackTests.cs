@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// thread's await is not held back.</item>
     /// <item>An error a callback throws never reaches the caller: it is thrown from the declaring component's
     /// Transition-lane render to the error boundary above it, that render being its own or an ancestor's pass
-    /// reaching it. The outcome rendered is that of the call whose callback returned last, an action's
+    /// reaching it, and an ancestor's urgent pass reaching it first leaves the error for that render. The outcome
+    /// rendered is that of the call whose callback returned last, an action's
     /// settlement included, and a starter whose component has unmounted drops its error, for either overload.</item>
     /// <item>A continuation held back that throws is logged and does not keep the ones behind it from running,
     /// and one held back while a handler set the discrete flag itself runs once the flag clears.</item>
@@ -171,6 +172,25 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.Q<Label>("filter-fallback")?.text, Is.EqualTo("filter boom"),
                 "A declaring component reached by an ancestor's Transition-lane pass throws the error there");
+        }
+
+        [Test]
+        public void Given_ACallbackThatThrew_When_AnUrgentPassOfTheParentRendersTheDeclaringComponentFirst_Then_TheTransitionLaneStillThrowsTheError()
+        {
+            // Arrange — the parent's own update renders the declaring component on the immediate tier, ahead of
+            // the Transition lane the error waits on
+            using var mounted = V.Mount(_root, V.Component(FilterBoundaryRender, key: "filter-boundary"),
+                new MountOptions((_, _) => { }));
+            s_filterStart.Invoke(() => throw new InvalidOperationException("filter boom"));
+            s_filterSet.Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("filter-fallback")?.text, Is.EqualTo("filter boom"),
+                "A render off the Transition lane leaves the error for that lane, as React's urgent render does");
         }
 
         [Test]

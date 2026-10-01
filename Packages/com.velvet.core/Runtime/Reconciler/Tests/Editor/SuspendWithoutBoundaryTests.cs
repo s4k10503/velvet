@@ -16,9 +16,12 @@ namespace Velvet.Tests
     /// <item>With no boundary above, the flush does not throw. A resource of the component whose read suspended
     /// the pass resolving retries that pass, an ancestor's included, and every pass on the way that suspended
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
-    /// A component whose own render suspended before it reconciled anything shows what it showed before.</item>
-    /// <item>With a boundary above, that boundary renders again and shows its fallback, and the component whose
-    /// update suspended renders that update inside it, a memoized one included.</item>
+    /// The resolve commits nothing ahead of that retry. A component whose own render suspended before it
+    /// reconciled anything shows what it showed before, and a transition whose render suspended stays
+    /// pending.</item>
+    /// <item>With a boundary above, that boundary renders again and shows its fallback, a boundary the compiler
+    /// memoized included, and the component whose update suspended renders that update inside it, a memoized
+    /// one included.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -44,6 +47,8 @@ namespace Velvet.Tests
             s_readerSetOwn = default;
             s_readerFiber = null;
             s_twoReadersRenders = 0;
+            s_indicatorFiber = null;
+            s_indicatorStart = default;
         }
 
         [Test]
@@ -82,6 +87,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Texts(), Is.EqualTo("child:5|parent:1"),
                 "The resolve retries the parent's pass, which commits the parent's own output with the child's value");
+        }
+
+        [Test]
+        public void Given_AParentUpdateThatSuspendsItsChildWithNoBoundary_When_TheResourceResolves_Then_NothingCommitsAheadOfTheParentsRetry()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(KeyedParentRender, key: "parent"));
+            s_parentSetKey.Invoke(1);
+            mounted.FlushStateForTest();
+            var whileSuspended = Texts();
+
+            // Act
+            s_source.TrySetResult(5);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo(whileSuspended),
+                "The resolve asks for the parent's pass instead of committing the child's value beside the parent's old output");
         }
 
         [Test]
@@ -164,6 +187,39 @@ namespace Velvet.Tests
             // Assert
             Assert.That((beforeTheUpdate, Texts()), Is.EqualTo(("host|child:0", "host|loading")),
                 "The boundary above a component whose own update suspends renders again and shows its fallback");
+        }
+
+        [Test]
+        public void Given_ACompilerMemoizedBoundaryWhoseChildsOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheBoundaryShowsItsFallback()
+        {
+            // Arrange — the boundary's prop is unchanged, so its memo cache still holds the tree it showed
+            using var mounted = V.Mount(_root, V.Component(PropBoundaryHostRender, 0, key: "prop-boundary-host"));
+            s_setOwn.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("host|loading"),
+                "A boundary whose inputs are unchanged still renders again and shows its fallback");
+        }
+
+        [Test]
+        public void Given_ATransitionWhoseUpdateSuspendsWithNoBoundary_When_ItsLaneHasDrained_Then_ItIsStillPending()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(IndicatorHostRender, key: "indicator-host"));
+            s_indicatorStart.Invoke(() => s_setOwn.Invoke(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_indicatorFiber.IsTransitionPending, Is.True,
+                "A transition whose render suspended has not committed, so React keeps isPending lit");
         }
 
         [Test]
@@ -369,6 +425,39 @@ namespace Velvet.Tests
                 V.Label(text: "host"),
                 V.Component(SuspendingChildRender, key: "child"),
             });
+
+        // Takes a prop, without which a body calling no hook is left unmemoized by the compiler, as
+        // BoundaryHostRender's is.
+        [Component]
+        private static VNode PropBoundaryHostRender(int tag)
+            => V.Div(name: "host-" + tag, children: new VNode[]
+            {
+                V.Label(text: "host"),
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(SuspendingChildRender, key: "child") }),
+            });
+
+        private static ComponentFiber s_indicatorFiber;
+        private static TransitionStarter s_indicatorStart;
+
+        // A sibling of the component its transition writes, so nothing renders that component but its own flush.
+        [Component]
+        private static VNode IndicatorHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(IndicatorRender, key: "indicator"),
+                V.Component(SuspendingChildRender, key: "child"),
+            });
+
+        [Component]
+        private static VNode IndicatorRender()
+        {
+            s_indicatorFiber = FiberAmbientStack.Current;
+            var (isPending, start) = Hooks.UseTransition();
+            s_indicatorStart = start;
+            return V.Label(text: "pending:" + isPending);
+        }
 
         [Component]
         private static VNode BoundaryHostRender()
