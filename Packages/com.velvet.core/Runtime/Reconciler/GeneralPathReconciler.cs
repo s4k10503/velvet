@@ -1955,7 +1955,19 @@ namespace Velvet
                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                 }
             }
-            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, RunExitComplete);
+            // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
+            // coming back drops its landings (MotionLayoutIdDriver.Present), and a presence retired since completes
+            // nothing, by the check SettleIfStillExiting makes.
+            var waits = 1;
+            void Settle()
+            {
+                if (--waits == 0) RunExitComplete();
+            }
+            waits += MotionLayoutIdDriver.Relegate(ghostAnchor, _ctx, () =>
+            {
+                if (_ctx.PresenceStates.ContainsValue(capturedState)) Settle();
+            });
+            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle);
         }
 
         // Plays one ghost's exits — its anchor's and its descendants' — under one wait that runs
@@ -2146,6 +2158,7 @@ namespace Velvet
                 if (wasExiting)
                 {
                     CancelInterruptedPresenceExit(anchor, motionElement, motion, presence, node);
+                    MotionLayoutIdDriver.Present(anchor, _ctx);
                 }
                 else if (wasExitComplete)
                 {

@@ -643,6 +643,10 @@ namespace Velvet
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
             }
+            else
+            {
+                MotionLayoutIdDriver.Forget(element, _ctx);
+            }
         }
 
         // A play that moves classes puts its pose's inline-resolved tokens on the class list, and the class sync
