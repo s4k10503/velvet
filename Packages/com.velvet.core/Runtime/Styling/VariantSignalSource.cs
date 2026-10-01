@@ -1,12 +1,13 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // The element-local interaction signals a variant manipulator reacts to. FocusVisible is the CSS
-    // :focus-visible distinction (keyboard/programmatic focus, not pointer focus); Checked is the element's
-    // own toggle state.
+    // :focus-visible distinction (InputModality); Checked is the element's own toggle state.
     internal enum VariantSignal
     {
         Hover,
@@ -116,6 +117,9 @@ namespace Velvet
         // it suppresses.
         private bool _pointerFocus;
 
+        // Whether this element's ring follows InputModality.Announced, which it does while it holds focus.
+        private bool _following;
+
         public ElementLocalVariantSignals(Action<VariantSignal, bool> emit) => _emit = emit;
 
         // Registers the detection callbacks on target. When registerChecked is false the ChangeEvent path is
@@ -168,6 +172,7 @@ namespace Velvet
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
             }
 
+            Unfollow();
             _target = null;
             _pointerFocus = false;
         }
@@ -234,6 +239,7 @@ namespace Velvet
         // per-state dedup makes a redundant call a no-op.
         public void SettleFocusLoss()
         {
+            Unfollow();
             _pointerFocus = false;
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
@@ -242,17 +248,53 @@ namespace Velvet
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);
-            // focus-visible lights up only when the focus was NOT driven by a pointer-down on this element
-            // (keyboard navigation or a programmatic Focus()), mirroring CSS :focus-visible.
-            if (!_pointerFocus)
+            if (!_pointerFocus && !InputModality.LastInputWasPointer(_target?.panel))
             {
                 _emit(VariantSignal.FocusVisible, true);
             }
             _pointerFocus = false;
+            if (!_following)
+            {
+                _following = true;
+                InputModality.Announced += OnModalityChanged;
+            }
+        }
+
+        // React Aria's isKeyboardFocusEvent: a key typed into a text input leaves the ring as it was, except
+        // Tab and Escape.
+        private void OnModalityChanged(bool pointer, EventBase cause)
+        {
+            if (!IsTypedIntoATextInput(cause))
+            {
+                _emit(VariantSignal.FocusVisible, !pointer);
+            }
+        }
+
+        private static bool IsTypedIntoATextInput(EventBase cause)
+        {
+            if (cause is not IKeyboardEvent key)
+            {
+                return false;
+            }
+            if (key.keyCode is KeyCode.Tab or KeyCode.Escape)
+            {
+                return false;
+            }
+            return cause.target is ITextEdition { isReadOnly: false };
+        }
+
+        private void Unfollow()
+        {
+            if (_following)
+            {
+                _following = false;
+                InputModality.Announced -= OnModalityChanged;
+            }
         }
 
         private void OnBlur(BlurEvent evt)
         {
+            Unfollow();
             _emit(VariantSignal.Focus, false);
             _emit(VariantSignal.FocusVisible, false);
         }
@@ -320,6 +362,7 @@ namespace Velvet
         FocusWithin,
         Active,
         Checked,
+        Disabled,
     }
 
     // Detects relational interaction state on a resolved group/peer SOURCE element and reports each on/off
@@ -334,6 +377,7 @@ namespace Velvet
         private readonly Action<RelationalVariantSignal, bool> _emit;
         private VisualElement? _source;    // non-null only while hooked
         private bool _registerChecked;    // captured in Hook so Unhook stays symmetric
+        private DisabledVariantSignal? _disabled;
 
         public RelationalVariantSignals(Action<RelationalVariantSignal, bool> emit) => _emit = emit;
 
@@ -341,10 +385,15 @@ namespace Velvet
         // (ChangeEvent + the initial already-checked read via seedChecked, since ChangeEvent fires only on
         // change); group bindings pass false. The seed reads any control reporting a bool, for the reason
         // ElementLocalVariantSignals.Hook gives.
-        public void Hook(VisualElement source, bool seedChecked, bool registerChecked)
+        public void Hook(VisualElement source, bool seedChecked, bool registerChecked, bool trackDisabled)
         {
             _source = source;
             _registerChecked = registerChecked;
+            if (trackDisabled)
+            {
+                _disabled ??= new DisabledVariantSignal(on => _emit(RelationalVariantSignal.Disabled, on));
+                _disabled.Hook(source);
+            }
 
             source.RegisterCallback<PointerOverEvent>(OnPointerOver);
             source.RegisterCallback<PointerOutEvent>(OnPointerOut);
@@ -380,6 +429,7 @@ namespace Velvet
             {
                 _source.UnregisterCallback<ChangeEvent<bool>>(OnChange);
             }
+            _disabled?.Unhook();
 
             _source = null;
         }
@@ -440,6 +490,313 @@ namespace Velvet
             {
                 _emit(RelationalVariantSignal.Checked, value);
             }
+        }
+    }
+    // Hooks every source a relational binding matched and reports a state lit while ANY of them holds it:
+    // `.peer:hover ~ x` matches whichever preceding peer is hovered, and `.group:hover x` whichever ancestor
+    // group is. An on edge is forwarded as it arrives and the consumer dedups it; an off edge is forwarded
+    // only once no hooked source still holds the state.
+    //
+    // The set follows the tree the way a selector does: Retarget hooks sources that joined and releases the
+    // ones that left, keeping each source that stayed with the state it holds, and a source the cleaner
+    // takes out of the tree is released at once (DropDeparted), before its element can be pooled and rented
+    // elsewhere. ReconcilerContext.RelationalVariantSources indexes the sets by the source elements they hook.
+    internal sealed class RelationalSourceSet
+    {
+        private readonly ReconcilerContext _ctx;
+        private readonly Action<RelationalVariantSignal, bool> _emit;
+        private readonly List<Source> _sources = new();
+        private readonly int[] _holding = new int[RelationalSignalCount];
+
+        private static readonly int RelationalSignalCount = Enum.GetValues(typeof(RelationalVariantSignal)).Length;
+
+        public RelationalSourceSet(ReconcilerContext ctx, Action<RelationalVariantSignal, bool> emit)
+        {
+            _ctx = ctx;
+            _emit = emit;
+        }
+
+        // Hooks every element of sources not hooked yet and releases every hooked one sources no longer names.
+        public void Retarget(List<VisualElement> sources, bool seedChecked, bool registerChecked, bool trackDisabled)
+        {
+            for (var i = _sources.Count - 1; i >= 0; i--)
+            {
+                if (!sources.Contains(_sources[i].Element))
+                {
+                    Release(i);
+                }
+            }
+            foreach (var element in sources)
+            {
+                if (IndexOf(element) < 0)
+                {
+                    var source = new Source(this, element);
+                    _sources.Add(source);
+                    Index(element).Add(this);
+                    source.Signals.Hook(element, seedChecked, registerChecked, trackDisabled);
+                }
+            }
+        }
+
+        // Unhooks every source without reporting an edge: the consumer resets its own applied state around this.
+        public void Unhook()
+        {
+            foreach (var source in _sources)
+            {
+                source.Signals.Unhook();
+                Unindex(source.Element);
+            }
+            _sources.Clear();
+            Array.Clear(_holding, 0, _holding.Length);
+        }
+
+        public void SettleChecked(VisualElement source, bool value)
+        {
+            foreach (var hooked in _sources)
+            {
+                hooked.Signals.SettleChecked(source, value);
+            }
+        }
+
+        // Releases element from every set that hooks it, reporting the off edges only it was holding.
+        public static void DropDeparted(ReconcilerContext ctx, VisualElement element)
+        {
+            if (!ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            foreach (var set in sets.ToArray())
+            {
+                set.Release(set.IndexOf(element));
+            }
+        }
+
+        private int IndexOf(VisualElement element)
+        {
+            for (var i = 0; i < _sources.Count; i++)
+            {
+                if (ReferenceEquals(_sources[i].Element, element))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private void Release(int index)
+        {
+            var source = _sources[index];
+            _sources.RemoveAt(index);
+            source.Signals.Unhook();
+            Unindex(source.Element);
+            for (var slot = 0; slot < RelationalSignalCount; slot++)
+            {
+                if (source.Holding[slot] && --_holding[slot] == 0)
+                {
+                    _emit((RelationalVariantSignal)slot, false);
+                }
+            }
+        }
+
+        private List<RelationalSourceSet> Index(VisualElement element)
+        {
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                sets = new List<RelationalSourceSet>();
+                _ctx.RelationalVariantSources[element] = sets;
+            }
+            return sets;
+        }
+
+        private void Unindex(VisualElement element)
+        {
+            if (!_ctx.RelationalVariantSources.TryGetValue(element, out var sets))
+            {
+                return;
+            }
+            sets.Remove(this);
+            if (sets.Count == 0)
+            {
+                _ctx.RelationalVariantSources.Remove(element);
+            }
+        }
+
+        private void OnSourceSignal(Source source, RelationalVariantSignal signal, bool on)
+        {
+            var slot = (int)signal;
+            if (source.Holding[slot] != on)
+            {
+                source.Holding[slot] = on;
+                _holding[slot] += on ? 1 : -1;
+            }
+            if (on || _holding[slot] == 0)
+            {
+                _emit(signal, on);
+            }
+        }
+
+        private sealed class Source
+        {
+            public readonly bool[] Holding = new bool[RelationalSignalCount];
+            public readonly RelationalVariantSignals Signals;
+            public readonly VisualElement Element;
+
+            public Source(RelationalSourceSet set, VisualElement element)
+            {
+                Element = element;
+                Signals = new RelationalVariantSignals((signal, on) => set.OnSourceSignal(this, signal, on));
+            }
+        }
+    }
+
+    // Reports each edge of the target's :disabled state — the target or an ancestor has enabledSelf off — to
+    // a callback, for the disabled: variant and for a stacked disabled: inner. Level-based: the state is read
+    // at Hook and again at every attach, since the ancestor chain it watches is only known once the target is
+    // in its final place.
+    internal sealed class DisabledVariantSignal
+    {
+        private readonly Action<bool> _emit;
+        private readonly object? _onWrite;
+        private readonly List<VisualElement> _chain = new();
+        private VisualElement? _target; // non-null only while hooked
+        private bool _disabled;
+
+        public DisabledVariantSignal(Action<bool> emit)
+        {
+            _emit = emit;
+            _onWrite = EnabledSelfWrites.CreateCallback(Evaluate);
+        }
+
+        public bool IsHooked => _target != null;
+
+        public void Hook(VisualElement target)
+        {
+            _target = target;
+            _disabled = false;
+            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
+            target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
+            HookChain();
+            Evaluate();
+        }
+
+        // Emits nothing: the consumer clears its own applied state when it unhooks.
+        public void Unhook()
+        {
+            if (_target == null)
+            {
+                return;
+            }
+
+            UnhookChain();
+            _target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
+            _target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
+            _target = null;
+        }
+
+        private void OnAttach(AttachToPanelEvent evt)
+        {
+            // MUTANT_SURVIVES(equivalent, line removed): every attach but the first follows a detach, which has
+            // already emptied the chain; at the first, re-registering a callback an element already holds is a
+            // no-op, and Unhook unregistering it twice is one too.
+            UnhookChain();
+            HookChain();
+            Evaluate();
+        }
+
+        private void OnDetach(DetachFromPanelEvent evt) => UnhookChain();
+
+        // The write that disables the target can land on any ancestor, and is announced on that ancestor only.
+        private void HookChain()
+        {
+            for (var element = _target; element != null; element = element.hierarchy.parent)
+            {
+                EnabledSelfWrites.Register(element, _onWrite);
+                _chain.Add(element);
+            }
+        }
+
+        private void UnhookChain()
+        {
+            foreach (var element in _chain)
+            {
+                EnabledSelfWrites.Unregister(element, _onWrite);
+            }
+            // MUTANT_SURVIVES(equivalent): an entry left behind is only ever unregistered again, which is a
+            // no-op for a callback the element no longer holds.
+            _chain.Clear();
+        }
+
+        // Reads enabledSelf up the chain instead of the target's enabledInHierarchy: outside an event dispatch
+        // UI Toolkit announces an enabledSelf write before it propagates the new state to descendants, so the
+        // target's own flag is still the old one when the announcement arrives. DisabledVariantTests'
+        // Given_AnAncestorWrittenOutsideADispatch case holds that order.
+        private void Evaluate()
+        {
+            if (_target == null)
+            {
+                return;
+            }
+
+            var disabled = false;
+            for (var element = _target; element != null && !disabled; element = element.hierarchy.parent)
+            {
+                disabled = !element.enabledSelf;
+            }
+
+            if (disabled == _disabled)
+            {
+                return;
+            }
+            _disabled = disabled;
+            _emit(disabled);
+        }
+    }
+
+    // UI Toolkit announces an enabledSelf write through PropertyChangedEvent, an internal event. The type is reached
+    // by name; DisabledVariantTests' Given_AnAncestorWrittenOutsideADispatch case fails where the engine stops
+    // sending it.
+    internal static class EnabledSelfWrites
+    {
+        private interface IRegistrar
+        {
+            object Create(Action onWrite);
+            void Register(VisualElement element, object callback);
+            void Unregister(VisualElement element, object callback);
+        }
+
+        private sealed class Registrar<TEvent> : IRegistrar where TEvent : EventBase<TEvent>, new()
+        {
+            public object Create(Action onWrite) => new EventCallback<TEvent>(_ => onWrite());
+
+            // IncludeDisabled keeps delivery from depending on whether the engine skips a disabled target for
+            // this event: the element it announces is often the one just disabled.
+            public void Register(VisualElement element, object callback)
+                => element.RegisterCallback((EventCallback<TEvent>)callback, CallbackOptions.IncludeDisabled);
+
+            public void Unregister(VisualElement element, object callback)
+                => element.UnregisterCallback((EventCallback<TEvent>)callback, CallbackOptions.IncludeDisabled);
+        }
+
+        private static readonly IRegistrar? s_registrar = CreateRegistrar();
+
+        private static IRegistrar? CreateRegistrar()
+        {
+            var eventType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.PropertyChangedEvent");
+            return eventType == null
+                ? null
+                : (IRegistrar)Activator.CreateInstance(typeof(Registrar<>).MakeGenericType(eventType));
+        }
+
+        public static object? CreateCallback(Action onWrite) => s_registrar?.Create(onWrite);
+
+        public static void Register(VisualElement element, object? callback)
+        {
+            if (callback != null) s_registrar?.Register(element, callback);
+        }
+
+        public static void Unregister(VisualElement element, object? callback)
+        {
+            if (callback != null) s_registrar?.Unregister(element, callback);
         }
     }
 }

@@ -1,0 +1,399 @@
+name: Mutation campaign
+
+# The mutation campaign over a pull request's change, once per labelled head rather than on every push.
+# scripts/pr/automerge.py's hand-off dispatches it onto the head's branch once the head carries the
+# `automerge` label and its Test run has passed; CONTRIBUTING.md's continuous-integration section owns
+# when, what the label means and what a merge requires of this workflow's runs.
+#
+# The hand-off dispatches no head on another repository. The checkout is the branch's head rather than
+# a test merge, so change_base.py reads the change against the merge base of that head and `base`.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "The branch the pull request merges into"
+        required: true
+        default: main
+      number:
+        description: "The pull request whose merge run the aggregate dispatches once the campaign passes"
+        required: false
+
+# A newer head's dispatch cancels the campaign still measuring an older one. Not test.yml's group, so
+# no run of Test cancels a campaign.
+concurrency:
+  group: mutation-campaign-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Same reason test.yml gives.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+# Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
+# plan's ceiling.
+jobs:
+  # Same reading as test.yml's job of this name.
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE secret is not set — the campaign measures nothing."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # The campaign decides as a local run over the same diff does, except that it measures every mutant
+  # where a local run stops at --max, and passes a change no operator reaches where a local run refuses
+  # one; CONTRIBUTING.md owns what it asks and what fails it.
+  #
+  # Two passes, because a mutant is killed when either suite fails on it and the two suites hold
+  # different tests. Every mutant runs against the EditMode suite; only the EditMode survivors run
+  # against the PlayMode suite, the slower of the two per mutant. Each pass is a plan and a
+  # matrix of shards: the plan counts the mutants, each shard measures every Nth of them and records
+  # their verdicts. The verdict job reads both passes' records and decides. The decision cannot be a
+  # shard's own, since a declaration above one line answers for survivors another shard may have
+  # measured.
+  #
+  # A shard cannot run through game-ci/unity-test-runner, which launches one editor per step. It runs
+  # mutation_check.py inside the image that action pulls for test.yml's unity-tests, and
+  # ci_mutation_shard.py activates and returns the licence around it.
+  # ---------------------------------------------------------------------------
+  mutation-plan:
+    name: Mutation campaign (plan)
+    needs: license-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mutants: ${{ steps.plan.outputs.mutants }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      # The summary is written before the status is read, and carries stderr, where a refusal other
+      # than the ceiling's is printed, so a refused plan names why in it. Over the ceiling with no
+      # licence no shard would run, so it passes the way the skipped Unity jobs do.
+      - id: plan
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+          HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
+        run: |
+          set +e
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan > plan.txt 2>&1
+          status=$?
+          cat plan.txt
+          { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 4 ] && [ "$HAS_LICENSE" != true ]; then
+            echo 'shards=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
+          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under the pull
+  # request's own ref, which is not this run's, so this restores what the branch and the default branch
+  # hold, imports the head once where no entry carries its exact key, and saves the result under that
+  # key for the shards and for the next campaign on the branch.
+  # ---------------------------------------------------------------------------
+  library:
+    name: Mutation campaign (Library)
+    needs: [license-check, mutation-plan]
+    if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      # The EditMode shard's launch, with the editor opening the project and quitting.
+      - if: steps.restore.outputs.cache-hit != 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u scripts/ci/licensed_editor.py -- -projectPath /github/workspace
+
+      - if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+
+  mutation-shard:
+    name: Mutation campaign (EditMode shard ${{ matrix.shard }})
+    needs: [license-check, mutation-plan, library]
+    if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # Restore only: a campaign leaves Library compiled from its last mutant, which is not the tree
+      # the key names.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+          SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+        # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
+        # that git has to refuse, and a wider value lifts that refusal inside the suite. The editor's
+        # version is read from the project, and EditorVersionTests holds unity-tests' to the same.
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u scripts/test_quality/ci_mutation_shard.py -- \
+              --base "$BASE" --max "$MUTANTS" \
+              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --output Logs/mutation-shard
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: Mutation EditMode shard ${{ matrix.shard }}
+          path: Logs/mutation-shard
+
+  # Skipped where an EditMode shard failed: the campaign has failed already, and the PlayMode pass
+  # would spend a matrix on it. The verdict job still runs, and reports every EditMode survivor as a
+  # mutant no PlayMode shard recorded.
+  mutation-playmode-plan:
+    name: Mutation campaign (PlayMode plan)
+    needs: [license-check, mutation-plan, mutation-shard]
+    if: >-
+      needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+      && needs.mutation-shard.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Mutation EditMode shard *
+          path: Logs/mutation-shards
+          merge-multiple: true
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - id: plan
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+        run: |
+          set +e
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan \
+            --platform PlayMode --survivors-of Logs/mutation-shards > plan.txt 2>&1
+          status=$?
+          cat plan.txt
+          { echo '### Mutation campaign PlayMode plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$status" -eq 0 ] || exit "$status"
+          grep -E '^shards=' plan.txt >> "$GITHUB_OUTPUT"
+
+  # --max is the EditMode plan's count, so this pass generates the same list of mutants and reads
+  # each one's EditMode record by its index.
+  mutation-playmode-shard:
+    name: Mutation campaign (PlayMode shard ${{ matrix.shard }})
+    needs: [license-check, mutation-plan, mutation-playmode-plan]
+    if: >-
+      needs.license-check.outputs.has_license == 'true' && needs.mutation-playmode-plan.result == 'success'
+      && needs.mutation-playmode-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-playmode-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # Restore only, for the reason the EditMode shard gives.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-PlayMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-PlayMode-
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Mutation EditMode shard *
+          path: Logs/mutation-shards
+          merge-multiple: true
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      - env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+          SHARDS: ${{ needs.mutation-playmode-plan.outputs.shards }}
+        # The EditMode shard's launch, for the same reasons.
+        run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
+          docker run --rm --init --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
+            python3 -u scripts/test_quality/ci_mutation_shard.py -- \
+              --base "$BASE" --max "$MUTANTS" --platform PlayMode --survivors-of Logs/mutation-shards \
+              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --output Logs/mutation-playmode-shard
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: Mutation PlayMode shard ${{ matrix.shard }}
+          path: Logs/mutation-playmode-shard
+
+  mutation-verdict:
+    name: Mutation campaign (verdict)
+    needs: [license-check, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard]
+    if: >-
+      !cancelled() && needs.license-check.outputs.has_license == 'true'
+      && needs.mutation-plan.result == 'success' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Mutation EditMode shard *
+          path: Logs/mutation-shards
+          merge-multiple: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Mutation PlayMode shard *
+          path: Logs/mutation-playmode-shards
+          merge-multiple: true
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      # A mutant the EditMode pass killed keeps that verdict; one it left surviving takes the PlayMode
+      # pass's, and a survivor no PlayMode shard recorded is unmeasured.
+      - env:
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+        run: |
+          set +e
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
+            --platform PlayMode --survivors-of Logs/mutation-shards \
+            --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict | tee verdict.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  # ---------------------------------------------------------------------------
+  # The merge reads the run's conclusion rather than this job's, through scripts/pr/campaign.py; this
+  # job asks for the merge once every other job passed or was skipped. always(), so a campaign with
+  # nothing to measure still asks. A skipped dependency counts as passing, as in test.yml's
+  # required-checks: a job after the plan skips where no licence is configured or nothing is left for
+  # it to measure.
+  #
+  # The merge run it dispatches waits out this run, since settle refuses a head whose checks are still
+  # running. continue-on-error, because a merge run that did not start is not a campaign that failed.
+  # ---------------------------------------------------------------------------
+  campaign:
+    name: Mutation campaign
+    if: always()
+    needs: [license-check, mutation-plan, library, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - env:
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.mutation-plan.result }} ${{ needs.library.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}
+        run: |
+          failed=0
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
+
+      - if: inputs.number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          RUN: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >-
+          gh workflow run automerge.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
+          -f number="$NUMBER" -f after_run="$RUN"

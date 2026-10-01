@@ -735,7 +735,7 @@ namespace Velvet
         /// on unmount, and recreated when <paramref name="effect"/> changes.
         /// </summary>
         /// <param name="effect">The source ParticleSystem (typically a prefab reference) to simulate.
-        /// Null mounts an inert element until an effect is supplied. Local simulation space only.</param>
+        /// Null mounts an inert element until an effect is supplied.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
@@ -1124,7 +1124,9 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key. A null key leaves the item
+        /// unkeyed, matched by its index, and logs a warning the first time a component's list does so, as React
+        /// warns about a list child with no key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
         /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
@@ -1153,7 +1155,7 @@ namespace Velvet
                     {
                         // The selector key is authoritative over any key the renderer set, so the
                         // list-mapping site owns the identity used for reconciliation.
-                        node = node.WithListKey(keySelector(items[i]));
+                        node = KeyListItem(node, keySelector(items[i]));
                     }
                     result[i] = node;
                 }
@@ -1174,7 +1176,8 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.
+        /// A null key is treated as the overload above treats one.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
         /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
@@ -1200,7 +1203,7 @@ namespace Velvet
                     if (node != null)
                     {
                         // Same authority as the overload above.
-                        node = node.WithListKey(keySelector(items[i], i));
+                        node = KeyListItem(node, keySelector(items[i], i));
                     }
                     result[i] = node;
                 }
@@ -1212,6 +1215,26 @@ namespace Velvet
             }
 
             return result;
+        }
+
+        // The components V.List has warned for, so each is warned for once, as React warns once per component
+        // rendering a list child with no key. The empty string stands for a list built outside any component.
+        private static readonly HashSet<string> s_componentsWarnedForMissingListKey = new();
+
+        private static VNode KeyListItem(VNode node, string? key)
+        {
+            if (key == null) WarnMissingListKey();
+            return node.WithListKey(key);
+        }
+
+        private static void WarnMissingListKey()
+        {
+            var fiber = FiberAmbientStack.Current;
+            var owner = fiber == null ? string.Empty : $" rendered by {Hooks.ComponentName(fiber)}";
+            if (!s_componentsWarnedForMissingListKey.Add(owner)) return;
+            FiberLogger.LogWarning("V.List",
+                $"Each child in a list should have a unique key: keySelector returned null for an item{owner}, "
+                + "so it is matched by its index among its siblings.");
         }
 
         /// <summary>
@@ -1834,8 +1857,8 @@ namespace Velvet
         /// one (a press on empty space that clears focus to nothing re-focuses on the panel's next tick, and
         /// so does focus that moves to another panel unless it lands in a portal declared inside the scope or
         /// in a contained scope created after this one).</param>
-        /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
-        /// when it first entered the scope.</param>
+        /// <param name="restoreFocus">On unmount while holding focus, refocus the element that held focus
+        /// when the scope mounted.</param>
         /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
@@ -2344,7 +2367,7 @@ namespace Velvet
 
         /// <summary>
         /// Virtualized list component for rendering large item collections.
-        /// Renders a fixed-height-item ScrollView and only places the visible range in the DOM
+        /// Renders a ScrollView of items of one height and only places the visible range in the DOM
         /// (a virtualized list).
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
@@ -2356,7 +2379,7 @@ namespace Velvet
         /// the row renders, and a range change reuses it by its item index. Items sharing a key all render
         /// and are told apart by their item index, each keeping the row rendered at its own index while it
         /// stays in the range; two of them rendered in one range log a warning naming the key.</param>
-        /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
+        /// <param name="itemHeight">Height (pixels) of every item, used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
         /// A key it sets on the node it returns plays no part in which row a range change reuses —
         /// <paramref name="keySelector"/>'s key does — and the node is left as the renderer returned it, so
@@ -2367,6 +2390,7 @@ namespace Velvet
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
@@ -2377,7 +2401,73 @@ namespace Velvet
             int overscan = 3,
             string? key = null,
             string? className = null,
-            string? name = null)
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+        {
+            RequireVirtualListArguments(items, keySelector, renderer);
+            return new VirtualListNode(
+                items: new CastReadOnlyList<T>(items),
+                keySelector: obj => keySelector((T)obj!),
+                itemHeight: itemHeight,
+                renderer: obj => renderer((T)obj!),
+                overscan: overscan)
+            {
+                ClassNames = ParseClassNames(className),
+                Name = name,
+                Key = key,
+                ListRef = listRef,
+            };
+        }
+
+        /// <summary>
+        /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
+        /// index — react-window's <c>rowHeight</c> function. Every other parameter is
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>'s.
+        /// </summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection. Must not be null.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key. Must not be null.</param>
+        /// <param name="itemHeight">Height (pixels) of the item at an index. Must not be null. It is asked for
+        /// every item each time the list renders.</param>
+        /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.</param>
+        /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
+        /// <returns>The created <see cref="VirtualListNode"/>.</returns>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            Func<int, float> itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+        {
+            RequireVirtualListArguments(items, keySelector, renderer);
+            return new VirtualListNode(
+                items: new CastReadOnlyList<T>(items),
+                keySelector: obj => keySelector((T)obj!),
+                itemHeight: itemHeight,
+                renderer: obj => renderer((T)obj!),
+                overscan: overscan)
+            {
+                ClassNames = ParseClassNames(className),
+                Name = name,
+                Key = key,
+                ListRef = listRef,
+            };
+        }
+
+        // Ahead of the lambdas below, which would carry a null delegate into the node rather than refuse it.
+        // The erased item is the element the caller's own list held at that index, so the cast in those
+        // lambdas hands their delegate back the T they put in — a null included, where their T admits one.
+        private static void RequireVirtualListArguments<T>(
+            IReadOnlyList<T> items, Func<T, string> keySelector, Func<T, VNode> renderer)
         {
             if (items == null)
             {
@@ -2393,21 +2483,6 @@ namespace Velvet
             {
                 throw new ArgumentNullException(nameof(renderer));
             }
-
-            // The erased item is the element the caller's own list held at that index, so the cast hands
-            // their delegate back the T they put in — a null included, where their T admits one.
-            var node = new VirtualListNode(
-                items: new CastReadOnlyList<T>(items),
-                keySelector: obj => keySelector((T)obj!),
-                itemHeight: itemHeight,
-                renderer: obj => renderer((T)obj!),
-                overscan: overscan)
-            {
-                ClassNames = ParseClassNames(className),
-                Name = name,
-                Key = key
-            };
-            return node;
         }
 
         #endregion

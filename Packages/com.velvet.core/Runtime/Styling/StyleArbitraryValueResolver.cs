@@ -22,16 +22,10 @@ namespace Velvet
         // layer so it wins conflicts. A class-only utility (no inline form) cannot be elevated in UI Toolkit,
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
-        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
-        // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*, z-*)
-        // do NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn,
-        // resolved to inline that already wins, or (z-*) a physical relocation — so outside z-* the bang never
-        // has a cascade effect in this family; use the plain form (adding it would be a no-op elevation by
-        // definition). font-*, leading-*, and z-* still route their own classification gate through this
-        // method (StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass.IsArbitraryLeadingClass /
-        // StyleZIndexClass.TryParse), so a bang'd token still classifies as the family instead of silently
-        // falling through, and z-*'s bang then arbitrates among the element's own z-* tokens
-        // (StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* have no such gate and do not
+        // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
+        // array-scanned subsystem utilities, the font, text-effect and z-* families strip the bang themselves
+        // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
+        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
@@ -736,7 +730,7 @@ namespace Velvet
         // Per-element, per-property stack of arbitrary-value layers keyed by priority (ascending). A
         // ConditionalWeakTable auto-drops entries when an element is GC'd; pooled (reused) elements are scrubbed
         // explicitly via ClearAll so no layer ghosts across reuse.
-        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>>,
+        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<long, ArbitraryStyle>>,
             StyleClassProjection.ILayerHost
         {
             // Per-NAME priority stacks for filter-[name:args] custom filters, in first-application
@@ -751,7 +745,7 @@ namespace Velvet
             // argument change. Compose skips empty stacks; ClearAll drops the whole map, so tombstones
             // die with the rest of the element's layer state. Lazily allocated: most elements never
             // apply a custom filter.
-            public List<(string Name, SortedList<int, ArbitraryStyle> Stack)>? Customs;
+            public List<(string Name, SortedList<long, ArbitraryStyle> Stack)>? Customs;
 
             // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
             // halves decide one outcome together — an inline layer a USS class outranks has to stop
@@ -763,7 +757,7 @@ namespace Velvet
             // Per property, the priority below which every layer is fully overridden by a USS class and must
             // not be written inline. Absent means nothing is masked. Lazily allocated: only an element mixing
             // a bracket value with a variant-applied class ever gets one.
-            public Dictionary<ArbitraryProperty, int>? Floors;
+            public Dictionary<ArbitraryProperty, long>? Floors;
 
             // The slots a gap, grid or divide manipulator holds on this element — see Hold. Lazily
             // allocated: only an element one of them writes to gets one.
@@ -778,7 +772,7 @@ namespace Velvet
             public void CollectLayers(List<StyleClassProjection.InlineLayer> into)
                 => CollectLayerPriorities(this, into);
 
-            public void ApplyFloors(VisualElement element, Dictionary<ArbitraryProperty, int> floors)
+            public void ApplyFloors(VisualElement element, Dictionary<ArbitraryProperty, long> floors)
                 => ApplyProjectionFloors(element, this, floors);
         }
 
@@ -806,7 +800,7 @@ namespace Velvet
                 var priorities = pair.Value.Keys;
                 for (var i = 0; i < priorities.Count; i++)
                 {
-                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, priorities[i]));
+                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, StyleLayerPriority.RankOf(priorities[i])));
                 }
             }
         }
@@ -815,7 +809,7 @@ namespace Velvet
         // re-resolves the properties whose verdict changed. Re-resolving is what actually removes the inline
         // value that was hiding the winning class, or restores it once the class stops winning.
         private static void ApplyProjectionFloors(
-            VisualElement element, LayerMap map, Dictionary<ArbitraryProperty, int> floors)
+            VisualElement element, LayerMap map, Dictionary<ArbitraryProperty, long> floors)
         {
             var previous = map.Floors;
             if (!SameFloors(previous, floors))
@@ -831,9 +825,9 @@ namespace Velvet
         }
 
         private static void InstallFloors(VisualElement element, LayerMap map,
-            Dictionary<ArbitraryProperty, int>? previous, Dictionary<ArbitraryProperty, int> floors)
+            Dictionary<ArbitraryProperty, long>? previous, Dictionary<ArbitraryProperty, long> floors)
         {
-            map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, int>(floors);
+            map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, long>(floors);
             foreach (var pair in floors)
             {
                 if (previous == null || !previous.TryGetValue(pair.Key, out var was) || was != pair.Value)
@@ -854,7 +848,7 @@ namespace Velvet
             }
         }
 
-        private static bool SameFloors(Dictionary<ArbitraryProperty, int>? previous, Dictionary<ArbitraryProperty, int> floors)
+        private static bool SameFloors(Dictionary<ArbitraryProperty, long>? previous, Dictionary<ArbitraryProperty, long> floors)
         {
             var previousCount = previous?.Count ?? 0;
             if (previousCount != floors.Count)
@@ -882,7 +876,8 @@ namespace Velvet
                 return false;
             }
             var top = layers.Count - 1;
-            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor) && layers.Keys[top] <= floor)
+            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor)
+                && StyleLayerPriority.RankOf(layers.Keys[top]) <= floor)
             {
                 return false;
             }
@@ -890,9 +885,9 @@ namespace Velvet
             return true;
         }
 
-        // TryWinningLayer, with the priority the winner sits at.
+        // TryWinningLayer, with the rank the winner sits at.
         private static bool TryTopLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style,
-            out int priority)
+            out long priority)
         {
             priority = 0;
             if (!TryWinningLayer(map, property, out style))
@@ -900,14 +895,14 @@ namespace Velvet
                 return false;
             }
             var layers = map[property];
-            priority = layers.Keys[layers.Count - 1];
+            priority = StyleLayerPriority.RankOf(layers.Keys[layers.Count - 1]);
             return true;
         }
 
         // Registers style at priority for its property and applies the
         // winning (highest-priority) layer inline. Base utilities use StyleLayerPriority.Base
         // (the default); variant manipulators pass their state's priority so a variant layers OVER the base.
-        public static void Apply(VisualElement element, in ArbitraryStyle style, int priority = StyleLayerPriority.Base)
+        public static void Apply(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
@@ -918,7 +913,7 @@ namespace Velvet
             {
                 if (!map.TryGetValue(style.Property, out var layers))
                 {
-                    layers = new SortedList<int, ArbitraryStyle>();
+                    layers = new SortedList<long, ArbitraryStyle>();
                     map[style.Property] = layers;
                 }
                 if (!layers.TryGetValue(priority, out var held) || !SortsAfter(held, style))
@@ -930,8 +925,8 @@ namespace Velvet
             Reproject(element, map);
         }
 
-        // Two values of one property at one priority keep the one Tailwind emits later (StyleCandidateOrder),
-        // whichever was applied last. A style no class was parsed into carries no candidate and replaces the
+        // Two values of one property written without a variant share a layer key, and keep the one Tailwind
+        // emits later (StyleCandidateOrder), whichever was applied last. A style no class was parsed into carries no candidate and replaces the
         // layer. The loser is not kept: a class diff that removes the winner re-applies the survivors.
         private static bool SortsAfter(in ArbitraryStyle held, in ArbitraryStyle incoming)
             => held.Candidate != null && incoming.Candidate != null
@@ -955,21 +950,21 @@ namespace Velvet
         // ApplyCombinedFilter is stable first-application order. A later re-apply — including one after
         // the stack emptied (its tombstone keeps the entry) — reuses the existing entry, preserving the
         // name's original compose slot.
-        private static void ApplyCustomFilterLayer(LayerMap map, in ArbitraryStyle style, int priority)
+        private static void ApplyCustomFilterLayer(LayerMap map, in ArbitraryStyle style, long priority)
         {
             var name = style.Custom!.Name;
             var stack = FindCustomStack(map, name);
             if (stack == null)
             {
-                stack = new SortedList<int, ArbitraryStyle>();
-                (map.Customs ??= new List<(string, SortedList<int, ArbitraryStyle>)>()).Add((name, stack));
+                stack = new SortedList<long, ArbitraryStyle>();
+                (map.Customs ??= new List<(string, SortedList<long, ArbitraryStyle>)>()).Add((name, stack));
             }
             stack[priority] = style;
         }
 
         // The custom filter layer stack registered under name, or null when the name has never been
         // applied to this element. Linear scan by design: see LayerMap.Customs.
-        private static SortedList<int, ArbitraryStyle>? FindCustomStack(LayerMap map, string name)
+        private static SortedList<long, ArbitraryStyle>? FindCustomStack(LayerMap map, string name)
         {
             var customs = map.Customs;
             if (customs == null)
@@ -993,7 +988,7 @@ namespace Velvet
         // NB FilterCustom layers are name-keyed (LayerMap.Customs) and only clearable through the
         // ArbitraryStyle-aware overload below, which carries the name; the property dictionary this
         // overload operates on never holds them.
-        public static void Clear(VisualElement element, ArbitraryProperty property, int priority = StyleLayerPriority.Base)
+        public static void Clear(VisualElement element, ArbitraryProperty property, long priority = StyleLayerPriority.Base)
         {
             if (!s_layers.TryGetValue(element, out var map))
             {
@@ -1014,7 +1009,7 @@ namespace Velvet
         // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
         // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
         // style; every other property clears exactly like the (property, priority) overload.
-        public static void Clear(VisualElement element, in ArbitraryStyle style, int priority = StyleLayerPriority.Base)
+        public static void Clear(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
             {
@@ -1325,12 +1320,12 @@ namespace Velvet
             return TryLayeredWinner(map, slot, out var winner) ? winner : null;
         }
 
-        // The highest-priority layer among the properties writing slot; on a tie the narrower property, the
-        // later one in WritersOf.
+        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's className
+        // position — and on an equal key the narrower property, the later one in WritersOf.
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
             winner = default;
-            var best = int.MinValue;
+            var best = long.MinValue;
             var found = false;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
@@ -1371,7 +1366,7 @@ namespace Velvet
         // no resolver owns — e.g. font-[..], owned by StyleFontResolver — must never enter the class list).
         // The caller must have confirmed IsInlineResolved(core) and stripped the important bang; priority
         // is the layer the bang selects (Important when present, Base otherwise). Mirror of ClearClassToken.
-        public static void ApplyClassToken(VisualElement element, string core, int priority, bool addToClassListFallback = true)
+        public static void ApplyClassToken(VisualElement element, string core, long priority, bool addToClassListFallback = true)
         {
             if (TryParse(core, out var style))
             {
@@ -1389,7 +1384,7 @@ namespace Velvet
 
         // Clears the inline style an inline-value class token applied (see ApplyClassToken), falling back
         // to removing it from the USS class list when neither resolver claims it.
-        public static void ClearClassToken(VisualElement element, string core, int priority)
+        public static void ClearClassToken(VisualElement element, string core, long priority)
         {
             if (TryParse(core, out var style))
             {
@@ -1414,7 +1409,7 @@ namespace Velvet
         // resolved syntactically. The class-list removal mirrors the never-registered apply, which
         // fell through to the class list — each action is a no-op in the other's scenario. Returns
         // false when the token is not a custom-filter shape at all.
-        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, int priority)
+        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, long priority)
         {
             if (!TryResolveUnregisteredFilterClear(core, out var style))
             {
@@ -1525,7 +1520,7 @@ namespace Velvet
         // alike; across priorities the higher one does.
         private static void ApplyCombinedFlex(VisualElement element, LayerMap map)
         {
-            int? shorthandPriority = null;
+            long? shorthandPriority = null;
             if (TryTopLayer(map, ArbitraryProperty.Flex, out var shorthand, out var top))
             {
                 shorthandPriority = top;
@@ -1553,7 +1548,7 @@ namespace Velvet
         // Whether the shorthand at shorthandPriority sets longhand's slot. When it does not, the longhand's own
         // layer is written there, or the slot is cleared for the class list.
         private static bool ShorthandSets(VisualElement element, LayerMap map, ArbitraryProperty longhand,
-            int? shorthandPriority, int? classPriority)
+            long? shorthandPriority, long? classPriority)
         {
             var hasOwn = TryTopLayer(map, longhand, out var own, out var ownPriority);
             if (hasOwn && !(ownPriority < shorthandPriority))
@@ -1571,9 +1566,9 @@ namespace Velvet
 
         private struct FlexClassRanks
         {
-            public int? Grow;
-            public int? Shrink;
-            public int? Basis;
+            public long? Grow;
+            public long? Shrink;
+            public long? Basis;
         }
 
         private static readonly StyleLonghandSet s_flexLonghands = StyleArbitraryLonghands.Of(ArbitraryProperty.Flex);
@@ -1608,7 +1603,7 @@ namespace Velvet
             return ranks;
         }
 
-        private static int? Raise(int? top, bool writes, int priority)
+        private static long? Raise(long? top, bool writes, long priority)
             => writes ? Math.Max(top ?? priority, priority) : top;
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
@@ -1684,6 +1679,19 @@ namespace Velvet
         // filter set is single-sourced — see IsFilter.
         private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
 
+        // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
+        internal static void RecomposeFilter(VisualElement element)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                ApplyCombinedFilter(element, map);
+            }
+            else
+            {
+                StyleFilterEngineWrite.Write(element, null);
+            }
+        }
+
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
             List<FilterFunction>? functions = null;
@@ -1723,10 +1731,7 @@ namespace Velvet
                 }
             }
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write). It
-            // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // resolved transition lists the tween does not run under (the engine's own animation runs the change,
-            // or no transition does), or a non-interpolable change.
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
             if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
             {
                 StyleFilterEngineWrite.Write(element, functions);
@@ -1826,7 +1831,7 @@ namespace Velvet
                     return;
                 case ArbitraryProperty.TransformOrigin:
                     element.style.transformOrigin = new TransformOrigin(
-                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2));
+                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
                     return;
                 case ArbitraryProperty.AspectRatio:
                 {
@@ -1966,7 +1971,10 @@ namespace Velvet
             // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
-                element.style.filter = StyleKeyword.Null;
+                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
+                {
+                    StyleFilterEngineWrite.Write(element, null);
+                }
                 return true;
             }
             return false;

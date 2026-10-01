@@ -17,8 +17,9 @@ namespace Velvet.Tests
     /// <c>italic</c>/<c>not-italic</c>/<c>bold-italic</c> set the italic axis. Later classes of the same
     /// facet win, and the three facets coexist so <c>font-bold italic</c> composes.</item>
     /// <item>With no registered family a request folds to the binary <c>-unity-font-style</c> threshold
-    /// (weight ≥ 600 → bold); with a family it selects the closest registered weight and reports the
-    /// faux bold/italic the chosen asset cannot satisfy.</item>
+    /// (weight ≥ 600 → bold); with a family it selects the weight CSS's font matching selects, among the
+    /// faces of the requested style first, and reports the faux bold/italic the chosen asset cannot
+    /// satisfy.</item>
     /// <item>Mutating the registry raises <see cref="VelvetFonts.FontsChanged"/>.</item>
     /// </list>
     /// </summary>
@@ -100,6 +101,26 @@ namespace Velvet.Tests
             Assume.That(StyleFontClass.TryExtract(new[] { "font-sans" }, out var intent), Is.True);
             Assert.That((intent.HasFamily, intent.Family, intent.HasWeight, intent.HasItalic),
                 Is.EqualTo((true, "sans", false, false)));
+        }
+
+        [Test]
+        public void Given_AnImportantArbitraryWeight_When_Extracted_Then_SetsWeight()
+        {
+            // Act
+            var found = StyleFontClass.TryExtract(new[] { "!font-[weight:700]" }, out var intent);
+
+            // Assert
+            Assert.That((found, intent.HasWeight, (int)intent.Weight), Is.EqualTo((true, true, 700)));
+        }
+
+        [Test]
+        public void Given_AnImportantWeightBeforeALaterPlainWeight_When_Extracted_Then_TheImportantOneWins()
+        {
+            // Act
+            StyleFontClass.TryExtract(new[] { "font-[weight:700]!", "font-[weight:300]" }, out var intent);
+
+            // Assert
+            Assert.That((int)intent.Weight, Is.EqualTo(700));
         }
 
         [Test]
@@ -309,6 +330,190 @@ namespace Velvet.Tests
             {
                 Object.DestroyImmediate(asset);
             }
+        }
+
+        // Each available set puts the weight CSS selects on the other side of the request from the nearest
+        // weight, or from the heavier of two equally near ones.
+        [TestCase(500, new[] { 400, 600 }, 400)]
+        [TestCase(400, new[] { 350, 500 }, 500)]
+        [TestCase(480, new[] { 440, 510 }, 440)]
+        [TestCase(300, new[] { 250, 320 }, 250)]
+        [TestCase(600, new[] { 400, 900 }, 900)]
+        public void Given_AFamilyWithoutTheRequestedWeight_When_Matched_Then_CssSearchOrderDecides(
+            int requested, int[] available, int expected)
+        {
+            // Arrange
+            var family = FamilyWithWeights(available);
+
+            // Act
+            var entry = family.FindClosestWeight((VelvetFontWeight)requested);
+
+            // Assert
+            Assert.That((int)entry.weight, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): here the weight CSS selects is also the nearest one, which the
+        // base already returned; these pin the order within each pass and the exact match.
+        [TestCase(300, new[] { 100, 200 }, 200)]
+        [TestCase(600, new[] { 700, 900 }, 700)]
+        [TestCase(450, new[] { 300, 420 }, 420)]
+        [TestCase(450, new[] { 600, 700 }, 600)]
+        [TestCase(400, new[] { 450, 500 }, 450)]
+        [TestCase(300, new[] { 500, 700 }, 500)]
+        [TestCase(700, new[] { 300, 500 }, 500)]
+        [TestCase(400, new[] { 300, 400, 500 }, 400)]
+        [TestCase(300, new[] { 200, 300, 400 }, 300)]
+        [TestCase(700, new[] { 600, 700, 800 }, 700)]
+        public void Given_AFamily_When_Matched_Then_CssSearchOrderAgreesWithTheNearestWeight(
+            int requested, int[] available, int expected)
+        {
+            // Arrange
+            var family = FamilyWithWeights(available);
+
+            // Act
+            var entry = family.FindClosestWeight((VelvetFontWeight)requested);
+
+            // Assert
+            Assert.That((int)entry.weight, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_TwoEntriesAtTheRequestedWeight_When_Matched_Then_TheLaterIsSelected()
+        {
+            // Arrange
+            var earlier = new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal };
+            var later = new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal };
+            var family = new VelvetFontFamily("sans", earlier, later);
+
+            // Act
+            var entry = family.FindClosestWeight(VelvetFontWeight.Normal);
+
+            // Assert
+            Assert.That(entry, Is.SameAs(later));
+        }
+
+        private static VelvetFontFamily FamilyWithWeights(int[] weights)
+        {
+            var entries = new VelvetFontWeightEntry[weights.Length];
+            for (var i = 0; i < weights.Length; i++)
+            {
+                entries[i] = new VelvetFontWeightEntry { weight = (VelvetFontWeight)weights[i] };
+            }
+            return new VelvetFontFamily("sans", entries);
+        }
+
+        [Test]
+        public void Given_AnItalicFaceOnlyAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — CSS narrows by font-style before weight, so the regular italic beats the bold upright.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: true);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnUprightFaceOnlyAtAHeavierWeight_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange — the upright sibling of the italic narrowing: the regular slot holds only an italic.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == boldUpright, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnItalicFaceOnlyByAddressAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — an Addressables key is a face too. The cache is seeded so nothing is loaded.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                SeedAddressCache("Fonts/RegularItalic", regularItalic);
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italicAddress = "Fonts/RegularItalic" },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = boldUpright }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: true);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        [Test]
+        public void Given_AnUprightFaceOnlyByAddressAtAHeavierWeight_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var boldUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                SeedAddressCache("Fonts/BoldUpright", boldUpright);
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, uprightAddress = "Fonts/BoldUpright" }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == boldUpright, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(boldUpright);
+            }
+        }
+
+        private static void SeedAddressCache(string key, FontAsset asset)
+        {
+            var field = typeof(VelvetFonts).GetField("_addrCache",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var cache = (Dictionary<string, FontAsset>)field.GetValue(null);
+            cache[key] = asset;
         }
 
         #endregion

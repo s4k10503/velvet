@@ -15,6 +15,12 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
+A list whose every check passed is refused too while the head still has a workflow run to finish,
+carries a workflow whose newest run failed, or lacks a context its base requires; `campaign.py`'s
+rule holds the mutation campaign. All of it is read off the head's workflow runs and the base's
+rules inside the same pair of head readings, and `scripts/pr/expected_checks.py` owns what each of
+the first three is and why.
+
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
 head on another repository, and a long-lived head; `merge_without_branch_deletion.py` for the flag;
@@ -26,12 +32,17 @@ reporting is the convenience; these are what hold when nobody runs it.
 
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             program_invocations, unexpanded)
 import repository
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "pr"))
+import campaign
+import expected_checks
 
 
 HOOK_TOOLS = {"Bash"}
@@ -61,9 +72,22 @@ def gh_json(cwd, args):
 
 
 def head_sha(cwd, number):
-    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", "headRefOid"])
+    return pull_request(cwd, number, fields="headRefOid")[0]
+
+
+def pull_request(cwd, number, fields="headRefOid,labels,baseRefName"):
+    """(head, label names, base), each None where unread and the last two None where the head is."""
+    payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", fields])
     head = payload.get("headRefOid") if isinstance(payload, dict) else None
-    return head if isinstance(head, str) and head else None
+    if not (isinstance(head, str) and head):
+        return None, None, None
+    base = payload.get("baseRefName")
+    base = base if isinstance(base, str) and base else None
+    labels = payload.get("labels")
+    if not isinstance(labels, list) or not all(
+            isinstance(label, dict) and isinstance(label.get("name"), str) for label in labels):
+        return head, None, base
+    return head, frozenset(label["name"] for label in labels), base
 
 
 def checks_of(cwd, number):
@@ -79,6 +103,36 @@ def checks_of(cwd, number):
             and isinstance(entry.get("bucket"), str) for entry in listed):
         return None
     return listed
+
+
+def campaign_runs(cwd, sha):
+    """Every workflow run whose head is `sha`, or None where they could not all be read."""
+    return expected_checks.listed_runs(
+        gh_json(cwd, ["api", expected_checks.runs_path("{owner}/{repo}", sha)]))
+
+
+# What one merge reads: the pull request, its checks, its runs, its base's rules and its head again,
+# and then the jobs of at most `JOB_READS` runs still open. Each reading is bounded by `repository.gh`,
+# and `ReadingBudgetTests` holds the sum under the timeout this hook is registered with — past which
+# the harness abandons the hook and the merge goes ahead unguarded. A head with more open runs than
+# that is refused rather than read.
+READINGS = 5
+JOB_READS = 1
+
+
+def run_jobs(cwd, runs):
+    """The jobs of each run in `runs` by run id, None for one left unread."""
+    return {run.get("id"): expected_checks.listed_jobs(
+                gh_json(cwd, ["api", expected_checks.jobs_path("{owner}/{repo}", run)]))
+            for run in runs}
+
+
+def required_contexts(cwd, base):
+    """The contexts the rulesets over `base` require, None where `base` or the rules went unread."""
+    if base is None:
+        return None
+    return expected_checks.listed_required(
+        gh_json(cwd, ["api", expected_checks.rules_path("{owner}/{repo}", base)]))
 
 
 def merges(command):
@@ -98,13 +152,19 @@ def unproven(asked, cwd):
         number = next((token for token in operands if token.isdigit()), None)
         label = "#" + number if number else "the current branch"
 
-        before = head_sha(cwd, number)
+        before, labels, base = pull_request(cwd, number)
         if before is None:
             # gh is unreachable or this is not a pull request; the other guards still apply and this
             # one declines to invent an answer.
             continue
 
         listed = checks_of(cwd, number)
+        runs = campaign_runs(cwd, before)
+        now = time.time()
+        others = campaign.others(runs or [])
+        opened = expected_checks.open_runs(runs or [], now)
+        jobs = run_jobs(cwd, opened) if len(opened) <= JOB_READS else None
+        required = required_contexts(cwd, base)
         after = head_sha(cwd, number)
 
         # Past the first reading a reading that failed is refused, where the arm above lets one
@@ -118,13 +178,45 @@ def unproven(asked, cwd):
             found.append((label, f"head moved from {before[:7]} to {after[:7]} while its checks were read"))
         elif listed is None:
             found.append((label, f"the check list for {before[:7]} could not be read"))
-        elif not listed:
-            found.append((label, f"no check ran for {before[:7]}: a workflow was never triggered for it"))
+        elif runs is None:
+            found.append((label, f"the workflow runs of {before[:7]} could not all be read"))
+        elif required is None:
+            found.append((label, f"which checks {base or 'its base'} requires could not be read"))
+        elif labels is None:
+            found.append((label, f"its labels could not be read, so whether it owes a "
+                                 f"{campaign.WORKFLOW} run is not known"))
+        elif jobs is None:
+            found.append((label, f"{len(opened)} workflow runs at {before[:7]} are still open, and "
+                                 f"this guard reads the jobs of at most {JOB_READS} inside its "
+                                 f"timeout: wait for them, or end a stuck one ("
+                                 + "; ".join(expected_checks.stuck_exit(run) for run in opened)
+                                 + "), or ask `settle.py merge`, which reads them all"))
         else:
+            waiting = expected_checks.unfinished(others, jobs, now)
+            failing = expected_checks.failed(others, jobs, now)
+            absent = expected_checks.absent(required, (entry["name"] for entry in listed))
             unfinished = sorted(entry["name"] for entry in listed
                                 if entry["bucket"] not in TERMINAL_PASS)
+            if not listed and not waiting:
+                found.append((label, f"no check ran for {before[:7]}: a workflow was never "
+                                     f"triggered for it"))
+            elif absent:
+                found.append((label, "required by {} and not reported at {}: {}".format(
+                    base, before[:7], ", ".join(absent))))
             if unfinished:
                 found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
+            if waiting:
+                found.append((label, "workflow runs not finished at {}: {}".format(
+                    before[:7], ", ".join(waiting))))
+            if failing:
+                found.append((label, "workflow runs failed at {}: {}".format(
+                    before[:7], ", ".join(failing))))
+            # The reading `settle.campaign_reason` takes, which this hook cannot import.
+            newest = campaign.newest(runs)
+            if owed := campaign.reason(
+                    labels, campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now)),
+                    before, expected_checks.stuck_exit(newest) if newest else ""):
+                found.append((label, owed))
     return found
 
 

@@ -567,37 +567,29 @@ namespace Velvet.Tests
             Assert.That((whileWrapping, Inline(container.style.marginLeft)), Is.EqualTo(("-8", "4")));
         }
 
-        // GREEN_ON_BASE(characterization): the base nulled a gap row's first-child edge unconditionally, which
-        // a hand-back writing nothing where the element keeps no layers would stop.
         [Test]
-        public void Given_AnElementTheReconcilerRemovedFromAGapRow_When_ItIsReparentedAsAnotherRowsFirstChild_Then_ItsStaleGapIsCleared()
+        public void Given_AnElementInAGapRow_When_TheReconcilerRemovesIt_Then_ItCarriesNoGap()
         {
-            // Arrange — removal drops the element's layer map but leaves its inline gap; code that kept a
-            // reference then puts it first in another gap row.
+            // Arrange — code that kept a reference to a removed element can put it back in another row, so
+            // the gap it carried in this one must not leave with it.
             using var scope = new ReconcilerScope();
-            var ctx = ReconcilerContextProbe.Of(scope);
             var before = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a"), V.Div(key: "b") }),
-                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
             var removed = scope.Root[0][1];
+            var inRow = Inline(removed.style.marginLeft);
             var after = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a") }),
-                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
             };
-            scope.Reconciler.Reconcile(scope.Root, before, after);
-            var stale = Inline(removed.style.marginLeft);
-            var other = scope.Root[1];
-            other.Insert(0, removed);
 
             // Act
-            ctx.GapManipulators[other].Apply();
+            scope.Reconciler.Reconcile(scope.Root, before, after);
 
-            // Assert — the stale gap rides along, since an element that kept none leaves the same slot.
-            Assert.That((stale, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
+            // Assert — the gap it carried in the row rides along, since one never written reads null too.
+            Assert.That((inRow, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
         }
 
         // GREEN_ON_BASE(characterization): a pooled Label keeps nothing of the gap row it left, which a

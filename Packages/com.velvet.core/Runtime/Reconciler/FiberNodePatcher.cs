@@ -91,7 +91,7 @@ namespace Velvet
                     }
                     break;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
-                    PatchMotion(element, oldMotion, newMotion);
+                    PatchMotionSlot(element, oldMotion, newMotion);
                     break;
                 // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
                 // patchable leaf — no case here.
@@ -217,6 +217,7 @@ namespace Velvet
             if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
+                StyleResponsiveScope.OnClassesChanged(oldClasses ?? Array.Empty<string>(), newClasses ?? Array.Empty<string>());
             }
             // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
             // input moved: applying a variant's payload moves the token set without moving either class
@@ -308,6 +309,32 @@ namespace Velvet
             }
         }
 
+        // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
+        // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
+        private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        {
+            var wasZ = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real);
+            var motion = wasZ ? real : element;
+            PatchMotion(motion, oldNode, newNode);
+            var isZ = FiberZLayerCoordinator.TryClassify(
+                RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
+            if (!wasZ)
+            {
+                if (isZ)
+                {
+                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, motion, resolvedZ);
+                }
+            }
+            else if (isZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, element, motion, resolvedZ);
+            }
+            else
+            {
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, motion);
+            }
+        }
+
         // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
         // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
         // load-bearing:
@@ -387,8 +414,7 @@ namespace Velvet
         // paintTail is the one per-path knob, and for the three silhouette layers it is the same distinction
         // the gradient's skewable flag draws: an ElementNode may render a sheared silhouette, a Motion never
         // does, so a Motion's gradient stays on the straight background-image path and those three stand down
-        // entirely. The ring rides the same knob on a reason of its own, stated where the Motion path warns
-        // about it (FiberNodeFactory.WarnIgnoredMotionUtilities).
+        // entirely.
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {
@@ -396,13 +422,12 @@ namespace Velvet
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
             _appliers.ApplyParticlesSpacer(element, classNames);
-            if (!paintTail)
+            if (paintTail)
             {
-                return;
+                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+                _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             }
-            var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-            _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
-            _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
         }
 
@@ -610,9 +635,6 @@ namespace Velvet
             // classes present, and the three silhouette paints stand down (skewable: false). A Motion also
             // carries no clip wrapper, so nothing can suppress a paint here.
             ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, paintTail: false, clipActive: false);
-            // A Motion carries neither a shadow paint nor a ring overlay: the create path warns and skips both
-            // on a Motion, and paintTail:false above keeps the patch from attaching one — so there is nothing
-            // here to update.
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
@@ -620,6 +642,10 @@ namespace Velvet
             if (newNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
+            }
+            else
+            {
+                MotionLayoutIdDriver.Forget(element, _ctx);
             }
         }
 
@@ -1051,7 +1077,7 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 var target = layerHost.Document.rootVisualElement;
-                VelvetStyleUtilities.SyncHost(placeholder, target);
+                VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, target);
                 if (oldNode.FocusOrder != newNode.FocusOrder)
                 {
                     FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
@@ -1181,7 +1207,7 @@ namespace Velvet
             // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
-            VelvetStyleUtilities.SyncHost(placeholder, record.Document.rootVisualElement);
+            VelvetStyleUtilities.CarryToHost(_ctx.BatchScheduler.Anchor ?? placeholder, record.Document.rootVisualElement);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
@@ -1272,7 +1298,17 @@ namespace Velvet
             {
                 _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
+                // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
+                // suspend — leaves on the target what it inserted before the throw, and the range recorded is
+                // what the Portal's cleanup removes.
+                RecordPatchedPortalRange(placeholder, target, prevState, beforeTailCount, tenancy, shiftedBefore);
             }
+        }
+
+        private void RecordPatchedPortalRange(
+            VisualElement placeholder, VisualElement target, PortalSlotInfo prevState, int beforeTailCount,
+            InlineTenancy? tenancy, int shiftedBefore)
+        {
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
@@ -1843,6 +1879,10 @@ namespace Velvet
             {
                 _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
             }
+            if (oldProps.NoDrag != newProps.NoDrag)
+            {
+                _appliers.ApplyNoDrag(element, newProps.NoDrag);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.
@@ -2141,7 +2181,7 @@ namespace Velvet
         #region Variant Manipulator
 
         // Configures (creates / updates / removes) the element's StyleVariantManipulator
-        // from the state-variant tokens (hover:/focus:/active:) found in classNames.
+        // from the state-variant tokens (hover:/focus:/active:/disabled:) found in classNames.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
             var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
@@ -2149,13 +2189,42 @@ namespace Velvet
             var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
             var active = ExtractVariant(classNames, StyleVariantKind.Active, out var activeDecl);
             var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
+            var disabled = ExtractVariant(classNames, StyleVariantKind.Disabled, out var disabledDecl);
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
-                || active.Length > 0 || @checked.Length > 0;
+                || active.Length > 0 || @checked.Length > 0 || disabled.Length > 0
+                || StacksElementLocalInner(classNames);
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
                 new VariantOp(
-                    new VariantPayloads(hover, focus, focusVisible, active, @checked),
-                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl)));
+                    new VariantPayloads(hover, focus, focusVisible, active, @checked, disabled),
+                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl,
+                        disabledDecl)));
+        }
+
+        // A stacked element-local inner (dark:hover:, has-[:checked]:hover:) is created when its outer gate opens
+        // and seeds itself from the element's own manipulator (ReconcilerContext.GateStackedVariant), so an element
+        // carrying one keeps that manipulator tracking its state even with no payload of its own. A has- token's
+        // own payload is its first inner, so the chain is read from there.
+        private static bool StacksElementLocalInner(string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                string? rest = null;
+                if (!StyleVariantClass.TryParse(className, out _, out rest)
+                    && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
+                {
+                    continue;
+                }
+                while (StyleVariantClass.TryParse(rest, out var inner, out var next))
+                {
+                    if (StyleStackedVariantManipulator.IsElementLocalInner(inner))
+                    {
+                        return true;
+                    }
+                    rest = next;
+                }
+            }
+            return false;
         }
 
         private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)
@@ -2273,13 +2342,15 @@ namespace Velvet
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked])),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Disabled])),
                     new VariantDeclarations(
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.FocusWithin]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Active]),
-                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]))));
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Disabled]))));
             }
             return configs;
         }
@@ -2409,10 +2480,10 @@ namespace Velvet
             }
         }
 
-        // Applies / clears each has-[.class]: rule's payload by querying the element's descendants for the
-        // named class. Stateless and idempotent. The scan iterates the direct children's subtrees (element.Q
-        // is root-inclusive, so querying the element itself would self-match — :has() is descendant-only, and
-        // a self-match would also latch when the payload class equals the queried class).
+        // Applies / clears each has-[.class]: rule's payload by scanning the element's descendants for the
+        // named class. Stateless and idempotent. The scan starts at the direct children, never the element
+        // itself — :has() is descendant-only, and a self-match would also latch when the payload class equals
+        // the queried class.
         private static void EvaluateHasClass(ReconcilerContext ctx, VisualElement element,
             List<(string? ClassName, string?[] Payloads, int[] Declarations)> rules)
         {
@@ -2421,7 +2492,7 @@ namespace Velvet
                 var on = false;
                 foreach (var child in element.Children())
                 {
-                    if (child.Q(className: rule.ClassName) != null)
+                    if (SubtreeCarriesClass(child, rule.ClassName!))
                     {
                         on = true;
                         break;
@@ -2430,6 +2501,24 @@ namespace Velvet
                 StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
                     declarations: rule.Declarations);
             }
+        }
+
+        // A class the projection took off an element to let a variant win still matches: :has(.foo) tests
+        // the class attribute, which the cascade never edits.
+        private static bool SubtreeCarriesClass(VisualElement root, string cls)
+        {
+            if (root.ClassListContains(cls) || StyleClassProjection.SuppressesDeclared(root, cls))
+            {
+                return true;
+            }
+            for (var i = 0; i < root.hierarchy.childCount; i++)
+            {
+                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Element-as-subject post-children pass for has-[.class]:. Re-derives every has-class rule on the
@@ -2582,7 +2671,7 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Attribute, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.AttributeOf(rule.Ns), _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.AttributeVariants.Remove(element);
@@ -2693,7 +2782,7 @@ namespace Velvet
                     present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
                 }
                 var on = StyleAttributeVariantClass.Matches(rule.ExpectedValue, present, actual);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Attribute, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.AttributeOf(rule.Ns), ctx,
                     declarations: rule.Declarations);
             }
         }
@@ -2755,7 +2844,7 @@ namespace Velvet
             }
         }
 
-        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/[&:nth-child(N)]:)
+        // Registers (or clears) the element's structural-variant rules (first:/last:/odd:/nth-N:/[&:nth-child(N)]:)
         // in the context side-table, re-deriving them from classNames. Clears any previously-applied
         // structural payloads first (the rule set may have changed). If the element is already parented (a
         // patch / child-only re-render) it is evaluated immediately against its current position; on initial
@@ -2766,13 +2855,13 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Structural, _ctx,
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, rule.Priority, _ctx,
                         declarations: rule.Declarations);
                 }
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)>? rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)>? rules = null;
             if (classNames != null)
             {
                 for (var i = 0; i < classNames.Length; i++)
@@ -2790,8 +2879,9 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                                int[] Declarations)>())
-                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i }));
+                                int[] Declarations, long Priority)>())
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i },
+                                StyleStructuralVariantClass.PriorityOf(cls, kind)));
                     }
                 }
             }
@@ -2825,12 +2915,12 @@ namespace Velvet
         // Applies / clears each structural rule's payload for an element at the given sibling position.
         private static void EvaluateStructural(
             ReconcilerContext ctx, VisualElement element, int index, int count,
-            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)> rules)
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> rules)
         {
             foreach (var rule in rules)
             {
                 var on = StyleStructuralVariantClass.Matches(rule.Kind, rule.N, index, count);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Structural, ctx,
+                StyleVariantPayload.Apply(element, rule.Payloads, on, rule.Priority, ctx,
                     declarations: rule.Declarations);
             }
         }
@@ -3259,7 +3349,8 @@ namespace Velvet
         private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
-            if (!StyleTextBalanceClass.HasTextBalanceClass(classNames))
+            var wrapStyle = StyleTextBalanceClass.ReadWrapStyle(classNames);
+            if (wrapStyle == TextWrapStyle.None)
             {
                 if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
                 {
@@ -3277,11 +3368,11 @@ namespace Velvet
 
             if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
             {
-                existing.Refresh();
+                existing.Refresh(wrapStyle);
             }
             else
             {
-                var manipulator = new StyleTextBalanceManipulator(_ctx);
+                var manipulator = new StyleTextBalanceManipulator(_ctx, wrapStyle);
                 element.AddManipulator(manipulator);
                 _ctx.TextBalanceManipulators[element] = manipulator;
             }

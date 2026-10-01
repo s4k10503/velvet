@@ -122,9 +122,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
-# Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
-# report a busy machine forever on an idle one.
-UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from unity_running import UNITY_RUNNING  # noqa: E402
 
 PASSED_ON_BASE = "passed on the base"
 RED_ON_BASE = "red on the base"
@@ -461,6 +460,31 @@ def python_comment_spans(text):
     return spans
 
 
+def python_docstring_spans(text):
+    """(start, end) for each docstring of a module, class or function in `text`, none where it does
+    not parse."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    starts = [start for start, _ in line_spans(text)]
+    lines = text.splitlines(keepends=True)
+
+    def offset(line, column):
+        # ast counts a column in UTF-8 bytes, and the mask counts characters.
+        return starts[line - 1] + len(lines[line - 1].encode("utf-8")[:column].decode("utf-8"))
+
+    spans = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                spans.append((offset(first.lineno, first.col_offset),
+                              offset(first.end_lineno, first.end_col_offset)))
+    return spans
+
+
 def comment_spans_of(relative, text):
     """Where a comment stands in a file, per its language -- what both readings above are taken from.
 
@@ -686,10 +710,15 @@ def outside_comments(relative, text):
     """Each line with its comments blanked to spaces and its literals left standing.
 
     `code_lines` blanks the literals along with them, and a case whose only change is the value it
-    compares against would read there as untouched.
+    compares against would read there as untouched. A Python docstring is blanked with the comments:
+    it is prose no run decides on, and a rewritten class docstring in a file where nothing else was
+    written otherwise put every case of that file on trial.
     """
     mask = [True] * len(text)
-    for start, end in comment_spans_of(relative, text):
+    spans = comment_spans_of(relative, text)
+    if relative.endswith(".py"):
+        spans = spans + python_docstring_spans(text)
+    for start, end in spans:
         mask[start:end] = [False] * max(0, min(end, len(text)) - start)
     return masked_lines(text, mask)
 

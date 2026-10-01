@@ -228,6 +228,7 @@ namespace Velvet
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
             _ctx.EventManager.UnbindAll(element);
             _ctx.ComponentRegistry.Remove(element);
+            RelationalSourceSet.DropDeparted(_ctx, element);
             DetachManipulator(element, _ctx.GestureManipulators);
             DetachManipulator(element, _ctx.VariantManipulators);
             DetachManipulator(element, _ctx.ConditionalVariantManipulators);
@@ -252,12 +253,12 @@ namespace Velvet
             // process-wide VelvetTheme.DarkModeChanged) so they do not leak past unmount.
             if (_ctx.StackedVariantManipulators.Count > 0)
             {
-                List<(VisualElement, object, int, StyleVariantKind, string, string?)>? stale = null;
+                List<(VisualElement, object, long, StyleVariantKind, string, string?)>? stale = null;
                 foreach (var kv in _ctx.StackedVariantManipulators)
                 {
                     if (kv.Key.target == element)
                     {
-                        (stale ??= new List<(VisualElement, object, int, StyleVariantKind, string, string?)>()).Add(kv.Key);
+                        (stale ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
                     }
                 }
                 if (stale != null)
@@ -349,6 +350,10 @@ namespace Velvet
             {
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
+            }
+            if (_ctx.LeadingLengthProbes.TryGetValue(element, out var leadingProbe))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
             if (_ctx.GradientBackgrounds.ContainsKey(element))
             {
@@ -483,6 +488,7 @@ namespace Velvet
                 DndOverlayDriver.Detach(element, _ctx);
                 _ctx.DragOverlayBindings.Remove(element);
             }
+            _ctx.NoDragElements.Remove(element);
         }
 
         // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.

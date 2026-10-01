@@ -259,6 +259,18 @@ namespace Velvet
             }
         }
 
+        internal void ApplyNoDrag(VisualElement element, bool noDrag)
+        {
+            if (noDrag)
+            {
+                _ctx.NoDragElements.Add(element);
+            }
+            else
+            {
+                _ctx.NoDragElements.Remove(element);
+            }
+        }
+
         // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
         private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
         private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;

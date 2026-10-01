@@ -27,7 +27,9 @@ namespace Velvet.Tests
     /// the renderer set on that row's own node does not change that: the selector's key is the identity
     /// the range diff runs on.</item>
     /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
-    /// driven from a scroll rather than from a reconcile pass.</item>
+    /// driven from a scroll rather than from a reconcile pass, and so have the layout effects of a component
+    /// inside an item. A component item mounted by its host's pass commits its own subtree only, leaving a
+    /// component that pass mounted ahead of the list to commit once its ref is attached.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
     /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
@@ -58,6 +60,12 @@ namespace Velvet.Tests
     /// set up, and a component it mounted there not left mounted.</item>
     /// <item>An error boundary above the list that catches a row's render during a range update ends the
     /// rendering of rows there, and leaves none of the rows that update built mounted.</item>
+    /// <item>A row that is itself an error boundary, mounting in its host's pass, catches its child's render
+    /// there without stopping the rest of that pass, and an enter its failed render queued completes nowhere
+    /// while one the host queued ahead of it still completes. A row that is not one leaves the abort of a
+    /// boundary above it that caught on its own pass, and nothing later in that pass renders.</item>
+    /// <item>An enter with nothing to play in a row rendered outside a pass completes before the range update
+    /// returns.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -216,6 +224,95 @@ namespace Velvet.Tests
 
             // Assert — the last item the window rendered is the one the shared capture holds.
             Assert.That(captured, Is.SameAs(visibleContainer.ElementAt(visibleContainer.childCount - 1)));
+        }
+
+        private static int s_itemLayoutEffectRuns;
+
+        private static StateUpdater<int> s_setRefHostTick;
+        private static readonly Ref<Label> s_beforeListRef = new();
+        private static string s_beforeListReading;
+
+        [Component]
+        private static VNode RefReadingLayoutRender()
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_beforeListReading = s_beforeListRef.Current != null ? "ref attached" : "ref null";
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "before", refCallback: s_beforeListRef.SetElement);
+        }
+
+        [Component]
+        private static VNode ComponentAheadOfListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRefHostTick = setTick;
+            return V.Fragment(children: new VNode[]
+            {
+                tick > 0 ? V.Component(RefReadingLayoutRender, key: "before") : null,
+                V.VirtualList(
+                    items: tick > 0 ? new[] { "a" } : Array.Empty<string>(),
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(LayoutEffectItemRender, key: item),
+                    overscan: 0,
+                    key: "list"),
+            });
+        }
+
+        [Test]
+        public void Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the item mounts through a mount of its own, whose commit is scoped to that item, before the
+            // host's pass attaches the refs it queued.
+            s_itemLayoutEffectRuns = 0;
+            s_beforeListReading = "never ran";
+            s_beforeListRef.Set(null);
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ComponentAheadOfListHostRender, key: "host"));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 50f);
+            s_setRefHostTick.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert — the item's run count is read beside the reading, because a host that rendered no item
+            // commits nothing scoped and reaches the same reading with nothing about the scope measured.
+            Assert.That($"{s_itemLayoutEffectRuns} | {s_beforeListReading}", Is.EqualTo("1 | ref attached"));
+        }
+
+
+        [Component]
+        private static VNode LayoutEffectItemRender()
+        {
+            Hooks.UseLayoutEffect(() => { s_itemLayoutEffectRuns++; return (Action)null; }, Array.Empty<object>());
+            return V.Label(text: "row");
+        }
+
+        [Test]
+        public void Given_AnItemHoldingAComponentWithALayoutEffect_When_ARangeIsRenderedOutsideAPass_Then_TheLayoutEffectHasRunWhenTheUpdateReturns()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no item until the range
+            // update below.
+            s_itemLayoutEffectRuns = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(key: item, children: new VNode[] { V.Component(LayoutEffectItemRender, key: "row") }),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Assert
+            Assert.That(s_itemLayoutEffectRuns, Is.EqualTo(1));
         }
 
         [Test]
@@ -1561,6 +1658,221 @@ namespace Velvet.Tests
                 "[" + thrown + "] thrown, child rendered " + s_rowRenders.Count(id => id == "child")
                     + " time(s), live: " + LiveRows(),
                 Is.EqualTo("[constructor refused] thrown, child rendered 1 time(s), live: none"));
+        }
+
+        #endregion
+
+        #region A row that is an error boundary
+
+        private static Action<int> s_rowBoundaryHostSetTick;
+        private static string s_throwingRowId;
+        private static int s_rowEnterCompletions;
+
+        [Test]
+        public void Given_ARowThatIsAnErrorBoundary_When_ItCatchesItsChildsRenderInItsHostsPass_Then_TheRestOfThatPassCommits()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; the row mounts through a mount of its own, inside the host's pass.
+            s_throwingRowId = "fresh";
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RowBoundaryListHostRender, key: "host"), CaughtErrors.Unlogged);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 200f);
+
+            // Act
+            s_rowBoundaryHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the row's fallback is read beside the label, since a row that never caught leaves the
+            // pass to commit as well.
+            Assert.That(
+                $"{root.Q<Label>("tick")?.text} | {root.Query<Label>().ToList().Any(label => label.text == "row-fallback")}",
+                Is.EqualTo("t1 | True"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base completes this enter inside the walk of the row.
+        // An enter now completes with the pass that rendered it, and a row rendered outside one is what this pins.
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInARow_When_ARangeIsRenderedOutsideAPass_Then_ItsCompletionHasRunWhenTheUpdateReturns()
+        {
+            // Arrange — a headless mount measures no viewport, so the list renders no row until the range
+            // update below.
+            s_rowEnterCompletions = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Div(children: new VNode[]
+                {
+                    V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                    {
+                        V.Motion(key: item, transition: StyleTransition.Fade, onEnterComplete: () => s_rowEnterCompletions++),
+                    }),
+                }),
+                overscan: 0));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_rowEnterCompletions, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARowBoundaryWhoseFailedRenderQueuedAnEnter_When_ItCatchesInItsHostsPass_Then_OnlyTheHostsEnterCompletes()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a
+            // range; that re-render first adds a presence whose enter plays nothing, ahead of the list.
+            s_throwingRowId = "fresh";
+            s_hostEnters = 0;
+            s_rowEnters = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(
+                root, V.Component(EnterRowListHostRender, key: "host"), CaughtErrors.Unlogged);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 200f);
+
+            // Act
+            s_enterRowHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the host's count is read beside the row's, since dropping every queued enter reads 0 for
+            // the row as well.
+            Assert.That($"{s_hostEnters} | {s_rowEnters}", Is.EqualTo("1 | 0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base ends no abort where a component's reconcile returns.
+        // Its pass stops at the row as well; what this pins is that a row that caught nothing leaves the abort an
+        // ancestor raised.
+        [Test]
+        public void Given_ARowBelowABoundaryWhosePassItIs_When_TheRowsChildThrowsInThatPass_Then_NothingLaterInThePassRenders()
+        {
+            // Arrange — as above, with the boundary being the host itself, whose own update is the pass.
+            s_throwingRowId = "fresh";
+            s_outerSiblingRenders = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(
+                root, V.Component(OuterBoundaryListHostRender, key: "host"), CaughtErrors.Unlogged);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()], 200f);
+
+            // Act
+            s_outerBoundarySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read beside the count, since a boundary that never caught leaves the sibling
+            // to render as well.
+            Assert.That($"{root.Q<Label>("outer-fallback") != null} | {s_outerSiblingRenders}", Is.EqualTo("True | 1"));
+        }
+
+        private static Action<int> s_enterRowHostSetTick;
+        private static int s_hostEnters;
+        private static int s_rowEnters;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode EnterRowBoundaryRender(string id)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "row-fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                {
+                    V.Motion(key: id, transition: StyleTransition.Fade, onEnterComplete: () => s_rowEnters++),
+                }),
+                V.Component(RowThrowerRender, id, key: "row"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode EnterRowListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_enterRowHostSetTick = setTick;
+            var items = tick == 0 ? CreateItems(1) : new[] { new TestItem { Id = "fresh", Name = "Fresh" } };
+            return V.Div(children: new VNode[]
+            {
+                tick == 0
+                    ? null
+                    : V.AnimatePresence(key: "host-presence", initial: false, children: new VNode[]
+                    {
+                        V.Motion(key: "h", transition: StyleTransition.Fade, onEnterComplete: () => s_hostEnters++),
+                    }),
+                V.VirtualList(
+                    items: items,
+                    keySelector: item => item.Id,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(EnterRowBoundaryRender, item.Id),
+                    overscan: 0),
+            });
+        }
+
+        private static Action<int> s_outerBoundarySetTick;
+        private static int s_outerSiblingRenders;
+
+        [Component(Compiler = false)]
+        private static VNode RowWrapperRender(string id) => V.Component(RowThrowerRender, id, key: "row");
+
+        [Component(Compiler = false)]
+        private static VNode OuterSiblingRender()
+        {
+            s_outerSiblingRenders++;
+            return V.Label(text: "sibling");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OuterBoundaryListHostRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "outer-fallback", text: "outer-fallback"));
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerBoundarySetTick = setTick;
+            var items = tick == 0 ? CreateItems(1) : new[] { new TestItem { Id = "fresh", Name = "Fresh" } };
+            return V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: items,
+                    keySelector: item => item.Id,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(RowWrapperRender, item.Id),
+                    overscan: 0),
+                V.Component(OuterSiblingRender, key: "sibling"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowThrowerRender(string id)
+        {
+            if (id == s_throwingRowId) throw new InvalidOperationException("row child refused " + id);
+            return V.Label(text: id);
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RowBoundaryRender(string id)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "row-fallback"));
+            return V.Component(RowThrowerRender, id, key: "row");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RowBoundaryListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_rowBoundaryHostSetTick = setTick;
+            var items = tick == 0 ? CreateItems(1) : new[] { new TestItem { Id = "fresh", Name = "Fresh" } };
+            return V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: items,
+                    keySelector: item => item.Id,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(RowBoundaryRender, item.Id),
+                    overscan: 0),
+                V.Label(name: "tick", text: "t" + tick),
+            });
         }
 
         #endregion

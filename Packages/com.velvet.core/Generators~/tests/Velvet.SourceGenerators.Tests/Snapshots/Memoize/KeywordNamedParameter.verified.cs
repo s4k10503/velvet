@@ -6,6 +6,6 @@ namespace MyApp.Pages
     partial class HomePage
     {
         private partial global::Velvet.VNode Build(string @class)
-            => global::Velvet.V.Memoized(() => Build_Impl(@class), new object?[] { @class });
+            => global::Velvet.V.Memoized(() => Build_Impl(@class), new object?[] { @class, this });
     }
 }

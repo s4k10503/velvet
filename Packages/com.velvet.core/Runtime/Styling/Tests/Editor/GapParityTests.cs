@@ -1,4 +1,5 @@
 using System.Collections;
+using System.IO;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -403,10 +404,73 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AWrappingRowWithOnlyARowGap_When_Reconciled_Then_EachChildTakesHalfOfItAboveAndBelow()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row flex-wrap gap-y-4", 2) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — with no column gap the horizontal edges stay unwritten.
+            var style = Container(scope.Root)[0].style;
+            Assert.That((style.marginTop.value.value, style.marginBottom.value.value, style.marginLeft.keyword,
+                    style.marginRight.keyword),
+                Is.EqualTo((Half4, Half4, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AHiddenChildAfterAGappedOne_When_ASpaceMarginLandsOnTheGapEdge_Then_ItGivesWayToTheChildsOwnMargin()
+        {
+            // Arrange — space-x-reverse puts the space margin on the edge the gap uses, and a hidden child takes
+            // no gap, so its margin there is the space's alone and yields to its own ml-[5px].
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-x-4 space-x-2 space-x-reverse", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child"),
+                    V.Div(className: "child hidden ml-[5px]"),
+                    V.Div(className: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — the gapped child's margin rides along: the space margin landing on the gap edge and adding
+            // to the gap there is the situation the name sets up.
+            var container = Container(scope.Root);
+            Assert.That((container[1].style.marginLeft.value.value, container[2].style.marginLeft.value.value),
+                Is.EqualTo((Space4 + Space2, 5f)));
+        }
+
+        [Test]
+        public void Given_AWrappingRowWithBothGaps_When_ItsRowGapLeaves_Then_TheContainerHandsBackItsVerticalMargins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row flex-wrap gap-4", 2) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var held = Container(scope.Root).style.marginTop.value.value;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-row flex-wrap gap-x-4", 2) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the margin before the patch rides along, since a container never held reads Null too.
+            var style = Container(scope.Root).style;
+            Assert.That((held, style.marginTop.keyword, style.marginBottom.keyword),
+                Is.EqualTo((-Half4, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_ASpaceRowWhoseLastChildCarriesARing_When_Reconciled_Then_ItsOverlayIsNotTheLastChild()
         {
             // Arrange — the ring overlay Velvet inserts after its element is not the author's, so the ringed
-            // child stays the last one. The second reconcile re-applies the row once the overlay is placed.
+            // child stays the last one.
             using var scope = new ReconcilerScope();
             VNode RowOf() => V.Div(className: "flex flex-row space-x-4", children: new VNode[]
             {
@@ -416,11 +480,10 @@ namespace Velvet.Tests
             });
             var tree1 = new VNode[] { RowOf() };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-
-            // Act
-            var tree2 = new VNode[] { RowOf() };
-            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
             var container = Container(scope.Root);
+
+            // Act — re-apply the row now that the overlay is in place.
+            scope.Reconciler.Context.GapManipulators[container].Apply();
 
             // Assert — the overlay's presence and the second child's margin ride along, so a row whose ring
             // never landed or whose space never ran cannot pass.
@@ -1753,6 +1816,8 @@ namespace Velvet.Tests
     {
         private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
+        private const string UserSheetPath = "Assets/VelvetGapWrapsByRule.uss";
+
         private readonly record struct DirectionState(bool Reversed);
 
         private sealed class DirectionStore : Store<DirectionState>
@@ -1798,6 +1863,7 @@ namespace Velvet.Tests
         {
             _sim?.Dispose();
             _sim = null;
+            AssetDatabase.DeleteAsset(UserSheetPath);
         }
 
         private VisualElement Root => _sim.rootVisualElement;
@@ -2088,10 +2154,9 @@ namespace Velvet.Tests
         {
             // Arrange — the rule wraps the row too, so dropping the class marker must end back on the wrap path
             // once resolvedStyle has caught up.
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/WrapsByStylesheetRule.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the test stylesheet loads");
-            Root.styleSheets.Add(sheet);
+            File.WriteAllText(UserSheetPath, ".test-wraps-by-rule { flex-wrap: wrap; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
             using var store = new ClassNameStore("flex flex-row flex-wrap test-wraps-by-rule gap-4 w-[150px] h-[60px]");
             s_classNameStore = store;
             using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));

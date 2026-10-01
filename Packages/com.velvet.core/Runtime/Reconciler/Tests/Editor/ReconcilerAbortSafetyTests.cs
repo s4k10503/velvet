@@ -9,31 +9,32 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies two properties of a same-key/same-index type flip whose replacement element
-    /// construction triggers an error-boundary abort (<see cref="ReconcilerContext.IsAborted"/>),
-    /// across every <c>ChildReconciler.PatchOrReplaceAtSlot</c> call site (the Common-phase indexed
-    /// loop, and both keyed Pass-1 linear-scan implementations — sync and time-sliced):
-    /// (1) the replacement element is still inserted at the slot — <see cref="ReconcilerContext.IsAborted"/>
-    /// only ever becomes true via a boundary's SUCCESSFUL fallback render (FiberErrorBoundary.TryCatch
-    /// calls SetAborted only after TryShowFallback's own Reconcile call returns without throwing), so by
-    /// the time the abort is observed the newly built element already holds the boundary's fully
-    /// rendered fallback content, not a half-built one — discarding it would strand the slot with
-    /// nothing where the fallback should be, which React's render/commit split never does (an error
-    /// boundary's fallback only ever replaces committed DOM, never leaves it empty mid-render); and
-    /// (2) the same abort stops the scan from processing any LATER sibling — it is left untouched
-    /// instead of being patched while the reconcile is aborted.
+    /// Specifies a same-key/same-index type flip whose replacement element is built by the
+    /// <c>ChildReconciler.PatchOrReplaceAtSlot</c> call sites (the Common-phase indexed loop, and both keyed
+    /// Pass-1 linear-scan implementations — sync and time-sliced).
+    /// <list type="bullet">
+    /// <item>Where an error boundary inside the replacement catches a render, the replacement is inserted
+    /// holding the fallback and the scan goes on to patch the later sibling, as React commits the rest of a
+    /// render around a boundary's fallback — in the indexed loop and the synchronous keyed scan.</item>
+    /// <item>Where the construction raises an abort (<see cref="ReconcilerContext.IsAborted"/>) instead — the
+    /// boundary inside it catching an element callback's error, or the callback raising the flag itself — the
+    /// replacement is still inserted and the scan leaves the later sibling untouched, in the indexed loop and
+    /// both keyed scans.</item>
+    /// </list>
     /// </summary>
     [TestFixture]
     internal sealed class ChildReconcilerAbortSafetyTests : ReconcilerTestFixture
     {
         private static bool s_fallbackShown;
         private static StateUpdater<bool> s_setFlag;
+        private static bool s_throwInCallback;
 
         public override void SetUp()
         {
             base.SetUp();
             s_fallbackShown = false;
             s_setFlag = default;
+            s_throwInCallback = false;
         }
 
         [Component]
@@ -55,15 +56,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ErrorBoundaryAbortsDuringIndexedReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        public void Given_AnErrorBoundaryCatchingInsideAnIndexedReplacement_When_Reconciled_Then_TheFallbackIsInsertedAndTheLaterSiblingIsPatched()
         {
             // Arrange — unkeyed siblings select the Common-phase indexed diff. The first sibling flips
             // from a Label to a Div wrapping an error boundary whose child throws; the flip's CanPatch
-            // decision is false, so building the replacement recurses into the boundary before the
-            // abort is observed. The boundary catches successfully, so the built Div (containing the
-            // "caught" fallback Label) is inserted at slot 0 despite the abort; the abort then stops
-            // the scan before the second sibling is reached, so its ORIGINAL text survives instead of
-            // being patched to "b-updated".
+            // decision is false, so building the replacement recurses into the boundary, which catches in
+            // the walk of the Div's children.
             using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
 
@@ -75,7 +73,7 @@ namespace Velvet.Tests
             var replacement = (VisualElement)container.ElementAt(0);
             Assert.That(
                 (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
-                Is.EqualTo((true, 2, "caught", "b")));
+                Is.EqualTo((true, 2, "caught", "b-updated")));
         }
 
         [Component]
@@ -97,11 +95,53 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ErrorBoundaryAbortsDuringKeyedSyncReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        public void Given_AnErrorBoundaryCatchingInsideAKeyedSyncReplacement_When_Reconciled_Then_TheFallbackIsInsertedAndTheLaterSiblingIsPatched()
         {
             // Arrange — keyed siblings with both keys present on both sides select the fully
             // synchronous keyed Pass-1 linear scan (the default V.Mount re-render path runs
-            // frameBudgetMs: 0). Same type-flip-triggers-abort shape as the indexed case above.
+            // frameBudgetMs: 0). Same type flip as the indexed case above.
+            using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"), CaughtErrors.Unlogged);
+            var container = Root.ElementAt(0);
+
+            // Act
+            s_setFlag.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var replacement = (VisualElement)container.ElementAt(0);
+            Assert.That(
+                (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
+                Is.EqualTo((true, 2, "caught", "b-updated")));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
+        // An element callback's error still aborts, and this keeps the indexed loop's stop on it driven.
+        [Test]
+        public void Given_AnErrorBoundaryAbortingDuringIndexedReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        {
+            // Arrange — as the indexed case above, with the boundary's child failing in an element callback.
+            s_throwInCallback = true;
+            using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"), CaughtErrors.Unlogged);
+            var container = Root.ElementAt(0);
+
+            // Act
+            s_setFlag.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var replacement = (VisualElement)container.ElementAt(0);
+            Assert.That(
+                (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
+                Is.EqualTo((true, 2, "caught", "b")));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
+        // An element callback's error still aborts, and this keeps the synchronous keyed scan's stop on it driven.
+        [Test]
+        public void Given_AnErrorBoundaryAbortingDuringKeyedSyncReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        {
+            // Arrange — as the keyed case above, with the boundary's child failing in an element callback.
+            s_throwInCallback = true;
             using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
 
@@ -180,8 +220,14 @@ namespace Velvet.Tests
             return V.Component(ThrowingChildRender, key: "throwing-child");
         }
 
+        // An element callback's error, which the boundary catches on the aborting path, where the render error
+        // is caught in the walk of the boundary's own output.
         [Component]
-        private static VNode ThrowingChildRender() => throw new Exception("boom-child");
+        private static VNode ThrowingChildRender()
+        {
+            if (s_throwInCallback) return V.ScrollView(onCreated: _ => throw new Exception("boom-child"));
+            throw new Exception("boom-child");
+        }
 
         #endregion
     }
@@ -330,10 +376,76 @@ namespace Velvet.Tests
             return V.Component(ThrowingChildRender, key: "throwing-child-inner");
         }
 
+        // An element callback's error rather than a render's: the boundary catches a render error in the walk
+        // of its own output, which raises no abort for the drain to leave behind.
         [Component]
-        private static VNode ThrowingChildRender() => throw new Exception("boom-child");
+        private static VNode ThrowingChildRender() => V.ScrollView(onCreated: _ => throw new Exception("boom-child"));
 
         #endregion
+    }
+
+    /// <summary>
+    /// Specifies that a boundary catching outside every reconcile pass — from a passive effect here — leaves
+    /// <see cref="ReconcilerContext.IsAborted"/> unset, so the next pass to start, an unrelated fiber's, commits.
+    /// </summary>
+    [TestFixture]
+    internal sealed class CommitPhaseCatchAbortLeakTests
+    {
+        private VisualElement _root;
+        private static StateUpdater<string> s_setCounterText;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_setCounterText = default;
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaughtAPassiveEffectsError_When_AnUnrelatedComponentUpdatesNext_Then_ItsChangeCommits()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setCounterText.Invoke("updated");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                $"{_root.Q<Label>("fallback")?.text} | {_root.Q<Label>("counter")?.text}",
+                Is.EqualTo("caught | updated"));
+        }
+
+        [Component]
+        private static VNode Host() => V.Div(children: new VNode[]
+        {
+            V.Component(BoundaryRender, key: "boundary"),
+            V.Component(CounterRender, key: "counter"),
+        });
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "fallback", text: "caught"));
+            return V.Component(ThrowInPassiveEffectRender, key: "child");
+        }
+
+        [Component]
+        private static VNode ThrowInPassiveEffectRender()
+        {
+            Hooks.UseEffect((Func<Action>)(() => throw new InvalidOperationException("boom")), Array.Empty<object>());
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        private static VNode CounterRender()
+        {
+            var (text, setText) = Hooks.UseState("initial");
+            s_setCounterText = setText;
+            return V.Label(name: "counter", text: text);
+        }
     }
 
     /// <summary>
@@ -485,17 +597,14 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// Specifies which tree a fiber keeps as its diff baseline when the top-level pass it rendered into was
-    /// aborted by a boundary below it: the pre-throw one, not the one that pass built.
-    /// <c>FiberRenderer.RenderAndReconcile</c> owns why it is that one.
-    /// <para>
-    /// The boundary catches during the WALK here. One catching during the ref-setup drain that ends the same
-    /// pass is the other half, and that fiber commits instead — <c>ElementCallbackFailureTests</c> holds
-    /// those cases and <c>ComponentFiber.FallbackReplacedPreviousTree</c> owns what separates the two.
-    /// </para>
+    /// Specifies which tree a fiber keeps as its diff baseline when a boundary below it catches during the walk
+    /// of the pass the fiber rendered into: for a render error, the one that pass built, as React commits the
+    /// rest of a render around a boundary's fallback; for an element callback's error, which aborts that pass,
+    /// the pre-throw one — <c>FiberRenderer.RenderAndReconcile</c> owns why it is that one.
+    /// <c>ElementCallbackFailureTests</c> holds a boundary catching during the ref-setup drain that ends the pass.
     /// </summary>
     [TestFixture]
-    internal sealed class AbortedPassBaselineTests
+    internal sealed class CaughtWalkBaselineTests
     {
         private const string FailureMessage = "arranged failure during the walk";
 
@@ -503,6 +612,7 @@ namespace Velvet.Tests
         private static bool s_fallbackShown;
         private static ComponentFiber s_hostFiber;
         private static StateUpdater<bool> s_setFlipped;
+        private static bool s_failInCallback;
 
         [SetUp]
         public void SetUp()
@@ -511,32 +621,48 @@ namespace Velvet.Tests
             s_fallbackShown = false;
             s_hostFiber = null;
             s_setFlipped = default;
+            s_failInCallback = false;
         }
 
-        // GREEN_ON_BASE(characterization): the discard this reads predates the branch — the base drops an
-        // aborted pass's tree on the same flag. What the branch adds beside that flag is the boundary fiber's
-        // own reading, and this case is what keeps the older half measured once the newer one is there.
+        // GREEN_ON_BASE(characterization): the merge base drops an aborted pass's tree on the flag this pass raises.
+        // An element callback's error still aborts, and this keeps that discard driven.
         [Test]
-        public void Given_ABoundaryBelowAFiberCaughtDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsThePreThrowTree()
+        public void Given_ABoundaryBelowAFiberAbortingDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsThePreThrowTree()
         {
-            // Arrange — the host's own element name carries its state, so the committed baseline and the tree
-            // the aborted pass built disagree by name.
-            using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"), CaughtErrors.Unlogged);
+            // Arrange — as the render-error case below, with the boundary's child failing in an element callback.
+            s_failInCallback = true;
+            using var mounted = V.Mount(_root, V.Component(CatchingWalkHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setFlipped.Invoke(true);
             mounted.FlushStateForTest();
 
-            // Assert — the fallback flag gates the name, because a pass that never re-rendered the host
-            // reads the same pre-throw name with nothing about the abort measured.
+            // Assert — the fallback flag gates the name, because a pass that never re-rendered the host reads
+            // the same pre-throw name with nothing about the abort measured.
             Assert.That((s_fallbackShown, (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Name),
                 Is.EqualTo((true, "host-initial")));
+        }
+
+        [Test]
+        public void Given_ABoundaryBelowAFiberCaughtDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsTheTreeThatPassBuilt()
+        {
+            // Arrange — the host's own element name carries its state, so the pre-throw baseline and the tree
+            // the pass built disagree by name.
+            using var mounted = V.Mount(_root, V.Component(CatchingWalkHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback flag says the boundary caught in that pass.
+            Assert.That((s_fallbackShown, (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Name),
+                Is.EqualTo((true, "host-flipped")));
         }
 
         // The type flip at slot 0 is what builds the boundary's subtree inside this pass, so the catch lands
         // in the walk rather than in the drain that ends the pass.
         [Component]
-        private static VNode AbortingWalkHost()
+        private static VNode CatchingWalkHost()
         {
             s_hostFiber = FiberAmbientStack.Current;
             var (flipped, setFlipped) = Hooks.UseState(false);
@@ -558,6 +684,10 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode WalkThrowingChild() => throw new Exception(FailureMessage);
+        private static VNode WalkThrowingChild()
+        {
+            if (s_failInCallback) return V.ScrollView(onCreated: _ => throw new Exception(FailureMessage));
+            throw new Exception(FailureMessage);
+        }
     }
 }

@@ -171,9 +171,7 @@ namespace Velvet
             // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
             // after the gradient so a pan mode sees the baked gradient already applied.
             _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
-            // transition-filter: register the tween binding so a later filter change animates.
-            // The mount's own filter is already applied instantly above (the binding is not enabled
-            // yet), matching CSS's no-transition-on-initial-value.
+            // transition-filter: bind the filter tween so teardown can pause its tick (FiberFilterTransitionApplier).
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
             // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
             // element's own content, bleeding outside the box) — a non-structural paint like CSS
@@ -267,6 +265,7 @@ namespace Velvet
             if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
             {
                 _ctx.PresenceAnchorMotionElement = element;
+                _ctx.PresenceAnchorCreated = true;
             }
             // See CreateForElementNode's comment on this same assignment (reserved userData
             // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
@@ -340,9 +339,12 @@ namespace Velvet
                 element, appliedClasses, paintTail: false);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
-            // transition-filter on a Motion host: a Motion can carry filter utilities + that class
-            // just like a plain element, so register the tween binding here too.
+            // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
+            // The patch-time entry rather than ApplyRingOnCreate, whose clip-path gate would suppress the band
+            // for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch passes no
+            // active clip either.
+            _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives
@@ -364,14 +366,15 @@ namespace Velvet
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
-                    var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
                     if (EntersBlocked)
                     {
-                        // The same completion a suppressed anchor enter reports.
-                        enterComplete?.Invoke();
+                        // The same completion a suppressed anchor enter reports, and deferred as that one is.
+                        _ctx.CompleteEnterAfterThePass(motionNode, _ctx.FiberStack.Current);
                     }
                     else
                     {
+                        var enterComplete =
+                            GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
@@ -394,6 +397,11 @@ namespace Velvet
             if (motionNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
+            }
+            // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
+            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ))
+            {
+                return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
             }
             return element;
         }
@@ -457,24 +465,6 @@ namespace Velvet
                     "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
                     + "the paint layers. Wrap the Motion around a shadowed Div instead.");
             }
-            // ring-* / outline-* is ignored on a Motion because the band is a SIBLING placed from the
-            // element's LAYOUT box, and UI Toolkit composites a transform onto the transformed element's own
-            // subtree only — so a Motion animating translate / scale / rotate slides out from under its own
-            // band and leaves it behind for the whole play. Both halves of that are pinned by
-            // RingOverlayTests' transform pair. On a Div the Motion wraps, the band is IN the Motion's
-            // subtree and rides its transform, which is what the advice below buys.
-            // Rejected: warning only for a Motion whose transition declares a transform channel. layoutId, the
-            // gesture class channels and a later Transition swap each introduce one without recreating the
-            // element, and this gate runs once, at create.
-            // Same active-only gate as the shadow above.
-            if (StyleRingClass.HasRingClass(appliedClasses)
-                && StyleRingClass.TryExtract(appliedClasses, out _))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "A ring-* / outline-* utility on a Motion is ignored: the band is placed from the "
-                    + "element's laid-out box, which a Motion's transform does not move, so a slide / scale / "
-                    + "layoutId play would leave it behind. Wrap the Motion around a ringed Div instead.");
-            }
             // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
             // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
             // Same active-only gate: clip-path-none / an unparseable value activates nothing.
@@ -483,17 +473,6 @@ namespace Velvet
                 FiberLogger.LogWarning("Motion",
                     "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                     + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
-            }
-            // z-* is ignored on a Motion: the Motion create path never consults FiberZLayerCoordinator at
-            // all (only CreateForElementNode does), so a Motion never relocates into a layer container
-            // — TryClassify's out-of-flow half runs off the declared class list / Anchored prop alone
-            // (no live element needed), so it can be evaluated here for diagnostics purposes even though
-            // that path never acts on it.
-            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out _))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
-                    + "Wrap the Motion around a z-managed Div instead.");
             }
             // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.
             // Warned only where this reconciler holds no presence at all: a Motion a component inside a
@@ -689,6 +668,10 @@ namespace Velvet
             {
                 _patcher.Appliers.ApplyDragOverlay(element, props.DragOverlay);
             }
+            if (props?.NoDrag == true)
+            {
+                _patcher.Appliers.ApplyNoDrag(element, true);
+            }
         }
 
         // The invisible stand-in a deferred-host node (Portal / WorldSpace) leaves at its own tree
@@ -740,19 +723,9 @@ namespace Velvet
                 var autoIndex = 0;
                 foreach (var child in children)
                 {
-                    switch (child)
+                    if (child == null)
                     {
-                        case null:
-                            continue;
-                        // By design: AnimatePresence's direct children must each be a
-                        // keyable element so enter/exit can be tracked per key. A FragmentNode has no key and
-                        // is intentionally NOT auto-expanded here — silently flattening it would let its items
-                        // share the Fragment's (absent) key and break exit tracking. Surface a clear LogError
-                        // pointing at the fix (use MotionNode directly) rather than guessing.
-                        case FragmentNode:
-                            FiberLogger.LogError("FiberNodeFactory",
-                                "FragmentNode is not supported as a direct child of AnimatePresence. Fragment children will not be expanded. Use MotionNode directly.");
-                            continue;
+                        continue;
                     }
 
                     if (child.Key != null && child.Key.StartsWith(AutoKeyPrefix))
@@ -808,12 +781,8 @@ namespace Velvet
                 return motion;
             }
             // The transparent wrappers whose children can carry the Motion: a Provider, a Fragment, or a
-            // z-managed ElementNode. The z-managed case is a narrow, deliberate carve-out — z-* is a
-            // documented no-op on a Motion itself (FiberNodeFactory's own create-time warning), so the ONLY
-            // way to combine z-* with an AnimatePresence-driven Motion is to wrap it in a z-managed Div; that
-            // wrapper exists purely to satisfy the out-of-flow scope gate, not as an opaque animation
-            // boundary the author intended, so treating it like Provider/Fragment for this walk is exactly
-            // the same "structurally forced, not a user choice" reasoning. An ORDINARY (non-z) ElementNode is
+            // z-managed ElementNode. The z-managed case is a narrow, deliberate carve-out that keeps a Motion
+            // wrapped in a z-managed Div anchoring the presence. An ORDINARY (non-z) ElementNode is
             // deliberately NOT walked into: unlike Provider/Fragment it emits its own real DOM element, so
             // silently treating any Motion nested anywhere inside it as the presence anchor would surprise a
             // caller who wrapped a Motion in a plain structural Div for unrelated styling reasons.

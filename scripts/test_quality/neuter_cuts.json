@@ -584,19 +584,19 @@
     {
       "name": "balance-token",
       "mechanism": "balance",
-      "summary": "the balance class parser finds no text-balance class on a class list",
+      "summary": "the wrap-style reader finds no text-balance or text-pretty class on a class list",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",
-          "anchor": "public static bool HasTextBalanceClass(string[] classNames)",
-          "neuter": "return false;"
+          "anchor": "public static TextWrapStyle ReadWrapStyle(string[] classNames)",
+          "neuter": "return TextWrapStyle.None;"
         }
       ]
     },
     {
       "name": "filter-transition-applier",
       "mechanism": "filter-transition",
-      "summary": "the reconciler starts and updates no filter tween, at create or at patch",
+      "summary": "no filter tween is bound, by the reconciler at create or at patch or by the write hook, and the write hook starts and redirects none",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
@@ -607,6 +607,11 @@
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
           "anchor": "internal void ApplyFilterTransitionOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFilterTransitionDriver.cs",
+          "anchor": "internal static bool TryStartOrRedirect(VisualElement element, List<FilterFunction>? to)",
+          "neuter": "return false;"
         }
       ]
     },

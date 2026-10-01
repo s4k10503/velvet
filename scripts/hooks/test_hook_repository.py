@@ -17,6 +17,8 @@ Run: python3 scripts/hooks/test_hook_repository.py
 
 import contextlib
 import importlib.util
+import inspect
+import json
 import os
 import shutil
 import subprocess
@@ -351,13 +353,17 @@ class ReadingBudgetTests(unittest.TestCase):
     """A tripwire on the shared reading, and not a claim about a guard's worst case.
 
     Neither guard's worst case is bounded by anything here: both make their own 60-second calls, and
-    unsettled_pr.py makes up to three of them per pull request, so what they can spend rises with the
-    number of pull requests and no fixed sum describes it. What this holds is the one part that is
-    fixed — the reading in `repository`, whose cost is the number of ways of asking times the bound
-    each one gets, and which is where a third way would be added.
+    unsettled_pr.py makes up to six of them per pull request and one more per workflow run still
+    going, so what they can spend rises with the number of pull requests and no fixed sum describes
+    it. What this holds is the one part that is fixed — the reading in `repository`, whose cost is
+    the number of ways of asking times the bound each one gets, and which is where a third way would
+    be added.
 
-    An earlier version compared against the timeout the settings register, having read that number
-    in a unit it turned out not to be in. Nothing here reads it now.
+    One merge through `refuse/merge_unproven_head.py` is fixed too, since that guard caps the job
+    readings it takes, and a guard the harness abandons at its timeout lets the merge through
+    unguarded. That sum is held against the timeout `.harness/hooks.json` registers, which is in
+    seconds. An earlier version compared the reading above against the settings' timeout, having read
+    that number in a unit it turned out not to be in.
     """
 
     def test_Given_EveryWayOfAsking_When_TheirTimeoutsAreAdded_Then_TheyStayWorthWaitingFor(self):
@@ -366,6 +372,24 @@ class ReadingBudgetTests(unittest.TestCase):
 
         # Act / Assert
         self.assertLessEqual(spent, LONGEST_WORTH_WAITING)
+
+    def test_Given_OneMergeAtItsWorstCase_When_ItsReadingsAreAdded_Then_TheyFitItsRegisteredTimeout(self):
+        # Arrange
+        path = REPO_ROOT / ".claude/hooks/refuse/merge_unproven_head.py"
+        spec = importlib.util.spec_from_file_location("merge_unproven_head", path)
+        guard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(guard)
+        registered = next(entry["timeout"] for entry in json.loads(
+            (REPO_ROOT / ".harness/hooks.json").read_text(encoding="utf-8"))
+            if entry["script"] == "refuse/merge_unproven_head.py")
+        bound = max(inspect.signature(read).parameters["timeout"].default
+                    for read in (guard.repository.gh, guard.repository.gh_answer))
+
+        # Act — a guard declaring no cap reads the jobs of every open run, which no sum bounds.
+        spent = (getattr(guard, "READINGS", 0) + getattr(guard, "JOB_READS", float("inf"))) * bound
+
+        # Assert
+        self.assertLessEqual(spent, registered)
 
 
 class UnreadableReportTests(unittest.TestCase):

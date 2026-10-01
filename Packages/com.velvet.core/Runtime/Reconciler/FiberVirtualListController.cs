@@ -36,6 +36,12 @@ namespace Velvet
         private int _lastRenderedIndex = -1;
         private float _viewportHeight;
         private bool _isDisposed;
+        private readonly VirtualListHandle _handle;
+        // A ScrollToItem target the scroller's range fell short of, applied again at the content's next layout.
+        private float? _pendingScrollTarget;
+        // Where each item starts, and at [Items.Count] where the list ends, for a list whose items each take
+        // the height ItemHeightAt gives; unread for a list of one height, whose offsets are a product.
+        private double[] _offsets = { 0 };
 
         // The prior pass's rows, split by what the next pass may find them under: a keyed row by its key,
         // with the item index it was rendered for; a further row under a key an earlier row already holds by
@@ -73,11 +79,12 @@ namespace Velvet
             // after the controller is created.
             FiberElementFactory.ApplyClassNames(scrollView, node.ClassNames);
 
+            MeasureItems();
             _totalHeightSpacer = new VisualElement
             {
                 style =
                 {
-                    height = node.ItemHeight * node.Items.Count,
+                    height = (float)OffsetOf(node.Items.Count),
                     flexShrink = 0
                 }
             };
@@ -101,6 +108,10 @@ namespace Velvet
 
             _scrollView.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             _scrollView.verticalScroller.valueChanged += OnScrollValueChanged;
+            _scrollView.contentContainer.RegisterCallback<GeometryChangedEvent>(OnContentGeometryChanged);
+
+            _handle = new VirtualListHandle(this, scrollView);
+            node.ListRef?.Set(_handle);
         }
 
         public void Update(VirtualListNode newNode)
@@ -110,8 +121,13 @@ namespace Velvet
                 return;
             }
 
+            var previousRef = _node.ListRef;
             _node = newNode ?? throw new ArgumentNullException(nameof(newNode));
-            _totalHeightSpacer.style.height = newNode.ItemHeight * newNode.Items.Count;
+            // A ref the list no longer names lets go of the handle, as React detaches a replaced ref.
+            ReleaseRef(previousRef);
+            newNode.ListRef?.Set(_handle);
+            MeasureItems();
+            _totalHeightSpacer.style.height = (float)OffsetOf(newNode.Items.Count);
             // Update runs during the host's reconcile (PatchNode), so the cursor is correct here: refresh the
             // snapshot in case the enclosing Provider / MotionContext value changed since the last render.
             _enclosingContext = MotionContext.OutlivingPass(_contextStack?.SnapshotTops());
@@ -129,8 +145,25 @@ namespace Velvet
 
             _scrollView.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             _scrollView.verticalScroller.valueChanged -= OnScrollValueChanged;
+            _scrollView.contentContainer.UnregisterCallback<GeometryChangedEvent>(OnContentGeometryChanged);
+            ReleaseRef(_node.ListRef);
 
             ClearRenderedItems();
+        }
+
+        // A list mounted in this one's place under a new key has set the ref already: the removal of this one
+        // runs after that creation.
+        private void ReleaseRef(Ref<VirtualListHandle>? listRef)
+        {
+            if (listRef != null && ReferenceEquals(listRef.Current, _handle)) listRef.Set(null);
+        }
+
+        private void OnContentGeometryChanged(GeometryChangedEvent evt)
+        {
+            if (_pendingScrollTarget == null) return;
+            var target = _pendingScrollTarget.Value;
+            _pendingScrollTarget = null;
+            _scrollView.verticalScroller.value = target;
         }
 
         private void OnGeometryChanged(GeometryChangedEvent evt)
@@ -162,11 +195,9 @@ namespace Velvet
                 return;
             }
 
-            var itemHeight = _node.ItemHeight;
             var itemCount = _node.Items.Count;
-
-            var firstVisible = Math.Max(0, (int)(scrollY / itemHeight));
-            var lastVisible = Math.Min(itemCount - 1, (int)((scrollY + viewportHeight) / itemHeight));
+            var firstVisible = ItemAt(scrollY);
+            var lastVisible = ItemAt(scrollY + viewportHeight);
 
             var newFirst = Math.Max(0, firstVisible - _node.Overscan);
             var newLast = Math.Min(itemCount - 1, lastVisible + _node.Overscan);
@@ -220,6 +251,7 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
+                _reconciler.CommitStrandedLayoutWorkForController();
                 return;
             }
 
@@ -227,6 +259,7 @@ namespace Velvet
             // whatever took its place, and after the container rebuild, so a setup reads an item that is
             // already in the list.
             _reconciler.DrainRefAttachesForController();
+            _reconciler.CommitStrandedLayoutWorkForController();
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch
@@ -365,7 +398,7 @@ namespace Velvet
                     }
 
                     // The prior row leaves its table only once the slot holds an element, the order
-                    // GeneralPathReconciler.CommitLeaf keeps for a key it marks used: a throw from the create
+                    // GeneralPathReconciler.CommitLeaf keeps for an old leaf it marks taken: a throw from the create
                     // or the patch above leaves it there for DiscardFailedPass to release.
                     switch (found.table)
                     {
@@ -472,13 +505,13 @@ namespace Velvet
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _visibleContainer.Clear();
-            _visibleContainer.style.top = newFirst * _node.ItemHeight;
+            _visibleContainer.style.top = (float)OffsetOf(newFirst);
 
             for (var i = 0; i < newCount; i++)
             {
                 if (newElements[i] != null)
                 {
-                    newElements[i].style.height = _node.ItemHeight;
+                    newElements[i].style.height = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
                     _visibleContainer.Add(newElements[i]);
                 }
             }
@@ -499,6 +532,74 @@ namespace Velvet
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
+        }
+
+        // Every item's height is asked again on each render, so a height that render changed is read there.
+        private void MeasureItems()
+        {
+            if (_node.ItemHeightAt == null) return;
+            var count = _node.Items.Count;
+            if (_offsets.Length != count + 1) _offsets = new double[count + 1];
+            for (var i = 0; i < count; i++) _offsets[i + 1] = _offsets[i] + _node.ItemHeightAt(i);
+        }
+
+        private double OffsetOf(int index)
+            => _node.ItemHeightAt == null ? (double)index * _node.ItemHeight : _offsets[index];
+
+        // The item whose span holds offset, an item ending there excluded; the last item past the list's end.
+        private int ItemAt(double offset)
+        {
+            var last = _node.Items.Count - 1;
+            if (_node.ItemHeightAt == null)
+            {
+                return Math.Clamp((int)Math.Floor(offset / _node.ItemHeight), 0, last);
+            }
+            // Item i ends at _offsets[i + 1]: an end equal to offset belongs to the item before the one holding it,
+            // and otherwise the first end past offset is the holding item's.
+            var end = Array.BinarySearch(_offsets, 1, last + 1, offset);
+            // MUTANT_SURVIVES(equivalent, boundary): a search starting at index 1 never answers 0.
+            return Math.Min(end >= 0 ? end : ~end - 1, last);
+        }
+
+        // react-window's getOffsetForIndex, against the viewport the last GeometryChangedEvent measured.
+        internal void ScrollToItem(int index, VirtualListAlign align)
+        {
+            var count = _node.Items.Count;
+            if (index < 0 || index >= count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), index,
+                    $"Index {index} is not within the range of 0 - {count - 1}.");
+            }
+
+            var start = OffsetOf(index);
+            var size = OffsetOf(index + 1) - start;
+            var total = OffsetOf(count);
+            var viewport = (double)_viewportHeight;
+            var current = (double)_scrollView.verticalScroller.value;
+            var maxOffset = Math.Max(0, Math.Min(total - viewport, start));
+            var minOffset = Math.Max(0, start - viewport + size);
+            // An item taller than the viewport is in view while the viewport lies within it.
+            // MUTANT_SURVIVES(equivalent, boundary): where size equals the viewport, minOffset is start give or
+            // take one double rounding of start - viewport + size, so both arms ask whether current is start,
+            // and the target either one picks differs from current by less than the float the scroller stores.
+            var inView = size > viewport
+                ? current >= start && current <= minOffset
+                : current >= minOffset && current <= start;
+            var center = Math.Max(0, Math.Min(total - viewport, start + size / 2 - viewport / 2));
+            var target = align switch
+            {
+                VirtualListAlign.Start => maxOffset,
+                VirtualListAlign.End => minOffset,
+                VirtualListAlign.Center => center,
+                // Smart is Auto for an item in view, where Auto stays put.
+                VirtualListAlign.Smart => inView ? current : center,
+                // MUTANT_SURVIVES(equivalent, boundary): current == minOffset is in view in either arm of inView.
+                VirtualListAlign.Auto => inView ? current : current < minOffset ? minOffset : maxOffset,
+                _ => throw new ArgumentOutOfRangeException(nameof(align), align, "not a VirtualListAlign member"),
+            };
+            var value = (float)target;
+            _scrollView.verticalScroller.value = value;
+            _pendingScrollTarget = _scrollView.verticalScroller.value < value ? value : null;
         }
 
         private void ForceRefresh()

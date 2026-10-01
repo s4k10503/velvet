@@ -30,8 +30,11 @@ namespace Velvet
     // Child container. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer(target) — a
     // composite widget's inner box; else self.
     //
-    // A child's own border width or color on an edge the divider writes (e.g. border-r-0 on a child of a
-    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild.
+    // A child's own border width or color on an edge the divider writes (e.g. border-r-4 on a child of a
+    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild. On a
+    // dashed / dotted divided edge it does not yet: the dash is painted in the divide color over a color of
+    // the child's own, a width class of the child's own takes the edge off the dashed path and draws it solid,
+    // and a bracket width widens the edge while the dash stays at the divider's width.
     // Limitations: a child whose border face is owned by a higher paint layer — a skew
     // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
     // documented known limitation, mirroring the element-level border-dashed gate which defers to either).

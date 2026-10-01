@@ -42,6 +42,7 @@ import bisect
 import fcntl
 import functools
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -54,9 +55,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
-# Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
-# report a busy machine forever on an idle one.
-UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from unity_running import UNITY_RUNNING  # noqa: E402
 
 # At the project root and not in .gitignore, so `git status` names it beside the file it explains.
 # Under Logs/ it would be correct and unread: what a resumed session looks at is `git status`, and a
@@ -69,6 +69,7 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
 HUNG = "killed (the suite hung past --timeout)"
+CRASHED = "killed (the editor crashed)"
 
 HANG_MARGIN = 3
 SURVIVED = "survived"
@@ -80,11 +81,12 @@ INAPPLICABLE = "not a mutant (the operator does not apply)"
 NOT_BUILT = "not rebuilt"
 UNRECORDED = "not measured (no shard recorded it)"
 LOCKED = "not measured (the project lock was held)"
+BUILD_SYSTEM = "not measured (the build system failed)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
 # however it is spelled, fails the decision as one nothing measured.
-DECIDED = (KILLED, HUNG, INAPPLICABLE)
+DECIDED = (KILLED, HUNG, CRASHED, INAPPLICABLE)
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
@@ -94,7 +96,7 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest of each setup phase and, where the platform is
-# narrowed, an area's own launch for each area, fit that platform's shard job's timeout in test.yml,
+# narrowed, an area's own launch for each area, fit that platform's shard job's timeout in mutation.yml,
 # and that case holds each pair together. The charge is not a worst case -- the EditMode one is a mutant
 # 18 of 645 measured runs exceeded -- so a full shard holding a slower mutant or a hang can still
 # outrun the job, and the mutants it had not reached are then recorded by no shard.
@@ -126,8 +128,26 @@ LOCK_REFUSAL = "another Unity instance is running with this project open"
 # way, so what decides that the lock was held is the editor's refusal and not this reading of it.
 LOCK_ATTEMPTS = 3
 LOCK_WAIT = 60
-# The last line `run_suite` writes into a log whose every launch was refused.
-LOCK_REFUSED_LINE = "mutation_check: the editor refused every launch for the project lock"
+# The last line `run_suite` writes into a log once `LOCK_ATTEMPTS` launches were refused.
+LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the project lock".format(
+    LOCK_ATTEMPTS)
+
+# Lines an editor's log carries once the editor is dying, read off the logs of a mutant that overflowed
+# the stack. A launch is stopped at the first rather than left to its bound.
+FATAL = re.compile(r"Caught fatal signal - signo:|Got a SIG[A-Z]+ while executing native code|"
+                   r"Stack overflow: IP:")
+# What reads as a crash once no result was written. The two overflows added here stop no launch, so that
+# a run which goes on past either still writes the result it is read by.
+CRASH = re.compile(FATAL.pattern + r"|Stack overflow in unmanaged: IP:|StackOverflowException:")
+# What the test runner prints as it starts. A crash before it is not laid on the mutant.
+RUNNER_STARTED = "Running tests for ExecutionSettings with details:"
+
+BUILD_SYSTEM_FAILURE = "Internal build system error."
+BUILD_SYSTEM_ATTEMPTS = 2
+# How long a build-system relaunch waits for what the failed launch left running before killing it.
+BUILD_SYSTEM_SETTLE = 60
+SETTLE_AFTER_KILL = 5
+BUILD_SYSTEM_FAILED_LINE = "mutation_check: the build system stopped the last launch before any diagnostic"
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -1534,16 +1554,23 @@ class Holder:
             signal.raise_signal(number)
 
     def hold(self, source, original, mutated, description):
+        self.hold_files({source: (original, mutated)}, description)
+
+    def hold_files(self, files, description):
+        """Records every source in `files` (path -> (original, mutated)) under the one sentinel, which
+        is how a session's rewritten tree is held: `release`, `--restore` and `--carried` read the list."""
         # Refusing rather than overwriting: two campaigns started close enough together both reach
         # here, and the second overwriting the first ends with one restoring the other's file.
         if self.sentinel.exists():
             raise SystemExit("{} already records a held mutation; two campaigns are running over one "
                              "tree".format(self.sentinel))
         self.sentinel.write_text(json.dumps({
-            "source": str(source),
-            "original": original,
-            "original_sha": hashlib.sha256(original.encode()).hexdigest(),
-            "mutated_sha": hashlib.sha256(mutated.encode()).hexdigest(),
+            "sources": [{
+                "source": str(source),
+                "original": original,
+                "original_sha": hashlib.sha256(original.encode()).hexdigest(),
+                "mutated_sha": hashlib.sha256(mutated.encode()).hexdigest(),
+            } for source, (original, mutated) in sorted(files.items(), key=lambda item: str(item[0]))],
             "mutation": description,
             "pid": os.getpid(),
             "since": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1555,8 +1582,9 @@ class Holder:
             return None
         try:
             held = json.loads(self.sentinel.read_text())
-            Path(held["source"]).write_text(held["original"])
-        except (OSError, ValueError, KeyError) as failure:
+            for entry in held_sources(held):
+                Path(entry["source"]).write_text(entry["original"])
+        except (OSError, ValueError, KeyError, TypeError) as failure:
             # Leaving the record is the point: what it names is still on disk, and a run that removed
             # it would take the only thing saying so with it.
             print("could not restore from {}: {}".format(self.sentinel, failure), file=sys.stderr)
@@ -1584,13 +1612,25 @@ class Holder:
                 self.pending = number
                 return
             if self.child is not None and self.child.poll() is None:
-                kill_group(self.child)
+                kill_launch(self.child)
             self.release()
             signal.signal(number, signal.SIG_DFL)
             os.kill(os.getpid(), number)
 
         for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             signal.signal(number, handler)
+
+
+def held_sources(held):
+    """The sources a record names: a list under `sources`, or the one `source` a record written before
+    a session could hold several carries."""
+    if "sources" in held:
+        return list(held["sources"])
+    return [{key: held[key] for key in ("source", "original", "original_sha", "mutated_sha") if key in held}]
+
+
+def held_names(held):
+    return ", ".join(entry.get("source", "<unnamed>") for entry in held_sources(held))
 
 
 def unity_busy():
@@ -1651,32 +1691,108 @@ def wait_for_release(project, seconds):
     return True
 
 
+def process_table():
+    """pid -> (parent pid, process group, whether it has exited and waits only to be reaped): read from
+    /proc where there is one, and otherwise from `ps`, leaving that `ps` out."""
+    table = {}
+    if os.path.isdir("/proc/self"):
+        for entry in filter(str.isdigit, os.listdir("/proc")):
+            try:
+                with open("/proc/{}/stat".format(entry), "rb") as stat:
+                    text = stat.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            fields = text[text.rfind(")") + 2:].split()
+            if len(fields) >= 3:
+                table[int(entry)] = (int(fields[1]), int(fields[2]), fields[0] == "Z")
+        return table
+    lister = subprocess.Popen(["ps", "-Ao", "pid=,ppid=,pgid=,stat="], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL)
+    listing = lister.communicate()[0].decode("utf-8", "replace")
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 4 and all(field.isdigit() for field in fields[:3]):
+            table[int(fields[0])] = (int(fields[1]), int(fields[2]), fields[3].startswith("Z"))
+    table.pop(lister.pid, None)
+    return table
+
+
+def live_descendants(root, table):
+    children = {}
+    for pid, (parent, _, _) in table.items():
+        children.setdefault(parent, []).append(pid)
+    found, frontier = [], [root]
+    while frontier:
+        for pid in children.get(frontier.pop(), ()):
+            found.append(pid)
+            frontier.append(pid)
+    return [pid for pid in found if not table[pid][2]]
+
+
+def kill_descendants(root, seconds):
+    """SIGKILLs every live process below `root`, found by ancestry rather than by group, and lists
+    again until a listing finds none or `seconds` have passed. Returns pid -> process group for each
+    process it signalled."""
+    deadline = time.time() + seconds
+    signalled = {}
+    while True:
+        table = process_table()
+        alive = live_descendants(root, table)
+        if not alive or time.time() > deadline:
+            return signalled
+        for pid in alive:
+            signalled[pid] = table[pid][1]
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        time.sleep(0.1)
+
+
 def kill_group(child):
-    """Kills the watchdog `launch` starts and every process still in the group it leads."""
     try:
         os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 
-def reap(child):
+def kill_launch(child):
+    """Kills the watchdog `launch` starts, every process below it, and every process still in the
+    group it leads."""
+    outside = [pid for pid, group in kill_descendants(child.pid, SETTLE_AFTER_KILL).items()
+               if group != child.pid]
+    if outside:
+        print("killed {} process(es) the editor left outside its process group".format(len(outside)),
+              flush=True)
     kill_group(child)
+
+
+def reap(child):
+    kill_launch(child)
     child.wait()
 
 
-# Leads the editor's group: runs the editor, exits with it, and kills the group once the process that
-# started it has gone, which no handler here can do for a SIGKILL.
-WATCHDOG = """\
-import os, signal, subprocess, sys
+# Leads the editor's group: runs the editor, exits with it, and once the process that started it has
+# gone kills everything below it, which no handler here can do for a SIGKILL. On Linux it is a
+# subreaper as well, so a process orphaned below the editor is reparented to it rather than to init
+# and a kill below the watchdog still reaches it.
+WATCHDOG = "import ctypes, os, signal, subprocess, sys, time\n" + "".join(
+    inspect.getsource(function) for function in (process_table, live_descendants, kill_descendants)
+) + """\
 parent = int(sys.argv[1])
+try:
+    ctypes.CDLL(None).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+except AttributeError:
+    pass
 editor = subprocess.Popen(sys.argv[2:])
 while True:
     try:
         sys.exit(editor.wait(timeout=1))
     except subprocess.TimeoutExpired:
         if os.getppid() != parent:
+            kill_descendants(os.getpid(), {})
             os.killpg(0, signal.SIGKILL)
-"""
+""".format(SETTLE_AFTER_KILL)
 
 
 def relay(stream, said):
@@ -1688,9 +1804,10 @@ def relay(stream, said):
         sys.stdout.flush()
 
 
-def launch(command, timeout, holder):
+def launch(command, timeout, holder, env=None, expired=None):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
-    once, and what it printed."""
+    once, what it printed, and the process group it ran in. `expired`, where given, is asked every few
+    seconds as well, and a true answer kills the editor as the bound does."""
     start = time.time()
     said = []
     if holder is not None:
@@ -1699,7 +1816,7 @@ def launch(command, timeout, holder):
         # A group of its own, so a kill reaches whatever the editor started and left in it.
         child = subprocess.Popen([sys.executable, "-c", WATCHDOG, str(os.getpid()), *command],
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 start_new_session=True)
+                                 start_new_session=True, env=env)
         if holder is not None:
             holder.child = child
     finally:
@@ -1707,10 +1824,12 @@ def launch(command, timeout, holder):
             holder.started()
     reader = threading.Thread(target=relay, args=(child.stdout, said), daemon=True)
     reader.start()
-    # Sampled for the run's whole life, not once before it. The campaign waits before every mutant,
-    # and a neighbour arriving ten seconds in is invisible for the rest of that mutant -- where it can
-    # redden a timing-sensitive case, and the mutant is then recorded killed. A mutant that actually
-    # survived, which is a hole in the tests, reported as covered.
+    log = Path(command[command.index("-logFile") + 1]) if "-logFile" in command else None
+    read = 0
+    # Sampled for the run's whole life, not once before it. The campaign waits before its baseline, each
+    # session launch and each mutant's own launch, and a neighbour arriving ten seconds in is invisible
+    # for the rest of that run -- where it can redden a timing-sensitive case, and the mutant is then
+    # recorded killed. A mutant that actually survived, which is a hole in the tests, reported as covered.
     peak = 0
     timed_out = False
     try:
@@ -1719,10 +1838,16 @@ def launch(command, timeout, holder):
                 child.wait(timeout=3)
                 break
             except subprocess.TimeoutExpired:
-                if time.time() - start > timeout:
+                if time.time() - start > timeout or (expired is not None and expired()):
                     reap(child)
                     timed_out = True
                     break
+                if log is not None:
+                    fatal, read = fatal_since(log, read)
+                    if fatal:
+                        print("the editor is crashing; stopping it", flush=True)
+                        reap(child)
+                        break
                 peak = max(peak, max(0, unity_busy() - 1))
     finally:
         if child.poll() is None:
@@ -1732,11 +1857,43 @@ def launch(command, timeout, holder):
     wall = time.time() - start
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
-    return wall, timed_out, peak, "".join(said)
+    return wall, timed_out, peak, "".join(said), child.pid
+
+
+def fatal_since(log, offset):
+    """Whether the whole lines `log` gained past `offset` hold a FATAL one, and where to read from
+    next."""
+    try:
+        with open(str(log), "rb") as stream:
+            if os.fstat(stream.fileno()).st_size < offset:
+                offset = 0
+            stream.seek(offset)
+            gained = stream.read()
+    except OSError:
+        return False, offset
+    complete = gained[:gained.rfind(b"\n") + 1]
+    return bool(FATAL.search(complete.decode("utf-8", "replace"))), offset + len(complete)
+
+
+def editor_crash(log):
+    """The first line of `log` past the test runner's start that says the editor crashed, or None."""
+    started = False
+    try:
+        with open(str(log), "rb") as stream:
+            for raw in stream:
+                line = raw.decode("utf-8", "replace")
+                if not started:
+                    started = RUNNER_STARTED in line
+                elif CRASH.search(line):
+                    return line.strip()
+    except OSError:
+        pass
+    return None
 
 
 def lock_refused(log):
-    """Whether `run_suite` gave up on the launch that wrote `log` because every one was refused."""
+    """Whether `run_suite` gave up on the launch that wrote `log` because `LOCK_ATTEMPTS` launches were
+    refused."""
     try:
         lines = Path(log).read_text(errors="replace").rstrip().splitlines()
     except OSError:
@@ -1756,7 +1913,14 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     for a mutant that is no longer on disk.
 
     A launch the editor refused because the project was locked is made again, after the lock is
-    waited on. Where every one was refused, `log` ends with `LOCK_REFUSED_LINE`.
+    waited on. Once `LOCK_ATTEMPTS` were refused, `log` ends with `LOCK_REFUSED_LINE`. A launch whose
+    log `build_system_failure` reads is made again too, once `settle` has seen what it left running
+    exit or killed it, up to `BUILD_SYSTEM_ATTEMPTS` in all and never after one that outlived its
+    bound; where the last launch ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`.
+
+    `log` holds what the last launch wrote, and the closing line where there is one: what an earlier
+    run left there is removed before the first launch, and each earlier launch's is moved to
+    `launch_log(log, n)`.
     """
     command = [
         # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
@@ -1764,16 +1928,89 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
     ]
     command += scope
-    for _ in range(LOCK_ATTEMPTS):
+    log = Path(log)
+    if log.is_file():
+        log.unlink()
+    refused = failed = launches = 0
+    while True:
+        if launches and log.is_file():
+            os.replace(str(log), str(launch_log(log, launches)))
         wait_for_release(project, LOCK_WAIT)
-        wall, timed_out, peak, printed = launch(command, timeout, holder)
-        if LOCK_REFUSAL not in printed:
+        wall, timed_out, peak, printed, group = launch(command, timeout, holder)
+        launches += 1
+        if LOCK_REFUSAL in printed:
+            refused += 1
+            if refused < LOCK_ATTEMPTS:
+                continue
+            closing = LOCK_REFUSED_LINE
+        elif build_system_failure(log):
+            failed += 1
+            # Not after a timeout, which would charge the mutant a second full bound.
+            if failed < BUILD_SYSTEM_ATTEMPTS and not timed_out:
+                print("{}; launching again".format(build_system_failure(log)), flush=True)
+                settle(group, BUILD_SYSTEM_SETTLE)
+                continue
+            closing = BUILD_SYSTEM_FAILED_LINE
+        else:
             return wall, timed_out, peak
-    with open(str(log), "a") as written:
-        written.write("\n{}\n".format(LOCK_REFUSED_LINE))
-    # Not timed out, whatever the last launch did after refusing: a caller reads a timeout with no
-    # result as a hang, which is a kill.
-    return wall, False, peak
+        with open(str(log), "a") as written:
+            written.write("\n{}\n".format(closing))
+        # Not timed out, whatever the last launch did: a caller reads a timeout with no result as a
+        # hang, which is a kill.
+        return wall, False, peak
+
+
+def launch_log(log, number):
+    """Where `run_suite` moves the log of launch `number`, counted from one, before the next launch."""
+    return log.with_name("{}-launch{}{}".format(log.stem, number, log.suffix))
+
+
+def settle(group, seconds):
+    """Waits up to `seconds` for process group `group` to empty, then kills what is left in it and
+    waits, up to `SETTLE_AFTER_KILL`, for it to go."""
+    deadline = time.time() + seconds
+    killed = False
+    while True:
+        try:
+            os.killpg(group, 0)
+        except (ProcessLookupError, PermissionError):
+            return
+        if time.time() > deadline:
+            if killed:
+                return
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                return
+            killed = True
+            deadline = time.time() + SETTLE_AFTER_KILL
+        time.sleep(0.2)
+
+
+def build_system_failure(log):
+    """The line `log`'s build-system failure opens with, where it has one and no compiler diagnostic.
+
+    `: error ` rather than `error CS`, so that an analyzer's own error, which carries no CS code, keeps
+    the launch a build the code stopped.
+    """
+    try:
+        lines = Path(log).read_text(errors="replace").splitlines()
+    except OSError:
+        return None
+    if any(": error " in line for line in lines):
+        return None
+    return next((line.strip() for line in lines if line.strip().startswith(BUILD_SYSTEM_FAILURE)), None)
+
+
+def build_system_failed(log):
+    """The build-system line of a log `run_suite` gave up on because its last launch ended on one."""
+    try:
+        lines = Path(log).read_text(errors="replace").rstrip().splitlines()
+    except OSError:
+        return None
+    if not lines or lines[-1] != BUILD_SYSTEM_FAILED_LINE:
+        return None
+    return next((line.strip() for line in lines if line.strip().startswith(BUILD_SYSTEM_FAILURE)), None)
 
 
 # Anchored on a source path and a position, so an assertion message quoting the words "error CS" is
@@ -1856,6 +2093,49 @@ def text_reading_fixtures(project):
             if any(corpus in text for corpus in TEXT_CORPUS):
                 found.update(FIXTURE_CLASS.findall(text))
     return found
+
+
+# A fixture reading compiled IL rather than running it. Inside a session it reads the assembly every
+# placed guard was compiled into, not the one mutant its own launch would have built.
+IL_READ = re.compile(r"\b(?:ModuleDefinition\.ReadModule|AssemblyDefinition\.ReadAssembly)\s*\(|\.GetILAsByteArray\s*\(")
+TYPEOF_ASSEMBLY = re.compile(r"typeof\(\s*(?:[A-Za-z_][\w]*\.)*([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\)\.Assembly\b")
+QUOTED = re.compile(r'"([A-Za-z_][\w.]*)"')
+DECLARED_TYPE = re.compile(r"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_]\w*)")
+
+
+def il_reading_assemblies(project):
+    """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
+    such a fixture takes, and those it names by a string equal to an assembly's name.
+
+    Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
+    test assemblies included, since what matters is only whether a mutated one is among them.
+    """
+    sources, asmdefs = [], {}
+    for root, directories, files in os.walk(str(project)):
+        directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
+        for name in files:
+            path = Path(root) / name
+            if name.endswith(".asmdef"):
+                try:
+                    asmdefs[json.loads(path.read_text())["name"]] = path.parent
+                except (OSError, ValueError, KeyError):
+                    continue
+            elif name.endswith(".cs"):
+                sources.append(path)
+    types, names = set(), set()
+    for path in sources:
+        if not path.name.endswith("Tests.cs"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if IL_READ.search(text):
+            types.update(TYPEOF_ASSEMBLY.findall(text))
+            names.update(name for name in QUOTED.findall(text) if name in asmdefs)
+    if types:
+        for path in sources:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if types & set(DECLARED_TYPE.findall(text)):
+                names.add(assembly_of(path))
+    return names - {None}
 
 
 def killed_by_behaviour(names, text_readers):
@@ -1968,6 +2248,15 @@ def narrowed_kill(results, log, timed_out, dll, baseline_hashes, text_readers):
     return names if killed_by_behaviour(names, text_readers) else []
 
 
+def mutant_crash(results, log, dll, baseline_hashes):
+    """The line saying the editor crashed, where a launch over the mutated assembly left no result and
+    crashed after the test runner started; otherwise None. Its baseline ran the same suite to a green
+    result on this machine, so that crash is the mutation's."""
+    if read_counts(results) is not None or sha(dll) == baseline_hashes.get(dll.name):
+        return None
+    return editor_crash(log)
+
+
 def failing_names(results):
     root = ET.parse(str(results)).getroot()
     return [
@@ -1989,6 +2278,434 @@ def read_counts(results):
     if root.tag != "test-run":
         return None
     return {key: int(root.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive")}
+
+
+# --------------------------------------------------------------------------------------------------
+# Measuring many mutants in one editor
+# --------------------------------------------------------------------------------------------------
+
+# A session is launched with this rather than `-runTests`, which starts the test framework's own run
+# and quits after it. The prefix keeps a session inside UNITY_RUNNING, which every busy count imports.
+# `Assets/MutantSchemata/Editor/SchemataRunner.cs` takes the launch over from the plan it is handed.
+SESSION_FLAG = "-runTestsSchemata"
+SESSION_PLAN = "VELVET_SCHEMATA_PLAN"
+# What each rewritten assembly's switch reads, and so which mutant is live.
+SESSION_SWITCH = "VELVET_MUTANT"
+# Added to a stage's bound before its session is killed: the stage's reload and the test framework's
+# preparation of the job are inside it, where a launch's bound covers its startup the same way.
+SESSION_STAGE_SLACK = 120
+# A reload asked for and not finished within this ends the session: every stage asks for one, so the rest
+# would each wait out their bound.
+SESSION_RELOAD_BOUND = 180
+# The unmutated program the areas' own baselines run under.
+SESSION_OPENING = 0
+SESSION_MUTANTS = 16
+
+
+def utf16(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def mutant_edit(text, mutant):
+    """(utf-16 column, utf-16 length, replacement) of the edit `apply_mutation` makes on the mutant's
+    line, or None where the edit read off the mutant is not that one."""
+    start, end = line_spans(text)[mutant.line - 1]
+    line = text[start:end]
+    column = mutant.column
+    if mutant.operator in {operator for _, _, operator in OPERATORS}:
+        length, replacement = len(mutant.before) + 2, " {} ".format(mutant.after)
+    else:
+        length, replacement = len(mutant.before), mutant.after
+    applied = text[:start + column] + replacement + text[start + column + length:]
+    if applied != apply_mutation(text, mutant):
+        return None
+    return utf16(line[:column]), utf16(line[column:column + length]), replacement
+
+
+def response_file(project, assembly):
+    """The response file the editor last compiled `assembly` with, relative to `project`, or None."""
+    found = sorted(Path(project, "Library", "Bee", "artifacts").glob("*/{}.rsp".format(assembly)),
+                   key=lambda path: path.stat().st_mtime)
+    return str(found[-1].relative_to(project)) if found else None
+
+
+def schemata_request(project, mutants, indexes):
+    """What the rewriter is asked, and the mutants declined before it is asked: (request, declined)."""
+    files, assemblies, declined = {}, {}, {}
+    for index in indexes:
+        mutant = mutants[index - 1]
+        text = mutant.path.read_text()
+        edit = mutant_edit(text, mutant)
+        if edit is None:
+            declined[index] = "the edit read off the mutant is not the one apply_mutation makes"
+            continue
+        assembly = assembly_of(mutant.path)
+        rsp = response_file(project, assembly)
+        if rsp is None:
+            declined[index] = "no response file for {}".format(assembly)
+            continue
+        assemblies[assembly] = rsp
+        entry = files.setdefault(mutant.path, {"path": relative_to(mutant.path, project).as_posix(),
+                                               "assembly": assembly, "text": text, "mutants": []})
+        start, length, replacement = edit
+        entry["mutants"].append({"id": index, "line": mutant.line, "start": start, "length": length,
+                                 "replacement": replacement, "operator": mutant.operator,
+                                 "before": mutant.before})
+    return ({"project": str(project), "env": SESSION_SWITCH, "shapeRulesOff": True,
+             "assemblies": assemblies, "files": list(files.values())}, declined)
+
+
+def rewrite_schemata(unity, project, request, scratch):
+    """The rewriter's answer, or None where it could not be built or run."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import schemata_tool
+    try:
+        return schemata_tool.rewrite(unity, project, request, scratch)
+    except SystemExit as failure:
+        print("the rewriter could not run, so every mutant takes its own launch: {}".format(failure))
+        return None
+
+
+def session_filter(scope):
+    """(assembly names, filter terms) of an editor scope, as the test framework's command line reads
+    `-assemblyNames` and `-testFilter`: each split on `;`."""
+    names, terms = [], []
+    for flag, into in (("-assemblyNames", names), ("-testFilter", terms)):
+        if flag in scope:
+            into.extend(scope[scope.index(flag) + 1].split(";"))
+    return names, terms
+
+
+def session_stage(name, scope, stop, bound, gate=""):
+    names, terms = session_filter(scope)
+    return {"name": name, "assemblyNames": names, "groupNames": terms, "testNames": [],
+            "stopAtFirstFailure": stop, "bound": bound, "gate": gate}
+
+
+def cs_id(number):
+    """An id as the runner's `ToString("000")` spells it in a file name."""
+    return format(number, "03d") if number >= 0 else "-" + format(-number, "03d")
+
+
+def read_item(directory, number):
+    try:
+        return json.loads((Path(directory) / "item-{}.json".format(cs_id(number))).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def clean_stage(stage):
+    """Whether a baseline stage the session ran came out green over at least one case."""
+    return bool(stage) and stage.get("finished") and not stage.get("omitted") and not stage.get(
+        "failed") and not stage.get("inconclusive") and not stage.get("failures") and stage.get(
+        "passed", 0) > 0
+
+
+def stage_counts(stage):
+    return read_counts(Path(stage["xml"])) if stage.get("xml") else None
+
+
+def session_verdict(item, planned, index, assembly, expected, opening, confirmed, text_readers):
+    """(verdict, detail, killers) for one mutant the session measured, or None where what it recorded
+    does not stand as a reading -- the mutant then takes its own launch, whose reading does.
+
+    `planned` is the plan's item for it; `expected` maps each of its stages to the cases a whole run of
+    that stage holds; `opening` is the areas' baselines under the unmutated program; `confirmed` says,
+    per killing case, whether it passed again under the unmutated program once the segment was done.
+    """
+    if not item:
+        return None
+    stages = item.get("stages") or []
+    armed = "{}:{}".format(assembly, index)
+    ran = [stage for stage in stages if not stage.get("omitted")]
+    if not ran or any(not stage.get("finished") or armed not in stage.get("armed", []) for stage in ran):
+        return None
+    for stage in ran:
+        if not stage.get("failures"):
+            continue
+        # A kill stands only where the stage's own baseline was green, and its first case passed again
+        # under the unmutated program: a case failing there failed on what the session carried, not on
+        # this mutant.
+        if stage["name"] != "whole" and not clean_stage(opening.get(stage["name"])):
+            return None
+        names = stage["failures"]
+        if confirmed.get(names[0]) is not True:
+            return None
+        behavioural = killed_by_behaviour(names, text_readers)
+        if not behavioural:
+            return None
+        if stage["name"] == "whole":
+            detail = "{} failed: {}".format(len(behavioural), ", ".join(
+                name.split(".")[-1] for name in behavioural[:3]))
+        else:
+            names_of = {planned_stage["name"]: planned_stage for planned_stage in planned["stages"]}
+            detail = "{} failed in {}: {}".format(len(behavioural), ", ".join(
+                names_of[stage["name"]]["assemblyNames"]),
+                                                   ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+        return KILLED, detail, names
+    last = ran[-1]
+    if last["name"] != "whole":
+        return None
+    # A survivor stands on complete runs: every stage it ran held every case that stage's baseline did.
+    for stage in ran:
+        counts = stage_counts(stage)
+        if counts is None or counts["failed"] or counts["total"] != expected.get(stage["name"]):
+            return None
+    counts = stage_counts(last)
+    if counts["inconclusive"]:
+        return INCONCLUSIVE, "{} inconclusive, 0 failed".format(counts["inconclusive"]), ()
+    return SURVIVED, "", ()
+
+
+def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory):
+    """The plan a session runs: the areas' baselines under the unmutated program, then each placed
+    mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
+
+    A mutant runs the stages its own launches would: its area's assemblies first where the area is
+    narrowed, stopping at a kill there, then the whole suite. An EditMode stage is cancelled at its first
+    failing case rather than run out, since the verdict is decided there, so `killers` is the cases that
+    failed before the stop; a PlayMode stage runs out.
+    """
+    stop = platform == "EditMode"
+    opening = []
+    for area in sorted(attempts):
+        opening.append(session_stage("narrowed:" + area.name, attempts[area], False, ceiling))
+    items = [{"id": SESSION_OPENING, "stages": opening}] if opening else []
+    segments = []
+    for number, index in enumerate(placed):
+        area = area_of(mutants[index - 1].path, project)
+        stages = []
+        if area in attempts:
+            stages.append(session_stage("narrowed:" + area.name, attempts[area], stop, ceiling,
+                                        gate="narrowed:" + area.name))
+        stages.append(session_stage("whole", whole_scope, stop, timeout))
+        items.append({"id": index, "stages": stages})
+        if number % SESSION_MUTANTS == SESSION_MUTANTS - 1 or number == len(placed) - 1:
+            # A negative id matches no guard, so the confirmation runs the unmutated program.
+            confirmation = -(len(segments) + 1)
+            items.append({"id": confirmation, "confirm": True,
+                          "stages": [session_stage("confirm", [], False, ceiling)]})
+            segments.append(len(items))
+    return {"output": str(directory), "platform": platform, "env": SESSION_SWITCH, "items": items,
+            "start": 0, "end": len(items)}, segments
+
+
+def run_session(args, project, plan, directory, holder):
+    """Runs `plan` through as many session launches as it takes: one per segment, and one more past
+    any item whose stage outlived its bound or took its editor down.
+
+    Returns (position -> {"launch": which launch carried it to its end, "peak": the most other editors
+    seen while it was the item in progress}, the positions no launch finished, and the reason the rest of
+    the session was abandoned, or None).
+    """
+    plan_path = directory / "plan.json"
+    state = directory / "runner-state.json"
+    progress = directory / "runner-progress.json"
+    done = directory / "runner-done"
+    failed = directory / "runner-failed"
+    items = plan["items"]
+    runs, lost = {}, set()
+    launches = 0
+    position = 0
+    for end in plan["segments"]:
+        while position < end:
+            launches += 1
+            plan["start"], plan["end"] = position, end
+            plan_path.write_text(json.dumps(plan, indent=1))
+            state.write_text(json.dumps({"position": position, "stage": 0, "phase": "arm"}))
+            for stale in (progress, done, failed):
+                if stale.exists():
+                    stale.unlink()
+            log = directory / "session-{:03d}.log".format(position)
+            # As run_suite removes its own: a stale build-system line would read as this launch's.
+            if log.is_file():
+                log.unlink()
+            command = [args.unity, SESSION_FLAG, "-batchmode", "-debugCodeOptimization", "-projectPath",
+                       str(project), "-logFile", str(log)]
+            env = dict(os.environ, **{SESSION_PLAN: str(plan_path)})
+            env.pop(SESSION_SWITCH, None)
+            launched = [0.0]
+            where, peaks, stuck = {}, {}, []
+
+            def expired():
+                try:
+                    current = json.loads(progress.read_text())
+                except (OSError, ValueError):
+                    return time.time() - launched[0] > args.timeout
+                where.update(current)
+                now = current["position"]
+                peaks[now] = max(peaks.get(now, 0), max(0, unity_busy() - 1))
+                waited = time.time() - current["since"]
+                if current.get("phase") == "start" and waited > SESSION_RELOAD_BOUND:
+                    stuck.append(now)
+                    return True
+                item = items[now] if now < len(items) else None
+                stage = item["stages"][current["stage"]] if item and current["stage"] < len(item["stages"]) else None
+                return waited > (stage["bound"] if stage else args.timeout) + SESSION_STAGE_SLACK
+
+            if not wait_for_quiet(args.busy_timeout):
+                return runs, lost, "another Unity test run was still in flight after {}s".format(args.busy_timeout)
+            # The lock and the build system are retried as run_suite retries them: a lock refusal up to
+            # LOCK_ATTEMPTS, a launch the build system stopped up to BUILD_SYSTEM_ATTEMPTS and never after
+            # one that outlived its bound. Past either the session is given up, and its mutants' own
+            # launches retry for themselves.
+            refused = stopped = 0
+            while True:
+                wait_for_release(project, LOCK_WAIT)
+                launched[0] = time.time()
+                _, timed_out, _, printed, group = launch(command, sum(
+                    stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
+                    for stage in item["stages"]) + args.timeout, holder, env, expired)
+                if LOCK_REFUSAL in printed:
+                    refused += 1
+                    if refused < LOCK_ATTEMPTS:
+                        continue
+                    return runs, lost, "the editor refused {} session launches for the project lock".format(
+                        LOCK_ATTEMPTS)
+                failure = build_system_failure(log) if not where else None
+                if failure:
+                    stopped += 1
+                    if stopped < BUILD_SYSTEM_ATTEMPTS and not timed_out:
+                        print("{}; launching the session again".format(failure), flush=True)
+                        os.replace(str(log), str(launch_log(log, stopped)))
+                        settle(group, BUILD_SYSTEM_SETTLE)
+                        continue
+                    return runs, lost, "the build system stopped the session's launch: {}".format(failure)
+                break
+            # Read again rather than taken from the last `expired`, which the editor can outlive by a sample.
+            try:
+                where.update(json.loads(progress.read_text()))
+            except (OSError, ValueError):
+                pass
+            reached = end if done.exists() else where.get("position", position)
+            for passed in range(position, min(reached, end)):
+                runs[passed] = {"launch": launches, "peak": peaks.get(passed, 0)}
+            if failed.exists():
+                return runs, lost, "the runner stopped: {}".format(failed.read_text().strip())
+            if stuck:
+                return runs, lost, "a domain reload did not complete within {}s".format(SESSION_RELOAD_BOUND)
+            if done.exists():
+                position = end
+                break
+            if not where or build_error(log):
+                return runs, lost, "the session never reached its first stage; read {}".format(log)
+            # The item it died in takes its own launch; the next launch starts past it.
+            lost.add(reached)
+            if items[reached]["id"] == SESSION_OPENING:
+                return runs, lost, "the session died in the areas' own baselines; read {}".format(log)
+            position = reached + 1
+    return runs, lost, None
+
+
+def confirmations(plan, directory):
+    """Confirmation position -> killing case -> whether it passed there under the unmutated program."""
+    found = {}
+    for position, item in enumerate(plan["items"]):
+        if not item.get("confirm"):
+            continue
+        result = read_item(directory, item["id"]) or {}
+        stage = (result.get("stages") or [{}])[0]
+        if not stage.get("finished") or not stage.get("xml"):
+            continue
+        try:
+            root = ET.parse(stage["xml"]).getroot()
+        except (OSError, ET.ParseError):
+            continue
+        found[position] = {case.get("fullname"): case.get("result") == "Passed" for case in root.iter("test-case")}
+    return found
+
+
+def confirmed_for(plan, position, runs, found):
+    """What the confirmation closing `position`'s segment read, where that confirmation ran in the same
+    launch as the item; otherwise nothing, so no kill of it stands."""
+    closing = next((later for later in range(position + 1, len(plan["items"]))
+                    if plan["items"][later].get("confirm")), None)
+    if closing is None or closing not in runs or runs[closing]["launch"] != runs.get(position, {}).get("launch"):
+        return {}
+    return found.get(closing, {})
+
+
+def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
+                       baseline_wall, text_readers, whole_scope, campaign, scope):
+    """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
+    (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it.
+    Every other mutant is left to its own launches."""
+    directory = output / "session"
+    directory.mkdir(exist_ok=True)
+    for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
+        stale.unlink()
+    request, declined = schemata_request(project, mutants, pending)
+    answer = rewrite_schemata(args.unity, project, request, directory) if request["files"] else None
+    if answer is None:
+        return {}
+    placed = [index for index in answer["placed"] if index in pending and index not in declined]
+    declined.update({int(key): value for key, value in answer["declined"].items()})
+    for index in sorted(declined):
+        print("[{}] takes its own launch: {}".format(index, declined[index]))
+    if answer["fatal"]:
+        print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
+    if not placed:
+        return {}
+
+    attempts = {}
+    ceiling = min(args.timeout, baseline_wall)
+    expected = {"whole": baseline["total"]}
+    if not scope and args.platform in NARROWED_PLATFORMS:
+        areas = {area_of(mutants[index - 1].path, project) for index in placed} - {None}
+        for area, names in narrowable(baseline_results, areas).items():
+            attempts[area] = excluding(["-assemblyNames", ";".join(names)], text_readers)
+    plan, segments = session_plan(project, mutants, placed, attempts, whole_scope, args.platform, ceiling,
+                                  args.timeout, directory)
+    plan["segments"] = segments
+
+    rewritten = {project / relative: text for relative, text in answer["files"].items()}
+    if not wait_for_quiet(args.busy_timeout):
+        raise SystemExit("another Unity test run is still in flight after {}s, so this "
+                         "session's failures would not all be its mutants'".format(args.busy_timeout))
+    holder.hold_files({path: (path.read_text(), text) for path, text in rewritten.items()},
+                      "{} mutant(s) guarded for one session".format(len(placed)))
+    started = time.time()
+    try:
+        for path, text in rewritten.items():
+            path.write_text(text)
+        runs, lost, stopped = run_session(args, project, plan, directory, holder)
+    finally:
+        if holder.release() is None:
+            raise SystemExit("could not put the session's sources back; the record at {} names what is "
+                             "outstanding".format(holder.sentinel))
+    print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
+                                                      "; " + stopped if stopped else ""))
+    if not runs:
+        return {}
+
+    opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
+    for name, stage in opening.items():
+        counts = stage_counts(stage)
+        expected[name] = counts["total"] if counts else None
+    found = confirmations(plan, directory)
+    il_read = il_reading_assemblies(project)
+    measured = {}
+    for position, item in enumerate(plan["items"]):
+        index = item["id"]
+        if item.get("confirm") or index == SESSION_OPENING or position not in runs:
+            continue
+        mutant = mutants[index - 1]
+        assembly = assembly_of(mutant.path)
+        reading = session_verdict(read_item(directory, index), item, index, assembly, expected, opening,
+                                  confirmed_for(plan, position, runs, found), text_readers)
+        if reading is not None and reading[0] in SURVIVING and assembly in il_read:
+            # The session compiled every guard into the assembly, so a fixture reading its IL read the
+            # union of the mutants rather than this one.
+            reading = None
+        if reading is None:
+            print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
+            continue
+        mutant.verdict, mutant.detail, killers = reading
+        if runs[position]["peak"]:
+            mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", runs[position]["peak"])
+        write_verdict(output, index, campaign, mutant, project, killers, scope)
+        measured[index] = (mutant.verdict, mutant.detail)
+    return measured
 
 
 # --------------------------------------------------------------------------------------------------
@@ -2110,7 +2827,7 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     A kill that named its failing tests alone: each other verdict turns on something outside that key
     -- a survivor of either kind on the tests, which the test written for it changes; a timed-out or
     hung mutant on `--timeout` and the baseline's wall clock, and on anything else that kept the
-    editor running; uncompilable and not rebuilt on the editor as well as on the mutation. A kill
+    editor running; uncompilable, not rebuilt and crashed on the editor as well as on the mutation. A kill
     turns on the tests too, and is kept across a test removed since for the reason `scope_digest`
     gives for its key; one taken while another editor was up is kept as well, and its detail says so.
     """
@@ -2268,6 +2985,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
+    if baseline_results.exists():
+        baseline_results.unlink()
     # Derived once: which fixtures redden on the edit rather than on what it does.
     text_readers = text_reading_fixtures(project)
     # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
@@ -2296,6 +3015,22 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     assemblies_dir = project / "Library" / "ScriptAssemblies"
     baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
 
+    # The mutants the rewriter can place are measured in one editor, and each of the rest -- and each
+    # whose session reading does not stand -- takes its own launches below, as every mutant once did.
+    # Not under --editor-arg: the runner starts each stage itself, so an argument meant for the test
+    # framework would scope the baseline and the own launches and not the session's stages.
+    in_session = {}
+    if args.editor_arg and not args.launch_per_mutant:
+        print("--editor-arg reaches no session stage, so every mutant takes its own launches")
+    if not args.launch_per_mutant and not args.editor_arg:
+        pending = [index for index in sorted(selected) if read_verdict(
+            output, index, campaign, mutants[index - 1], project, scope) is None]
+        if pending:
+            in_session = measure_in_session(args, project, holder, output, mutants, pending,
+                                            baseline_results, baseline, baseline_wall, text_readers,
+                                            excluding(scope, text_readers), campaign, scope)
+    own = set(selected) - set(in_session)
+
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not
@@ -2303,7 +3038,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
     if not scope and args.platform in NARROWED_PLATFORMS:
-        areas = {area_of(mutants[index - 1].path, project) for index in selected} - {None}
+        areas = {area_of(mutants[index - 1].path, project) for index in own} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
             results = output / "baseline-{}.xml".format(area.name)
@@ -2330,6 +3065,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if index not in selected:
                 continue
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
+            if index in in_session:
+                mutant.verdict, mutant.detail = in_session[index]
+                measured += 1
+                print("      {} ({}) in the session".format(mutant.verdict, mutant.detail or "-"))
+                continue
             kept = read_verdict(output, index, campaign, mutant, project, scope)
             if kept is not None:
                 mutant.verdict, mutant.detail = kept
@@ -2355,7 +3095,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
-            early, wall, neighbours, late = [], 0.0, 0, False
+            early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
                 narrowed_log = output / "mutant-{:03d}-narrowed.log".format(index)
@@ -2368,16 +3108,19 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                     timed_out, late = False, True
                 early = narrowed_kill(narrowed, narrowed_log, timed_out, dll, baseline_hashes,
                                       text_readers)
+                if not early:
+                    crashed = mutant_crash(narrowed, narrowed_log, dll, baseline_hashes)
                 # A complete narrowed pass is no verdict, so the whole suite still runs.
                 late = late and bool(early)
             timed_out = False
-            if not early:
+            if not early and not crashed:
                 since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
                 if timed_out and complete_result(results, since, baseline["total"]):
                     timed_out, late = False, True
+                crashed = mutant_crash(results, log, dll, baseline_hashes)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
                 # next mutation over this one and end by restoring the wrong text.
@@ -2387,6 +3130,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             counts = read_counts(results)
             killers = ()
             blamed = build_error(log)
+            stalled = build_system_failed(log)
             if early:
                 killers = early
                 behavioural = killed_by_behaviour(early, text_readers)
@@ -2394,6 +3138,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "{} failed in {}: {}".format(
                     len(behavioural), ", ".join(narrowed_to),
                     ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+            elif crashed:
+                mutant.verdict = CRASHED
+                mutant.detail = crashed[:160]
             # Only where no result could be read: a readable one is the suite's own reading, and a
             # kill taken from the wall clock would override it. One short of complete is left to
             # TIMED_OUT.
@@ -2422,8 +3169,12 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "the build stopped in {}".format(blamed)
             elif counts is None and lock_refused(log):
                 mutant.verdict = LOCKED
-                mutant.detail = ("the editor refused each of {} launches because another held the "
+                mutant.detail = ("the editor refused {} launches because another held the "
                                  "project; read the log".format(LOCK_ATTEMPTS))
+            elif counts is None and stalled:
+                mutant.verdict = BUILD_SYSTEM
+                mutant.detail = ("the last launch ended on \"{}\" with no compiler diagnostic; read "
+                                 "the log".format(stalled))
             elif counts is None:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the runner wrote no result"
@@ -2531,6 +3282,9 @@ def main():
     parser.add_argument("--editor-arg", action="append", default=[], metavar="ARG",
                         help="an argument added to every editor launch, spelt --editor-arg=-flag; "
                              "repeatable")
+    parser.add_argument("--launch-per-mutant", action="store_true",
+                        help="give every mutant its own editor launches rather than measuring the "
+                             "mutants the rewriter can place in one session")
     parser.add_argument("--restore", action="store_true",
                         help="put back the mutation an interrupted campaign left, and stop")
     parser.add_argument("--carried", nargs="*",
@@ -2587,11 +3341,11 @@ def main():
                                  holder.sentinel)))
         # Resolved on both sides: a macOS temporary directory reaches the same file through /var and
         # through /private/var, and comparing the spellings finds no match where there is one.
-        held = Path(outstanding.get("source", "")).resolve()
+        held = {Path(entry.get("source", "")).resolve() for entry in held_sources(outstanding)}
         for name in args.carried:
             candidate = Path(name)
             candidate = candidate if candidate.is_absolute() else project / name
-            if candidate.resolve() == held:
+            if candidate.resolve() in held:
                 sys.exit(refusal(CARRIED_REFUSAL,
                                  "a mutation campaign is holding {} -- {}\n"
                                  "Recording it now captures the campaign's edit, not yours. Wait for "
@@ -2609,10 +3363,12 @@ def main():
             # A record survives a SIGKILL, so an author can see the modified file, keep working on it
             # for an hour and then run this. Writing the recorded original back would take that hour
             # with it, and the word this prints afterwards is "restored".
-            source = Path(outstanding.get("source", ""))
-            on_disk = hashlib.sha256(source.read_bytes()).hexdigest() if source.exists() else ""
-            known = (outstanding.get("mutated_sha"), outstanding.get("original_sha"))
-            if on_disk and on_disk not in known:
+            for entry in held_sources(outstanding):
+                source = Path(entry.get("source", ""))
+                on_disk = hashlib.sha256(source.read_bytes()).hexdigest() if source.exists() else ""
+                known = (entry.get("mutated_sha"), entry.get("original_sha"))
+                if not on_disk or on_disk in known:
+                    continue
                 raise SystemExit(
                     "{} holds neither the mutation {} recorded nor the original it replaced, so "
                     "something\nelse has written it since. Nothing here can tell your work from the "
@@ -2622,7 +3378,7 @@ def main():
         if held is None:
             raise SystemExit("{} names a mutation this could not put back; read it and restore by "
                              "hand".format(holder.sentinel))
-        print("restored {} ({})".format(held["source"], held["mutation"]))
+        print("restored {} ({})".format(held_names(held), held["mutation"]))
         return 0
 
     # Before anything is read, because everything below reads the working tree: the baseline would be
@@ -2631,7 +3387,7 @@ def main():
     outstanding = holder.outstanding()
     if outstanding is not None:
         names = ("<unreadable>", "<unreadable>") if outstanding is UNREADABLE else (
-            outstanding.get("source", "<unnamed>"), outstanding.get("mutation", "<unnamed>"))
+            held_names(outstanding), outstanding.get("mutation", "<unnamed>"))
         raise SystemExit(
             "a campaign is holding a mutation in this tree, so nothing here can be measured:\n"
             "  {} -- {}\n"
@@ -2826,11 +3582,12 @@ def main():
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Named, because no failing case stands behind these kills.
-    hung = [m for m in mutants if m.verdict == HUNG]
-    if hung:
-        print("\n--- mutants killed by hanging the suite ---")
-        for mutant in hung:
-            print("{}  {}".format(mutant.describe(project), mutant.detail))
+    for verdict, heading in ((HUNG, "hanging the suite"), (CRASHED, "crashing the editor")):
+        named = [m for m in mutants if m.verdict == verdict]
+        if named:
+            print("\n--- mutants killed by {} ---".format(heading))
+            for mutant in named:
+                print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a
     # different denominator every branch, and a percentage is the part that gets quoted after the

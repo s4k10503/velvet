@@ -38,7 +38,7 @@ namespace Velvet
     // Child container. The manipulator is attached to the gap ELEMENT, but its children are reconciled
     // into FiberNodePatcher.GetChildContainer(element) — a composite widget's inner box, not the widget.
     // Everything naming a container names that one: the iteration, the wrap path's negative margin, and
-    // the direction / wrap verdicts (ResolveDirection, IsWrap). A direction or wrap class on the widget
+    // the direction / wrap verdicts (DirectionOf, IsWrap). A direction or wrap class on the widget
     // governs the WIDGET's box, which is not the box the spaced children are in.
     // Re-application. The spacing depends on the child set and, for a gap, the resolved direction, both of
     // which change outside this manipulator's own events. It is re-applied from three sources: (1) the
@@ -129,7 +129,7 @@ namespace Velvet
 
         // Whether the last verdict came from a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for
         // the wrap, one of the five direction/display classes for the direction — and whether such a class has
-        // left since the last GeometryChangedEvent. See ResolveDirection and IsWrap.
+        // left since the last GeometryChangedEvent. See DirectionOf and IsWrap.
         private bool _wrapFromMarker;
         private bool _directionFromClass;
         private bool _directionClassLeft;
@@ -384,7 +384,6 @@ namespace Velvet
             var container = ChildContainer;
             if (container != null)
             {
-                ResetStaleMargined(container);
                 if (_containerHeld)
                 {
                     HandBackMargins(ClipPathLayoutBox.Of(container));
@@ -466,7 +465,7 @@ namespace Velvet
         // pair. A space-* marker never reaches it: CSS gap has none.
         private HeldSlot ResolveGapSlot(VisualElement container)
         {
-            switch (ResolveDirection(container))
+            switch (DirectionOf(container))
             {
                 case FlexDirection.Row:
                     return HeldSlot.MarginLeft;
@@ -483,7 +482,7 @@ namespace Velvet
         // class list, the fallback is not taken until the next GeometryChangedEvent — for the reason IsWrap
         // gives — and the verdict is the inline flex-direction, whose unset slot reads Column, the direction
         // an element carrying none of those classes lays out in.
-        private FlexDirection ResolveDirection(VisualElement container)
+        private FlexDirection DirectionOf(VisualElement container)
         {
             var fromClass = StyleFlexDirectionResolver.FromClasses(container);
             var hadClass = _directionFromClass;

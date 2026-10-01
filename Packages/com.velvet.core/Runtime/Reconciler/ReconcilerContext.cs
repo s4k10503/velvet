@@ -168,9 +168,9 @@ namespace Velvet
         // Declaration is where the applying rule sits in the className, kept per slot so a tie inside one
         // priority resolves by source order. Two rules of one family asserting the same token share the slot
         // and it holds the LAST of them, which is the one source order would let win.
-        private readonly List<(string Token, int Priority, int Declaration)> _entries = new();
+        private readonly List<(string Token, long Priority, int Declaration)> _entries = new();
 
-        private readonly List<(string Token, int Priority, int Declaration)> _ranked = new();
+        private readonly List<(string Token, long Priority, int Declaration)> _ranked = new();
         private List<string> _tokens = new();
         private List<string> _pending = new();
 
@@ -185,7 +185,7 @@ namespace Velvet
         // asserts at a DIFFERENT priority survives the drop and reports no change; two layers at one
         // priority share a slot, exactly as they do in the projection, so the second one to leave is what
         // drops it there and here alike.
-        public bool Track(string cls, int priority, int declaration, bool on)
+        public bool Track(string cls, long priority, int declaration, bool on)
         {
             var index = IndexOf(cls, priority);
             if (on)
@@ -224,19 +224,17 @@ namespace Velvet
         // the stronger one puts it, and breaks a tie within a band by that layer's declaration position.
         // A stable insertion sort, so a token neither key separates keeps arrival order.
         //
-        // What was verified, enumerated over StyleLayerPriority rather than summarised: Structural, Supports
-        // and Attribute have one side-table supplier each; the responsive band and Dark have the conditional
-        // manipulator; the group/peer bands have the relational one; the element-state bands have the state
-        // manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator; and
-        // ChildVariant has the child-combinator manipulator alone. All of those declare a position except
-        // the last. The important band is those priorities plus a constant, so it partitions identically.
+        // What was verified, enumerated over StyleLayerPriority rather than summarised: the structural ranks,
+        // Supports, Aria and Data have one side-table supplier each; the responsive ranks and Dark have the
+        // conditional manipulator; the group/peer ranks have the relational one; the element-state ranks have
+        // the state manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator;
+        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position except
+        // the last. The important band is those priorities with one more bit set, so it partitions identically.
         //
-        // A band's supplier list is NOT the whole question, because a payload can be promoted OUT of the
-        // band its owner applies at: a state-variant payload gated by any of these owners layers at
-        // max(outer, inner) (see GateStackedVariant), which lands a [&>*]:hover: payload on the hover band
-        // beside the child's own. What makes that safe is not the enumeration but NoDeclaration being the
-        // weakest rank, so a payload with no position comparable to this element's className loses every tie
-        // it enters rather than winning it.
+        // A stacked payload ranks at every part it carries (see StyleLayerPriority.Stack), so one gated by the
+        // child-combinator manipulator keeps that variant in its rank and never ties a payload the child declares
+        // itself. Between two payloads with no position, NoDeclaration being the weakest rank leaves arrival
+        // order to decide.
         // Quadratic on a handful of tokens, and only on a toggle; the per-patch composition just reads it.
         private bool Reorder()
         {
@@ -266,8 +264,8 @@ namespace Velvet
             return true;
         }
 
-        private static bool Outranks((string Token, int Priority, int Declaration) a,
-            (string Token, int Priority, int Declaration) b)
+        private static bool Outranks((string Token, long Priority, int Declaration) a,
+            (string Token, long Priority, int Declaration) b)
             => a.Priority > b.Priority || (a.Priority == b.Priority && a.Declaration > b.Declaration);
 
         // Each distinct token at the strongest priority any layer asserts it at, carrying that same layer's
@@ -285,9 +283,9 @@ namespace Velvet
             }
         }
 
-        private (string Token, int Priority, int Declaration) StrongestOf(string cls)
+        private (string Token, long Priority, int Declaration) StrongestOf(string cls)
         {
-            var strongest = (Token: cls, Priority: int.MinValue, Declaration: StyleVariantPayload.NoDeclaration);
+            var strongest = (Token: cls, Priority: long.MinValue, Declaration: StyleVariantPayload.NoDeclaration);
             foreach (var entry in _entries)
             {
                 if (entry.Token == cls && entry.Priority > strongest.Priority)
@@ -310,7 +308,7 @@ namespace Velvet
             return -1;
         }
 
-        private int IndexOf(string cls, int priority)
+        private int IndexOf(string cls, long priority)
         {
             for (var i = 0; i < _entries.Count; i++)
             {
@@ -380,12 +378,15 @@ namespace Velvet
         public Dictionary<VisualElement, StyleConditionalVariantManipulator> ConditionalVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleRelationalVariantManipulator> RelationalVariantManipulators { get; } = new();
 
+        // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
+        public Dictionary<VisualElement, List<RelationalSourceSet>> RelationalVariantSources { get; } = new();
+
         // Structural variants (first:/last:/odd:/even:/only:/[&:nth-child(N)]:) declared on a CHILD but
         // evaluated against its position among siblings. Each such child registers its parsed rules here at
         // config time; the container's post-children pass (ApplyStructuralVariants) re-derives every rule's
         // match from the live sibling order. Cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, List<(StyleStructuralKind Kind, int N, string[] Payloads,
-            int[] Declarations)>> StructuralVariants { get; } = new();
+            int[] Declarations, long Priority)>> StructuralVariants { get; } = new();
 
         // has-[:checked]: / has-[:focus]: — an element styled by an event-driven descendant condition. The
         // manipulator lives on the element and listens to bubbling descendant events (ChangeEvent<bool> for
@@ -432,7 +433,7 @@ namespace Velvet
         // TextRawText holds the untransformed text captured at the text-set seams so the effect re-applies
         // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
         // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
-        // itself, so a later resolve that is no longer PreLine clears only what the resolver owns — never a
+        // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
         // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
         // — see RefCallbacks below). All three are pure (teardown = Remove(element)).
         public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();
@@ -478,6 +479,11 @@ namespace Velvet
         // the pool, mirroring exactly how those three paint bindings are swept.
         public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
 
+        // Elements declaring an em or percentage leading-[…], each with the probe reading its font size. Not
+        // pure for the reason TextOverlineBindings is not: an entry owns live callbacks, which
+        // FiberElementCleaner detaches.
+        public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
+
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
         // manipulator to detach and no resource (a shader Material, a baked VectorImage, an event subscription,
@@ -519,14 +525,14 @@ namespace Velvet
         // distinct. innerName is the relational name of a NAMED inner (dark:group-hover/sidebar:bg-on) — "" for
         // every other inner — so two stacked named relationals (dark:group-hover/a / dark:group-hover/b) get
         // separate manipulators resolving their own source.
-        public Dictionary<(VisualElement target, object owner, int outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
+        public Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
 
         // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
         // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A named inner
         // relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves the
         // named source, not the unnamed group/peer.
         internal void GateStackedVariant(VisualElement target, object owner, string variantPayload,
-            bool outerOn, int outerPriority, int declaration)
+            bool outerOn, long outerPriority, int declaration)
         {
             if (!StyleVariantClass.TryParse(variantPayload, out var innerKind, out var innerName, out var leafPayload))
             {
@@ -541,9 +547,12 @@ namespace Velvet
                 if (!StackedVariantManipulators.TryGetValue(key, out var m))
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
-                    var priority = outerPriority > innerPriority ? outerPriority : innerPriority;
+                    var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
                     m = new StyleStackedVariantManipulator(this, innerKind, innerName,
                         new string?[] { leafPayload }, priority, declaration);
+                    m.SeedInner(VariantManipulators.TryGetValue(target, out var local)
+                        ? local.Holds(innerKind)
+                        : StyleVariantManipulator.LiveHolds(target, innerKind));
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
@@ -605,7 +614,7 @@ namespace Velvet
         // caller signals a re-derive exactly once per real change: a manipulator may re-assert an
         // already-applied payload, and an off-toggle for a payload that was never on is a no-op, either of
         // which would drift a count.
-        internal bool TrackVariantGateClass(VisualElement target, string cls, int priority, int declaration,
+        internal bool TrackVariantGateClass(VisualElement target, string cls, long priority, int declaration,
             bool on)
         {
             if (on)
@@ -701,6 +710,17 @@ namespace Velvet
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
         public HashSet<string> LayoutIdSnapshots { get; } = new();
 
+        // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
+        // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
+        // visibility each member another leads held before it followed that lead; and the members inside a
+        // V.AnimatePresence child whose exit is running, with the element that child's exit started on.
+        public Dictionary<string, List<VisualElement>> LayoutIdMembers { get; } = new();
+        public Dictionary<VisualElement, LayoutIdTiming> LayoutIdTimings { get; } = new();
+        public Dictionary<VisualElement, StyleEnum<Visibility>> LayoutIdFollows { get; } = new();
+        public Dictionary<VisualElement, VisualElement> LayoutIdExiting { get; } = new();
+        // The relegated presence children waiting for a lead to land (MotionLayoutIdDriver.Relegate).
+        public List<LayoutIdLanding> LayoutIdLandings { get; } = new();
+
         // The GeometryChangedEvent callback a layoutId patch waits on for its new rect, with the box it
         // tweens from. A registered callback, so it is removed explicitly at teardown like
         // LayoutIdProjections below rather than through _pureElementSideTables.
@@ -778,8 +798,8 @@ namespace Velvet
         // drives the element's own inline filter with no wrapper. The binding holds a one-shot scheduled tick,
         // so cleanup must PAUSE it (unlike the pure side-tables); FiberElementCleaner / Reconciler.Dispose call
         // StyleFilterTransitionDriver.Detach. The driver's own ConditionalWeakTable is the lookup the resolver
-        // uses during event callbacks (no context there); this dictionary only mirrors the refs so the dispose
-        // sweep can enumerate them (a CWT is not enumerable).
+        // uses during event callbacks (no context there); this dictionary mirrors the bindings made for
+        // transition-filter so the dispose sweep can enumerate them (a CWT is not enumerable).
         public Dictionary<VisualElement, StyleFilterTransitionBinding> FilterTransitionBindings { get; } = new();
 
         // Per-SceneView-element bookkeeping (V.SceneView), keyed by the element itself. The binding
@@ -838,6 +858,8 @@ namespace Velvet
         public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
         public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
         public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
+        // Elements carrying FiberElementProps.NoDrag. A side-table only: nothing is written to the element.
+        public HashSet<VisualElement> NoDragElements { get; } = new();
 
         // The one live drag session (pending or active) for this tree, owned by DndActiveDrag itself:
         // null = idle. See DndActiveDrag for the state machine.
@@ -1028,6 +1050,8 @@ namespace Velvet
         internal void BindPortalTarget(VisualElement target)
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
+            // Containment follows portal content into the target's panel, which the navigator must listen on.
+            FiberFocusNavigator.EnsureAttached(target, this);
             var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
             SamePanelPortalBridges[target] = () =>
@@ -1071,7 +1095,74 @@ namespace Velvet
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
-        public Stack<(ComponentFiber Fiber, bool IsMount)> DeferredInlineLayoutEffectFibers { get; } = new();
+        // Pass is CurrentPass at the push, so a commit can leave what a parked pass pushed (FiberEffects.IsHeld).
+        public Stack<(ComponentFiber Fiber, bool IsMount, Reconciler? Pass)> DeferredInlineLayoutEffectFibers { get; } = new();
+
+        // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
+        // ended — see CompleteEnterAfterThePass.
+        internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
+
+        // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
+        // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
+        // (GeneralPathReconciler.ExpandBoundaryInline) or on the aborting path (FiberErrorBoundary.TryCatch). A
+        // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
+        // pass end would reach it.
+        internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): every caller passes a motion it has resolved an enter for,
+            // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
+            if (motion?.OnEnterComplete == null) return;
+            if (SharedReconcileDepth == 0) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+            else PendingEnterCompletions.Add((motion, boundary));
+        }
+
+        // The entries a render below boundary queued: read before a catch on the aborting path detaches what that
+        // render created, since an entry's owner is placed by its parent chain.
+        internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
+        {
+            List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
+            foreach (var entry in PendingEnterCompletions)
+            {
+                if (IsAtOrBelow(entry.Boundary, boundary)) (below ??= new()).Add(entry);
+            }
+            return below;
+        }
+
+        internal void DropEnterCompletions(List<(MotionNode Motion, ComponentFiber? Boundary)>? entries)
+        {
+            if (entries == null) return;
+            foreach (var entry in entries) PendingEnterCompletions.Remove(entry);
+        }
+
+        private static bool IsAtOrBelow(ComponentFiber? fiber, ComponentFiber boundary)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, boundary)) return true;
+            }
+            return false;
+        }
+
+        internal void RunPendingEnterCompletions()
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): an empty list copies out nothing and the loop runs no
+            // callback; the guard spares that copy where nothing is queued.
+            if (PendingEnterCompletions.Count == 0) return;
+            // Copied out first: a callback can start a pass whose own end reaches this list.
+            var completions = PendingEnterCompletions.ToArray();
+            PendingEnterCompletions.Clear();
+            foreach (var (motion, boundary) in completions) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+        }
+
+        // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
+        // effects to deliver it to OnCaughtError (FiberEffects.DeliverCaughtErrors). Sequence is taken from
+        // NextCaughtErrorSequence at the catch.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
+        internal long NextCaughtErrorSequence;
+
+        // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
+        // it (FiberEffects.CommitStrandedLayoutWork).
+        internal int EffectCommitDepth;
 
         // Fibers with pending passive (UseEffect) effects awaiting the next post-paint drain. Unlike
         // layout effects (committed synchronously, bottom-up, before paint) passive effects fire
@@ -1146,6 +1237,10 @@ namespace Velvet
         private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
 
         private bool _drainingRefAttaches;
+
+        // A boundary catching a ref setup's failure mid-drain must not commit layout effects ahead of the setups
+        // still queued behind it (FiberEffects.IsCommitOnTheStack reads this).
+        internal bool IsDrainingRefAttaches => _drainingRefAttaches;
 
         // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
         // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue
@@ -1543,6 +1638,10 @@ namespace Velvet
         // set/restore discipline.
         internal bool PresenceAnchorEnterHandled;
 
+        // Set by the create path when it creates PresenceAnchorMotion's element, so the expansion can tell a
+        // live key remounted under its own key from one it patched. Same set/restore discipline.
+        internal bool PresenceAnchorCreated;
+
         // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 
@@ -1912,6 +2011,9 @@ namespace Velvet
                 MotionNodes,
                 PresenceChildRoots,
                 ElementToLayoutId,
+                LayoutIdTimings,
+                LayoutIdFollows,
+                LayoutIdExiting,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,

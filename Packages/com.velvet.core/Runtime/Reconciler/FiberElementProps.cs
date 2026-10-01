@@ -85,6 +85,14 @@ namespace Velvet
         public DragOverlaySettings? DragOverlay { get => _dragOverlay; set { ThrowIfReadOnly(); _dragOverlay = value; } }
         private DragOverlaySettings? _dragOverlay;
 
+        /// <summary>
+        /// When true, a press that starts on this element or inside it never arms a draggable enclosing
+        /// it, so a control inside a draggable keeps its own pointer gesture (a slider's thumb, a text
+        /// field's selection). A draggable inside this element still arms.
+        /// </summary>
+        public bool NoDrag { get => _noDrag; set { ThrowIfReadOnly(); _noDrag = value; } }
+        private bool _noDrag;
+
         /// <summary>Slider-specific settings.</summary>
         public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
         private SliderSettings? _slider;
@@ -225,8 +233,8 @@ namespace Velvet
     /// focus to nothing first — that path re-focuses the scope on the panel's next scheduler tick, as does
     /// focus that moves to another panel unless it lands in a portal declared inside the scope or in a
     /// contained scope created after this one.</param>
-    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
-    /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
+    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element that held focus when the
+    /// scope mounted (skipped if that element is gone, detached, or cannot grab focus).</param>
     /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
     /// keyed reorder's), focus the scope's first focusable descendant (skipped when focus is already
     /// inside the scope).</param>

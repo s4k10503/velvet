@@ -31,7 +31,9 @@ namespace Velvet
         // finer, which is a separate change from giving the driver a flag.
         Filter = 1 << 6,
         BackgroundPosition = 1 << 7,
-        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
+        // MotionLayoutIdDriver hides a layoutId member that another holder leads through `visibility`.
+        Visibility = 1 << 8,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition | Visibility,
     }
 
     /// <summary>
@@ -298,6 +300,7 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
+            if (declared.Contains(StyleLonghand.Visibility)) slots |= MotionTransitionSlots.Visibility;
             return slots;
         }
 
@@ -336,9 +339,7 @@ namespace Velvet
 
         // Rewrites the held transition-property list without the driven longhands — an `all` entry
         // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
-        // since those pair with transition-property by position. The expansion never names `filter`: under the
-        // `all` it replaces StyleFilterTransitionDriver stands down, and a list naming filter hands a filter
-        // change to that driver instead.
+        // since those pair with transition-property by position.
         internal static void ExcludeFromHeldList(VisualElement element, StyleLonghandSet driven)
         {
             var held = element.style.transitionProperty.value;
@@ -359,7 +360,7 @@ namespace Velvet
                     changed = true;
                     for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
                     {
-                        if (!driven.Contains((StyleLonghand)longhand) && longhand != (int)StyleLonghand.Filter)
+                        if (!driven.Contains((StyleLonghand)longhand))
                         {
                             names.Add(s_longhandNames[longhand]);
                             sources.Add(i);

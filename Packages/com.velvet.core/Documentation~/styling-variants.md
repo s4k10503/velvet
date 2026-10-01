@@ -40,19 +40,18 @@ worth knowing, both when several variants name one such utility:
   way source order settles a tie between equal-specificity CSS rules. Only rules that actually apply
   take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
   lands on the children) rank nothing on this element, so adding one never moves what it paints.
-  A stacked variant is ranked by its own position too: `dark:hover:` layers at the stronger of its two
-  parts, which is the plain `hover:` layer, so `"dark:hover:shadow-lg hover:shadow-sm"` resolves to the
-  later-written `shadow-sm` while both are active.
+  A stacked variant is ranked by its own position too, which the precedence table below gives: so
+  `"dark:hover:shadow-lg hover:shadow-sm"` resolves to `shadow-lg` while dark and hover both hold.
 
 ## The variant set
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches; `focus-visible:` also reads the last input to any panel, see [focus.md](focus.md#focus-visible-styling-and-state)) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
-| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
+| **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.
@@ -127,55 +126,58 @@ Four consequences worth knowing:
   either one important changes nothing — there is no property set to rank them by. Use the
   arbitrary-value form where the family has one, or compute the class string in C# and render exactly
   one member.
-- **`has-[.foo]:` matches what is on the element, not what was written — a deviation from CSS.** On
-  the web `:has(.foo)` tests class-attribute membership, and the cascade never removes a class from
-  the DOM, so a `.foo` whose declarations all lost still matches there. Velvet suppresses the class
-  itself, so the condition stops matching.
+- **`has-[.foo]:` still sees a class that lost.** A `.foo` written in a descendant's `className`
+  matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
+  however the cascade ranks `.foo`'s declarations.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style
 rather than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority
 class stands down so the class shows through, and a class outranked by a higher-priority inline layer
 comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The filter
 family is the exception — filters compose rather than override, so a `filter` class and a
-`blur-[6px]` layer both apply. Two inline values of one property under the same variants —
-`w-[2px] w-[1px]`, `hover:flex-[3] hover:flex-2` — resolve as Tailwind orders their names, the later
-one winning whatever the className lists last: `w-[2px]` and `flex-[3]` here. A repeated
-`filter-[name:…]` is the exception: [styling-filters.md](styling-filters.md) gives what it does.
+`blur-[6px]` layer both apply. Two inline values of one property written without a variant —
+`w-[2px] w-[1px]`, `flex-[3] flex-2` — resolve as Tailwind orders their names, the later one winning
+whatever the className lists last: `w-[2px]` and `flex-[3]` here. A repeated `filter-[name:…]` is the
+exception: [styling-filters.md](styling-filters.md) gives what it does.
 
-A few things about `origin-[…]` are worth knowing. `origin-[33%_75%]` is `transform-origin: 33% 75%`
-— the underscore standing for a space, as it does in `shadow-[0px_2px_8px_#0004]` and
-`clip-path-[polygon(…)]`; a single component is the **x** alone and
-leaves the y at 50%, as CSS does, so `origin-[0px]` is the left edge's middle rather than the
-top-left corner. A keyword inside the brackets is refused — the nine keyword pivots are their own
-classes, and `origin-[0%_75%]` is how to spell the mixed keyword-and-length case they cannot. A third
-component is refused as well: CSS takes a z there and the engine carries one, but not as a
-length-percentage, so `origin-[50%_50%_0]` is not recognised. Both are deviations from Tailwind, which
-passes the bracket contents through to CSS. And
-there is no negative form of the class, as there is none in Tailwind either; a minus goes inside
-the brackets.
+`origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
+`shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is
+`transform-origin: 33% 75%`, `origin-[left_20px]` and `origin-[bottom_left]` mix and reorder keywords the
+way CSS allows, a single component leaves the other axis at 50% (`origin-[0px]` is the left edge's
+middle), and a third component is the z length (`origin-[50%_50%_10px]`). A pair CSS declares invalid —
+`origin-[top_20px]`, `origin-[left_right]`, a percentage z — is not recognised. There is no negative
+form of the class, as there is none in Tailwind either; a minus goes inside the brackets.
 
 ### Precedence order
 
-Lowest first. Families are ordered by how strong and how deliberate the condition that activates them
-is: a position among siblings is the weakest signal, the element's own interaction state the
-strongest. Where members of one row also rank against each other, `<` shows that order; where they do
-not, each still occupies a layer of its own, so turning one off never disturbs another.
+A tie on one property resolves the way Tailwind's generated CSS resolves it: the rule with the higher
+specificity wins, and between rules of equal specificity the one Tailwind emits later does. A media or
+feature query adds no specificity, so `md:w-[10px] hover:w-[20px]` on a hovered element wider than `md`
+is 20 px wide; an attribute selector carries a pseudo-class's and is emitted after the states, so
+`disabled:opacity-50 aria-[busy=true]:opacity-75` on a disabled, busy element resolves to 0.75.
 
-| | Layer |
-|---|---|
-| 1 | The base utility |
-| 2 | `[&>*]:` — a rule the container imposes on its children |
-| 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
-| 4 | Responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < `supports-[…]:` |
-| 5 | Theme — `dark:` |
-| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
-| 7 | Relational — the `group-*` and `peer-*` states |
-| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
-| 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
+Lowest first, each row in the order `<` shows. Two rules of one rank that write an arbitrary value —
+`nth-1:bg-[#f00]` beside `nth-2:bg-[#0f0]`, two `data-[…]:w-[…]` rules — keep a value each, so turning
+one off leaves the other's standing.
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
-layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
-with the stronger one; *Same family, different values* above settles such a tie.
+| | Specificity | Layer |
+|---|---|---|
+| 1 | (0,1,0) | The base utility |
+| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
+| 3 | (0,1,0) | Theme — `dark:` |
+| 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
+| 5 | (0,2,0) | Relational — the `group-*` states < the `peer-*` states |
+| 6 | (0,2,0) | Structural — `first:` < `last:` < `only:` < `odd:` < `even:` |
+| 7 | (0,2,0) | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` < `disabled:` |
+| 8 | (0,2,0) | `has-[…]:` < `aria-[…]:` < `data-[…]:` < `nth-N:` < `nth-last-N:` |
+| 9 | (0,2,0) | Arbitrary selector — `[&:nth-child(N)]:`, `[&:first-child]:` and the other `[&:…]:` structural forms |
+| 10 | | The important band — rows 1–9 again, one level each, for anything carrying `!` |
+
+A **stacked** variant is one rule carrying every part: their specificities add, and it sorts by the
+latest-emitted part, then the next, and so on. So `hover:focus:` is (0,3,0) and outranks every row
+above; `dark:hover:` keeps hover's (0,2,0), outranks plain `hover:` and row 8 because `dark` is emitted
+after all of them, ranks below row 9, and loses to `dark:focus:`, because `focus` is emitted after
+`hover`; and `[&>*]:hover:` outranks the child's own `hover:`, the arbitrary variant being emitted last.
 
 ### The important modifier
 
@@ -205,17 +207,18 @@ width.
 
 ### Relational variants (`group-` / `peer-`)
 
-`group-*` reacts to a **marked ancestor**: add the `group` class to a container, and a
+`group-*` reacts to **marked ancestors**: add the `group` class to a container, and a
 descendant's `group-hover:` payload toggles when that container is hovered. `peer-*` reacts to
-a **marked previous sibling**: add `peer` to one element, and a later sibling's `peer-checked:`
-payload toggles with that peer's checked state. Tailwind's **named** forms are supported, so
+**marked previous siblings**: add `peer` to one element, and a later sibling's `peer-checked:`
+payload toggles with that peer's checked state. With several marked ancestors or previous siblings,
+the payload holds while any one of them is in the state. Tailwind's **named** forms are supported, so
 multiple groups / peers can coexist without cross-talk:
 
 ```csharp
 V.Div(className: "group ...",
     children: new[]
     {
-        // Tints only when THIS card (the group) is hovered.
+        // Tints when this card, or any other unnamed group around it, is hovered.
         V.Label(className: "text-muted group-hover:text-foreground", text: "Title"),
     });
 
@@ -223,10 +226,6 @@ V.Div(className: "group ...",
 V.Div(className: "group/sidebar ...",
     children: new[] { V.Label(className: "group-hover/sidebar:text-on", text: "Item") });
 ```
-
-> Note — there is no `disabled:` variant. UI Toolkit has no reliable "enabled changed" event
-> to drive a manipulator, so disabled-state styling stays on the USS `:disabled` pseudo-class
-> (the curated `disabled-*` utilities).
 
 ### Stacked variants
 
@@ -256,7 +255,8 @@ wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-g
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
-`whitespace-pre-line`, `leading-*`. Each resolves at mount and on every toggle in both directions, and
+`whitespace-pre-line`, `leading-*`, with the wrap mode `text-balance` / `text-pretty` write onto the
+text. Each resolves at mount and on every toggle in both directions, and
 the order they compose in is preserved on a toggle just as on a render — so
 `className="gap-4 md:grid md:grid-cols-3"` is a
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`
@@ -270,22 +270,18 @@ placed directly after it inside the same parent. The ringed element's own layout
 band takes that element's own paint position, so overlapping `-space-x-*` avatars each carrying
 `ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
-two `focus:ring-2` siblings render the same whichever was focused first. The hosting stays visible in
-three places:
+two `focus:ring-2` siblings render the same whichever was focused first. `ring-inset` paints **over**
+an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
 
-- `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
-  order CSS gives an inset box-shadow, not an inset outline.
-- A transform on the ringed element itself — `translate-*`, `scale-*`, `rotate-*`, or an animation
-  driving those — moves the element and leaves the band on the laid-out box, because a transform
-  composites over the transformed element's own subtree and the band is not in it. A transform on an
-  **ancestor** carries element and band together. CSS moves an outline with its element.
-- A ring on a `V.Motion` is ignored, with a warning: it is the transform case above, and animating a
-  transform is what a `V.Motion` is for. Put the ring on a `Div` the Motion wraps — there the band is
-  inside the Motion's subtree, so it rides both the transform and the opacity.
+What the ringed element's own subtree would carry reaches the band as well. Its transform —
+`translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,
+a `layoutId` play — its opacity, its `invisible` / `visible` and its `hidden` are copied onto the band
+at layout and once per frame, and an ancestor's carry element and band together. A ring on a
+`V.Motion` renders like one on a `Div`.
 
-A ring on an ordinary element inside a `V.AnimatePresence` **does** fade with that element's enter and
-exit: the band is the one paint the scheduler samples the caster's opacity for each frame, because it
-is the only one hosted outside the element the renderer applies that opacity to.
+A ring inside a `V.AnimatePresence` fades with its element's enter and exit: the band is the one paint
+the scheduler samples the caster's opacity for each frame, because it is the only one hosted outside
+the element the renderer applies that opacity to.
 
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
@@ -330,8 +326,7 @@ and so:
   fit, the fitted class radius replaces yours.
 - A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
   there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
-- A change of size refits at once rather than running a transition, and a change of class under
-  `transition-all` animates between the fitted radii rather than the declared ones.
+- A change of class under `transition-all` animates between the fitted radii rather than the declared ones.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
@@ -393,11 +388,10 @@ V.Div(className: "absolute inset-0 skew-x-[-24deg] bg-lime-400", children: new V
 ```
 
 The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
-content follows that element's transform (`hover:scale-105 shadow-lg` keeps its shadow aligned) and a
-sibling does not, and because a paint hosted outside the element stops receiving the element's opacity
-and has to be driven per frame the way the band is. A band was worth both costs because an outset one is
-wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box and would have
-survived, but one hosting has to serve both.
+content receives the element's transform and opacity from the renderer, while a paint hosted outside the
+element has to be handed both every frame, the way the band is. A band was worth that cost because an
+outset one is wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box
+and would have survived, but one hosting has to serve both.
 
 **Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
 `whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the
@@ -474,23 +468,13 @@ Reference the marker from code via `VelvetResponsive.ContainerClass` (its value 
 `"@container"`) rather than hardcoding the string — tooling such as the preview viewport
 switcher applies it this way.
 
-### When breakpoints resolve — attach-time binding
+### When breakpoints resolve
 
-A container query is **structural**, like a real CSS container, so the binding has one caveat
-worth knowing:
-
-- A descendant binds its responsive **width source once, at the moment it attaches to the
-  panel** — it resolves the nearest `@container` ancestor (or the panel root) then, and watches
-  that element's width from then on.
-- Adding or removing `@container` on an **already-attached** ancestor at runtime does **not**
-  re-point descendants that are already attached. They keep the source they bound at attach
-  until they re-attach.
-
-The supported usage follows from this: put `@container` on the scope element **before its
-subtree mounts**, or **re-mount the subtree** after toggling the marker. (The preview window's
-viewport switcher does exactly the latter — it re-mounts the story after changing the canvas's
-scope so the simulated width drives the breakpoints; see
-[preview-tooling.md](preview-tooling.md).)
+A descendant resolves its responsive **width source** — the nearest `@container` ancestor, or the
+panel root — when it attaches to the panel, and watches that element's width from then on. It
+resolves again whenever a render adds `@container` to an element's `className` or removes it, so
+toggling the marker re-points the descendants already attached, as a CSS container query does
+when an ancestor gains or loses `container-type`.
 
 ### `@container` vs. the panel-width default
 
@@ -498,8 +482,7 @@ scope so the simulated width drives the breakpoints; see
 |---|---|---|
 | What `sm:`/`md:`/… measure | The panel root's width | The nearest `@container` ancestor's width |
 | Analogy | A CSS media query | A CSS container query (`container-type: inline-size`) |
-| When it binds | At descendant attach | At descendant attach |
-| Effect of toggling at runtime | n/a | Needs a re-mount to re-point already-attached descendants |
+| When it binds | At descendant attach | At descendant attach, and again when a render toggles the marker |
 
 See also [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the layout utilities the
 examples above compose with.

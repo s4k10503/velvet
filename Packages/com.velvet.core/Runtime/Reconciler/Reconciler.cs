@@ -245,6 +245,8 @@ namespace Velvet
                 // batch drain the drain's end expires them instead: its passes are one render, and a box one
                 // fiber's pass leaves is claimed by a later fiber's.
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
+                // After the portal drain, whose reconciles insert elements of their own.
+                StyleRelationalVariantManipulator.RetargetAll(_ctx);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -272,6 +274,7 @@ namespace Velvet
                 // Which pass ends last is not this one's to know, so the call is unconditional and
                 // DrainRefAttaches asks each entry's own pass instead.
                 _ctx.DrainRefAttaches();
+                _ctx.RunPendingEnterCompletions();
             }
         }
 
@@ -390,6 +393,8 @@ namespace Velvet
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
         void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
+
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
@@ -563,8 +568,12 @@ namespace Velvet
                 binding.DisposeImage();
             }
             _ctx.ClipPathBindings.Clear();
-            // Ring overlays are plain native-border elements (no GPU resource), so just drop the entries; the
-            // wrappers leave with their subtrees at disposal.
+            // A ring binding owns a band in its element's parent and a per-frame tick on the element: detach so
+            // a still-mounted element released at root disposal carries no Velvet residue.
+            foreach (var (element, binding) in _ctx.RingBindings)
+            {
+                RingOverlay.Detach(element, binding);
+            }
             _ctx.RingBindings.Clear();
             // Skewed elements hold paint/stash callbacks and an inline color suppression: detach so
             // a still-mounted element released at root disposal carries no Velvet residue.
@@ -592,6 +601,10 @@ namespace Velvet
                 TextOverlineSilhouette.Detach(element, binding);
             }
             _ctx.TextOverlineBindings.Clear();
+            foreach (var (element, probe) in new List<KeyValuePair<VisualElement, LeadingLengthProbe>>(_ctx.LeadingLengthProbes))
+            {
+                LeadingLengthProbe.Detach(_ctx, element, probe);
+            }
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).
@@ -611,8 +624,9 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, binding);
             }
             _ctx.AnimationBindings.Clear();
-            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each so a still-mounted
-            // element released at root disposal stops ticking any in-flight filter tween.
+            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each binding transition-filter made,
+            // so a still-mounted element released at root disposal stops ticking its in-flight filter tween. A tween
+            // the write hook bound runs to its end and settles on its own target.
             foreach (var (element, binding) in _ctx.FilterTransitionBindings)
             {
                 StyleFilterTransitionDriver.Detach(element, binding);
@@ -674,6 +688,11 @@ namespace Velvet
             _ctx.DragOverlayBindings.Clear();
             _ctx.DndScopeBindings.Clear();
             _ctx.DroppableBindings.Clear();
+            // MUTANT_SURVIVES(equivalent, line removed): the set's one reader is DndActiveDrag.Arm, reached
+            // only from a draggable armer; the loop above detaches every armer still registered, and
+            // Reconcile returns on the context marked disposed at the top of Dispose, so none attaches
+            // again. The clear only drops references to elements the unmount cleaner did not reach.
+            _ctx.NoDragElements.Clear();
         }
 
         private void ReleaseManipulators()

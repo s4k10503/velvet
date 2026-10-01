@@ -48,7 +48,8 @@ Discovery refuses a set holding a duplicate id: `VelvetPreviewRegistry.DiscoverS
 `InvalidOperationException` naming each story whose id an earlier one holds together with that earlier
 one, and the window lists no stories and shows that message in its status line. Stories declared in **test-runner assemblies are
 excluded**, so fixture stories authored for unit tests never leak into the window or the
-capture set.
+capture set. The story list's **Refresh** button discovers the stories again rather than re-listing the
+set found last.
 
 A story carries no environment of its own. A method's explicit `Width`/`Height` always wins
 and is shown at its real footprint; a story with no explicit size fills the canvas (and is the
@@ -73,10 +74,11 @@ The method must be `static`, parameterless, and return one of three teardown sha
 
 A setup can also hand the host an extra stylesheet to layer over Velvet's utilities — a
 project's design-token `:root` overrides or a custom theme — by setting
-`VelvetStyleHints.PreviewStyleSheet`. The host consumes the hint as each setup returns and attaches
-that sheet **after** Velvet's utility sheet (so its later source order lets equal-specificity
-`:root` overrides win), so the sheets of several setups layer in setup order. It removes the sheets
-it added on teardown. A sheet overriding the
+`VelvetStyleHints.PreviewStyleSheet`. `VelvetPreviewRegistry.RunSetupFor(assembly)` consumes the hint as
+each setup returns and returns a `VelvetPreviewEnvironment` whose `StyleSheets` holds every published
+sheet in setup order; disposing it runs the teardowns. The host attaches those sheets **after** Velvet's
+utility sheet (so their later source order lets equal-specificity `:root` overrides win), so the sheets of
+several setups layer in setup order, and removes the sheets it added on teardown. A sheet overriding the
 semantic colours declares them per theme set the way
 [styling-variants.md](styling-variants.md) describes.
 
@@ -142,7 +144,7 @@ panel, viewport, font, backdrop, and theme conditions can differ, so their pixel
 ## Addons
 
 The window's toolbar exposes a set of addons, each mirroring a Storybook one. The view-addon
-state (theme / background / zoom / outline / measure / viewport) persists in `EditorPrefs`, so
+state (theme / background / zoom / outline / measure / viewport / panel settings) persists in `EditorPrefs`, so
 it survives remounts and domain reloads.
 
 ### Controls / Args
@@ -196,11 +198,9 @@ than the panel root. See [styling-variants.md](styling-variants.md) for containe
 
 Two behaviors are worth knowing:
 
-- **Re-mount on change.** A responsive manipulator binds its width source **at attach**, so
-  changing the viewport re-applies the canvas size (toggling the `@container` marker) **and
-  re-mounts the story** so its descendants re-attach and resolve their width source against the
-  new scope. This is the supported way to drive container-query breakpoints from a runtime
-  switch.
+- **Re-mount on change.** Changing the viewport re-applies the canvas size (toggling the
+  `@container` marker) **and re-mounts the story**, so its descendants attach afresh and resolve
+  their width source against the new scope.
 - **A story's explicit size wins.** A story with an explicit `Width`/`Height` is always shown
   at its real footprint and is **not** treated as a responsive container — the viewport
   simulation applies only to fill-canvas stories (no explicit size).
@@ -226,6 +226,19 @@ The **Zoom** menu scales the canvas: **Fit** (the largest scale at which the can
 inside the stage), 50%, 100%, 200%. Fit recomputes against the stage and canvas sizes as they
 resize.
 
+### Panel scale
+
+The toolbar's **PanelSettings** field takes the game's `PanelSettings` asset, and the choice is remembered
+per object, so a `PanelSettings` stored as a sub-asset stays the one chosen. With one chosen, the window
+treats the viewport as a screen of that many pixels (the stage itself under **Full**), or the settings'
+target texture as the screen when they have one, and resolves the scale a runtime panel on those settings
+takes for it — `ConstantPixelSize`, `ConstantPhysicalSize` at `Screen.dpi`, or `ScaleWithScreenSize` with
+its reference resolution and screen match mode; a world-space panel takes 1. It lays the canvas out in
+that panel's units, painted at that scale under the zoom, and makes the canvas the responsive scope under
+**Full** as a Custom viewport does, remounting the story when the choice changes. So a story's explicit
+`Width`/`Height`, and the breakpoints of a story without one, are read in the panel's units, and the
+status line shows the scale. With the field empty the canvas keeps the editor panel's own scale.
+
 ### Outline / Measure
 
 The **Outline** and **Measure** toggles draw a non-interactive inspection overlay above the
@@ -239,13 +252,22 @@ underneath):
 All overlay geometry is computed from each element's `worldBound`, which already composes the
 zoomed canvas transform, so outlines and boxes stay aligned at any zoom level.
 
-## Scale caveat
+## Smoke test
 
-An `EditorWindow` panel has no `PanelSettings`, so the preview renders at raw editor-panel
-scale and cannot reproduce the game's `ScaleWithScreenSize` at a fixed reference resolution.
-Treat the window as a live **layout / behavior** view, not a pixel-exact one. For
-scale-accurate output use the headless capture path, which sets `referenceResolution` on a real
-`PanelSettings`.
+`VelvetPreviewSmokeTest.Run()` is the counterpart of Storybook's test runner run over stories without
+a play function. It mounts every discovered story with its default args, through its
+`[VelvetPreviewSetup]` environment, onto a runtime panel that renders into a 1280×720 texture. It then
+runs pending passive effects and the renders and transitions they schedule, over 100 rounds, and
+returns one `VelvetPreviewSmokeResult` per story. A story fails when building or mounting it throws, a
+setup throws, or an exception no error boundary in the story catches is logged meanwhile. `Failure`
+names the build or mount exception, else the first such logged one. An error a boundary catches is
+logged as usual and does not fail the story. `Run` throws, as discovery does, when two stories share an
+id.
+
+**Window ▸ Velvet ▸ Run Preview Smoke Test** logs one error per failing story. A CI job runs it in a
+batch-mode editor with
+`-batchmode -executeMethod Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit`, which
+exits 1 when a story fails, discovery is refused or no story is found, and 0 when every story found passes.
 
 ## Headless screenshot capture
 
@@ -254,14 +276,12 @@ The same `[VelvetPreview]` registry also works as the data source for a headless
 building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, mount each
 through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]` environment), and
 render it into a `RenderTexture` on an instantiated `PanelSettings` with a real
-`referenceResolution`, writing one PNG per story — scale-accurate where the live window is not
-(see [Scale caveat](#scale-caveat) above). In Edit Mode the panel writes the texture on a later
+`referenceResolution`, writing one PNG per story. In Edit Mode the panel writes the texture on a later
 editor frame, not during `VelvetPreviewHost.Mount`, so a harness waits for frames before reading
 back — a `[UnityTest]` yields `null`; `EditModeStoryCaptureTests` holds that path.
 `StoryCaptureTests` captures every registered story in Play Mode, waiting frames the same way.
-Velvet does not ship a prebuilt capture harness;
-`VelvetPreviewRegistry` and `VelvetPreviewHost` are the two public pieces it exposes for one, so
-a hand-rolled harness can share story discovery and mount lifecycle with the live window.
+A harness built from `VelvetPreviewRegistry` and `VelvetPreviewHost` shares story discovery and mount
+lifecycle with the live window and the smoke test.
 
 ## Related tooling
 

@@ -230,6 +230,71 @@ namespace Velvet.Tests
             Assert.IsFalse(Parent(scope).ClassListContains("bg-mark"));
         }
 
+        // A class the projection took off the descendant so a variant or an important utility could win is
+        // still in that descendant's className, which is what :has(.bg-white) tests.
+
+        private static (bool DescendantShowsClass, bool ParentPayload) HasWhiteAcross(string leafClassName)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(className: "has-[.bg-white]:bg-mark", name: "parent", children: new VNode[]
+                {
+                    V.Div(className: leafClassName, name: "leaf"),
+                }),
+            });
+            return (Leaf(scope).ClassListContains("bg-white"), Parent(scope).ClassListContains("bg-mark"));
+        }
+
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantsClassLosesToAnImportantUtility_Then_PayloadApplied()
+        {
+            // Act — !bg-black outranks bg-white on background-color, so bg-white leaves the live class list.
+            var state = HasWhiteAcross("bg-white !bg-black");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantsImportantClassLosesToAnImportantPayload_Then_PayloadApplied()
+        {
+            // Act — two important utilities fall back to the ladder, where the structural first: outranks
+            // the base, so the important bg-white is the one taken off.
+            var state = HasWhiteAcross("!bg-white first:!bg-black");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads only the live class list, which no longer holds the class.
+        // What the case adds is that a projection's record of the class is not taken for the className's.
+        [Test]
+        public void Given_HasClassParent_When_TheClassIsTakenOffTheDescendantFromOutside_Then_PayloadClears()
+        {
+            // Arrange — first: gives the descendant a projection while bg-white is on it, so the projection
+            // records bg-white among the classes it found there.
+            using var scope = new ReconcilerScope();
+            VNode[] Tree() => new VNode[]
+            {
+                V.Div(className: "has-[.bg-white]:bg-mark", name: "parent", children: new VNode[]
+                {
+                    V.Div(className: "bg-white first:p-2", name: "leaf"),
+                }),
+            };
+            var first = Tree();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var before = Parent(scope).ClassListContains("bg-mark");
+
+            // Act — removed by something other than the projection, then re-derived by a render that
+            // changes nothing.
+            Leaf(scope).RemoveFromClassList("bg-white");
+            scope.Reconciler.Reconcile(scope.Root, first, Tree());
+
+            // Assert
+            Assert.That((before, Parent(scope).ClassListContains("bg-mark")), Is.EqualTo((true, false)));
+        }
+
         [Test]
         public void Given_HasClassParent_When_TheCarryingDescendantIsRemoved_Then_PayloadClears()
         {

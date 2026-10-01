@@ -146,12 +146,13 @@ namespace Velvet.Tests
 
         private static int s_enterCompletions;
 
-        // A presence child that follows its parent's label and fades in on the classic preset.
+        // A presence child that follows its parent's labels, entering from the inherited initial pose on the Fade
+        // preset's timing. While the label is null none reaches it, and it plays the preset's classic enter.
         [Component]
         private static VNode FadingFollower()
         {
             var label = Hooks.UseStore(s_labelStore, s => s.Label);
-            return V.Motion(name: "parent", animate: label, children: new VNode[]
+            return V.Motion(name: "parent", initial: "hidden", animate: label, children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", children: new VNode[]
                 {
@@ -501,9 +502,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
-        // So a presence child's classic fade-in still completes when its inherited label changes before it swaps.
+        // So a presence child's inherited enter still completes when its inherited label changes before it swaps.
         [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
+        public void Given_APresenceChildsInheritedEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
         {
             // Arrange
             s_enterCompletions = 0;
@@ -523,13 +524,14 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
-        // So a presence child's classic fade-in keeps its transition when its inherited label changes before it swaps.
+        // So a presence child's classic fade-in, started while no label reached it, keeps its transition when the first
+        // label to reach it names a zero-duration pose.
         [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheFadeKeepsItsTransition()
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TheFirstLabelToReachItIsAZeroDurationPose_Then_TheFadeKeepsItsTransition()
         {
-            // Arrange
+            // Arrange — no label reaches the child as it mounts, so it plays the Fade preset's classic enter.
             using var labels = new LabelStore();
-            labels.Set("visible");
+            labels.Set(null);
             s_labelStore = labels;
             using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
@@ -543,21 +545,19 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's zero-duration swaps never wrote a classic enter's transition list.
-        // So a presence child's classic fade-in keeps its preset's when two inherited label changes land before it swaps.
+        // So that classic fade-in keeps its preset's transition-property when a zero-duration pose lands over it.
         [Test]
-        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TwoZeroDurationPosesFollow_Then_ItsTransitionPropertyIsLeftToItsPreset()
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_TheFirstLabelToReachItIsAZeroDurationPose_Then_ItsTransitionPropertyIsLeftToItsPreset()
         {
             // Arrange
             using var labels = new LabelStore();
-            labels.Set("visible");
+            labels.Set(null);
             s_labelStore = labels;
             using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            labels.Set("half");
-            scheduler.DrainImmediateForTest();
 
             // Act
-            labels.Set("tagged");
+            labels.Set("half");
             scheduler.DrainImmediateForTest();
 
             // Assert

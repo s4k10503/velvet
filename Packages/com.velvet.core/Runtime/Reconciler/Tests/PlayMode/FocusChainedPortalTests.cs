@@ -389,16 +389,9 @@ namespace Velvet.Tests
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the minimal, defensible reading of "focus... relative to the app's main panel"
-    /// scope: (1) a focusable element inside a framework host panel (V.Portal(layer:) / V.WorldSpace)
-    /// actually receives focus on that panel's own FocusController when focused, and (2) a host panel
-    /// torn down while it holds focus hands focus back to the main panel instead of leaving it
-    /// dangling on a defunct FocusController. Automatic Tab/Shift-Tab wrap-around chaining ACROSS panel
-    /// boundaries is explicitly out of scope — no web precedent (iframe boundaries, Shadow DOM's
-    /// default containment, React Aria's FocusScope) auto-chains independent focus scopes; every one
-    /// of them requires explicit author opt-in to cross a scope boundary, which Velvet does not
-    /// currently expose (tracked separately, gated on confirming a TrickleDown key-event listener can
-    /// reliably preempt FocusController's own wrap action before building on it).
+    /// A focusable element inside a host panel (V.Portal(layer:) / V.WorldSpace) receives focus on that
+    /// panel's own FocusController, and a host panel torn down while it holds focus hands focus back to the
+    /// main panel. Tab order across panels (<c>PanelFocusOrder.Chained</c>) is FocusChainedPortalTests'.
     /// </summary>
     internal sealed class CrossPanelFocusTests
     {

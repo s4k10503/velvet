@@ -23,8 +23,10 @@ namespace Velvet.Tests
     /// effect.</item>
     /// <item>Where a boundary's catch aborts the pass, the row the keyed diff was building and the leaf the
     /// general walk had built both get no ref, and so does a row whose creation raised the abort in an
-    /// unkeyed append, a time-sliced keyed append or the rebuild of a range found shorter than the old side.
-    /// A row the keyed diff built and placed in a pass that completed does get its ref.</item>
+    /// unkeyed append, or — an element callback's error being what its own boundary aborts on — in a
+    /// time-sliced keyed append or the rebuild of a range found shorter than the old side. A row holding its
+    /// own boundary, which catches a render inside it, is placed with its ref in those two, and a row the
+    /// keyed diff built and placed in a pass that completed gets its ref too.</item>
     /// <item>A Portal or a z-layer child inside an element whose creation failed mounts nothing when the
     /// deferred mounts drain, and the pooled element of the z-layer child stays detached.</item>
     /// </list>
@@ -385,16 +387,33 @@ namespace Velvet.Tests
             return V.Component(RefusingRowRender, key: "refusing");
         }
 
-        // A row holding its own boundary, so a pass with no component above it can still be aborted.
-        private static VNode RowAbortedFromInside(string key)
+        // A row holding its own boundary, which catches in the walk of the row's own children.
+        private static VNode RowCatchingInside(string key)
             => V.Div(key: key, refCallback: s_rowRef,
                 children: new VNode[] { V.Component(InnerBoundaryRender, key: "inner") });
 
+        [Component(Compiler = false)]
+        private static VNode CallbackRefusingRowRender()
+            => V.ScrollView(onCreated: _ => throw new InvalidOperationException("callback refused"));
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InnerCallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "inner fallback"));
+            return V.Component(CallbackRefusingRowRender, key: "refusing");
+        }
+
+        // A row holding its own boundary, which an element callback's error below it makes abort the pass.
+        private static VNode RowAbortedFromInside(string key)
+            => V.Div(key: key, refCallback: s_rowRef,
+                children: new VNode[] { V.Component(InnerCallbackBoundaryRender, key: "inner") });
+
+        // GREEN_ON_BASE(characterization): the merge base releases this row when its boundary aborts the pass.
+        // An element callback's error still aborts it, and this keeps that release driven.
         [Test]
         public void Given_ATimeSlicedKeyedTailAddWhoseRowAbortsFromInside_When_ItRuns_Then_TheRowGetsNoRef()
         {
             // Arrange — every old key matches the new side's head, so the time-sliced machine appends the rest.
-            s_rowRenderRefused = true;
             s_rowRef = CountRef;
             Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x") };
@@ -410,12 +429,12 @@ namespace Velvet.Tests
                 Is.EqualTo("rows 1, ref 0 set up"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base releases this row when its boundary aborts the pass.
+        // An element callback's error still aborts it, and this keeps that release driven.
         [Test]
         public void Given_ADesyncedKeyedRangeWhoseRebuiltRowAbortsFromInside_When_ItRebuilds_Then_TheRowGetsNoRef()
         {
-            // Arrange — a row taken out of the parent behind the reconciler's back leaves the live range
-            // shorter than the old side, which is what sends the keyed diff to rebuild the range.
-            s_rowRenderRefused = true;
+            // Arrange — as the render-error case below.
             s_rowRef = CountRef;
             Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") };
@@ -429,6 +448,47 @@ namespace Velvet.Tests
             // Assert
             Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up",
                 Is.EqualTo("rows 1, ref 0 set up"));
+        }
+
+        [Test]
+        public void Given_ATimeSlicedKeyedTailAddWhoseRowCatchesInside_When_ItRuns_Then_TheRowIsPlacedWithItsRef()
+        {
+            // Arrange — every old key matches the new side's head, so the time-sliced machine appends the rest.
+            s_rowRenderRefused = true;
+            s_rowRef = CountRef;
+            Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
+            var oldTree = new VNode[] { V.Label(key: "x", text: "x") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var nextTree = new VNode[] { V.Label(key: "x", text: "x"), RowCatchingInside("d") };
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, nextTree, frameBudgetMs: double.Epsilon);
+            while (Reconciler.HasPendingWork) Reconciler.ContinueReconcile(double.Epsilon);
+
+            // Assert — the row count says the row was placed, as React commits a row around its boundary's fallback.
+            Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up",
+                Is.EqualTo("rows 2, ref 1 set up"));
+        }
+
+        [Test]
+        public void Given_ADesyncedKeyedRangeWhoseRebuiltRowCatchesInside_When_ItRebuilds_Then_TheRowIsPlacedWithItsRef()
+        {
+            // Arrange — a row taken out of the parent behind the reconciler's back leaves the live range
+            // shorter than the old side, which is what sends the keyed diff to rebuild the range.
+            s_rowRenderRefused = true;
+            s_rowRef = CountRef;
+            Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
+            var oldTree = new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            Root.RemoveAt(1);
+            var nextTree = new VNode[] { V.Label(key: "x", text: "x"), RowCatchingInside("d") };
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, nextTree);
+
+            // Assert
+            Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up",
+                Is.EqualTo("rows 2, ref 1 set up"));
         }
 
         private static bool s_wrapAbortedLeaf;

@@ -449,6 +449,85 @@ namespace Velvet.Tests
                     FirstRoot.panel.focusController.focusedElement),
                 Is.EqualTo((true, true, true, 1, (Focusable)shownAgain)));
         }
+
+        [UnityTest]
+        public IEnumerator Given_AButtonTheFirstPanelLastFocusedWhoseRootLeftBeforeTheRelease_When_FocusReturnsToTheFirstPanel_Then_TheRentedButtonIsNotFocused()
+        {
+            // Arrange — the tree is disposed only after its root has left the panel.
+            var container = new VisualElement();
+            FirstRoot.Add(container);
+            _released = V.Mount(container, V.Component(SingleButton, key: "released"));
+            yield return Settle();
+            var released = container.Q<VisualElement>("button");
+            released.Focus();
+            var focusLanded = released.panel.focusController.focusedElement == released;
+            yield return null;
+            SetFocusedPanel(null);
+            container.RemoveFromHierarchy();
+            Release();
+            _reused = V.Mount(SecondRoot, V.Component(SingleButton, key: "reused"));
+            yield return Settle();
+            var reused = SecondRoot.Q<VisualElement>("button");
+            var focusIns = 0;
+            reused.RegisterCallback<FocusInEvent>(_ => focusIns++);
+
+            // Act
+            SetFocusedPanel(FirstRoot.panel);
+            yield return Settle();
+
+            // Assert
+            Assert.That((focusLanded, ReferenceEquals(reused, released), focusIns), Is.EqualTo((true, true, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base scrubs nothing when a root leaves its panel. This case pins
+        // that a disposed tree stops scrubbing the element it was mounted on.
+        [UnityTest]
+        public IEnumerator Given_ADisposedTree_When_TheElementItWasMountedOnLeavesThePanel_Then_ThePanelStillRemembersAnElementFocusedInIt()
+        {
+            // Arrange
+            var container = new VisualElement();
+            FirstRoot.Add(container);
+            _released = V.Mount(container, V.Component(SingleButton, key: "released"));
+            yield return Settle();
+            Release();
+            var own = new Button { name = "own" };
+            container.Add(own);
+            yield return Settle();
+            own.Focus();
+            var controller = FirstRoot.panel.focusController;
+            var focusLanded = controller.focusedElement == own;
+            SetFocusedPanel(null);
+
+            // Act
+            container.RemoveFromHierarchy();
+
+            // Assert
+            Assert.That((focusLanded, HeldFocus(controller).Item1), Is.EqualTo((true, (object)own)));
+        }
+
+        [Component]
+        private static VNode SingleLabel() => V.Label(name: "label", text: "selected");
+
+        [UnityTest]
+        public IEnumerator Given_ALabelItsPanelHoldsAsTheSelectedTextElement_When_TheLabelIsReleased_Then_ThePanelKeepsNoReferenceToIt()
+        {
+            // Arrange — staged through the engine's own setter, which its text selection manipulator calls.
+            _released = V.Mount(FirstRoot, V.Component(SingleLabel, key: "released"));
+            yield return Settle();
+            var label = FirstRoot.Q<Label>("label");
+            var controller = label.panel.focusController;
+            var selectedText = controller.GetType().GetProperty("selectedTextElement", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingMemberException(controller.GetType().FullName, "selectedTextElement");
+            selectedText.SetValue(controller, label);
+            var heldBefore = selectedText.GetValue(controller);
+
+            // Act
+            Release();
+
+            // Assert
+            Assert.That((ReferenceEquals(heldBefore, label), selectedText.GetValue(controller)),
+                Is.EqualTo((true, (object)null)));
+        }
     }
 }
 #endif
