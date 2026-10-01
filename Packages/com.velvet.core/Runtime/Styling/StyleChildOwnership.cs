@@ -14,11 +14,32 @@ namespace Velvet
     // margins, so a child moving between a gap container and a grid one has to be one owner's or the other's
     // and a per-manipulator table would let each still answer "mine". The tables live on ReconcilerContext
     // and are enrolled in its pure element side-tables, so a claim's teardown is the plain Remove.
+    // A container whose writes on a child depend on the child's own classes — a space margin or divider gives
+    // way to one, a display:none child takes no gap slot — and so re-applies when one of them changes.
+    internal interface IChildClassWatcher
+    {
+        void Reapply();
+    }
+
     internal static class StyleChildOwnership
     {
         public static void Claim(Dictionary<VisualElement, Manipulator> owners, VisualElement child,
             Manipulator owner)
-            => owners[child] = owner;
+        {
+            owners.TryGetValue(child, out var previous);
+            if (!ReferenceEquals(previous, owner))
+            {
+                if (previous is IChildClassWatcher left)
+                {
+                    StyleArbitraryValueResolver.Unwatch(child, left);
+                }
+            }
+            owners[child] = owner;
+            if (owner is IChildClassWatcher watcher)
+            {
+                StyleArbitraryValueResolver.Watch(child, watcher);
+            }
+        }
 
         // True once the claim was this owner's and has been dropped — the caller may then reset what it
         // wrote. False leaves the child untouched: the value on it now belongs to somebody else, or to
@@ -31,6 +52,10 @@ namespace Velvet
                 return false;
             }
             owners.Remove(child);
+            if (owner is IChildClassWatcher watcher)
+            {
+                StyleArbitraryValueResolver.Unwatch(child, watcher);
+            }
             return true;
         }
     }

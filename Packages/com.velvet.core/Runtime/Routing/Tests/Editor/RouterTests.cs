@@ -930,10 +930,8 @@ namespace Velvet.Tests
 
         #region Router.Current
 
-        // GREEN_ON_BASE(characterization): the base clears Router.Current this way too.
-        // The change rewrites the property's documentation, which said otherwise.
         [Test]
-        public void Given_TwoRoutersConstructed_When_TheLaterIsDisposed_Then_CurrentIsNullWhileTheEarlierLives()
+        public void Given_TwoRoutersConstructed_When_TheLaterIsDisposed_Then_CurrentIsTheEarlier()
         {
             // Arrange
             using var earlier = new Router(new[] { Route("/") });
@@ -943,7 +941,23 @@ namespace Velvet.Tests
             later.Dispose();
 
             // Assert
-            Assert.That(Router.Current, Is.Null);
+            Assert.That(ReferenceEquals(Router.Current, earlier), Is.True);
+        }
+
+        [Test]
+        public void Given_ThreeRoutersConstructed_When_TheMiddleThenTheLatestAreDisposed_Then_CurrentIsTheFirst()
+        {
+            // Arrange
+            using var first = new Router(new[] { Route("/") });
+            var middle = new Router(new[] { Route("/") });
+            var latest = new Router(new[] { Route("/") });
+            middle.Dispose();
+
+            // Act
+            latest.Dispose();
+
+            // Assert
+            Assert.That(ReferenceEquals(Router.Current, first), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base leaves Router.Current alone this way too.
@@ -960,6 +974,103 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ReferenceEquals(Router.Current, later), Is.True);
+        }
+
+        private static void ForgetEveryRouter() => typeof(Router).GetMethod("ForgetEveryRouter",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+
+        // GREEN_ON_BASE(characterization): the base names no router once the newest is disposed.
+        [Test]
+        public void Given_TheOnlyTwoRoutersRegistered_When_BothAreDisposed_Then_CurrentNamesNone()
+        {
+            // Arrange — the registry starts empty, so the earlier router is its first entry.
+            ForgetEveryRouter();
+            var earlier = new Router(new[] { Route("/") });
+            var later = new Router(new[] { Route("/") });
+            earlier.Dispose();
+
+            // Act
+            later.Dispose();
+
+            // Assert
+            Assert.That(Router.Current, Is.Null);
+        }
+
+        [Test]
+        public void Given_RoutersConstructedAndDisposedInTurn_When_AnotherIsConstructed_Then_TheRegistryHoldsOnlyIt()
+        {
+            // Arrange
+            ForgetEveryRouter();
+            for (var i = 0; i < 3; i++)
+            {
+                new Router(new[] { Route("/") }).Dispose();
+            }
+
+            // Act
+            using var live = new Router(new[] { Route("/") });
+
+            // Assert
+            var registry = typeof(Router).GetField("s_constructed",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.GetValue(null);
+            Assert.That((registry as System.Collections.ICollection)?.Count ?? -1, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base clamps a route level past the matched chain the same way.
+        [Test]
+        public void Given_ARouteLevelPastTheMatchedChain_When_NavigatingToTheCurrentRoute_Then_ItAnchorsAtTheLeaf()
+        {
+            // Arrange
+            var router = BuildRouter("/users/7", Route("/", children: new[] { Route("users/:id") }));
+
+            // Act
+            router.NavigateAsync(".", NavigationMode.Push, baseRouteIndex: 9).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/users/7"));
+        }
+
+        [Test]
+        public void Given_ALiveRouter_When_TheSubsystemsAreRegisteredAgain_Then_CurrentNamesNone()
+        {
+            // Arrange — what Unity calls entering Play Mode without a domain reload.
+            using var router = new Router(new[] { Route("/") });
+            var reset = typeof(Router).GetMethod("ForgetEveryRouter",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            // Act
+            reset?.Invoke(null, null);
+
+            // Assert
+            Assert.That(Router.Current, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base references only the newest router, so an earlier one
+        // nothing else holds is collectable there too.
+        [Test]
+        public void Given_RoutersNobodyDisposedOrHolds_When_ALaterOneIsDisposed_Then_TheyCanBeCollected()
+        {
+            // Arrange
+            var earlier = ConstructUnheldRouters(32);
+            new Router(new[] { Route("/") }).Dispose();
+
+            // Act
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // Assert
+            Assert.That(earlier.FindAll(router => router.IsAlive).Count, Is.LessThan(earlier.Count / 2));
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static List<WeakReference> ConstructUnheldRouters(int count)
+        {
+            var routers = new List<WeakReference>();
+            for (var i = 0; i < count; i++)
+            {
+                routers.Add(new WeakReference(new Router(new[] { Route("/") })));
+            }
+            return routers;
         }
 
         #endregion

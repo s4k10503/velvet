@@ -31,7 +31,6 @@ namespace Velvet.Tests
         private const string Divide4Row = "flex flex-row divide-x-4";
         private const string Divide8Row = "flex flex-row divide-x-8";
         private const string MarginPayloadRow = "flex flex-row [&>*]:ml-[2px]";
-        private const string BorderPayloadRow = "flex flex-row [&>*]:border-l-[2px]";
         private const string WidthPayloadRow = "flex flex-row [&>*]:w-[8px]";
 
         // Null reads as a word rather than as the zero StyleLength.value carries for it, so a cleared slot
@@ -124,18 +123,22 @@ namespace Velvet.Tests
         [Test]
         public void Given_AChildAPayloadRowGaveToADivideRow_When_ThePayloadRowRunsAfterwards_Then_TheDividerSurvives()
         {
-            // Arrange
+            // Arrange — a divider sits on every child but the last, on its right edge, so the moving child is
+            // the first one and the payload writes that same edge.
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (first, second, moving) = TwoRows(scope, BorderPayloadRow, Divide8Row);
-            var fromPayload = Inline(moving.style.borderLeftWidth);
-            ReRent(first, second, moving, () => ctx.DivideManipulators[second].Apply());
+            var (first, second, _) = TwoRows(scope, "flex flex-row [&>*]:border-r-[2px]", Divide8Row);
+            var moving = first[0];
+            var fromPayload = Inline(moving.style.borderRightWidth);
+            first.Remove(moving);
+            second.Insert(0, moving);
+            ctx.DivideManipulators[second].Apply();
 
             // Act
             ctx.ChildVariantManipulators[first].Apply();
 
             // Assert — as above, the payload's own write rides along.
-            Assert.That((fromPayload, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("2", "8")));
+            Assert.That((fromPayload, Inline(moving.style.borderRightWidth)), Is.EqualTo(("2", "8")));
         }
 
         [Test]
@@ -211,37 +214,40 @@ namespace Velvet.Tests
         [Test]
         public void Given_AChildAColoredDivideRowGaveToAColorPayloadRow_When_TheDivideRowRunsAfterwards_Then_ThePayloadColorSurvives()
         {
-            // Arrange
+            // Arrange — the first child carries the divider, whose color reaches all four of its edges; the top
+            // one is read because the divider's own edge is reset by a separate path.
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (first, second, moving) = TwoRows(scope, "flex flex-row divide-x-4 divide-gray-200",
+            var (first, second, _) = TwoRows(scope, "flex flex-row divide-x-4 divide-gray-200",
                 "flex flex-row [&>*]:border-[#00FF00]");
-            var coloredByFirst = Inline(moving.style.borderLeftColor);
+            var moving = first[0];
+            var coloredByFirst = Inline(moving.style.borderTopColor);
             ReRent(first, second, moving, () => ctx.ChildVariantManipulators[second].Apply());
 
             // Act
             ctx.DivideManipulators[first].Apply();
 
             // Assert — the divider's own color rides along, as it is the value a missed release would leave.
-            Assert.That((coloredByFirst == "null", Inline(moving.style.borderLeftColor)),
+            Assert.That((coloredByFirst == "null", Inline(moving.style.borderTopColor)),
                 Is.EqualTo((false, Color.green.ToString())));
         }
 
         [Test]
         public void Given_AChildADivideRowGaveToAPayloadRow_When_TheDivideRowRunsAfterwards_Then_ThePayloadSurvives()
         {
-            // Arrange
+            // Arrange — the first child carries the divider, on the edge the payload writes.
             using var scope = new ReconcilerScope();
             var ctx = ReconcilerContextProbe.Of(scope);
-            var (first, second, moving) = TwoRows(scope, Divide4Row, BorderPayloadRow);
-            var dividedByFirst = Inline(moving.style.borderLeftWidth);
+            var (first, second, _) = TwoRows(scope, Divide4Row, "flex flex-row [&>*]:border-r-[2px]");
+            var moving = first[0];
+            var dividedByFirst = Inline(moving.style.borderRightWidth);
             ReRent(first, second, moving, () => ctx.ChildVariantManipulators[second].Apply());
 
             // Act
             ctx.DivideManipulators[first].Apply();
 
             // Assert — as above, the divide row's own border rides along.
-            Assert.That((dividedByFirst, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("4", "2")));
+            Assert.That((dividedByFirst, Inline(moving.style.borderRightWidth)), Is.EqualTo(("4", "2")));
         }
 
         [Test]
@@ -418,63 +424,80 @@ namespace Velvet.Tests
             var tree = new VNode[]
             {
                 V.Div(className: "flex flex-row divide-x",
-                    children: new VNode[] { V.Div(), V.Div(className: "border-[#FF0000]") }),
+                    children: new VNode[] { V.Div(className: "border-[#FF0000]"), V.Div() }),
             };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
             // Assert — the width reads the divider, so a row whose divider never landed cannot pass.
-            var divided = scope.Root[0][1];
-            Assert.That((Inline(divided.style.borderLeftWidth), Inline(divided.style.borderLeftColor)),
+            var divided = scope.Root[0][0];
+            Assert.That((Inline(divided.style.borderRightWidth), Inline(divided.style.borderRightColor)),
                 Is.EqualTo(("1", Color.red.ToString())));
         }
 
         [Test]
-        public void Given_AColoredDivideRow_When_ItsColorIsDropped_Then_TheDividerTakesTheChildsBorderColor()
+        public void Given_AColoredDivideRow_When_ItsColorIsDropped_Then_TheDividedChildsColorIsHandedBack()
         {
-            // Arrange
+            // Arrange — divide-{color} colors all four edges of a divided child.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
             var before = new VNode[]
             {
-                V.Div(className: "flex flex-row divide-x divide-gray-200",
-                    children: new VNode[] { V.Div(), V.Div(className: "border-[#FF0000]") }),
+                V.Div(className: "flex flex-row divide-x divide-gray-200", children: new VNode[] { V.Div(), V.Div() }),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
-            var divided = scope.Root[0][1];
-            var colored = Inline(divided.style.borderLeftColor);
+            var divided = scope.Root[0][0];
+            var colored = Inline(divided.style.borderTopColor);
             var after = new VNode[]
             {
-                V.Div(className: "flex flex-row divide-x",
-                    children: new VNode[] { V.Div(), V.Div(className: "border-[#FF0000]") }),
+                V.Div(className: "flex flex-row divide-x", children: new VNode[] { V.Div(), V.Div() }),
             };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, after);
 
-            // Assert — the divide color rides along, since a divider that never took it leaves the child's.
-            Assert.That((colored == "null" || colored == Color.red.ToString(), Inline(divided.style.borderLeftColor)),
-                Is.EqualTo((false, Color.red.ToString())));
+            // Assert — the divide color before the patch rides along, since an edge never colored reads Null too.
+            Assert.That((colored, Inline(divided.style.borderTopColor)), Is.EqualTo((gray200.ToString(), "null")));
         }
 
         [Test]
-        public void Given_ADivideRowCarryingABorderPayload_When_ItRenders_Then_TheFirstChildKeepsThePayloadBorder()
+        public void Given_AColoredDivideRow_When_ADividedChildDeclaresItsOwnBorderColorClass_Then_ThatClassWins()
         {
-            // Arrange — the divider starts at the second child, so the first child's edge is the payload's.
+            // Arrange — Tailwind writes the divide color at zero specificity, so the child's own class wins.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x divide-gray-200",
+                    children: new VNode[] { V.Div(), V.Div(className: "border-red-500"), V.Div() }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert — nothing inline, so the class's own color applies.
+            Assert.That(Inline(scope.Root[0][1].style.borderLeftColor), Is.EqualTo("null"));
+        }
+
+        [Test]
+        public void Given_ADivideRowCarryingABorderPayload_When_ItRenders_Then_ThePayloadWinsOverTheDivider()
+        {
+            // Arrange — a [&>*]: payload outranks Tailwind's zero-specificity divider on the edge both write.
             using var scope = new ReconcilerScope();
 
             // Act
-            var row = OneRow(scope, "flex flex-row divide-x-4 [&>*]:border-l-[2px]");
+            var row = OneRow(scope, "flex flex-row divide-x-4 [&>*]:border-r-[2px]");
 
-            // Assert — the second child reads the divider, so a row whose divider never applied cannot pass.
-            Assert.That((Inline(row[0].style.borderLeftWidth), Inline(row[1].style.borderLeftWidth)),
-                Is.EqualTo(("2", "4")));
+            // Assert — the second child's left edge is read because it carried the divider before.
+            Assert.That((Inline(row[0].style.borderRightWidth), Inline(row[1].style.borderLeftWidth)),
+                Is.EqualTo(("2", "null")));
         }
 
         [Test]
-        public void Given_ADivideRowCarryingABorderPayload_When_ItsFirstChildIsRemoved_Then_TheNewFirstChildKeepsOnlyThePayloadBorder()
+        public void Given_ADivideRowCarryingABorderPayload_When_ItsLastChildIsRemoved_Then_TheNewLastChildKeepsOnlyThePayloadBorder()
         {
-            // Arrange — keyed, so the second Label is the element that becomes first rather than a patched copy.
+            // Arrange — keyed, so the first Label is the element that becomes last rather than a patched copy. The
+            // payload is on the start edge, so it and the divider do not contend for one.
             using var scope = new ReconcilerScope();
             const string row = "flex flex-row divide-x-4 [&>*]:border-l-[2px]";
             var before = new VNode[]
@@ -483,37 +506,38 @@ namespace Velvet.Tests
                     children: new VNode[] { V.Label(key: "a", text: "a"), V.Label(key: "b", text: "b") }),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
-            var promoted = scope.Root[0][1];
-            var divided = Inline(promoted.style.borderLeftWidth);
+            var promoted = scope.Root[0][0];
+            var divided = Inline(promoted.style.borderRightWidth);
             var after = new VNode[]
             {
-                V.Div(className: row, children: new VNode[] { V.Label(key: "b", text: "b") }),
+                V.Div(className: row, children: new VNode[] { V.Label(key: "a", text: "a") }),
             };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, after);
 
-            // Assert — the divider it carried as the second child rides along, since the stale value is the point.
-            Assert.That((divided, Inline(promoted.style.borderLeftWidth)), Is.EqualTo(("4", "2")));
+            // Assert — the divider it carried as the first child rides along, since the stale value is the point.
+            Assert.That((divided, Inline(promoted.style.borderRightWidth), Inline(promoted.style.borderLeftWidth)),
+                Is.EqualTo(("4", "null", "2")));
         }
 
         [Test]
-        public void Given_AColoredDivideRow_When_ItRenders_Then_TheFirstChildKeepsItsOwnBorderColor()
+        public void Given_AColoredDivideRow_When_ItRenders_Then_TheLastChildKeepsItsOwnBorderColor()
         {
-            // Arrange — the divider starts at the second child, so its color is not the first child's.
+            // Arrange — the divider stops before the last child, so its color is not the last child's.
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
             {
                 V.Div(className: "flex flex-row divide-x divide-gray-200",
-                    children: new VNode[] { V.Div(className: "border-[#FF0000]"), V.Div() }),
+                    children: new VNode[] { V.Div(), V.Div(className: "border-[#FF0000]") }),
             };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
-            // Assert — the second child reads the divider's color, so a row whose color never landed cannot pass.
+            // Assert — the first child reads the divider's color, so a row whose color never landed cannot pass.
             var row = scope.Root[0];
-            Assert.That((Inline(row[0].style.borderLeftColor), Inline(row[1].style.borderLeftColor) == "null"),
+            Assert.That((Inline(row[1].style.borderRightColor), Inline(row[0].style.borderRightColor) == "null"),
                 Is.EqualTo((Color.red.ToString(), false)));
         }
 
@@ -543,37 +567,29 @@ namespace Velvet.Tests
             Assert.That((whileWrapping, Inline(container.style.marginLeft)), Is.EqualTo(("-8", "4")));
         }
 
-        // GREEN_ON_BASE(characterization): the base nulled a gap row's first-child edge unconditionally, which
-        // a hand-back writing nothing where the element keeps no layers would stop.
         [Test]
-        public void Given_AnElementTheReconcilerRemovedFromAGapRow_When_ItIsReparentedAsAnotherRowsFirstChild_Then_ItsStaleGapIsCleared()
+        public void Given_AnElementInAGapRow_When_TheReconcilerRemovesIt_Then_ItCarriesNoGap()
         {
-            // Arrange — removal drops the element's layer map but leaves its inline gap; code that kept a
-            // reference then puts it first in another gap row.
+            // Arrange — code that kept a reference to a removed element can put it back in another row, so
+            // the gap it carried in this one must not leave with it.
             using var scope = new ReconcilerScope();
-            var ctx = ReconcilerContextProbe.Of(scope);
             var before = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a"), V.Div(key: "b") }),
-                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
             var removed = scope.Root[0][1];
+            var inRow = Inline(removed.style.marginLeft);
             var after = new VNode[]
             {
                 V.Div(className: Gap4Row, children: new VNode[] { V.Div(key: "a") }),
-                V.Div(className: Gap8Row, children: new VNode[] { V.Div(key: "c") }),
             };
-            scope.Reconciler.Reconcile(scope.Root, before, after);
-            var stale = Inline(removed.style.marginLeft);
-            var other = scope.Root[1];
-            other.Insert(0, removed);
 
             // Act
-            ctx.GapManipulators[other].Apply();
+            scope.Reconciler.Reconcile(scope.Root, before, after);
 
-            // Assert — the stale gap rides along, since an element that kept none leaves the same slot.
-            Assert.That((stale, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
+            // Assert — the gap it carried in the row rides along, since one never written reads null too.
+            Assert.That((inRow, Inline(removed.style.marginLeft)), Is.EqualTo(("16", "null")));
         }
 
         // GREEN_ON_BASE(characterization): a pooled Label keeps nothing of the gap row it left, which a

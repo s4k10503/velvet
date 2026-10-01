@@ -14,7 +14,7 @@ namespace Velvet
         /// <summary>The route's pattern without surrounding slashes; root remains <c>/</c>.</summary>
         public string? MatchedPath { get; init; }
         /// <summary>
-        /// Cumulative rooted pathname used for route-relative navigation. A <c>..</c> removes this route
+        /// Cumulative rooted pathname, spelled as the URL spells it, used for route-relative navigation. A <c>..</c> removes this route
         /// level's contribution, which may span multiple URL segments. Defaults to <c>/</c> for hand-built
         /// matches.
         /// </summary>

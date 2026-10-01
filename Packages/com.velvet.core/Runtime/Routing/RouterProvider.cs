@@ -53,7 +53,13 @@ namespace Velvet
                                     V.Provider(
                                         RouterContext.Errors,
                                         (IReadOnlyDictionary<string, Exception>)router.CurrentLoaderErrors,
-                                        children: new VNode[] { V.Outlet() }),
+                                        children: new VNode[]
+                                        {
+                                            V.Provider(
+                                                RouterContext.ActionData,
+                                                (IReadOnlyDictionary<string, object>)router.CurrentActionData,
+                                                children: new VNode[] { V.Outlet() }),
+                                        }),
                                 }),
                         }),
                 });

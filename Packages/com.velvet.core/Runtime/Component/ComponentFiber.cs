@@ -182,6 +182,13 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
+        /// The fiber whose read suspended a pass this fiber started on its own, where no Suspense boundary
+        /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
+        /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
+        /// </summary>
+        internal ComponentFiber? SuspendedOn { get; set; }
+
+        /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
         /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
@@ -193,6 +200,10 @@ namespace Velvet
         /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
+
+        // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
+        // FiberEffects.HideLayoutEffects.
+        internal bool LayoutEffectsHidden { get; set; }
 
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
@@ -542,6 +553,7 @@ namespace Velvet
                 slot.AsyncOwnerDepth = 0;
                 ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
+                slot.PendingError = null;
             }
         }
 

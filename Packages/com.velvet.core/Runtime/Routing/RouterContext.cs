@@ -20,6 +20,13 @@ namespace Velvet
             ComponentContext<IReadOnlyDictionary<string, object>>.Create(
                 new Dictionary<string, object>());
 
+        /// <summary>
+        /// The result of the action the current location was committed by, keyed by <see cref="RouteMatch.RouteId"/>.
+        /// </summary>
+        public static readonly ComponentContext<IReadOnlyDictionary<string, object>> ActionData =
+            ComponentContext<IReadOnlyDictionary<string, object>>.Create(
+                new Dictionary<string, object>());
+
         /// <summary>Loader errors for the current location, keyed by <see cref="RouteMatch.RouteId"/>.</summary>
         public static readonly ComponentContext<IReadOnlyDictionary<string, Exception>> Errors =
             ComponentContext<IReadOnlyDictionary<string, Exception>>.Create(

@@ -9,15 +9,14 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>divide-x</c> / <c>divide-y</c> utilities, which draw a border between
-    /// adjacent children (<c>&gt; * + *</c>); UITK has no <c>:first-child</c> and no <c>&gt; *</c> child
-    /// combinator, so <see cref="StyleDivideManipulator"/> writes that border on every child but the first —
-    /// the same shape <see cref="StyleGapManipulator"/> uses for gap. Width comes from <c>divide-x</c> (1px),
+    /// Specifies the <c>divide-x</c> / <c>divide-y</c> utilities, Tailwind v4's
+    /// <c>:where(&amp; &gt; :not(:last-child))</c> border; UITK has no <c>:last-child</c> and no <c>&gt; *</c>
+    /// child combinator, so <see cref="StyleDivideManipulator"/> writes that border on every child but the last. Width comes from <c>divide-x</c> (1px),
     /// the <c>divide-x-{0,2,4,8}</c> scale, or the <c>divide-x-[Npx]</c> arbitrary form; color from
     /// <c>divide-{palette}</c> or <c>divide-[#hex]</c>. UITK has no border-style, so <c>divide-dashed</c> /
     /// <c>divide-dotted</c> are painted by <see cref="DivideDashPainter"/> on each divided child instead.
-    /// Which PHYSICAL edge carries the border comes from the container's resolved direction and the
-    /// <c>divide-x-reverse</c> / <c>divide-y-reverse</c> markers — see <see cref="DividerEdgeDirectionTests"/>.
+    /// Which PHYSICAL edge carries the border comes from the <c>divide-x-reverse</c> / <c>divide-y-reverse</c>
+    /// markers alone — see <see cref="DividerEdgeDirectionTests"/>.
     /// GWT, one assert per case.
     /// </summary>
     [TestFixture]
@@ -246,7 +245,7 @@ namespace Velvet.Tests
         #region End-to-end (manipulator drives child borders)
 
         [Test]
-        public void Given_DivideXRow_When_Reconciled_Then_SecondChildHasLeadingBorderWidth()
+        public void Given_DivideXRow_When_Reconciled_Then_SecondChildHasEndBorderWidth()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -255,12 +254,12 @@ namespace Velvet.Tests
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — the divider sits on the left edge of the 2nd child onward.
-            Assert.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f));
+            // Assert — the divider sits on the end (right) edge of every child but the last.
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_DivideXRow_When_Reconciled_Then_FirstChildHasNoLeadingBorder()
+        public void Given_DivideXRow_When_Reconciled_Then_LastChildHasNoEndBorder()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -269,8 +268,24 @@ namespace Velvet.Tests
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — the first child carries no divider (the `> * + *` rule starts at the second child).
-            Assert.That(scope.Root[0][0].style.borderLeftWidth.value, Is.EqualTo(0f));
+            // Assert — the last child carries no divider on either horizontal edge (Tailwind's
+            // `> :not(:last-child)`).
+            Assert.That((scope.Root[0][2].style.borderLeftWidth.value, scope.Root[0][2].style.borderRightWidth.value),
+                Is.EqualTo((0f, 0f)));
+        }
+
+        [Test]
+        public void Given_DivideXRow_When_Reconciled_Then_FirstChildHasTheEndBorder()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][0].style.borderRightWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
@@ -285,11 +300,72 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderLeftColor.value, Is.EqualTo(gray200));
+            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(gray200));
         }
 
         [Test]
-        public void Given_DivideYRow_When_Reconciled_Then_SecondChildHasTopBorderWidth()
+        public void Given_DivideXNamedColorRow_When_Reconciled_Then_TheDividedChildsOtherEdgesTakeTheColorToo()
+        {
+            // Arrange — Tailwind's divide-{color} is `border-color` on every child but the last: all four edges.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][0].style.borderTopColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_ADivideXRowWhoseChildCarriesARightBorderClass_When_Reconciled_Then_TheClassWidthWins()
+        {
+            // Arrange — Tailwind writes the divider width at zero specificity, so the child's own border-r-2
+            // wins on its edge; the first child, which declares none, still takes the divider.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child border-r-2"),
+                    V.Div(className: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That((scope.Root[0][0].style.borderRightWidth.value, scope.Root[0][1].style.borderRightWidth.keyword),
+                Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ADivideRowWhoseLastChildIsAbsolute_When_Reconciled_Then_TheChildBeforeItTakesTheDivider()
+        {
+            // Arrange — Tailwind's `:not(:last-child)` counts an absolutely positioned last child.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x", children: new VNode[]
+                {
+                    V.Div(className: "child"),
+                    V.Div(className: "child"),
+                    V.Div(className: "absolute"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_DivideYRow_When_Reconciled_Then_SecondChildHasBottomBorderWidth()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -298,8 +374,8 @@ namespace Velvet.Tests
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — divide-y draws on the top edge.
-            Assert.That(scope.Root[0][1].style.borderTopWidth.value, Is.EqualTo(1f));
+            // Assert — divide-y draws on the bottom edge.
+            Assert.That(scope.Root[0][1].style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
@@ -309,14 +385,14 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f), "Precondition: divider applied");
+            var divided = scope.Root[0][1].style.borderRightWidth.value;
 
             // Act — patch the same container without the divide class.
             var tree2 = new VNode[] { Row("flex flex-row", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the manipulator's leading border is cleared (no ghost).
-            Assert.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(0f));
+            // Assert — the manipulator's border is cleared (no ghost); the divider before the patch rides along.
+            Assert.That((divided, scope.Root[0][1].style.borderRightWidth.value), Is.EqualTo((1f, 0f)));
         }
 
         [Test]
@@ -328,37 +404,39 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderLeftColor.value, Is.EqualTo(gray200), "Precondition: divider colored");
+            var colored = scope.Root[0][1].style.borderRightColor.value == gray200;
 
             // Act — keep divide-x, drop divide-gray-200.
             var tree2 = new VNode[] { Row("flex flex-row divide-x", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the stale palette color is cleared (the divider reverts to the default border color).
-            Assert.That(scope.Root[0][1].style.borderLeftColor.value, Is.Not.EqualTo(gray200));
+            // Assert — the stale palette color is cleared (the divider reverts to the default border color); the
+            // color before the patch rides along.
+            Assert.That((colored, scope.Root[0][1].style.borderRightColor.value == gray200), Is.EqualTo((true, false)));
         }
 
         [Test]
-        public void Given_DivideXRow_When_PatchedToDivideY_Then_LeftEdgeClearedAndTopApplied()
+        public void Given_DivideXRow_When_PatchedToDivideY_Then_RightEdgeClearedAndBottomApplied()
         {
             // Arrange — a horizontal divider.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f), "Precondition: left divider applied");
+            var divided = scope.Root[0][1].style.borderRightWidth.value;
 
             // Act — flip the axis to vertical (the manipulator clears the old edge before writing the new).
             var tree2 = new VNode[] { Row("flex flex-col divide-y divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the old left edge is cleared and the new top edge is applied.
+            // Assert — the old right edge is cleared and the new bottom edge is applied; the right divider
+            // before the patch rides along.
             Assert.That(
-                (scope.Root[0][1].style.borderLeftWidth.value, scope.Root[0][1].style.borderTopWidth.value),
-                Is.EqualTo((0f, 1f)));
+                (divided, scope.Root[0][1].style.borderRightWidth.value, scope.Root[0][1].style.borderBottomWidth.value),
+                Is.EqualTo((1f, 0f, 1f)));
         }
 
         [Test]
-        public void Given_DivideYScrollView_When_Reconciled_Then_ContentChildrenGetTopDivider()
+        public void Given_DivideYScrollView_When_Reconciled_Then_ContentChildrenGetBottomDivider()
         {
             // Arrange — a ScrollView redirects children into its contentContainer; the divider must land on
             // the reconciled content, not the ScrollView's internal hierarchy (mirrors the gap hardening case).
@@ -370,8 +448,8 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var content = ((ScrollView)scope.Root[0]).contentContainer;
 
-            // Assert — the divider sits on the 2nd content child's top edge.
-            Assert.That(content[1].style.borderTopWidth.value, Is.EqualTo(1f));
+            // Assert — the divider sits on the 2nd content child's bottom edge.
+            Assert.That(content[1].style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
         #endregion
@@ -382,7 +460,7 @@ namespace Velvet.Tests
         public void Given_DivideXDashedRow_When_Reconciled_Then_TheDividerGutterMatchesSolid()
         {
             // Arrange — a dashed divider must reserve the SAME layout gutter as a solid one (only the paint
-            // differs), so its leading border WIDTH stays real (the color is what gets masked).
+            // differs), so its border WIDTH stays real (the color is what gets masked).
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
 
@@ -390,7 +468,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
@@ -404,7 +482,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.True);
+            Assert.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderRightColor.value), Is.True);
         }
 
         [Test]
@@ -423,9 +501,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DivideXDashedRow_When_Reconciled_Then_TheFirstChildGetsNoPaintCallback()
+        public void Given_DivideXDashedRow_When_Reconciled_Then_TheLastChildGetsNoPaintCallback()
         {
-            // Arrange — only actual divider children (the 2nd onward) get a paint; the first has no leading divider.
+            // Arrange — only actual divider children (every one but the last) get a paint.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
 
@@ -433,7 +511,7 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][0].generateVisualContent, Is.Null);
+            Assert.That(scope.Root[0][2].generateVisualContent, Is.Null);
         }
 
         [Test]
@@ -443,22 +521,22 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.True,
-                "Precondition: the dashed divider masked the border color");
+            var masked = SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderRightColor.value);
 
             // Act — flip to a solid divider; the sentinel is released back to a real color.
             var tree2 = new VNode[] { Row("flex flex-row divide-x divide-solid divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert
-            Assert.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.False);
+            // Assert — the mask before the flip rides along.
+            Assert.That((masked, SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderRightColor.value)),
+                Is.EqualTo((true, false)));
         }
 
         [Test]
         public void Given_DivideXDashedKeyedLabels_When_OneChildIsRemoved_Then_TheDividerPaintCountTracksTheDividers()
         {
-            // Arrange — pooled Label children (keyed) under a dashed divide: children 2 and 3 each get a paint
-            // binding. Removing the last child recycles it and must shed its binding, leaving one divider.
+            // Arrange — pooled Label children (keyed) under a dashed divide: children 1 and 2 each get a paint
+            // binding. Removing the last child makes the second one last, which sheds its binding.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { KeyedLabels("flex flex-col divide-y divide-dashed divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
@@ -513,6 +591,94 @@ namespace Velvet.Tests
 
         #endregion
 
+        [Test]
+        public void Given_ADividedChild_When_ItGainsABorderWidthClassOfItsOwn_Then_TheDividerGivesWayToIt()
+        {
+            // Arrange — the class reaches the child alone, so only the container watching the child re-applies.
+            // A reversed row puts the divider on the middle child's right edge under either divider rule.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse divide-x", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var child = scope.Root[0][1];
+            var divided = child.style.borderRightWidth.value;
+
+            // Act
+            StyleClassProjection.Add(child, "border-r-2", StyleLayerPriority.Base);
+
+            // Assert — the divider before the class rides along, since an edge never divided reads Null too.
+            Assert.That((divided, child.style.borderRightWidth.keyword), Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ADashedDivideRow_When_ADividedChildCarriesAnArbitraryBorderWidth_Then_ThatWidthWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-r-[3px]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — the dash binding rides along, since a solid divider yields through another path, and so
+            // does the start edge, which a divider on the wrong edge would take instead.
+            var child = scope.Root[0][1];
+            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(child),
+                    child.style.borderRightWidth.value, child.style.borderLeftWidth.keyword),
+                Is.EqualTo((true, 3f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AColoredDashedDivideRow_When_Reconciled_Then_ADividedChildsOtherEdgesTakeTheColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — the dash binding rides along, since a solid divider colors the edges through another path.
+            Assert.That((scope.Reconciler.Context.DivideDashBindings.ContainsKey(scope.Root[0][1]),
+                    scope.Root[0][1].style.borderTopColor.value),
+                Is.EqualTo((true, gray200)));
+        }
+
+        [Test]
+        public void Given_AColoredDivideRow_When_ADividedChildCarriesAnArbitraryBorderColor_Then_ThatColorWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-[#ff0000]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — every edge, so a divider that overwrites the color on whichever edge it sits on reddens it.
+            var style = scope.Root[0][1].style;
+            Assert.That((style.borderTopColor.value, style.borderRightColor.value, style.borderBottomColor.value,
+                    style.borderLeftColor.value),
+                Is.EqualTo((Color.red, Color.red, Color.red, Color.red)));
+        }
+
+        [Test]
+        public void Given_AColoredDivideRow_When_ItsDivideClassesLeave_Then_TheChildrensOtherEdgesAreHandedBack()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var colored = scope.Root[0][1].style.borderTopColor.keyword;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-row", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the color before the patch rides along, since an edge never colored reads Null too.
+            Assert.That((colored, scope.Root[0][1].style.borderTopColor.keyword),
+                Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
         private static VNode DividerRowWithColoredChild(string className, string childBorderClass)
             => V.Div(className: className, children: new VNode[]
             {
@@ -544,26 +710,49 @@ namespace Velvet.Tests
 
     /// <summary>
     /// Specifies which PHYSICAL edge of a divided child carries the divider. The axis comes from the class
-    /// (<c>divide-x</c> / <c>divide-y</c>), but the edge within that axis comes from the container's resolved
-    /// flex direction plus the <c>divide-x-reverse</c> / <c>divide-y-reverse</c> markers: a reversed container
-    /// paints its children in the opposite order, so the edge sitting between a visually adjacent pair is the
-    /// axis's trailing one (<c>border-right</c> / <c>border-bottom</c>). Picking the edge from the axis alone
-    /// draws one rule on the container's outer edge and leaves the adjacent pair's boundary blank. A marker and
-    /// a reversed direction on the same axis combine with OR, never XOR, and the flip is strictly per axis.
+    /// (<c>divide-x</c> / <c>divide-y</c>), and the edge within that axis from the <c>divide-x-reverse</c> /
+    /// <c>divide-y-reverse</c> marker alone, as in Tailwind v4: the end edge (<c>border-right</c> /
+    /// <c>border-bottom</c>) without it, the start edge with it, whatever the container's direction.
     /// </summary>
     /// <remarks>
     /// The manipulator writes INLINE borders, so the applied edge is observable via <c>element.style.border*</c>
-    /// without a panel or a layout tick — off-panel the direction resolves from the same class markers it
-    /// prefers on a panel, so these assertions exercise the production path rather than an EditMode-only one.
+    /// without a panel or a layout tick.
     /// </remarks>
     [TestFixture]
     internal sealed class DividerEdgeDirectionTests
     {
         [Test]
-        public void Given_DivideXReverseRow_When_Reconciled_Then_TheSecondChildCarriesTheTrailingBorder()
+        public void Given_ADividedRow_When_TheReconcilerRemovesADividedChild_Then_TheRemovedElementCarriesNoDivider()
         {
-            // Arrange — the marker alone, on a container that is NOT reversed: it moves the divider to the
-            // trailing physical edge unconditionally.
+            // Arrange — the divide twin of the gap case: a plain Div is discarded rather than pooled, and the
+            // reference stands in for user code that kept it.
+            using var scope = new ReconcilerScope();
+            VNode RowOf(params string[] keys)
+            {
+                var children = new VNode[keys.Length];
+                for (var i = 0; i < keys.Length; i++)
+                {
+                    children[i] = V.Div(className: "child", key: keys[i]);
+                }
+                return V.Div(className: "flex flex-row divide-x", children: children);
+            }
+            var tree1 = new VNode[] { RowOf("a", "b", "c") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var removed = scope.Root[0][1];
+            var divided = removed.style.borderRightWidth.value;
+
+            // Act
+            var tree2 = new VNode[] { RowOf("a", "c") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the width it carried rides along, since an element never divided reads Null too.
+            Assert.That((divided, removed.style.borderRightWidth.keyword), Is.EqualTo((1f, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_DivideXReverseRow_When_Reconciled_Then_TheFirstChildCarriesTheStartBorder()
+        {
+            // Arrange — the marker moves the divider to border-inline-start (the left edge) of every child but the last.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row divide-x divide-x-reverse", 3) };
 
@@ -571,11 +760,11 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][0].style.borderLeftWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_DivideYReverseColumn_When_Reconciled_Then_TheSecondChildCarriesTheTrailingBorder()
+        public void Given_DivideYReverseColumn_When_Reconciled_Then_TheFirstChildCarriesTheTopBorder()
         {
             // Arrange — the vertical twin of the marker.
             using var scope = new ReconcilerScope();
@@ -585,15 +774,14 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderBottomWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][0].style.borderTopWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_FlexRowReverseDivideX_When_Reconciled_Then_TheSecondChildCarriesTheTrailingBorder()
+        public void Given_FlexRowReverseDivideX_When_Reconciled_Then_TheFirstChildCarriesTheEndBorder()
         {
-            // Arrange — a plain divide-x with NO marker on a reversed row. The children paint right-to-left,
-            // so a left border on the second child would rule the container's own outer edge while the
-            // boundary between the visually adjacent pair got nothing.
+            // Arrange — a plain divide-x with NO marker on a reversed row: Tailwind's divider never reads flex-direction, so
+            // the border stays on the end edge of every child but the last until divide-x-reverse moves it.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse divide-x", 3) };
 
@@ -601,11 +789,25 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][0].style.borderRightWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_FlexColReverseDivideY_When_Reconciled_Then_TheSecondChildCarriesTheTrailingBorder()
+        public void Given_FlexRowReverseDivideX_When_Reconciled_Then_TheLastChildCarriesNoBorder()
+        {
+            // Arrange — the other half of the same rule: the last child in the class list takes no divider, reversed or not.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse divide-x", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][2].style.borderRightWidth.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_FlexColReverseDivideY_When_Reconciled_Then_TheFirstChildCarriesTheBottomBorder()
         {
             // Arrange — the vertical twin: a plain divide-y with no marker on a reversed column.
             using var scope = new ReconcilerScope();
@@ -615,15 +817,13 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderBottomWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][0].style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_FlexRowReverseWithDivideXReverse_When_Reconciled_Then_StillTheTrailingBorder()
+        public void Given_FlexRowReverseWithDivideXReverse_When_Reconciled_Then_TheFirstChildCarriesTheStartBorder()
         {
-            // Arrange — the idiomatic Tailwind combination: the container's direction AND the marker both
-            // independently mean "trailing". They must OR together rather than XOR (which would cancel back
-            // to the leading edge).
+            // Arrange — the idiom Tailwind documents for a reversed row: the marker moves the divider to the start edge.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse divide-x divide-x-reverse", 3) };
 
@@ -631,42 +831,13 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][0].style.borderLeftWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_FlexColReverseDivideX_When_Reconciled_Then_TheHorizontalDividerStaysOnTheLeadingEdge()
+        public void Given_DivideYWithAHorizontalReverseMarker_When_Reconciled_Then_TheVerticalDividerStaysOnTheBottomEdge()
         {
-            // Arrange — the per-axis rule, direction half: flex-col-reverse reverses only the VERTICAL axis,
-            // so a divide-x must not move.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-col-reverse divide-x", 3) };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void Given_FlexRowReverseDivideY_When_Reconciled_Then_TheVerticalDividerStaysOnTheLeadingEdge()
-        {
-            // Arrange — the symmetric case: flex-row-reverse reverses only the HORIZONTAL axis.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row-reverse divide-y", 3) };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Root[0][1].style.borderTopWidth.value, Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void Given_DivideYWithAHorizontalReverseMarker_When_Reconciled_Then_TheVerticalDividerStaysOnTheLeadingEdge()
-        {
-            // Arrange — the per-axis rule, marker half: a horizontal marker must not move a vertical divider.
+            // Arrange — a horizontal marker does not move a vertical divider.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-col divide-y divide-x-reverse", 3) };
 
@@ -674,161 +845,95 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderTopWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Root[0][1].style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_ALeadingDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheStaleLeadingWidthIsCleared()
+        public void Given_AnEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheStaleEndWidthIsCleared()
         {
-            // Arrange — establish the leading edge first.
+            // Arrange — establish the end edge first.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f),
-                "Precondition: the leading (border-left) divider is established before the marker is added");
+            var width = scope.Root[0][1].style.borderRightWidth.value;
 
             // Act — patch in the marker: the edge flips, so the abandoned gutter must be released, not just
             // a second one added (two live gutters would inset the child from both sides).
             var tree2 = new VNode[] { Row("flex flex-row divide-x divide-x-reverse divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert
-            Assert.That(scope.Root[0][1].style.borderLeftWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the width before the patch rides along, since an edge never written reads Null too.
+            Assert.That((width, scope.Root[0][1].style.borderRightWidth.keyword),
+                Is.EqualTo((1f, StyleKeyword.Null)));
         }
 
         [Test]
-        public void Given_AColoredLeadingDivider_When_TheReverseMarkerIsAddedByPatch_Then_TheStaleLeadingColorIsCleared()
+        public void Given_AColoredEndDivider_When_TheReverseMarkerIsAddedByPatch_Then_EveryEdgeKeepsTheColor()
         {
-            // Arrange — a divider owns a width AND a color channel on its edge, so an edge flip has to
-            // release both; a stale inline border color would keep tinting the abandoned edge the moment
-            // anything else gives it a width.
+            // Arrange — a divide-{color} colors every edge of a divided child, as Tailwind's border-color does,
+            // so handing the abandoned edge's width back must leave its color, and the flip must not strip the
+            // edges the divider never sat on.
             ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderLeftColor.value, Is.EqualTo(gray200),
-                "Precondition: the leading divider carries the palette color before the marker is added");
 
             // Act
             var tree2 = new VNode[] { Row("flex flex-row divide-x divide-x-reverse divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderLeftColor.keyword, Is.EqualTo(StyleKeyword.Null));
+            var style = scope.Root[0][1].style;
+            Assert.That((style.borderTopColor.value, style.borderRightColor.value, style.borderBottomColor.value,
+                    style.borderLeftColor.value),
+                Is.EqualTo((gray200, gray200, gray200, gray200)));
         }
 
         [Test]
-        public void Given_AColoredReversedDivider_When_Reconciled_Then_TheTrailingEdgeCarriesTheColor()
+        public void Given_AStartDivider_When_TheReverseMarkerIsRemovedByPatch_Then_TheStaleStartWidthIsCleared()
         {
-            // Arrange — the color has to follow the divider onto the edge it actually moved to, not stay on
-            // the edge the axis alone would have picked.
-            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row-reverse divide-x divide-gray-200", 3) };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-
-            // Assert
-            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(gray200));
-        }
-
-        [Test]
-        public void Given_ATrailingDivider_When_TheReverseMarkerIsRemovedByPatch_Then_TheStaleTrailingWidthIsCleared()
-        {
-            // Arrange — the mirror image: establish the trailing edge first, then flip back.
+            // Arrange — the mirror image: establish the start edge, then patch the marker away.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row divide-x divide-x-reverse divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f),
-                "Precondition: the trailing (border-right) divider is established before the marker is removed");
+            var width = scope.Root[0][1].style.borderLeftWidth.value;
 
             // Act
             var tree2 = new VNode[] { Row("flex flex-row divide-x divide-gray-200", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((width, scope.Root[0][1].style.borderLeftWidth.keyword),
+                Is.EqualTo((1f, StyleKeyword.Null)));
         }
 
         [Test]
-        public void Given_AReversedDashedDivider_When_Reconciled_Then_ThePaintTargetsTheTrailingEdge()
+        public void Given_AReversedDashedStartDivider_When_Reconciled_Then_ThePaintTargetsTheStartEdge()
         {
-            // Arrange — a dashed divider reserves its gutter as a real border but paints the stroke itself,
-            // so the paint has to be told the physical edge: told only the axis, it would draw the dashes
-            // down the child's left edge while the reserved gutter sat on its right.
+            // Arrange — the dashed paint follows the edge the marker picks.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row-reverse divide-x divide-dashed divide-gray-200", 3) };
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-x-reverse divide-dashed divide-gray-200", 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Edge,
-                Is.EqualTo(DivideEdge.Right));
-        }
-
-        [Test]
-        public void Given_ADirectionClassFlipWithNoSpecChange_When_ApplyReruns_Then_TheDividerMovesToTheNewEdge()
-        {
-            // Arrange — establish the leading (top) edge on a column container.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-col divide-y", 3) };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var container = scope.Root[0];
-            var manipulator = scope.Reconciler.Context.DivideManipulators[container];
-            Assume.That(container[1].style.borderTopWidth.value, Is.EqualTo(1f),
-                "Precondition: the column divider settled on the leading (top) edge");
-
-            // Act — flip the class list on the live element (never through a patch, so the spec is untouched
-            // and the cached signature is the only thing between this call and the new edge), then re-run
-            // Apply the way a GeometryChangedEvent does. A signature that bucketed by axis instead of by
-            // edge collapses Top and Bottom together and makes this a silent no-op.
-            container.RemoveFromClassList("flex-col");
-            container.AddToClassList("flex-col-reverse");
-            manipulator.Apply();
-
-            // Assert — the divider is now ON the trailing edge, not merely gone from the leading one.
-            Assert.That(container[1].style.borderBottomWidth.value, Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void Given_ADirectionClassFlipWithNoSpecChange_When_ApplyReruns_Then_TheStaleLeadingBorderIsReleased()
-        {
-            // Arrange — the release half of the same flip. A divider that took the new edge without giving up
-            // the old one rules the child on both sides and insets it by two gutters instead of one.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-col divide-y", 3) };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var container = scope.Root[0];
-            var manipulator = scope.Reconciler.Context.DivideManipulators[container];
-            Assume.That(container[1].style.borderTopWidth.value, Is.EqualTo(1f),
-                "Precondition: the column divider settled on the leading (top) edge");
-
-            // Act
-            container.RemoveFromClassList("flex-col");
-            container.AddToClassList("flex-col-reverse");
-            manipulator.Apply();
-
-            // Assert
-            Assert.That(container[1].style.borderTopWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Edge, Is.EqualTo(DivideEdge.Left));
         }
 
         [Test]
         public void Given_AChildOfAReversedDivideContainer_When_ItIsMovedOut_Then_NoResidualTrailingBorder()
         {
-            // Arrange — a reversed container puts the divider on the TRAILING edge, so the reset a departing
-            // child gets has to reach that edge. A reset hardcoded to the leading pair leaves a reparented
-            // child ruled on its right indefinitely: the container's abandoned-edge clear only walks children
-            // that are still members, and nothing else revisits one that left.
+            // Arrange — the divider sits on the right edge, so the reset a departing child gets has to reach
+            // that edge: the container's abandoned-edge clear only walks children that are still members, and
+            // nothing else revisits one that left.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { Row("flex flex-row-reverse divide-x", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var container = scope.Root[0];
             var manipulator = scope.Reconciler.Context.DivideManipulators[container];
-            var movedChild = container[2];
-            Assume.That(movedChild.style.borderRightWidth.value, Is.EqualTo(1f),
-                "Precondition: the child carries the trailing divider while it is in the container");
+            var movedChild = container[0];
+            var divided = movedChild.style.borderRightWidth.value;
 
             // Act — move the child out of the divide container (a sibling reparent), then re-apply.
             container.Remove(movedChild);
@@ -836,8 +941,8 @@ namespace Velvet.Tests
             sink.Add(movedChild);
             manipulator.Apply();
 
-            // Assert
-            Assert.That(movedChild.style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the divider it carried in the container rides along.
+            Assert.That((divided, movedChild.style.borderRightWidth.keyword), Is.EqualTo((1f, StyleKeyword.Null)));
         }
 
         [Test]
@@ -852,15 +957,14 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var child = scope.Root[0][1];
             child.style.borderBottomWidth = 3f;
-            Assume.That(child.style.borderLeftWidth.value, Is.EqualTo(1f),
-                "Precondition: the divider is on the left edge, not the bottom one");
+            var divided = child.style.borderRightWidth.value;
 
             // Act — patch the divide class away, which tears the manipulator down.
             var tree2 = new VNode[] { Row("flex flex-row", 3) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert
-            Assert.That(child.style.borderBottomWidth.value, Is.EqualTo(3f));
+            // Assert — the divider on the right edge rides along, so the bottom one is the child's own.
+            Assert.That((divided, child.style.borderBottomWidth.value), Is.EqualTo((1f, 3f)));
         }
 
         private static VNode Row(string className, int childCount)
@@ -875,12 +979,8 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// On-panel coverage for the divider edge. <c>flex-row-reverse</c> / <c>flex-col-reverse</c> are USS-only
-    /// rules (<c>_layout.uss</c>) with no C# parse path of their own, so <c>resolvedStyle.flexDirection</c>
-    /// only ever reports <c>RowReverse</c> with the bundled <c>StyleUtilities.uss</c> attached to a real
-    /// panel. The first test is class-marker coverage under a live panel (the class list is preferred even
-    /// there); the second is the one that proves the <c>resolvedStyle</c> FALLBACK, by withholding every
-    /// direction/display class so the class scan has nothing to answer with.
+    /// On-panel coverage for the divider edge with the bundled <c>StyleUtilities.uss</c> attached, so the
+    /// reversed row really lays out right-to-left while the divider stays on each non-last child's end edge.
     /// </summary>
     [TestFixture]
     internal sealed class DividerEdgePanelTests : PanelTestBase
@@ -895,7 +995,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFlexRowReverseDivideContainer_When_PanelResolves_Then_TheSecondChildCarriesTheTrailingBorder()
+        public void Given_AFlexRowReverseDivideContainer_When_PanelResolves_Then_TheFirstChildCarriesTheEndBorder()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement,
@@ -905,182 +1005,17 @@ namespace Velvet.Tests
                     V.Label(name: "b", text: "b"),
                 }));
             var row = _window.rootVisualElement.Q<VisualElement>("row");
+
+            // Act
             ForcePanelUpdate(row.panel);
             using var evt = EventBase<GeometryChangedEvent>.GetPooled();
             row.SimulateEvent(evt);
-            Assume.That(row.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
-                "Precondition: the panel resolved flex-row-reverse from the bundled USS");
 
-            // Assert
-            var b = _window.rootVisualElement.Q<Label>("b");
-            Assert.That(b.resolvedStyle.borderRightWidth, Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void Given_ADirectionSetOnlyThroughResolvedStyle_When_PanelResolves_Then_TheDividerStillFollowsIt()
-        {
-            // Arrange — flex-direction set via an inline style (standing in for a custom stylesheet rule)
-            // with NONE of the five direction/display classes on the element, the one case the class scan
-            // cannot answer. A VisualElement is a flex container by Yoga's own default regardless of a "flex"
-            // class, so the inline flex-direction alone produces a real RowReverse layout.
-            _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "row", className: "divide-x",
-                    refCallback: el => { el.style.flexDirection = FlexDirection.RowReverse; return null; },
-                    children: new VNode[]
-                    {
-                        V.Label(name: "a", text: "a"),
-                        V.Label(name: "b", text: "b"),
-                    }));
-            var row = _window.rootVisualElement.Q<VisualElement>("row");
-            ForcePanelUpdate(row.panel);
-            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
-            row.SimulateEvent(evt);
-            Assume.That(row.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
-                "Precondition: the panel resolved the inline flex-direction with no direction class present");
-
-            // Assert
-            var b = _window.rootVisualElement.Q<Label>("b");
-            Assert.That(b.resolvedStyle.borderRightWidth, Is.EqualTo(1f));
-        }
-    }
-
-    /// <summary>
-    /// The on-panel convergence guard for a class-driven direction toggle. A flip between two same-size
-    /// directions moves no rect (the children reorder; the container never resizes), so no
-    /// <c>GeometryChangedEvent</c> is fired to correct a divider placed from a stale reading — and
-    /// <c>resolvedStyle.flexDirection</c> IS stale at patch time, since the direction comes from a USS rule
-    /// with no inline write and only catches up on the panel's next style pass. Reading the class list
-    /// instead makes the patch's own forced re-apply converge on its own. These tests tick the panel after
-    /// the toggle but deliberately never synthesize a geometry event, so a version that depended on one
-    /// would leave the divider on the abandoned edge forever.
-    /// </summary>
-    [TestFixture]
-    internal sealed class DividerEdgeRuntimeFlipTests
-    {
-        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
-
-        private readonly record struct DirectionState(bool Reversed);
-
-        private sealed class DirectionStore : Store<DirectionState>
-        {
-            public DirectionStore() : base(new DirectionState(false)) { }
-            public void Set(bool reversed) => SetState(_ => new DirectionState(reversed));
-            protected override void ResetCore() => SetState(_ => new DirectionState(false));
-        }
-
-        private static DirectionStore s_store;
-
-        private EditorPanelSimulator _sim;
-
-        [SetUp]
-        public void SetUp()
-        {
-            PanelSimulator.ResetCurrentTime();
-            _sim = new EditorPanelSimulator { panelSize = new Vector2(200, 200) };
-            _sim.ResetTimePerSimulatedFrameToDefault();
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            _sim.rootVisualElement.styleSheets.Add(sheet);
-            s_store = null;
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _sim?.Dispose();
-            _sim = null;
-        }
-
-        private VisualElement Root => _sim.rootVisualElement;
-
-        private void Tick() => _sim.FrameUpdateMs(16);
-
-        [Component]
-        private static VNode DividedColumn()
-        {
-            var reversed = Hooks.UseStore(s_store, s => s.Reversed);
-            var dir = reversed ? "flex-col-reverse" : "flex-col";
-            return V.Div(name: "col", className: $"flex {dir} divide-y", children: new VNode[]
-            {
-                V.Label(name: "a", text: "a"),
-                V.Label(name: "b", text: "b"),
-            });
-        }
-
-        [Test]
-        public void Given_ADividedColumn_When_FlippedToColumnReverse_Then_TheStaleTopBorderIsClearedWithNoSynthesizedEvent()
-        {
-            // Arrange — settle on the leading (top) edge.
-            using var store = new DirectionStore();
-            s_store = store;
-            using var mounted = V.Mount(Root, V.Component(DividedColumn, key: "col"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            Tick();
-            Tick();
-            var b = Root.Q<Label>("b");
-            Assume.That(b.style.borderTopWidth.value, Is.EqualTo(1f),
-                "Precondition: the column divider settled on the leading (top) edge");
-
-            // Act — flip to flex-col-reverse and just tick; no synthesized geometry event.
-            store.Set(true);
-            scheduler.DrainImmediateForTest();
-            Tick();
-            Tick();
-
-            // Assert
-            Assert.That(b.style.borderTopWidth.keyword, Is.EqualTo(StyleKeyword.Null));
-        }
-
-        [Test]
-        public void Given_ADividedColumn_When_FlippedToColumnReverse_Then_TheTrailingBorderIsWrittenWithNoSynthesizedEvent()
-        {
-            // Arrange — the receive half on the production convergence path: releasing the abandoned edge is
-            // only half of converging, and a re-apply that cleared the old edge and wrote nothing would
-            // satisfy every release assertion in this fixture while leaving the container with no rules at all.
-            using var store = new DirectionStore();
-            s_store = store;
-            using var mounted = V.Mount(Root, V.Component(DividedColumn, key: "col"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            Tick();
-            Tick();
-            var b = Root.Q<Label>("b");
-            Assume.That(b.style.borderBottomWidth.value, Is.EqualTo(0f),
-                "Precondition: the trailing edge is unwritten before the flip");
-
-            // Act — flip to flex-col-reverse and just tick; no synthesized geometry event.
-            store.Set(true);
-            scheduler.DrainImmediateForTest();
-            Tick();
-            Tick();
-
-            // Assert
-            Assert.That(b.style.borderBottomWidth.value, Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void Given_AReversedDividedColumn_When_FlippedBack_Then_TheStaleBottomBorderIsClearedWithNoSynthesizedEvent()
-        {
-            // Arrange — the round trip: start REVERSED, so the very first layout pass (which does change the
-            // rect, from nothing to something) cannot be what makes the later flip converge.
-            using var store = new DirectionStore();
-            s_store = store;
-            store.Set(true);
-            using var mounted = V.Mount(Root, V.Component(DividedColumn, key: "col"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            Tick();
-            Tick();
-            var b = Root.Q<Label>("b");
-            Assume.That(b.style.borderBottomWidth.value, Is.EqualTo(1f),
-                "Precondition: the reversed column divider settled on the trailing (bottom) edge");
-
-            // Act — flip back to flex-col; still no synthesized geometry event.
-            store.Set(false);
-            scheduler.DrainImmediateForTest();
-            Tick();
-            Tick();
-
-            // Assert
-            Assert.That(b.style.borderBottomWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the resolved direction rides along: it has to be the reversed row for this to say
+            // anything about a reversed container.
+            var a = _window.rootVisualElement.Q<Label>("a");
+            Assert.That((row.resolvedStyle.flexDirection, a.resolvedStyle.borderRightWidth),
+                Is.EqualTo((FlexDirection.RowReverse, 1f)));
         }
     }
 }

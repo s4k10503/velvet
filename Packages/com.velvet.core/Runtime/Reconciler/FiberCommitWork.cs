@@ -233,16 +233,81 @@ namespace Velvet
         private static void ShiftPortalRangesAround(ComponentFiber fiber, VisualElement? mountPoint, int delta)
         {
             var portalState = fiber.Reconciler?.Context.PortalState;
-            var owning = OwningPortalOf(fiber, mountPoint);
-            if (portalState == null
-                || owning == null
-                || !portalState.TryGetValue(owning, out var range)
-                || !ReferenceEquals(range.Target, mountPoint))
+            if (portalState == null)
             {
                 return;
             }
-            portalState[owning] = range with { SlotLength = range.SlotLength + delta };
-            PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning, range, delta);
+            var owning = OwningPortalOf(fiber, mountPoint);
+            var range = default(PortalSlotInfo);
+            if (owning != null && !portalState.TryGetValue(owning, out range))
+            {
+                return;
+            }
+            if (ReferenceEquals(range.Target, mountPoint))
+            {
+                portalState[owning!] = range with { SlotLength = range.SlotLength + delta };
+                PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning!, range, delta);
+                return;
+            }
+            // Rows of mountPoint's own, which every range on it follows. Only an inline fiber propagates, and
+            // one has a MountPoint.
+            PortalSlotTracker.ShiftRangesOn(portalState, mountPoint!, delta);
+        }
+
+        // Follows a reconcile of a Portal target's own children, whose rows sit ahead of every range on the
+        // target, so the change in their count moves every range on it and the fibers mounted in those ranges
+        // here. rowsBehindBefore is PortalSlotTracker.RowsBehindRanges read before that reconcile:
+        // measured behind the ranges rather than as a count, so that a Portal patch or a propagation nested
+        // in that reconcile, which moves the ranges itself, is not counted a second time.
+        internal static void FollowOwnRows(ReconcilerContext ctx, VisualElement target, int rowsBehindBefore)
+        {
+            // No range left on target (the reconcile unmounted the last Portal on it) moves nothing.
+            var rowsBehindAfter = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            var delta = rowsBehindAfter.GetValueOrDefault(rowsBehindBefore) - rowsBehindBefore;
+            PortalSlotTracker.ShiftRangesOn(ctx.PortalState, target, delta);
+            var tenancy = ctx.ComponentRegistry.TenancyOf(target);
+            if (tenancy == null)
+            {
+                return;
+            }
+            foreach (var tenant in tenancy.Fibers)
+            {
+                // A fiber of the target's own rows can carry the placeholder of a Portal whose range is
+                // elsewhere; the reconcile that changed the rows placed it already.
+                var owner = OwningPortalOf(tenant, target);
+                var range = default(PortalSlotInfo);
+                if (owner != null && ctx.PortalState.TryGetValue(owner, out range) && ReferenceEquals(range.Target, target))
+                {
+                    MoveTenant(tenant, delta);
+                }
+            }
+        }
+
+        // A reconcile of target's own children opens a frame holding PortalSlotTracker.RowsBehindRanges as it
+        // stood, and closing it follows the rows that reconcile placed (FollowOwnRows). A Portal on target
+        // patched from inside it — one declared among target's own children — rebases the frame after, so a
+        // range the patch opens on target, which a frame opened before any range holds as null, is followed
+        // too. Opens nothing where no Portal is mounted in the tree.
+        internal static void OpenOwnRows(ReconcilerContext ctx, VisualElement target)
+        {
+            // MUTANT_SURVIVES(equivalent): with no Portal mounted the frame would hold null, which closing passes
+            // over and removes.
+            if (ctx.PortalState.Count > 0)
+            {
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            }
+        }
+
+        // Closes target's frame and returns what it held; null where none was open.
+        internal static int? PopOwnRows(ReconcilerContext ctx, VisualElement target)
+            => ctx.OwnRowFrames.Remove(target, out var rowsBehind) ? rowsBehind : null;
+
+        internal static void RebaseOwnRows(ReconcilerContext ctx, VisualElement target)
+        {
+            if (ctx.OwnRowFrames.ContainsKey(target))
+            {
+                ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState, target);
+            }
         }
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining
