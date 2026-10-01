@@ -95,7 +95,7 @@ namespace Velvet
         // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
         // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
         // logical slot), a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
-        // wrapped around it), OR a dashed divider's color probe (DivideDashPainter.SyncProbe, hosted beside the
+        // wrapped around it), OR a dashed divider's color probe (DivideDashPainter.SyncProbe, hosted inside the
         // child it reads for). NonSpacerChildCount below is the single centralized consumer every "real child"
         // count/index site already goes through, so broadening this one predicate makes the whole reconciler
         // treat all four as invisible without touching any of those call sites.

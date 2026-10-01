@@ -78,11 +78,11 @@ namespace Velvet
 
         internal const string ProbeClass = "velvet-divide-dash-probe";
 
-        // Places the binding's probe beside the child, re-parenting it after a move, or removes it.
+        // Places the binding's probe inside the child, or removes it. Not beside it: the divide manipulator walks
+        // the child's container by index while it adds and removes probes.
         public static void SyncProbe(VisualElement child, DivideDashChildBinding binding, bool wanted)
         {
-            var host = child.hierarchy.parent;
-            if (!wanted || host == null)
+            if (!wanted)
             {
                 RemoveProbe(binding);
                 return;
@@ -98,10 +98,9 @@ namespace Velvet
                     visibility = Visibility.Hidden,
                 },
             };
-            if (binding.Probe.hierarchy.parent != host)
+            if (binding.Probe.hierarchy.parent != child)
             {
-                binding.Probe.RemoveFromHierarchy();
-                host.hierarchy.Add(binding.Probe);
+                child.hierarchy.Add(binding.Probe);
             }
             SyncProbeClasses(child, binding.Probe);
         }
