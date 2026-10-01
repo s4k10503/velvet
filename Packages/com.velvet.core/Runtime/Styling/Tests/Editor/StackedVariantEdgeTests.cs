@@ -59,6 +59,71 @@ namespace Velvet.Tests
             }
 
             [Test]
+            public void Given_AHasCheckedHoverCardUnderThePointer_When_ItsToggleIsChecked_Then_TheCardIsApplied()
+            {
+                // Arrange — the pointer already rests on the card, and checking the toggle re-sends no PointerOver.
+                _mounted = V.Mount(_root, V.Div(name: "card", className: "has-[:checked]:hover:bg-hot",
+                    children: new VNode?[] { V.Toggle(name: "toggle", value: false) }));
+                var card = _root.Q<VisualElement>("card");
+                using (var over = PointerOverEvent.GetPooled()) card.SimulateEvent(over);
+                var appliedBeforeCheck = card.ClassListContains("bg-hot");
+
+                // Act
+                _root.Q<Toggle>("toggle").SetValueWithoutNotify(true);
+                using (var change = ChangeEvent<bool>.GetPooled()) card.SimulateEvent(change);
+
+                // Assert
+                Assert.That((appliedBeforeCheck, card.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+            }
+
+            [Test]
+            public void Given_ADarkHoverLeafUnderThePointer_When_DarkTurnsOn_Then_TheLeafIsApplied()
+            {
+                // Arrange — the pointer already rests on the leaf, and nothing re-sends PointerOver when dark
+                // turns on. The leaf carries no element-local payload of its own.
+                var leaf = MountLeaf("dark:hover:bg-hot");
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                var appliedBeforeDark = leaf.ClassListContains("bg-hot");
+
+                // Act
+                VelvetTheme.IsDark = true;
+
+                // Assert
+                Assert.That((appliedBeforeDark, leaf.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+            }
+
+            [Test]
+            public void Given_ADarkActiveLeafAlreadyPressed_When_DarkTurnsOn_Then_TheLeafIsApplied()
+            {
+                // Arrange — the pointer is already down on the leaf, and nothing re-sends PointerDown when dark
+                // turns on.
+                var leaf = MountLeaf("dark:active:bg-hot");
+                using (var down = PointerDownEvent.GetPooled()) leaf.SimulateEvent(down);
+                var appliedBeforeDark = leaf.ClassListContains("bg-hot");
+
+                // Act
+                VelvetTheme.IsDark = true;
+
+                // Assert
+                Assert.That((appliedBeforeDark, leaf.ClassListContains("bg-hot")), Is.EqualTo((false, true)));
+            }
+
+            [Test]
+            public void Given_DarkHoverAndDarkActiveLeavesHoveredButNotPressed_When_DarkTurnsOn_Then_OnlyTheHoverLeafIsApplied()
+            {
+                // Arrange
+                var leaf = MountLeaf("dark:hover:bg-cold dark:active:bg-hot");
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+                // Act
+                VelvetTheme.IsDark = true;
+
+                // Assert — the hover leaf shows the seed was read at all.
+                Assert.That((leaf.ClassListContains("bg-cold"), leaf.ClassListContains("bg-hot")),
+                    Is.EqualTo((true, false)));
+            }
+
+            [Test]
             public void Given_DarkActiveLeafWithDarkOn_When_ThePointerGoesDown_Then_TheLeafIsApplied()
             {
                 // Arrange — dark:active:bg-hot with dark on (outer gate open), not yet pressed (inner off).

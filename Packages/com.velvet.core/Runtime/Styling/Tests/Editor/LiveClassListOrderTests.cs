@@ -56,6 +56,11 @@ namespace Velvet.Tests
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string HostClassesReader =
+            "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
+            + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
+        private const string HostStampReader =
+            "System.Int32 Velvet.VelvetStyleUtilities.ClassStamp(System.Int32, UnityEngine.UIElements.VisualElement)";
 
         // Marks the case that measures one reader's verdict. The roster reads these off the methods carrying
         // [Test] rather than off a list of its own, and the case beside it reads the marked method's IL, so
@@ -76,6 +81,14 @@ namespace Velvet.Tests
 
         private static readonly MethodInfo SettleMotionOwnedInlineValues = typeof(StyleAnimationScheduler)
             .GetMethod("ReapplyMotionOwnedInlineValues", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        // Null on a tree without the portal host's document-root carry, which the helpers below report as an
+        // answer no case expects rather than throw.
+        private static readonly MethodInfo CollectHostClasses = typeof(VelvetStyleUtilities)
+            .GetMethod("AddDocumentClasses", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
+            .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
 
         // A helper that applies classes runs the production routing, and the routing reaches production code
         // an arrangement can leave unexecuted.
@@ -141,6 +154,26 @@ namespace Velvet.Tests
 
         private static void Settle(VisualElement element)
             => SettleMotionOwnedInlineValues.Invoke(null, new object[] { element });
+
+        // Classes the app set on a document root, in the order given, as the app writes them rather than through
+        // the reconciler's routing.
+        private static VisualElement DocumentRootWith(params string[] classNames)
+        {
+            var element = new VisualElement();
+            foreach (var cls in classNames) element.AddToClassList(cls);
+            return element;
+        }
+
+        private static string HostClasses(VisualElement element)
+        {
+            if (CollectHostClasses == null) return "no reader";
+            var into = new HashSet<string>();
+            CollectHostClasses.Invoke(null, new object[] { element, into });
+            return string.Join(" ", into.OrderBy(cls => cls, StringComparer.Ordinal));
+        }
+
+        private static int? HostStamp(VisualElement element)
+            => (int?)StampHostClasses?.Invoke(null, new object[] { 0, element });
 
         // The name is kept beside the definition so the composed order can be read back by name rather than
         // by definition reference.
@@ -564,6 +597,42 @@ namespace Velvet.Tests
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
         }
 
+        [Test]
+        [ReaderVerdict(HostClassesReader)]
+        public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_APortalHostTakesTheSameClasses()
+        {
+            // Arrange
+            var added = DocumentRootWith("theme-a", "theme-b");
+            var reversed = DocumentRootWith("theme-b", "theme-a");
+
+            // Act
+            var fromAdded = HostClasses(added);
+            var fromReversed = HostClasses(reversed);
+
+            // Assert — both named rather than merely equal: two empty answers would agree while measuring nothing.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo(("theme-a theme-b", "theme-a theme-b")),
+                "a portal host takes the set of the document root's classes, whatever order they arrived in");
+        }
+
+        [Test]
+        [ReaderVerdict(HostStampReader)]
+        public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_TheFollowsStampMoves()
+        {
+            // Arrange
+            var added = DocumentRootWith("theme-a", "theme-b");
+            var reversed = DocumentRootWith("theme-b", "theme-a");
+
+            // Act
+            var fromAdded = HostStamp(added);
+            var fromReversed = HostStamp(reversed);
+
+            // Assert — the order decides the stamp, so a reorder alone costs the host one sync that changes no
+            // class it carries, which the case above pins.
+            Assert.That((fromAdded.HasValue, fromReversed.HasValue, fromAdded == fromReversed),
+                Is.EqualTo((true, true, false)),
+                "the follow re-syncs a portal host when the document root's classes change order");
+        }
+
         // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
@@ -743,8 +812,8 @@ namespace Velvet.Tests
                 && written.Name == field
                 && written.DeclaringType.FullName == declaringType);
 
-        // A reflected call names no callee an instruction scan can follow, and the three private production
-        // methods the cases drive are all taken that way, so every method of this type reading a handle
+        // A reflected call names no callee an instruction scan can follow, and the private production methods
+        // the cases drive are all taken that way, so every method of this type reading a handle
         // field inherits an edge to what ReflectionHandles resolved that field to. An edge whose two
         // spellings do not match is a false red rather than a hole: what the case asks of this graph is
         // whether a DECLARED reader was reached.

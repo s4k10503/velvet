@@ -132,6 +132,8 @@ namespace Velvet
                 element.style.transitionDuration = new StyleList<TimeValue>(s_zeroDuration);
             }
 
+            // A filter tween still ticking would write its frames and its target onto the next consumer.
+            StyleFilterTransitionDriver.Release(element);
             ResetInlineStyle(element.style);
 
             element.userData = null;

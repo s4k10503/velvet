@@ -1,33 +1,51 @@
 # Virtualized lists
 
-`V.VirtualList` renders a large collection of fixed-height items into a vertical `ScrollView`, keeping
-only the rows in and near the viewport in the tree — the counterpart of react-window's fixed-size list.
+`V.VirtualList` renders a large collection into a vertical `ScrollView`, keeping only the rows in and
+near the viewport in the tree — the counterpart of react-window's `List`.
 
 | Parameter | Meaning |
 |-----------|---------|
 | `items` | The source collection. Required. |
 | `keySelector` | The key a row is found again by across range changes — see [Keys](#keys). Required. |
-| `itemHeight` | Every row's height in pixels, and the step the rendered range is computed in. Must be greater than 0. |
+| `itemHeight` | Every row's height in pixels, which must be greater than 0 — or a function from an item's index to its height, react-window's `rowHeight` function. |
 | `renderer` | Builds the node one item renders. Required. A `null` renders nothing for that item. |
 | `overscan` | Rows rendered beyond each edge of the viewport. Defaults to 3; must not be negative. |
 | `key`, `className`, `name` | The list's own key among its siblings, and the `ScrollView`'s classes and name. |
+| `listRef` | A `Ref<VirtualListHandle>` that holds the list's handle while it is mounted — see [Scrolling to an item](#scrolling-to-an-item). |
 
-A null `items`, `keySelector` or `renderer` throws `ArgumentNullException`; an `itemHeight` of 0 or less
-and a negative `overscan` throw `ArgumentOutOfRangeException`.
+A null `items`, `keySelector`, `renderer` or height function throws `ArgumentNullException`; an
+`itemHeight` of 0 or less and a negative `overscan` throw `ArgumentOutOfRangeException`.
 
 ## Sizing and the rendered range
 
-The `ScrollView`'s content holds a spacer `itemHeight × items.Count` tall, so the scrollbar covers the
-whole collection, and a container of the rendered rows placed at the offset of the range's first
-item. Each row element is given `itemHeight` as its height.
+The `ScrollView`'s content holds a spacer as tall as every item's height added up, so the scrollbar
+covers the whole collection, and a container of the rendered rows placed at the offset of the range's
+first item. Each row element is given its own item's height. A height function is asked for every item
+each time the list renders.
 
 The rendered range is the items the viewport overlaps at the current scroll offset, widened by
 `overscan` on each side and clamped to the collection. It is recomputed when the scroll offset changes,
 when the `ScrollView`'s geometry changes, and when the component holding the list renders it again —
 which renders the range from the new `items` and `renderer`.
 
-Only a fixed item height and a vertical list are provided, and the list exposes no call that scrolls to
-an item.
+## Scrolling to an item
+
+`listRef.Current.ScrollToItem(index, align)` scrolls the list the way react-window's `scrollToRow`
+does, against the viewport height the list's last layout measured:
+
+| `align` | Where the item goes |
+|---------|---------------------|
+| `Auto` (default) | Nowhere, if it is already in view; otherwise as little as brings it into view |
+| `Smart` | `Auto` if it is already in view, otherwise `Center` |
+| `Center` | Its middle at the viewport's middle |
+| `End` | Its end at the viewport's end |
+| `Start` | Its start at the viewport's start |
+
+No alignment scrolls past either end of the list. An item a render has just added is reached once the
+list's content has been laid out for it. An item taller than the viewport counts as in view
+while the viewport lies within it. An index outside the items throws `ArgumentOutOfRangeException`.
+`listRef.Current.Element` is the list's `ScrollView`. The ref holds the handle from the list's mount to its
+unmount, and lets go of it when a render gives the list another ref.
 
 ## Keys
 

@@ -150,16 +150,37 @@ and destroyed with the tree. When the declaring panel's settings are resolvable 
 settings, sorts around it, and keeps them in sync: a runtime change on the declaring panel (a
 theme swap, a scale flip) re-copies on the next pass that touches the portal. A declaring panel
 without resolvable settings (an editor-hosted or headless root) gets an empty runtime theme
-instead — native-control default visuals come from a theme, so declare layers from a themed
-panel when those matter. Where the portal's position on the declaring panel reaches Velvet's utility
-stylesheet ([setup.md](setup.md)) and the host does not reach it some other way, the host's root gets the
-sheet, and it comes off again once the host does reach it another way, such as a copied theme that imports
-it. The host root also takes the `dark` class that position resolves: it follows `VelvetTheme.IsDark` when
-the position sits under a root `VelvetStyleUtilities.BindThemeTo` bound (`AttachTo` binds one), and
-otherwise copies whether the position or an ancestor carries the class. Both are looked at when a portal
-mounts into the host, at the declaring panel's next update, and whenever the portal is patched, so a sheet
-attached on the declaring side later reaches the host at the portal's next render. The host object itself is
-hidden from the Hierarchy:
+instead.
+
+The host stands in for `body`, where a DOM portal's children sit. They match every stylesheet of the
+document and the classes of `html` and `body`, but not the classes of the component that rendered them.
+- **Stylesheets.** The host's root carries the stylesheets on the element the tree was mounted on and on its
+  ancestors, in the order the declaring panel's cascade meets them. It leaves out any the host's panel
+  already holds, such as the theme the settings copy put there. In an `EditorWindow` the carried sheets
+  include the editor's default control sheet on the window's root. Velvet's utility stylesheet
+  ([setup.md](setup.md)) goes on the host's root wherever those elements reach it, an `@import` included,
+  but only while the host does not reach it some other way, such as a copied theme that imports it.
+- **Classes.** The host's root takes the classes of the declaring panel's root and of the element directly
+  under it, which is a `UIDocument`'s root: the `html` and `body` of that document. A `unity-` class is not
+  taken. So `.theme-ocean { --color-primary: … }` reaches the portal's children when `theme-ocean` sits on
+  the document's root, and does not when it sits on an element inside the page, as on the web.
+- **`dark`.** The host's root follows `VelvetTheme.IsDark` when a root `VelvetStyleUtilities.BindThemeTo`
+  bound (`AttachTo` binds one) is the mount element or one of its ancestors. Otherwise it copies whether
+  one of those two document roots carries `dark`. A portal inside a `dark` section of a light page renders
+  light.
+- **What the host's root does not take from them.** Neither a carried `:root` rule, a document class, nor
+  the copied theme's own `.unity-ui-document__root` rule paints the host's root, moves it, sizes it or moves
+  its content. Its background, border, padding, margin, flex layout, opacity, display and overflow are held
+  at their initial values inline, and its position, offsets and size at the values that fill its panel. A
+  layer host's transform is held too; a world-space host keeps the size it was given and the transform its
+  GameObject gives it. Custom and inherited properties still reach the portal's children. Every host root
+  carries `unity-ui-document__root`, a world-space one included, so a carried rule on that class selects
+  both.
+
+All of this is looked at when a portal mounts into the host, whenever the portal is patched, and at each
+update of the panel the tree was mounted on. So a sheet, an `@import` inside one, a document-root class, or
+a theme binding added or removed there reaches the host at that panel's next update. Every portal a layer shares resolves the same.
+The host object itself is hidden from the Hierarchy:
 
 | Layer | Sits | Typical use |
 |---|---|---|
@@ -195,7 +216,7 @@ occlude them and they can sit behind it, which no screen-space layer can do. `po
 resolution in pixels. The host carries the `BoxCollider` described under "Cross-panel input
 routing" above, which is what lets Unity's own runtime input system route pointer input into it.
 
-A world-space host follows the same declaring-panel sync and utility-stylesheet carry as the layers,
+A world-space host follows the same declaring-panel sync and stylesheet carry as the layers,
 and a host destroyed externally (a scene unload) is skipped safely on later patches — remount the
 `V.WorldSpace` node to rebuild it.
 

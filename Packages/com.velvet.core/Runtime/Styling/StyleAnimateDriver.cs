@@ -37,6 +37,7 @@ namespace Velvet
         // Internal: shared with StyleAnimationScheduler's spring tick and ring co-fade tick, which want the
         // SAME ~60fps cadence rather than a second (or third) hand-copied literal.
         internal const long TickMs = 16;
+
         // Oversize factor for the Gradient pan: the background is twice the box along the pan axis, so the
         // box window slides across the full gradient (offset range [-box, 0]) without revealing an edge.
         private const float GradientOversize = 200f;
@@ -84,6 +85,11 @@ namespace Velvet
         /// after each of their writes; the loop's own tick runs on a separate scheduled item, so without it the
         /// slot would show whichever of the two ran last in a frame.
         /// </summary>
+        // True while an animate-hue loop drives the element's filter, which a filter utility's change does not reach
+        // (StyleFilterEngineWrite).
+        internal static bool DrivesFilter(VisualElement element)
+            => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Hue;
+
         public static void ReassertLoop(VisualElement element)
         {
             if (s_running.TryGetValue(element, out var binding))
@@ -185,10 +191,12 @@ namespace Velvet
             }
             else if (binding.Spec.Mode == AnimateMode.Hue)
             {
-                // Hue owns the filter slot while active (a static filter-* is shadowed — Hue wins).
-                // Null returns it to no-filter; a surviving class-driven filter is re-asserted by the reconciler
-                // right after Detach (a NAMED USS filter re-resolves, an inline-resolved one is re-applied).
-                element.style.filter = StyleKeyword.Null;
+                // The element's filter layers, variant ones included, were composed but not written while the loop
+                // ran. An animation that ends starts no transition, so they are written at once.
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    StyleArbitraryValueResolver.RecomposeFilter(element);
+                }
             }
             else if (binding.Spec.Mode == AnimateMode.Spin)
             {

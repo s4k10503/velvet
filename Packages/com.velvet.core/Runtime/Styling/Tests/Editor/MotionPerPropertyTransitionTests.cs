@@ -12,9 +12,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins <see cref="StyleTransitionConfig.PropertyOverrides"/>: a variant-swap transition (the only place the
     /// scheduler sets transition-property: all — PlayVariantEnter / a variant-driven PlayExit) with per-property
-    /// overrides switches transition-property from that implicit "all" catch-all to EXACTLY the overridden
-    /// properties, in declaration order, with duration / easing / delay built as positionally-matched lists — a
-    /// null override field falls back to the top-level DurationSec / Easing / DelaySec. The resolving cases use a
+    /// overrides keeps that "all" entry on the top-level timing and follows it with the overridden properties, in
+    /// declaration order, with duration / easing / delay built as positionally-matched lists — a null override
+    /// field falls back to the top-level DurationSec / Easing / DelaySec. The resolving cases use a
     /// real EditorWindow panel so resolvedStyle reflects the scheduler's inline styles; the cancel case is
     /// deliberately off-panel (mirrors the existing off-panel-cancel contract, so no panel is needed there).
     /// </summary>
@@ -45,7 +45,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVariantEnterWithTwoPropertyOverrides_When_Resolved_Then_TransitionPropertyIsExactlyThoseTwoWithMatchingDurations()
+        public void Given_AVariantEnterWithTwoPropertyOverrides_When_Resolved_Then_TransitionPropertyIsAllThenThoseTwoWithMatchingDurations()
         {
             // Arrange — a variant enter (the allProperties path) whose transition carries two per-property
             // overrides with different durations.
@@ -63,8 +63,8 @@ namespace Velvet.Tests
                 durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — transition-property is exactly [opacity, scale] (not the implicit "all"), each POSITIONALLY
-            // paired with its OWN override duration instead of the shared top-level 0.3f. The scheduler authors
+            // Assert — transition-property is [all, opacity, scale], "all" on the top-level 0.3f and each override
+            // POSITIONALLY paired with its OWN duration. The scheduler authors
             // TimeValue entries in milliseconds (TimeUnit.Millisecond), and resolvedStyle reports them back in
             // that same unit (unlike a USS duration-* utility, which is parsed straight to seconds). NUnit walks
             // an expected array element-wise carrying the tolerance, but drops it on any element that is a
@@ -72,8 +72,8 @@ namespace Velvet.Tests
             // over an array of durations the tolerance still reaches.
             var props = string.Join(",", element.resolvedStyle.transitionProperty.Select(p => p.ToString()));
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(props == "opacity,scale" ? durationsMs : new[] { float.NaN },
-                Is.EqualTo(new[] { 150f, 500f }).Within(1e-3f));
+            Assert.That(props == "all,opacity,scale" ? durationsMs : new[] { float.NaN },
+                Is.EqualTo(new[] { 300f, 150f, 500f }).Within(1e-3f));
         }
 
         [Test]
@@ -94,9 +94,127 @@ namespace Velvet.Tests
                 durationSec: 0.4f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — the un-overridden "scale" duration falls back to the top-level DurationSec (0.4f = 400ms).
+            // Assert — the un-overridden "scale" duration falls back to the top-level DurationSec (0.4f = 400ms),
+            // behind the "all" entry that carries it too.
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(durationsMs, Is.EqualTo(new[] { 150f, 400f }).Within(1e-3f));
+            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 400f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATopLevelDelayAndAnOverrideWithNoDelay_When_Resolved_Then_TheAllEntryKeepsTheTopLevelDelay()
+        {
+            // Arrange — the only override names a zero delay of its own, so the top-level delay reaches nothing but
+            // the "all" entry.
+            var element = MountOnRealPanel();
+            var scheduler = new StyleAnimationScheduler();
+            var overrides = new[] { new StylePropertyTransition("opacity", delaySec: 0f) };
+            Assume.That(element.panel, Is.Not.Null, "Precondition: the element is on a real panel");
+
+            // Act
+            scheduler.PlayVariantEnter(element, System.Array.Empty<string>(), System.Array.Empty<string>(),
+                durationSec: 0.4f, easing: EasingMode.EaseOut, delaySec: 0.2f, propertyOverrides: overrides);
+            EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
+
+            // Assert
+            var delaysMs = element.resolvedStyle.transitionDelay.Select(t => t.value).ToArray();
+            Assert.That(delaysMs, Is.EqualTo(new[] { 200f, 0f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AVariantEnterOverridingOnlyOpacity_When_AnotherPropertyChanges_Then_ItTransitionsOnTheTopLevelTiming()
+        {
+            // Arrange — a linear second-long top-level timing with opacity alone overridden; rotate is the other
+            // property, read straight off the computed style with no layout pass.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            new StyleAnimationScheduler().PlayVariantEnter(element, System.Array.Empty<string>(),
+                System.Array.Empty<string>(), durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f,
+                propertyOverrides: new[] { new StylePropertyTransition("opacity", durationSec: 0.1f) });
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act — rotate changes, and the panel paints half a second in.
+            element.style.rotate = new Rotate(new Angle(90f, AngleUnit.Degree));
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert — halfway, where a list naming opacity alone would have landed it at once.
+            Assert.That(element.resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(45f).Within(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base wrote no "all" entry, so its zero-duration override landed too.
+        [Test]
+        public void Given_AZeroDurationOverride_When_ItsPropertyChanges_Then_ItLandsAtOnce()
+        {
+            // Arrange — a linear second-long top-level timing with opacity overridden to no duration at all.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            new StyleAnimationScheduler().PlayVariantEnter(element, System.Array.Empty<string>(),
+                System.Array.Empty<string>(), durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f,
+                propertyOverrides: new[] { new StylePropertyTransition("opacity", durationSec: 0f) });
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act — opacity changes, and the panel paints a tenth of a second in.
+            element.style.opacity = 0f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            now += 0.1;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert — landed, where the second-long "all" entry would still have it most of the way up.
+            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AZeroDurationOverrideWithADelay_When_Resolved_Then_ItKeepsItsZeroDuration()
+        {
+            // Arrange — the delay alone gives the override a positive span.
+            var element = MountOnRealPanel();
+            var scheduler = new StyleAnimationScheduler();
+            var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0f, delaySec: 0.1f) };
+            Assume.That(element.panel, Is.Not.Null, "Precondition: the element is on a real panel");
+
+            // Act
+            scheduler.PlayVariantEnter(element, System.Array.Empty<string>(), System.Array.Empty<string>(),
+                durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
+            EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
+
+            // Assert
+            var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
+            Assert.That(durationsMs, Is.EqualTo(new[] { 300f, 0f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): UI Toolkit's own resolution of an inline transition list, which the
+        // override path's leading "all" entry relies on to leave each overridden property its own timing.
+        [Test]
+        public void Given_AnAllEntryFollowedByAnOpacityEntry_When_OpacityChanges_Then_TheLaterEntrysTimingApplies()
+        {
+            // Arrange — the list the override path writes, set by hand: all over a second, opacity over 0.1s.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            element.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { "all", "opacity" };
+            element.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(1f), new(0.1f) };
+            element.style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { EasingMode.Linear };
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            element.style.opacity = 0f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert — already there on opacity's own 0.1s, rather than halfway on the second-long "all".
+            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0f).Within(1e-3f));
         }
 
         [Test]

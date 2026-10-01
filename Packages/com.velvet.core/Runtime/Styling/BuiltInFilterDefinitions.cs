@@ -27,19 +27,6 @@ namespace Velvet
         internal static FilterFunctionDefinition? Saturate
             => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
 
-        // Identity checks against the CACHED definitions only (never forcing a lazy Build): a caller probing an
-        // arbitrary function's definition must not load the brightness/saturate shaders as a side effect. A
-        // first-party custom exists on an element only after its definition was built, so a live built-in
-        // function always matches the cached reference here.
-        internal static bool IsBrightness(FilterFunctionDefinition? def) => def != null && ReferenceEquals(def, s_brightness);
-
-        internal static bool IsSaturate(FilterFunctionDefinition? def) => def != null && ReferenceEquals(def, s_saturate);
-
-        // True for either first-party built-in definition. Used to tell Velvet's own brightness/saturate
-        // customs apart from a user filter-[name:args] one; both kinds interpolate, but only the user kind is
-        // limited to one distinct definition per add/remove transition (they share a canonical compose slot).
-        internal static bool IsBuiltIn(FilterFunctionDefinition? def) => IsBrightness(def) || IsSaturate(def);
-
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
         // == treats a destroyed object as null, so serving that definition would bind a dead material. Rebuild
