@@ -131,10 +131,11 @@ Four consequences worth knowing:
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
 down on the properties the class sets, so the class shows through there (above `md`, `p-[12px] md:pt-6`
-takes its top from `pt-6` and the rest from `p-[12px]`), and a class outranked by a higher-priority
-inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The
-filter family is the exception — filters compose rather than override, so a `filter` class and a
-`blur-[6px]` layer both apply.
+takes its top from `pt-6` and the rest from `p-[12px]`) — except on a margin `space-*` holds and a border
+`divide-*` holds, where the arbitrary value keeps the property — and a class outranked by a
+higher-priority inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]`
+both work. The filter family is the exception — filters compose rather than override, so a `filter` class
+and a `blur-[6px]` layer both apply.
 
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
 `shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is
@@ -156,12 +157,13 @@ Lowest first, each row in the order `<` shows. Two variant rules of one rank —
 two `data-[…]:` rules — keep their payloads apart, so turning one off leaves the other's standing. While
 both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in.
 On every property an arbitrary value shares with another variant rule of its rank, the one emitted later
-takes it (`hover:bg-red-500 hover:bg-[#f00]` paints `bg-red-500`, which sorts after the value); two
-classes settle it as the second consequence above describes. The order is first by their
-variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
-`group-hover/card:`, `[&:first-child]:` before `[&:nth-child(1)]:`), then by the first property they
-differ on in Tailwind's property order (`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate
-itself, digits read as numbers (`hover:w-[10px]` before `hover:w-[20px]`).
+takes it (`hover:bg-red-500 hover:bg-[#f00]` paints `bg-red-500`, which sorts after the value) unless the
+class is the later one on a margin `space-*` holds or a border `divide-*` holds; two classes settle it as
+the second consequence above describes. The order is first by their variants' values (`data-[side=left]:`
+before `data-[state=open]:`, `group-hover:` before `group-hover/card:`, `[&:first-child]:` before
+`[&:nth-child(1)]:`), then by the first property they differ on in Tailwind's property order
+(`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate itself, digits read as numbers
+(`hover:w-[10px]` before `hover:w-[20px]`).
 
 | | Specificity | Layer |
 |---|---|---|

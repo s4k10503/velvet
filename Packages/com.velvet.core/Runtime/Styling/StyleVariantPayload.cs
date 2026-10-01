@@ -10,9 +10,7 @@ namespace Velvet
     // list, or an arbitrary value (w-[200px]) applied as an inline style.
     internal static class StyleVariantPayload
     {
-        // The rank a payload carries when no position in THIS element's className applies to it: a caller
-        // that supplies none, and the child-combinator manipulator, whose payloads are positioned in the
-        // PARENT's class list and so cannot be compared with the child's own.
+        // The rank a payload carries when its caller supplies no rule place.
         //
         // Deliberately the WEAKEST value rather than the strongest, so an unrankable payload loses a tie
         // instead of winning it. Two unrankable payloads tie and fall back to arrival, which within one swept

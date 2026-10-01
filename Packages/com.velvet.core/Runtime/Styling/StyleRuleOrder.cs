@@ -241,6 +241,10 @@ namespace Velvet
                 {
                     values.Add((StyleLayerPriority.Supports, property + ":" + query));
                 }
+                else if (StyleChildVariantClass.TryParse(rest, out payload))
+                {
+                    values.Add((StyleLayerPriority.ChildVariant, string.Empty));
+                }
                 else
                 {
                     return rest;

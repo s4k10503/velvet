@@ -90,11 +90,7 @@ namespace Velvet
             // (relation, name) set authoritative — a name that disappeared from the class list drops its binding.
             ResetApplied();
             UnhookAll();
-            // A binding is the owner its stacked payloads are keyed by, so the ones it leaves go with it.
-            foreach (var b in _bindings)
-            {
-                _ctx.DropStackedVariants(b);
-            }
+            DropStackedVariants();
             _bindings.Clear();
             BuildBindings(configs);
             if (target?.panel != null)
@@ -129,11 +125,22 @@ namespace Velvet
         {
             ResetApplied();
             UnhookAll();
+            DropStackedVariants();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
         }
 
         private void OnAttach(AttachToPanelEvent evt) => ResolveAll();
+
+        // A binding is the owner its stacked payloads are keyed by (see ApplyPayloads), so the ones its bindings
+        // gated go with them.
+        private void DropStackedVariants()
+        {
+            foreach (var b in _bindings)
+            {
+                _ctx.DropStackedVariants(b);
+            }
+        }
 
         private void OnDetach(DetachFromPanelEvent evt)
         {

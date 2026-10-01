@@ -7,9 +7,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the stacked manipulators a relational binding owns: a render that rebuilds the bindings detaches
-    /// the old ones' stacked manipulators, and those they gate in turn, rather than leaving them attached, hooked
-    /// and gate-closed.
+    /// Specifies the stacked manipulators a variant manipulator or a relational binding owns: a render that
+    /// rebuilds the bindings, or removes the manipulator, detaches the stacked manipulators they gated, and those
+    /// those gate in turn, rather than leaving them attached, hooked and gate-closed.
     /// </summary>
     [TestFixture]
     internal sealed class RelationalStackedOwnerTests : PanelTestBase
@@ -20,6 +20,17 @@ namespace Velvet.Tests
         {
             base.TearDown();
             s_setClass = default;
+            s_setLeafClass = default;
+        }
+
+        private static StateUpdater<string> s_setLeafClass;
+
+        [Component]
+        private static VNode RenderLeaf()
+        {
+            var (className, setClass) = Hooks.UseState("hover:focus:bg-hot p-1");
+            s_setLeafClass = setClass;
+            return V.Div(name: "leaf", className: className);
         }
 
         [Component]
@@ -83,6 +94,60 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AGroupHoverHoverLeafInAHoveredGroup_When_ItsRuleLeavesAndReturnsTwice_Then_OneStackedManipulatorStaysAttached()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderGroup));
+            var root = _window.rootVisualElement;
+            var context = _mounted.Root.Reconciler.Context;
+            var group = root.Q<VisualElement>("group");
+            var leaf = root.Q<VisualElement>("leaf");
+            var built = new HashSet<StyleStackedVariantManipulator>();
+            using (var over = PointerOverEvent.GetPooled()) group.SimulateEvent(over);
+            built.UnionWith(context.StackedVariantManipulators.Values);
+
+            // Act — the rule leaves with its manipulator and returns with a new one; the group is hovered again.
+            foreach (var className in new[] { "p-1", "group-hover:hover:bg-hot p-1", "p-1",
+                         "group-hover:hover:bg-hot p-1" })
+            {
+                s_setClass.Invoke(className);
+                context.BatchScheduler.DrainImmediateForTest();
+                using var over = PointerOverEvent.GetPooled();
+                group.SimulateEvent(over);
+                built.UnionWith(context.StackedVariantManipulators.Values);
+            }
+
+            // Assert
+            Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHoverFocusLeafHovered_When_ItsRuleLeavesAndReturnsTwice_Then_OneStackedManipulatorStaysAttached()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderLeaf));
+            var context = _mounted.Root.Reconciler.Context;
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            var built = new HashSet<StyleStackedVariantManipulator>();
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+            built.UnionWith(context.StackedVariantManipulators.Values);
+
+            // Act — the rule leaves with the element's variant manipulator and returns with a new one, hovered
+            // again each time.
+            foreach (var className in new[] { "p-1", "hover:focus:bg-hot p-1", "p-1", "hover:focus:bg-hot p-1" })
+            {
+                s_setLeafClass.Invoke(className);
+                context.BatchScheduler.DrainImmediateForTest();
+                using var over = PointerOverEvent.GetPooled();
+                leaf.SimulateEvent(over);
+                built.UnionWith(context.StackedVariantManipulators.Values);
+            }
+
+            // Assert
+            Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(1));
         }
     }
 }

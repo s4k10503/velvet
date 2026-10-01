@@ -1995,6 +1995,8 @@ namespace Velvet
                 {
                     element.RemoveManipulator(existing);
                     table.Remove(element);
+                    // The stacked manipulators existing gated are keyed by it, so no gate of theirs opens again.
+                    _ctx.DropStackedVariants(existing);
                 }
             }
             else if (wanted)

@@ -227,8 +227,8 @@ namespace Velvet
         // Supports, Aria and Data have one side-table supplier each; the responsive ranks and Dark have the
         // conditional manipulator; the group/peer ranks have the relational one; the element-state ranks have
         // the state manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator;
-        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position except
-        // the last. The important band is those priorities with one more bit set, so it partitions identically.
+        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position. The
+        // important band is those priorities with one more bit set, so it partitions identically.
         //
         // A stacked payload ranks at every part it carries (see StyleLayerPriority.Stack), so one gated by the
         // child-combinator manipulator keeps that variant in its rank and never ties a payload the child declares
