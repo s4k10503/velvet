@@ -171,11 +171,11 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.ReapplyLayeredValues(child);
 
             // Assert — the driven margin rides along, since a driver that never wrote would leave the gap's in place.
-            Assert.That((driven, child.style.marginLeft.value.value), Is.EqualTo((3f, held)));
+            Assert.That((driven, child.style.marginLeft.value.value), Is.EqualTo((Space4 + 3f, held)));
         }
 
         [Test]
-        public void Given_AMotionDriverWritingAGappedChildsMargin_When_TheGapAppliesAgain_Then_TheDrivenMarginStands()
+        public void Given_AMotionDriverWritingAGappedChildsMargin_When_TheGapAppliesAgain_Then_TheGapAddsToTheDrivenMargin()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -184,8 +184,56 @@ namespace Velvet.Tests
             // Act
             StyleArbitraryValueResolver.NotifyClassesChanged(child);
 
-            // Assert — the held margin differing rides along, since one equal to the driven value would stand either way.
-            Assert.That((held == 3f, child.style.marginLeft.value.value), Is.EqualTo((false, 3f)));
+            // Assert — the held margin rides along: the gap it holds is what the driven margin adds to.
+            Assert.That((held, child.style.marginLeft.value.value), Is.EqualTo((Space4, Space4 + 3f)));
+        }
+
+        [Test]
+        public void Given_AMotionDriverWritingAChildsMarginBeforeItsRowHasAGap_When_TheGapApplies_Then_ItAddsToTheDrivenMargin()
+        {
+            // Arrange — a mount's from-pose lands before the row's gap first applies.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { Row("flex flex-row", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var child = scope.Root[0][1];
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 3f, LengthUnit.Pixel));
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { Row("flex flex-row gap-x-4", 3) });
+
+            // Assert
+            Assert.That(child.style.marginLeft.value.value, Is.EqualTo(Space4 + 3f));
+        }
+
+        [Test]
+        public void Given_AWrappingGapRow_When_AMotionDriverWritesTheRowsOwnMargin_Then_TheNegativeHalfGapAddsToIt()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row flex-wrap gap-4", 4) });
+            var container = Container(scope.Root);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(container, new ArbitraryStyle(ArbitraryProperty.MarginLeft, 3f, LengthUnit.Pixel));
+
+            // Assert
+            Assert.That(container.style.marginLeft.value.value, Is.EqualTo(3f - Half4));
+        }
+
+        [Test]
+        public void Given_ASpacedRow_When_AMotionDriverWritesAChildsSpacedMargin_Then_TheDrivenMarginReplacesTheSpace()
+        {
+            // Arrange — space-x is a rule on the child, which an inline value outranks; only a gap adds.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { Row("flex flex-row space-x-4", 3) });
+            var child = scope.Root[0][0];
+            var held = child.style.marginRight.value.value;
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.MarginRight, 3f, LengthUnit.Pixel));
+
+            // Assert — the space margin rides along, since a row that spaced nothing would leave 3px either way.
+            Assert.That((held, child.style.marginRight.value.value), Is.EqualTo((Space4, 3f)));
         }
 
         [Test]

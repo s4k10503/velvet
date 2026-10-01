@@ -81,6 +81,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AVariantWidthLayerComesAndGoes_Then_TheDrivenWidthStands()
+        {
+            // Arrange — a play's first write, as a delayed one holds it until the delay ends.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
+            BezierTweenDriver.ApplyCurrentValues(element, state!);
+
+            // Act — a dark: width toggling on and back off.
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.Dark);
+            var underLayer = element.style.width.value.value;
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Width, StyleLayerPriority.Dark);
+
+            // Assert
+            Assert.That((underLayer, element.style.width.value.value), Is.EqualTo((10f, 10f)));
+        }
+
+        [Test]
         public void Given_ABackgroundColorPair_When_SteppedToHalfTheDuration_Then_TheInlineBackgroundColorIsTheExactMidpoint()
         {
             // Arrange

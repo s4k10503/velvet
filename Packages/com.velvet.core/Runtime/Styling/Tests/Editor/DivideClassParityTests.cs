@@ -1426,15 +1426,33 @@ namespace Velvet.Tests
             Assert.That((DashColorOf(child), painted.TrueForAll(SilhouetteFace.IsSentinel)), Is.EqualTo((Color.red, true)));
         }
 
-        // A dashed row whose middle child is a Motion entering from border-red-500 to border-blue-500 on a spring,
-        // beside reference elements carrying each.
-        private (VisualElement Child, Color Red, Color Blue) MountDrivenDashRow()
+        private readonly record struct RowState(bool Dashed);
+
+        private sealed class RowStore : Store<RowState>
         {
+            public RowStore() : base(new RowState(true)) { }
+            public void MakeSolid() => SetState(_ => new RowState(false));
+            protected override void ResetCore() => SetState(_ => new RowState(true));
+        }
+
+        private static RowStore s_rowStore;
+        private static float s_delaySec;
+
+        // A divided row, dashed until s_rowStore makes it solid, whose middle child is a Motion entering from
+        // border-red-500 to border-blue-500 on a spring delayed by s_delaySec, beside reference elements carrying
+        // each.
+        [Component]
+        private static VNode DrivenDashRow()
+        {
+            var dashed = Hooks.UseStore(s_rowStore, s => s.Dashed);
             var poses = new Dictionary<string, MotionVariant> { ["dim"] = "border-red-500", ["lit"] = "border-blue-500" };
-            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f };
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            var spring = new StyleTransitionConfig
             {
-                V.Div(className: "flex flex-row divide-x divide-dashed", children: new VNode[]
+                Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f, DelaySec = s_delaySec,
+            };
+            return V.Div(children: new VNode[]
+            {
+                V.Div(className: dashed ? "flex flex-row divide-x divide-dashed" : "flex flex-row divide-x", children: new VNode[]
                 {
                     V.Div(className: "w-[20px] h-[20px]"),
                     V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, initial: "dim", animate: "lit",
@@ -1443,18 +1461,28 @@ namespace Velvet.Tests
                 }),
                 V.Div(name: "ref0", className: "border-r border-red-500"),
                 V.Div(name: "ref1", className: "border-r border-blue-500"),
-            }));
+            });
+        }
+
+        private (VisualElement Child, Color Red, Color Blue, RowStore Store) MountDrivenDashRow(float delaySec = 0f)
+        {
+            s_rowStore = new RowStore();
+            s_delaySec = delaySec;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(DrivenDashRow));
             var child = _window.rootVisualElement.Q("b");
             ForcePanelUpdate(child.panel);
             return (child, _window.rootVisualElement.Q("ref0").resolvedStyle.borderRightColor,
-                _window.rootVisualElement.Q("ref1").resolvedStyle.borderRightColor);
+                _window.rootVisualElement.Q("ref1").resolvedStyle.borderRightColor, s_rowStore);
         }
 
+        // GREEN_ON_BASE(characterization): the base already paints a mounting drive's from-pose on a dashed edge,
+        // reading it from the inline color when the dash binds. The delay keeps the spring on that pose until the read.
         [Test]
         public void Given_AMotionEnteringItsBorderColorInADashedRow_When_Mounted_Then_TheDashTakesTheDrivenColor()
         {
             // Act — the drive starts inside the child's mount, before the row's divider first applies.
-            var (child, red, _) = MountDrivenDashRow();
+            var (child, red, _, store) = MountDrivenDashRow(delaySec: 30f);
+            using var owned = store;
 
             // Assert
             Assert.That(DashColorOf(child), Is.EqualTo(red));
@@ -1464,7 +1492,8 @@ namespace Velvet.Tests
         public void Given_AMotionEnteringItsBorderColorInADashedRow_When_TheDriveIsReleased_Then_TheDashTakesTheRestingColor()
         {
             // Arrange
-            var (child, _, blue) = MountDrivenDashRow();
+            var (child, _, blue, store) = MountDrivenDashRow();
+            using var owned = store;
 
             // Act
             _mounted.Root.Reconciler.Context.StyleAnimationScheduler.CancelEnter(child);
@@ -1473,6 +1502,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(DashColorOf(child), Is.EqualTo(blue));
+        }
+
+        [Test]
+        public void Given_ADelayedMotionDrivingItsBorderColorInADashedRow_When_TheRowTurnsSolid_Then_TheEdgeShowsTheDrivenColor()
+        {
+            // Arrange
+            var (child, red, _, store) = MountDrivenDashRow(delaySec: 30f);
+            using var owned = store;
+
+            // Act
+            store.MakeSolid();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the width rides along, since an edge with none shows no color either way.
+            Assert.That((child.resolvedStyle.borderRightColor, child.resolvedStyle.borderRightWidth),
+                Is.EqualTo((red, 1f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands the edge back to the cascade on the flip, so no mask is
+        // left on it.
+        [Test]
+        public void Given_AMotionDrivingItsBorderColorInADashedRow_When_TheRowTurnsSolidAndAFramePasses_Then_TheEdgeIsNotMasked()
+        {
+            // Arrange
+            var (child, _, _, store) = MountDrivenDashRow();
+            using var owned = store;
+
+            // Act
+            store.MakeSolid();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert — opaque rides along: the driven colors are, and the mask is all but transparent.
+            var edge = child.resolvedStyle.borderRightColor;
+            Assert.That((SilhouetteFace.IsSentinel(edge), edge.a), Is.EqualTo((false, 1f)));
         }
 
         // A colored dashed row whose middle child takes border-red-500 while hovered, beside a reference carrying

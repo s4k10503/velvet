@@ -37,14 +37,18 @@ namespace Velvet
         private int _driven;
         private int _masks;
         private StyleLength[]? _lengths;
+
+        // The part of each held length a gap contributes, indexed like _lengths.
+        private float[]? _gaps;
         private StyleFloat[]? _floats;
         private StyleColor[]? _colors;
 
         public static int Bit(HeldSlot slot) => 1 << (int)slot;
 
-        public void Set(HeldSlot slot, StyleLength value)
+        public void Set(HeldSlot slot, StyleLength value, float gap)
         {
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
+            (_gaps ??= new float[HeldSlotGroups.SlotCount])[(int)slot] = gap;
             Take(slot);
         }
 
@@ -84,6 +88,10 @@ namespace Velvet
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
         public bool HoldsAny(int slots) => (_mask & slots) != 0;
+
+        // The gap part of a held, driven, unmasked slot, which a driver's pixel value adds to.
+        public float DrivenGap(HeldSlot slot)
+            => (_mask & _driven & ~_masks & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;
 
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)

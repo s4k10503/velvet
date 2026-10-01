@@ -115,8 +115,10 @@ namespace Velvet
         private readonly float[] _margins = new float[s_marginSlots.Length];
         private readonly bool[] _wanted = new bool[s_marginSlots.Length];
 
-        // Which slots a gap writes; a slot only a space margin writes yields to the child's own layers.
+        // Which slots a gap writes, and how much of _margins it writes there; a slot only a space margin writes
+        // yields to the child's own layers.
         private readonly bool[] _gapWanted = new bool[s_marginSlots.Length];
+        private readonly float[] _gaps = new float[s_marginSlots.Length];
 
         // Signature of the last successful Apply. Apply() early-returns when this is unchanged, so the
         // GeometryChanged churn the margin writes themselves provoke (and repeated reconcile passes that do
@@ -254,6 +256,7 @@ namespace Velvet
                 System.Array.Clear(_margins, 0, _margins.Length);
                 System.Array.Clear(_wanted, 0, _wanted.Length);
                 System.Array.Clear(_gapWanted, 0, _gapWanted.Length);
+                System.Array.Clear(_gaps, 0, _gaps.Length);
                 // A display:none child has no box, so CSS gap neither spaces it nor counts it as the first.
                 if (!StyleOutOfFlowChild.HasNoBox(child))
                 {
@@ -358,6 +361,7 @@ namespace Velvet
         {
             Add(slot, value);
             _gapWanted[(int)slot] = true;
+            _gaps[(int)slot] += value;
         }
 
         // Holds every slot SumMargins asked for and hands back the others this child still has held.
@@ -370,7 +374,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.HandBackIfHeld(child, slot);
                     continue;
                 }
-                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]));
+                StyleArbitraryValueResolver.Hold(child, slot, new StyleLength(_margins[(int)slot]), _gaps[(int)slot]);
                 if (!_gapWanted[(int)slot])
                 {
                     StyleArbitraryValueResolver.Yield(child, slot);
@@ -439,8 +443,8 @@ namespace Velvet
                 StyleArbitraryValueResolver.HandBackIfHeld(box, end);
                 return;
             }
-            StyleArbitraryValueResolver.Hold(box, start, new StyleLength(-gap / 2f));
-            StyleArbitraryValueResolver.Hold(box, end, new StyleLength(-gap / 2f));
+            StyleArbitraryValueResolver.Hold(box, start, new StyleLength(-gap / 2f), -gap / 2f);
+            StyleArbitraryValueResolver.Hold(box, end, new StyleLength(-gap / 2f), -gap / 2f);
         }
 
         private static void HandBackMargins(VisualElement element)

@@ -720,6 +720,10 @@ namespace Velvet
             // allocated: only an element one of them writes to gets one.
             public StyleHeldSlots? Holds;
 
+            // What a per-frame driver last wrote, by property, until ReleaseDriven — see ApplyDriven. Lazily
+            // allocated: only an element a driver writes through ApplyDriven gets one.
+            public Dictionary<ArbitraryProperty, ArbitraryStyle>? Driven;
+
             // The containers that re-apply when a class of this element's own changes — see
             // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
             public List<IChildClassWatcher>? Watchers;
@@ -1054,53 +1058,73 @@ namespace Velvet
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
         // off — cannot take the slot from it. Yield makes the exception.
-        internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
+        internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value) => Hold(element, slot, value, 0f);
+
+        // The form for a gap's margin, gap being the part of value the gap contributes rather than a space rule:
+        // CSS spaces a flex item by its gap and its own margin together, so a driver's pixel margin adds to that
+        // part where it replaces the rest.
+        internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value, float gap)
         {
-            var holds = HoldsOf(element);
-            holds.Set(slot, value);
-            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+            var map = MapOf(element);
+            (map.Holds ??= new StyleHeldSlots()).Set(slot, value, gap);
+            Reassert(element, map, slot);
         }
 
         internal static void Hold(VisualElement element, HeldSlot slot, StyleFloat value)
         {
-            var holds = HoldsOf(element);
-            holds.Set(slot, value);
-            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+            var map = MapOf(element);
+            (map.Holds ??= new StyleHeldSlots()).Set(slot, value);
+            Reassert(element, map, slot);
         }
 
         internal static void Hold(VisualElement element, HeldSlot slot, StyleColor value)
         {
-            var holds = HoldsOf(element);
-            holds.Set(slot, value);
-            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+            var map = MapOf(element);
+            (map.Holds ??= new StyleHeldSlots()).Set(slot, value);
+            Reassert(element, map, slot);
+        }
+
+        // A slot a driver writes stays the driver's under a hold just taken, so the driver's value goes back over
+        // what the previous hold left there: a mask, or the driven margin without the new gap.
+        private static void Reassert(VisualElement element, LayerMap map, HeldSlot slot)
+        {
+            map.Holds!.Reassert(element.style, StyleHeldSlots.Bit(slot));
+            if (map.Holds.IsDriven(slot))
+            {
+                RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
+            }
         }
 
         // Holds the slot at the sentinel for whatever paints it in the engine's place, as a dashed divider paints
         // its edge: a mask the slot keeps through a drive (ApplyDriven).
         internal static void Mask(VisualElement element, HeldSlot slot)
         {
-            var holds = HoldsOf(element);
+            var holds = MapOf(element).Holds ??= new StyleHeldSlots();
             holds.Set(slot, new StyleColor(SilhouetteFace.SuppressedColor));
             holds.SetMask(slot);
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
         }
 
-        // A per-frame driver's write, which owns the slots it writes until ReleaseDriven: inline, so every hold on
-        // them but a mask stands down for it as for a layer of the element's own, and comes back on the release.
+        // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every layer of
+        // the element's own and every hold but a mask stands down for it, and comes back on the release.
         internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
         {
             // Recorded from the first write, holds or none: a mount's from-pose is written before the container
             // that holds the slot first applies.
+            var map = MapOf(element);
+            (map.Driven ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
             var slots = HeldSlotGroups.SlotsOf(style.Property);
-            var holds = slots == 0 ? null : HoldsOf(element);
-            holds?.Drive(slots);
+            if (slots != 0)
+            {
+                (map.Holds ??= new StyleHeldSlots()).Drive(slots);
+            }
             ApplyInline(element, style);
-            holds?.Reassert(element.style, slots);
+            WriteOverHolds(element, map.Holds, style);
             DivideDashPainter.Drive(element, slots, style.Color);
         }
 
-        // Ends a driver's ownership of property's slots and nulls them. The driver re-asserts the element's own
-        // layers and holds once every channel is released (ReapplyLayeredValues).
+        // Ends a driver's ownership of property and nulls what it wrote. The caller re-asserts the element's own
+        // layers and holds over the property afterwards (ReapplyLayeredValues).
         internal static void ReleaseDriven(VisualElement element, ArbitraryProperty property)
         {
             var slots = HeldSlotGroups.SlotsOf(property);
@@ -1108,8 +1132,50 @@ namespace Velvet
             if (s_layers.TryGetValue(element, out var map))
             {
                 map.Holds?.Release(slots);
+                map.Driven?.Remove(property);
             }
             ClearInline(element, property);
+        }
+
+        // Writes what a driver last wrote back over any of longhands a layer or a hold has just written.
+        private static void RewriteDriven(VisualElement element, LayerMap map, StyleLonghandSet longhands)
+        {
+            if (map.Driven == null)
+            {
+                return;
+            }
+            foreach (var driven in map.Driven.Values)
+            {
+                if (StyleArbitraryLonghands.Of(driven.Property).Overlaps(longhands))
+                {
+                    ApplyInline(element, driven);
+                    WriteOverHolds(element, map.Holds, driven);
+                }
+            }
+        }
+
+        // Puts back the masks a driver's write covered, and adds a gap to a driven margin (Hold's gap form).
+        private static void WriteOverHolds(VisualElement element, StyleHeldSlots? holds, in ArbitraryStyle driven)
+        {
+            if (holds == null)
+            {
+                return;
+            }
+            var slots = HeldSlotGroups.SlotsOf(driven.Property);
+            holds.Reassert(element.style, slots);
+            if (driven.Unit != LengthUnit.Pixel)
+            {
+                return;
+            }
+            foreach (var slot in HeldSlotGroups.EverySlot)
+            {
+                var gap = (slots & StyleHeldSlots.Bit(slot)) != 0 ? holds.DrivenGap(slot) : 0f;
+                if (gap != 0f)
+                {
+                    StyleHeldSlots.WriteLayered(element.style, slot,
+                        new ArbitraryStyle(driven.Property, driven.Value + gap, LengthUnit.Pixel));
+                }
+            }
         }
 
         internal static bool IsDriven(VisualElement element, HeldSlot slot)
@@ -1162,11 +1228,7 @@ namespace Velvet
             | StyleHeldSlots.Bit(HeldSlot.BorderRightColor) | StyleHeldSlots.Bit(HeldSlot.BorderBottomColor)
             | StyleHeldSlots.Bit(HeldSlot.BorderLeftColor);
 
-        private static StyleHeldSlots HoldsOf(VisualElement element)
-        {
-            var map = s_layers.GetValue(element, static _ => new LayerMap());
-            return map.Holds ??= new StyleHeldSlots();
-        }
+        private static LayerMap MapOf(VisualElement element) => s_layers.GetValue(element, static _ => new LayerMap());
 
         // Gives a slot back to the cascade: drops any hold on it and writes what the element's own layers
         // resolve to there, or nothing when none does. Gap, grid and divide stop owning a slot through here
@@ -1182,9 +1244,11 @@ namespace Velvet
                 return;
             }
             map.Holds?.Drop(slot);
-            // A driver writing the slot keeps it; its release re-asserts what is left.
+            // A driver writing the slot keeps it, over a mask the hold had there too; its release re-asserts what
+            // is left.
             if (map.Holds != null && map.Holds.IsDriven(slot))
             {
+                RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
                 return;
             }
             if (TryLayeredWinner(map, slot, out var winner))
@@ -1481,6 +1545,7 @@ namespace Velvet
             {
                 ClearInline(element, property);
             }
+            RewriteDriven(element, map, StyleArbitraryLonghands.Of(property));
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property));
         }
 
