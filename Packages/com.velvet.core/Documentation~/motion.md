@@ -355,12 +355,16 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
   it fades in on circOut over the first half of its move while they fade out linearly between halfway
   and 95% of it. The fade is written as the element's inline opacity over the opacity its classes,
-  variants and drivers give it, and while it is written Velvet carries a change of that opacity itself —
-  a class change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the
-  transition the element declares for opacity, running one that outlasts the move on to its end. The others fade from
+  variants and drivers give it. While it is written, an element whose transitions cover opacity has them
+  suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
+  unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
+  opacity stands, with the duration, delay and easing the element declares for it, running one that
+  outlasts the move on to its end. The others fade from
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
-  lead alone under its id instead mixes its opacity from that holder's to its own over the move. A move of
+  lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
+  the same way. A move of
   the lead's own that interrupts the crossfade holds the opacities it had reached until that move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts

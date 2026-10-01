@@ -312,8 +312,6 @@ namespace Velvet
         {
             var layoutId = ctx.ElementToLayoutId.GetValueOrDefault(element);
             if (projection.Leader != null) return Behind(ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader), layoutId, ctx);
-            // MUTANT_SURVIVES(equivalent): Crossfade is set only with a tween, and the frame its tween lands in clears it
-            // before its pass, so a pass never finds it set on a lead not moving.
             if (projection.Crossfade && projection.Moving) return new LayoutIdFade(0f, CrossfadeIn(CrossfadeProgress(projection)), 1f);
             if (projection is not { Shared: true, Moving: true, FromLook: { } look }) return null;
             if (layoutId == null || ctx.LayoutIdMembers.GetValueOrDefault(layoutId)?.Count != 1) return null;

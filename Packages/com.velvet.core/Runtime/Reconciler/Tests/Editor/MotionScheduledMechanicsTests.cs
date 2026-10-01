@@ -2882,6 +2882,27 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, Visibility.Visible)));
         }
 
+        // GREEN_ON_BASE(characterization): the base draws no crossfade, so a Motion taking an id is drawn at its own
+        // opacity. A crossfade with no tween to run must leave it there.
+        [Test]
+        public void Given_AMotionMidItsOwnTween_When_ItTakesAHeldIdOnAZeroDuration_Then_ItIsDrawnAtItsOwnOpacity()
+        {
+            // Arrange — "b" holds "card"; "a" holds an id of its own, some way through a tween of its own.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 0, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "a" moves and takes "card" on a zero-duration transition.
+            (s_aId, s_aLeft, s_aTransition) = ("card", 150, new StyleTransitionConfig { DurationSec = 0f });
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(1f));
+        }
+
         [Test]
         public void Given_AHalfOpaqueHolderRemovedAsAnotherMountsAtItsBox_When_AQuarterOfTheTweenHasPassed_Then_TheOtherIsMixingFromItsOpacity()
         {
