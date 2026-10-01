@@ -38,8 +38,6 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
-        // Portal content is a component rather than a bare element, as in SamePanelPortalBubblingTests: the
-        // logical chain the bridge follows is stamped onto the component fibers a portal mounts.
         [Component]
         private static VNode TwoPortalsOnOneTarget() => V.Div(children: new VNode[]
         {

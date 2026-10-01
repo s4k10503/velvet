@@ -4,6 +4,9 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // A same-panel target's synthetic-bubbling bridge: what releases it, and the element it listens on.
+    internal readonly record struct SamePanelBridge(System.Action Release, VisualElement Anchor);
+
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
     // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
@@ -111,6 +114,42 @@ namespace Velvet
                 if (ReferenceEquals(entry.Key, changedPlaceholder)) continue;
                 if (!ReferenceEquals(entry.Value.Target, target)) continue;
                 if (!IsBehind(entry.Value.SlotStart, entry.Value.SlotLength > 0, entry.Key, changedPlaceholder, changed)) continue;
+                placeholders ??= new List<VisualElement>();
+                placeholders.Add(entry.Key);
+            }
+            if (placeholders == null) return;
+            foreach (var ph in placeholders)
+            {
+                var state = portalState[ph];
+                portalState[ph] = state with { SlotStart = state.SlotStart + delta };
+            }
+        }
+
+        // The rows target holds behind the end of the last range on it, or null when no range is on target.
+        // Target's own children sit ahead of every range, so a change in their count moves this while the
+        // recorded ends stand still.
+        internal static int? RowsBehindRanges(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target)
+        {
+            int? lastEnd = null;
+            foreach (var info in portalState.Values)
+            {
+                if (!ReferenceEquals(info.Target, target)) continue;
+                var end = info.SlotStart + info.SlotLength;
+                // MUTANT_SURVIVES(equivalent, boundary): where the two are equal, either arm is the same number.
+                lastEnd = lastEnd > end ? lastEnd : end;
+            }
+            return lastEnd == null ? null : LogicalChildSlots.Count(target) - lastEnd.Value;
+        }
+
+        // Moves by delta every range on target, which a change in target's own children does.
+        internal static void ShiftRangesOn(Dictionary<VisualElement, PortalSlotInfo> portalState, VisualElement target, int delta)
+        {
+            // MUTANT_SURVIVES(equivalent): a zero delta rewrites every start it visits to its own value.
+            if (delta == 0) return;
+            List<VisualElement>? placeholders = null;
+            foreach (var entry in portalState)
+            {
+                if (!ReferenceEquals(entry.Value.Target, target)) continue;
                 placeholders ??= new List<VisualElement>();
                 placeholders.Add(entry.Key);
             }
@@ -848,7 +887,7 @@ namespace Velvet
         // detached mount root, a placeholder configured before its declaring tree attaches), each holding
         // a self-removing AttachToPanelEvent hook. Tracked so DetachAll can unregister hooks that never
         // fired.
-        public List<(VisualElement Element, EventCallback<AttachToPanelEvent> Hook)> NavigatorPendingAttachHooks { get; } = new();
+        public List<NavigatorPendingAttach> NavigatorPendingAttachHooks { get; } = new();
 
         // Drag-and-drop registries (V.DndContext / V.Draggable / V.Droppable / V.DragOverlay), keyed by
         // the carrying element. None are pure side-tables: the draggable binding owns a registered
@@ -872,6 +911,10 @@ namespace Velvet
         // range is removed, not the entire target). When a Portal's range grows or shrinks, the
         // SlotStart of Portals later in target.children is shifted by the delta.
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
+
+        // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
+        // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.
+        internal Dictionary<VisualElement, int?> OwnRowFrames { get; } = new();
 
         // The Portal placeholder whose children are being reconciled right now, or null outside any such
         // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
@@ -1018,21 +1061,20 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
-        // Same-panel portal TARGET elements — a registered id's element (V.Portal(targetId:)) or one the
-        // caller passed outright (V.Portal(target:)) — that already carry
-        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge and the missing-sheet watch, mapped to
-        // the delegate that releases both. Doubles as the attach-once guard BindPortalTarget checks, since
+        // Same-panel portal targets as PortalSlotInfo records them — the content container of the element a
+        // registered id names (V.Portal(targetId:)) or the caller passed (V.Portal(target:)) — mapped to the
+        // bridge each carries: Anchor is the element FiberCrossPanelEventDispatcher's synthetic-bubbling
+        // listeners sit on (the container's owner, where it has one), and Release removes them and the
+        // missing-sheet watch. Doubles as the attach-once guard BindPortalTarget checks, since
         // multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
         // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
         // duplicate callbacks. The guard is scoped to
         // this one context: a second, independently mounted reconciler whose own Portal resolves to the
         // same registered target attaches its own bridge through its own instance of this dictionary,
-        // since it has no way to see this one. Harmless — Continue's ancestor walk itself is ctx-agnostic
-        // (it reads userData off the shared VisualElement, not off ctx), but the invocation at the end of
-        // that walk goes through THIS ctx's own EventManager, whose bindings table only ever learned
-        // about elements this context itself bound; a chain resolved via the other context's fibers has
-        // no matching entry there, so the second listener never double-invokes a handler — just redundant
-        // scanning on every event that reaches the shared target.
+        // since it has no way to see this one. Harmless — each listener's walk attributes rows through its own
+        // context's PortalState and invokes through that context's EventManager, so a row of the other
+        // context's portal resolves to no placeholder here and reaches only physical ancestors, which the walk
+        // leaves to native dispatch — just redundant scanning on every event that reaches the shared target.
         // Released by FiberElementCleaner.CleanupPortal once no live Portal resolves to the element any
         // more, and swept at Reconciler.Dispose for whatever the teardown order leaves behind. A target
         // the caller passed outright is routinely one Velvet itself rendered — an element reached
@@ -1042,7 +1084,7 @@ namespace Velvet
         // reconciler, so callbacks left attached past disposal would hold a closure over a dead
         // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
         // roots... can outlive this reconciler" teardown rationale.
-        public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
+        public Dictionary<VisualElement, SamePanelBridge> SamePanelPortalBridges { get; } = new();
 
         // Called from both places a portal starts rendering into an element it does not own: ChildReconciler's
         // deferred-mount drain and FiberNodePatcher's retarget or heal of a portal mounted before its id was
@@ -1051,14 +1093,52 @@ namespace Velvet
         {
             if (SamePanelPortalBridges.ContainsKey(target)) return;
             // Containment follows portal content into the target's panel, which the navigator must listen on.
-            FiberFocusNavigator.EnsureAttached(target, this);
-            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(target, this);
+            var releaseNavigatorHold = FiberFocusNavigator.HoldAttached(target, this);
+            // On the element whose contentContainer target is, where there is one, so that element's own
+            // callbacks — a ScrollView's scroll — answer an event from the portal's children before the bridge
+            // hands it to the declaring tree, as they answer one from the element's own children.
+            var anchor = ContentOwnerOf(target) ?? target;
+            var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(anchor, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
-            SamePanelPortalBridges[target] = () =>
+            SamePanelPortalBridges[target] = new SamePanelBridge(() =>
             {
                 detachBridge();
                 sheetWatch.Dispose();
-            };
+                releaseNavigatorHold?.Invoke();
+            }, anchor);
+        }
+
+        // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both
+        // the synthetic-bubbling walk and the focus navigator read. Where ranges nest, the one starting last is
+        // the innermost.
+        internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
+        {
+            var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
+            VisualElement? holder = null;
+            var holderStart = -1;
+            foreach (var entry in PortalState)
+            {
+                var range = entry.Value;
+                if (!ReferenceEquals(range.Target, parent)) continue;
+                if (index < range.SlotStart || index >= range.SlotStart + range.SlotLength) continue;
+                // MUTANT_SURVIVES(unreachable, boundary): a portal nested in another on one target opens its range at
+                // the target's row count, behind the outer's rows, so no two ranges on one target start at one slot.
+                if (range.SlotStart <= holderStart) continue;
+                holder = entry.Key;
+                holderStart = range.SlotStart;
+            }
+            return holder;
+        }
+
+        // The ancestor whose contentContainer container is, or null where container is its own.
+        private static VisualElement? ContentOwnerOf(VisualElement container)
+        {
+            var ancestor = container.hierarchy.parent;
+            while (ancestor != null && !ReferenceEquals(ancestor.contentContainer, container))
+            {
+                ancestor = ancestor.hierarchy.parent;
+            }
+            return ancestor;
         }
 
         // The declaring panel's driving UIDocument per panel, filled by
@@ -1273,8 +1353,12 @@ namespace Velvet
         internal static void ContainUserCallbackFailure(ComponentFiber? owner, System.Exception exception)
             => ComponentBoundarySearch.PropagateException(owner, exception);
 
-        // Cycles the ref installed on an element to match the node being committed: the old cleanup now,
-        // the new setup at the pass boundary. A patch carrying the SAME callback delegate is a no-op —
+        // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
+        // the new setup at the pass boundary, the old first, as React detaches and attaches refs together in
+        // its commit. Run mid-pass, the cleanup took away whatever the old setup published — a portal id —
+        // from the patches still to come in that pass, which an inline lambda, a new delegate at every render,
+        // turned into a render that re-published the id and asked for the next. A ref removed outright is
+        // cleaned up at once. A patch carrying the SAME callback delegate is a no-op —
         // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
         // forcing consumers into deferred-correction workarounds.
         internal void SyncRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
@@ -1282,11 +1366,19 @@ namespace Velvet
             if (RefCallbacks.TryGetValue(element, out var installed)
                 && refCallback != null && ReferenceEquals(installed.Callback, refCallback))
             {
+                // The installed ref stays until the drain, so an earlier patch can have queued another callback
+                // over it; this patch, carrying the installed one back, supersedes that. A setup queued for this
+                // same callback is still to be installed, and is kept.
+                if (_pendingRefAttachIndex.TryGetValue(element, out var superseded)
+                    && !ReferenceEquals(_pendingRefAttaches[superseded].Callback, refCallback))
+                {
+                    DropPendingRefAttach(element);
+                }
                 return;
             }
-            DetachRefCallback(element);
             if (refCallback == null)
             {
+                DetachRefCallback(element);
                 DropPendingRefAttach(element);
                 return;
             }
@@ -1338,13 +1430,23 @@ namespace Velvet
             // the point where every removal of that pass is behind them.
             if (SharedReconcileDepth > 0) return;
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
-            // re-reads the count; draining them from inside would run the ones already run a second time.
+            // re-reads the count and takes them as a batch of their own; draining them from inside would
+            // run the ones already run a second time.
             if (_drainingRefAttaches) return;
             _drainingRefAttaches = true;
             try
             {
+                var batchEnd = 0;
                 for (var i = 0; i < _pendingRefAttaches.Count; i++)
                 {
+                    // Every cleanup a batch replaces runs ahead of every setup in it, as React detaches the
+                    // old refs of a commit before it attaches the new: one element's new setup registering
+                    // an id must not be followed by another element's old cleanup unregistering it.
+                    if (i == batchEnd)
+                    {
+                        batchEnd = _pendingRefAttaches.Count;
+                        RunReplacedRefCleanups(i, batchEnd);
+                    }
                     var (element, callback, owner, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
                     // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
@@ -1375,7 +1477,6 @@ namespace Velvet
                     catch (System.Exception exception)
                     {
                         ContainUserCallbackFailure(owner, exception);
-                        ConsumeAbortRaisedByASetup();
                     }
                     if (RefCallbacks.ContainsKey(element))
                     {
@@ -1392,7 +1493,6 @@ namespace Velvet
                         catch (System.Exception exception)
                         {
                             ContainUserCallbackFailure(owner, exception);
-                            ConsumeAbortRaisedByASetup();
                         }
                     }
                 }
@@ -1401,10 +1501,34 @@ namespace Velvet
             {
                 CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
-                // Repeated from the catch above so this loop leaves the flag clear whichever entrance ran
-                // it. Dropping it would rest on that catch being the only raise a setup can reach, which
-                // nothing here establishes.
-                IsAborted = false;
+            }
+        }
+
+        private void RunReplacedRefCleanups(int start, int end)
+        {
+            for (var i = start; i < end; i++)
+            {
+                var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): the two are null together for the reason DrainRefAttaches's own
+                // skip gives, so this reaches the same entries either way.
+                if (element == null || callback == null) continue;
+                // The batch's own setup loop skips this entry too, so its old ref stays as it is.
+                if (pass is { HasPendingWork: true }) continue;
+                if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
+                var replaced = installed.Cleanup;
+                if (replaced == null) continue;
+                // Ahead of the cleanup: a boundary catching its failure can take the element out, and
+                // finding the replaced entry there, FiberElementCleaner would run the cleanup a second time.
+                RefCallbacks[element] = (callback, null);
+                // Its failure goes where a setup's does, and the setup still runs.
+                try
+                {
+                    replaced();
+                }
+                catch (System.Exception exception)
+                {
+                    ContainUserCallbackFailure(owner, exception);
+                }
             }
         }
 
@@ -1432,15 +1556,6 @@ namespace Velvet
                 _pendingRefAttachIndex[_pendingRefAttaches[i].Element!] = i;
             }
         }
-
-        // A boundary that caught a setup's failure raised the abort with no walk left on the stack for it
-        // to stop. Consuming it here rather than once the loop ends is what leaves the setups queued behind
-        // it a context they can still work in: a later boundary's own TryShowFallback reconciles through
-        // ChildReconciler.Reconcile, and so does a state write a later setup commits synchronously, and
-        // its entry guard returns out of either having touched nothing. Not inside
-        // ContainUserCallbackFailure, which the create-path callbacks and DetachRefCallback reach as
-        // well: an abort raised through one of those is not this loop's to consume.
-        private void ConsumeAbortRaisedByASetup() => IsAborted = false;
 
         // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
         // The node identifies the branch when a context-spine walk reaches it through a nested host.
@@ -2055,7 +2170,7 @@ namespace Velvet
             }
             foreach (var info in PortalState.Values)
             {
-                if (info.TargetId != id || ReferenceEquals(info.Target, registered))
+                if (info.TargetId != id || ReferenceEquals(info.Target, FiberNodePatcher.PortalContainerOf(registered)))
                 {
                     continue;
                 }

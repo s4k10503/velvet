@@ -587,7 +587,7 @@ namespace Velvet
         // guard that skips every Portal after the first.
         private void ReleaseBridgeIfLastPortalOn(VisualElement target)
         {
-            if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var unbind))
+            if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var bridge))
             {
                 return;
             }
@@ -600,7 +600,7 @@ namespace Velvet
                 }
             }
 
-            unbind();
+            bridge.Release();
             _ctx.SamePanelPortalBridges.Remove(target);
         }
 

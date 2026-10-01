@@ -23,9 +23,10 @@ container the same pass creates is not in the ref while that pass renders. Readi
 target lands on the render after the one that created the container — the render a `UseState` write
 from the `refCallback`, or the effect that follows the pass, asks for.
 
-`V.Portal("modal-root", …)` resolves a name through `FiberPortalRegistry`, whose table is one map for
-the whole process. That is what makes an id convenient across unrelated call sites and what makes two
-registrations of one name overwrite each other.
+`V.Portal("modal-root", …)` is Velvet's own addition, with no `createPortal` counterpart: it resolves a
+name through `FiberPortalRegistry`, one table for the whole process, so an id reaches a container across
+unrelated call sites and mounted trees. Registering a registered name again warns and points it at the
+element given, which moves the portals on it as described below.
 
 **A different target moves the children**, in either form — the reconciler cannot patch one
 container's portal into another's, so the old unmounts and the new mounts, which is what
@@ -37,8 +38,8 @@ Registering an id is the one of those nothing would otherwise notice: a portal r
 only when it is patched, and a registration causes no patch of its own. `Register` therefore asks the
 components that declared the portals on that id to render again, and the move lands on that render
 rather than inside the `Register` call. The same signal is what starts a portal declared before its
-id existed — that one warns and renders nothing at mount, and its children appear on the first
-registration rather than waiting for the declaring component to re-render for some reason of its own.
+id existed: it warns at mount, and its children appear on the render the first registration asks for
+rather than waiting for the declaring component to re-render for some reason of its own.
 Registering the same element again, and
 unregistering the id, both leave a live portal where it is — an unregistered id names nothing to move
 to.
@@ -56,14 +57,13 @@ component's own tree, mounts a fresh instance on the far side and runs the depar
 [react-migration.md, what a position is](react-migration.md#what-a-position-is) states what a position
 is; a portal's boundary is one, and it holds even where the two sides share a container.
 
-**Keep the container's own children out of Velvet's hands for as long as the portal is mounted**, in
-either form. A portal's range is recorded after whatever the container already held, and a child added
-or removed ahead of that range by an ordinary render moves it out from under the portal: the next patch
-writes over the container's own child and leaves a duplicate of the portal's. A
-container Velvet renders is a fine target when it has no children of its own — which is what the
-`refCallback` case usually is, an empty `V.Div` used as a mount point. A portal nested inside another
-portal on the same target is not this case and is supported: a portal's own patch shifts the ranges
-that follow it.
+**A container Velvet renders can hold children of its own beside a portal's**, in either form. The
+portal's children follow the container's own, and when a render of the tree that declares the portal
+changes how many of those there are — the element's own children, or a component among them rendering
+again — the portal's range moves with them, so the next patch still lands on the portal's children. A
+child other code appends behind the portal's children stays behind them. A portal declared among the
+children of the container it targets is supported too. A portal nested inside another portal on the
+same target is supported: a portal's own patch shifts the ranges that follow it.
 
 ## The shared boundary semantics
 
@@ -75,22 +75,29 @@ The boundary behaves the same in all four forms:
   mechanism: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain
-  rather than the DOM). For `V.Portal(targetId:)` the target's physical ancestors already receive
-  the event through ordinary native bubbling and the bridge adds the LOGICAL chain on top; an
-  element that is both — a physical ancestor of the target AND a logical ancestor of the call
-  site — still fires exactly once. `ClickedBinding` (`Button`'s native click has no underlying
-  event object to carry across a boundary) and `ChangeEventBinding<T>` (field value-change, same
-  reason) stay physical-tree-only in every form, as do `FocusEvent`/`BlurEvent`: unlike
-  `FocusInEvent`/`FocusOutEvent`, UI Toolkit dispatches those target-only with no bubble, so a
-  bridge listener can never observe one raised on a descendant in the first place. See
-  "Cross-panel input routing" below for what this shared mechanism does not cover.
+  rather than the DOM). A `Button`'s `onClick` (`ClickedBinding`) answers a click raised inside the
+  portal, and a field's `onValueChanged` (`ChangeEventBinding<T>`) a value change of that type, the
+  way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
+  physical ancestors already receive the event through ordinary native bubbling and the bridge adds
+  the LOGICAL chain on top; an element that is both — a physical ancestor of the target AND a
+  logical ancestor of the call site — still fires exactly once, and so does a logical ancestor
+  reached through portals nested in each other's content. A portal's child need not be a component:
+  an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
+  bubble, in a portal or out of one, as the DOM's `focus`/`blur` do not; React's bubbling
+  `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"
+  below for what this shared mechanism does not cover.
 - **Physical-walk styling does not cross, anywhere.** Relational `group-`/`peer-` variants and
   focus-within variants (`has-[:focus]:`, `group-focus-within:`) resolve against the physical
   tree in every portal form, including `V.Portal(layer:)`/`V.WorldSpace` — they register their
   own native focus/pointer callbacks directly rather than going through `events:`, so the
   synthetic cross-panel bridging above does not extend to them.
-- **Responsive breakpoints are per-panel.** `sm:`…`2xl:` evaluate against the width of the panel
-  the child is attached to, not the declaring panel.
+- **Responsive breakpoints follow the declaring panel.** Unscoped `sm:`…`2xl:` in a
+  `V.Portal(layer:)` or `V.WorldSpace` evaluate against the width of the panel the portal was
+  declared on, the way a page's portals answer its one viewport. A layer host serves every portal
+  on its layer in the tree and answers the panel of the last one to render into it; where that panel
+  is itself a layer or world-space host, the panel that host's portal was declared on answers in
+  turn. An `@container` among the child's own ancestors still takes precedence, as a container query
+  does. When a child resolves its width source is [styling-variants.md](styling-variants.md)'s to state.
 - `dark:` is global and identical everywhere.
 
 ## Cross-panel input routing (`V.Portal(layer:)` / `V.WorldSpace`)
@@ -251,13 +258,11 @@ pinning its top-left corner to it).
 
 A null `target` (or one destroyed later) mounts an inert,
 hidden element rather than throwing. The element also hides itself whenever its target sits
-behind the camera rather than jumping to a wrong on-screen spot (drei's own
-`isObjectBehindCamera` behavior); `hideWhenBehindCamera: false` opts out of the hide but does
-not attempt to keep tracking a behind-camera target — there is no sensible projection for one,
-so the element simply stays at its last resolved position.
+behind the camera (drei's own `isObjectBehindCamera` behavior); `hideWhenBehindCamera: false`
+opts out of the hide, and the element keeps following the target's projection there, as drei's
+`<Html>` does once `onOcclude` takes the hide over.
 
-Not supported: nesting `V.Anchored` inside a `V.WorldSpace` panel's children. That panel is
-still a runtime (`Player`-context) panel — indistinguishable from an ordinary screen-space one
-without reflecting into an internal engine property — so it silently receives the same
-near-raw-world-space values `RuntimePanelUtils.CameraTransformWorldToPanel` is documented to
-degrade to for a `V.WorldSpace` host (see above). `V.Anchored` targets an ordinary screen-space panel only.
+In an editor panel (Velvet content in an `EditorWindow`) the camera's viewport is laid over the
+panel, which is how drei's `<Html>` places a projection on its canvas. Among a `V.WorldSpace`
+panel's children, the element sits where the camera's ray to the target crosses that panel's plane,
+and hides where the ray does not cross it.

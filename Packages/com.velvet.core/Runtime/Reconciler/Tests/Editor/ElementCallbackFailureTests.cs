@@ -19,13 +19,14 @@ namespace Velvet.Tests
     /// the same callback does not try it again — the entry records the identity whether or not the setup
     /// completed.</item>
     /// <item>A ref whose cleanup throws when its identity changes still has its replacement attached —
-    /// the two halves are independent, as they are in React.</item>
+    /// the two halves are independent, as they are in React. Both run at the pass boundary, so a boundary
+    /// catching the cleanup's failure leaves the rest of the tree that render produced to commit.</item>
     /// <item>An <c>onCreated</c> that throws leaves the element it was handed occupying its slot.</item>
     /// <item>A <c>wrapElement</c> that throws leaves the element itself in the slot, so the ref points at
     /// something the tree holds rather than at an orphan.</item>
     /// <item>The cleanup a setup returned for an element that left while the setup ran is fired by the drain
     /// itself, and a throw out of that firing is contained on the same terms as the setup's own: it reaches
-    /// the boundary, and the abort the boundary raised is consumed before the next setup runs.</item>
+    /// the boundary, and the setups queued behind it still run.</item>
     /// <item>The fallback for a failed setup goes into the boundary's own slot range rather than the
     /// first slots of its container: with a sibling on each side, both stay.</item>
     /// </list>
@@ -33,12 +34,10 @@ namespace Velvet.Tests
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
     /// two moved.
     /// <para>
-    /// A case naming no boundary reads the console fall-through. The ones that register one read the
-    /// arrangement under which a caught failure calls SetAborted — and a ref setup runs at a point where
-    /// nothing downstream consumes that flag unless the drain does. Four of those read what the abort
-    /// reaches from there: the boundary's own committed tree when the pass being drained is its own, a
-    /// second boundary's fallback and a later setup's synchronous state write when it is not, and an
-    /// enclosing fiber's committed tree when the boundary that caught is below it.
+    /// A case naming no boundary reads the console fall-through. Four of the ones that register one read
+    /// what a catch in the drain leaves behind it: the boundary's own committed tree when the pass being
+    /// drained is its own, a second boundary's fallback and a later setup's synchronous state write when it
+    /// is not, and an enclosing fiber's committed tree when the boundary that caught is below it.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -216,8 +215,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "fallback")));
         }
 
-        // Measured, reporting the drain's abort to the pass boundary instead of to the fiber whose
-        // fallback it is reddens this case, and no other case in this fixture or RefAttachOrderingTests.
         [Test]
         public void Given_ADescendantBoundaryCaughtInTheDrain_When_ThePassEnds_Then_TheDrainingFiberStillCommitsItsTree()
         {
@@ -245,7 +242,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(TwoBoundaryHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the first is read beside the second, because a pass where neither caught reads the
-            // same absent second fallback as one where the first's abort stopped it.
+            // same absent second fallback as one where the first's catch stopped it.
             Assert.That(
                 (Root!.Q<Label>("first-fallback") != null, Root.Q<Label>("second-fallback") != null),
                 Is.EqualTo((true, true)));
@@ -260,7 +257,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(AbortThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the first setup never
-            // threw reads the same committed probe as one where it threw and the abort was consumed.
+            // threw reads the same committed probe as one where it threw and the setups behind it still ran.
             Assert.That(
                 (Root!.Q<Label>("first-fallback") != null, Root.Q<Label>("probe")?.text),
                 Is.EqualTo((true, "after")));
@@ -556,7 +553,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(Root, V.Component(OrphanedCleanupThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the cleanup never threw
-            // reads the same committed probe as one where it threw and the abort was consumed.
+            // reads the same committed probe as one where it threw and the setups behind it still ran.
             Assert.That((Root!.Q<Label>("orphan-fallback") != null, Root.Q<Label>("probe")?.text),
                 Is.EqualTo((true, "after")));
         }
@@ -569,5 +566,59 @@ namespace Velvet.Tests
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
             return string.Join(",", names);
         }
+
+        #region A replaced ref whose cleanup throws beneath a boundary, with a second boundary's setup behind it
+
+        [Test]
+        public void Given_AReplacedRefsCleanupThrewIntoABoundary_When_ASecondBoundarysSetupThrowsBehindIt_Then_BothFallbacksReachTheDom()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(SwapThenFailHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setAttempt.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the first is read beside the second, because a replaced cleanup that never ran reads
+            // the same second fallback as one that ran and was caught.
+            Assert.That((Root!.Q<Label>("swap-fallback") != null, Root.Q<Label>("fallback") != null),
+                Is.EqualTo((true, true)));
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode SwapFailingBoundary(int attempt)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "swap-fallback", text: "caught"));
+            return V.Component(SwappingRefChild, attempt, key: "child");
+        }
+
+        // The closure over attempt makes each render's callback a new identity, and only the cleanup the
+        // first render's setup returned throws.
+        [Component]
+        private static VNode SwappingRefChild(int attempt)
+            => V.Div(name: "swapping", refCallback: _ => () =>
+            {
+                if (attempt == 0) throw new InvalidOperationException(FailureMessage);
+            });
+
+        [Component]
+        private static VNode SwapThenFailHost()
+        {
+            var (attempt, setAttempt) = Hooks.UseState(0);
+            s_setAttempt = setAttempt;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(name: "left", children: new VNode[]
+                {
+                    V.Component(SwapFailingBoundary, attempt, key: "swap"),
+                }),
+                V.Div(name: "right", children: new VNode[]
+                {
+                    V.Component(PropDrivenFailingBoundary, attempt, key: "failing"),
+                }),
+            });
+        }
+
+        #endregion
     }
 }

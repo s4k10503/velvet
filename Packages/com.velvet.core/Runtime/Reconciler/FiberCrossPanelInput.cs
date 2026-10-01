@@ -44,39 +44,22 @@ namespace Velvet
     //     target unmounts, or at Reconciler.Dispose: a same-panel target is an ordinary element the
     //     app or the tree owns, not a framework-owned host root destroyed wholesale.
     //
-    // Uses a single root-level listener per event type that walks the physical parent chain,
-    // redirecting through a fiber's logical parent only at a nested portal / world-space boundary
-    // (see NextLogicalAncestor), to build its dispatch order, but with one
-    // deliberate adaptation: Velvet does NOT move every event to root-level delegation. Ordinary
-    // same-panel bubbling stays exactly as UI Toolkit's own native dispatch already does it
-    // (FiberEventBindingManager.Bind's direct RegisterCallback<T> registrations on each element),
-    // since that already agrees with the logical
-    // tree everywhere except at a portal/world-space boundary. This dispatcher only takes over at the
-    // seams where physical bubbling structurally cannot reach the logical chain: a host panel's root
-    // (nothing physical above it at all), and a same-panel registry target (something physical above
-    // it, but not the right thing — see Continue's truncation check for how a same-panel target avoids
-    // double-invoking whatever the two chains share).
-    //
-    // Known limitation: Continue below resolves "which ComponentFiber logically owns this event" by
-    // finding an element on the physical chain whose userData is a fiber carrying a
-    // DetachedMountContext, and the deferred mount stamps that only onto the top-level child FIBERS it
-    // created (ChildReconciler.DrainPendingPortalMounts). A Portal/WorldSpace child that is a bare host
-    // element (e.g. V.Portal(children: [V.Div(...)])) with no enclosing V.Component contributes no such
-    // fiber, so the chain carries nothing to resolve from. Wrap portal/world-space children in a
-    // component to get synthetic bubbling; a bare element's own events: handlers still fire normally
-    // (native bubbling is unaffected everywhere), only its FURTHER bubbling past the portal boundary
-    // is affected.
+    // Ordinary same-panel bubbling stays UI Toolkit's own native dispatch (FiberEventBindingManager.Bind's
+    // direct RegisterCallback<T> registrations on each element), which agrees with the logical tree
+    // everywhere except at a portal boundary. The bridge supplies the rest: the logical ancestors of the
+    // event's target that are not its physical ancestors, walked the way React walks a portal child's
+    // return path — a portal's child answers to the position its placeholder holds (see LogicalParent).
     internal static class FiberCrossPanelEventDispatcher
     {
         // Registers one BubbleUp listener per synthetic-bubbling-eligible event type on bridgeAnchor —
         // either a newly created host panel's root (called once, from PanelHostFactory) or a resolved
-        // same-panel target element (called once per target, from ChildReconciler's same-panel drain
-        // branch — see ReconcilerContext.SamePanelPortalBridges for the attach-once guard).
+        // same-panel target (once per target, from ReconcilerContext.BindPortalTarget, which owns the
+        // attach-once guard and which element it listens on).
         // Each listener fires only after UI Toolkit's own native dispatch has already bubbled the event
         // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
         // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
         // or below that point. Matches the event set FiberEventBindingManager.TryInvokeSynthetic
-        // supports — see its own comment for why ClickedBinding/ChangeEventBinding<T> are excluded.
+        // supports.
         // Returns the delegate that undoes every registration below, for a caller that needs to detach
         // it later (see the class comment above); a caller that never needs to (a framework-owned host
         // root, destroyed wholesale) is free to discard it.
@@ -92,6 +75,11 @@ namespace Velvet
             EventCallback<KeyUpEvent> onKeyUp = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             EventCallback<FocusInEvent> onFocusIn = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             EventCallback<FocusOutEvent> onFocusOut = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ClickEvent> onClick = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<float>> onFloatChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<bool>> onBoolChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<string>> onStringChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<ChangeEvent<int>> onIntChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
             // FocusEvent/BlurEvent are deliberately NOT registered here, even though
             // FiberEventBindingManager.TryInvokeSynthetic has a case for both (kept there for symmetry
             // with the other binding kinds, and reachable if some other caller ever synthesizes one).
@@ -117,6 +105,11 @@ namespace Velvet
             bridgeAnchor.RegisterCallback(onKeyUp);
             bridgeAnchor.RegisterCallback(onFocusIn);
             bridgeAnchor.RegisterCallback(onFocusOut);
+            bridgeAnchor.RegisterCallback(onClick);
+            bridgeAnchor.RegisterCallback(onFloatChange);
+            bridgeAnchor.RegisterCallback(onBoolChange);
+            bridgeAnchor.RegisterCallback(onStringChange);
+            bridgeAnchor.RegisterCallback(onIntChange);
 
             return () =>
             {
@@ -130,104 +123,64 @@ namespace Velvet
                 bridgeAnchor.UnregisterCallback(onKeyUp);
                 bridgeAnchor.UnregisterCallback(onFocusIn);
                 bridgeAnchor.UnregisterCallback(onFocusOut);
+                bridgeAnchor.UnregisterCallback(onClick);
+                bridgeAnchor.UnregisterCallback(onFloatChange);
+                bridgeAnchor.UnregisterCallback(onBoolChange);
+                bridgeAnchor.UnregisterCallback(onStringChange);
+                bridgeAnchor.UnregisterCallback(onIntChange);
             };
         }
 
         private static void Continue(EventBase evt, VisualElement? target, ReconcilerContext ctx, VisualElement bridgeAnchor)
         {
             if (target == null) return;
+            // One dispatch reaches every bridge on its target's physical path, innermost first, and the walk
+            // below covers every boundary, so an outer bridge leaves the event to the inner one.
+            if (HasBridgeBelow(target, bridgeAnchor, ctx)) return;
 
-            // Walk from the native target up to (and including) bridgeAnchor, looking for the element
-            // whose owning fiber carries a DetachedMountContext — stamped only on the top-level
-            // child(ren) a Portal/WorldSpace drain produced (DrainPendingPortalMounts). This is a
-            // metadata scan only (no handler invocation along the way), so it cannot double-fire
-            // anything even though it retraces ground the native dispatch already covered.
-            ComponentFiber? logicalParent = null;
-            for (var current = target; current != null; current = current.parent)
+            for (var current = LogicalParent(target, ctx); current != null; current = LogicalParent(current, ctx))
             {
-                if (current.userData is ComponentFiber { DetachedMountContext: { } dmc })
-                {
-                    logicalParent = ResolveOutermostLogicalAncestor(dmc.LogicalParent);
-                    break;
-                }
-            }
-
-            if (logicalParent?.MountPoint == null) return;
-
-            // From here on, walk outward from the logical ancestor's OWN physical location, invoking
-            // each element's own synthetic handler directly.
-            for (var current = logicalParent.MountPoint; current != null; current = NextLogicalAncestor(current))
-            {
-                // A synthetic handler invoked on an earlier hop may itself call StopPropagation() —
-                // honor it exactly like the native BubbleUp phase this walk continues would (this read
-                // was previously missing, so a synthetic StopPropagation() had no effect on the rest of
-                // the walk — a real bug, since every OTHER stage of dispatch in this codebase respects
-                // the flag).
+                // A synthetic handler may stop propagation, which ends this walk as it ends native bubbling.
                 if (evt.isPropagationStopped) break;
-                // Same-panel targets sit in the SAME physical tree as their own remaining ancestors:
-                // the native dispatch that is STILL bubbling this exact evt (this callback fired
-                // mid-bubble, at bridgeAnchor, not after the whole dispatch finished) will visit
-                // bridgeAnchor's own ancestors on its own once this callback returns, provided
-                // propagation was not already stopped (checked above). Stopping the synthetic walk the
-                // moment it reaches that same ground avoids invoking a shared handler twice — the two
-                // chains always eventually reconverge, at minimum at the panel root itself. For a
-                // cross-panel host (bridgeAnchor = a separate panel's root), this can never match
-                // anything in the synthetic chain (a completely different Panel), so the check is a
-                // harmless no-op there and the full walk always runs exactly as it did before same-panel
-                // support existed.
-                if (IsCoveredByNativeBubbling(current, bridgeAnchor)) break;
+                // Native dispatch reaches the target's physical ancestors itself.
+                if (IsPhysicalAncestorOrSelf(current, target)) continue;
                 ctx.EventManager.TryInvokeSynthetic(current, evt);
             }
         }
 
-        // True when candidate is bridgeAnchor itself, or one of ITS OWN physical ancestors — elements
-        // the SAME native bubble dispatch that produced evt is guaranteed to visit on its own once the
-        // BubbleUp callback registered on bridgeAnchor returns (nothing between here and there calls
-        // StopPropagation). Walked inline on every call rather than precomputed once into a
-        // HashSet<VisualElement>: these chains are short (a handful of levels), and this runs on every
-        // hop of a walk that itself runs on every PointerMove/Enter/Leave — trading a few extra
-        // reference comparisons for zero per-event allocation.
-        private static bool IsCoveredByNativeBubbling(VisualElement candidate, VisualElement bridgeAnchor)
+        // Whether an element from target up to, but not including, bridgeAnchor carries a bridge of its own. A
+        // host panel's root, the other kind of anchor, is the root of its panel and so never below another.
+        private static bool HasBridgeBelow(VisualElement target, VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
-            for (var ancestor = bridgeAnchor; ancestor != null; ancestor = ancestor.parent)
+            for (var element = target; !ReferenceEquals(element, bridgeAnchor); element = element.hierarchy.parent!)
             {
-                if (ReferenceEquals(ancestor, candidate)) return true;
+                foreach (var bridge in ctx.SamePanelPortalBridges.Values)
+                {
+                    if (ReferenceEquals(bridge.Anchor, element)) return true;
+                }
             }
             return false;
         }
 
-        // Chases DetachedMountContext.LogicalParent while fiber is ITSELF a detached-mount top-level
-        // child — a Portal/WorldSpace nested inside another Portal's/WorldSpace's content — instead of
-        // stopping at the immediate LogicalParent. A nested detached mount's own MountPoint is the
-        // INNER boundary's target/host root: a physical location, not that fiber's true logical
-        // position (a registry target is not a logical-tree ancestor of anything logically inside it; a
-        // host panel root's own physical parent is UI-Toolkit-internal and belongs to a different Panel
-        // than the outer logical chain). Escaping every nested boundary before reading MountPoint
-        // mirrors FiberContextSpine.Push, which treats a nested DetachedMountContext as its own spine
-        // edge rather than trusting an intermediate MountPoint — without this, a doubly-nested portal's
-        // outward walk would invoke a meaningless element once and then dead-end on ITS unrelated
-        // ancestors, never reaching the outer Portal's true logical chain.
-        private static ComponentFiber? ResolveOutermostLogicalAncestor(ComponentFiber? fiber)
+        private static bool IsPhysicalAncestorOrSelf(VisualElement candidate, VisualElement target)
         {
-            while (fiber?.DetachedMountContext is { LogicalParent: { } outer })
+            for (var element = target; element != null; element = element.hierarchy.parent)
             {
-                fiber = outer;
+                if (ReferenceEquals(element, candidate)) return true;
             }
-            return fiber;
+            return false;
         }
 
-        // Advances one step further up the synthetic chain: the ordinary physical parent, UNLESS
-        // current is itself another portal/world-space boundary's top-level child (a nested portal),
-        // in which case the walk must hop through ITS OWN (fully resolved) logical ancestor the same
-        // way — a plain VisualElement.parent walk would silently dead-end there, same as the outer walk
-        // in Continue above.
-        private static VisualElement? NextLogicalAncestor(VisualElement current)
+        // A portal's child answers to the placeholder standing at the portal's call site, whatever element it
+        // is mounted under, and a z-managed element to the placeholder at its declared slot; any other element
+        // to its parent.
+        private static VisualElement? LogicalParent(VisualElement element, ReconcilerContext ctx)
         {
-            if (current.userData is ComponentFiber { DetachedMountContext: { } dmc })
-            {
-                return ResolveOutermostLogicalAncestor(dmc.LogicalParent)?.MountPoint;
-            }
-            return current.parent;
+            var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
+            var parent = slot.parent;
+            if (parent == null) return null;
+            var placeholder = ctx.PortalHoldingRow(slot, parent);
+            return placeholder != null ? LogicalParent(placeholder, ctx) : parent;
         }
     }
 
