@@ -114,12 +114,12 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 2, "caught", "b-updated")));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts, and this keeps the indexed loop's stop on it driven.
         [Test]
-        public void Given_AnErrorBoundaryAbortingDuringIndexedReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        public void Given_AnErrorBoundaryCatchingAnElementCallbackErrorDuringIndexedReplace_When_Reconciled_Then_TheFallbackIsInsertedAndTheLaterSiblingIsPatched()
         {
             // Arrange — as the indexed case above, with the boundary's child failing in an element callback.
+            // The callback fails while the pass creates the element, so the boundary catches it in the walk as it
+            // catches a render error, and the pass goes on to the later sibling.
             s_throwInCallback = true;
             using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
@@ -132,15 +132,15 @@ namespace Velvet.Tests
             var replacement = (VisualElement)container.ElementAt(0);
             Assert.That(
                 (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
-                Is.EqualTo((true, 2, "caught", "b")));
+                Is.EqualTo((true, 2, "caught", "b-updated")));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts, and this keeps the synchronous keyed scan's stop on it driven.
         [Test]
-        public void Given_AnErrorBoundaryAbortingDuringKeyedSyncReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
+        public void Given_AnErrorBoundaryCatchingAnElementCallbackErrorDuringKeyedSyncReplace_When_Reconciled_Then_TheFallbackIsInsertedAndTheLaterSiblingIsPatched()
         {
             // Arrange — as the keyed case above, with the boundary's child failing in an element callback.
+            // The callback fails while the pass creates the element, so the boundary catches it in the walk as it
+            // catches a render error, and the pass goes on to the later sibling.
             s_throwInCallback = true;
             using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
@@ -153,7 +153,7 @@ namespace Velvet.Tests
             var replacement = (VisualElement)container.ElementAt(0);
             Assert.That(
                 (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
-                Is.EqualTo((true, 2, "caught", "b")));
+                Is.EqualTo((true, 2, "caught", "b-updated")));
         }
 
         // GREEN_ON_BASE(refactor): the base raises the flag from CreateElement too, so this case is green
@@ -612,7 +612,6 @@ namespace Velvet.Tests
         private static bool s_fallbackShown;
         private static ComponentFiber s_hostFiber;
         private static StateUpdater<bool> s_setFlipped;
-        private static bool s_failInCallback;
 
         [SetUp]
         public void SetUp()
@@ -621,17 +620,16 @@ namespace Velvet.Tests
             s_fallbackShown = false;
             s_hostFiber = null;
             s_setFlipped = default;
-            s_failInCallback = false;
         }
 
         // GREEN_ON_BASE(characterization): the merge base drops an aborted pass's tree on the flag this pass raises.
-        // An element callback's error still aborts, and this keeps that discard driven.
+        // An AnimatePresence's onExitComplete failing in the walk still aborts, and this keeps that discard driven.
         [Test]
         public void Given_ABoundaryBelowAFiberAbortingDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsThePreThrowTree()
         {
-            // Arrange — as the render-error case below, with the boundary's child failing in an element callback.
-            s_failInCallback = true;
-            using var mounted = V.Mount(_root, V.Component(CatchingWalkHost, key: "host"), CaughtErrors.Unlogged);
+            // Arrange — the host's pass removes the only child of a presence below the boundary, whose onExitComplete
+            // then fails in the walk, which the boundary catches on the aborting path.
+            using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setFlipped.Invoke(true);
@@ -684,10 +682,35 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode WalkThrowingChild()
+        private static VNode WalkThrowingChild() => throw new Exception(FailureMessage);
+
+        [Component]
+        private static VNode AbortingWalkHost()
         {
-            if (s_failInCallback) return V.ScrollView(onCreated: _ => throw new Exception(FailureMessage));
-            throw new Exception(FailureMessage);
+            s_hostFiber = FiberAmbientStack.Current;
+            var (flipped, setFlipped) = Hooks.UseState(false);
+            s_setFlipped = setFlipped;
+            return V.Div(name: flipped ? "host-flipped" : "host-initial", children: new VNode[]
+            {
+                V.Div(children: new VNode[] { V.Component(ExitFailingBoundary, flipped, key: "boundary") }),
+            });
         }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode ExitFailingBoundary(bool flipped)
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "caught");
+            });
+            return V.Component(ExitFailingChild, flipped, key: "child");
+        }
+
+        // The presence's child has no exit animation, so the render that removes it completes the exit at once.
+        [Component]
+        private static VNode ExitFailingChild(bool flipped)
+            => V.AnimatePresence(key: "exit", onExitComplete: () => throw new Exception(FailureMessage),
+                children: flipped ? Array.Empty<VNode>() : new VNode[] { V.Label(text: "child", key: "child") });
     }
 }

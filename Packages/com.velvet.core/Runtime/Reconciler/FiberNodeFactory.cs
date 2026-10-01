@@ -97,6 +97,24 @@ namespace Velvet
             }
         }
 
+        // A callback of an element being created fails while the render that creates it is still going on, so a
+        // boundary whose output that render is expanding catches it there, as it catches a render error, and the
+        // rest of that render goes on around its fallback, as React commits the siblings of a boundary that caught.
+        // The element, which has no parent yet, is released before the catch unwinds, with what it built and a ref
+        // the wrap path has already queued for it.
+        private void ContainCreationCallbackFailure(VisualElement element, Exception exception)
+        {
+            try
+            {
+                ComponentBoundarySearch.PropagateException(_ctx.FiberStack.Current, exception, isRenderError: true);
+            }
+            catch (BoundaryCaughtSignal)
+            {
+                _cleaner.CleanupElement(element);
+                throw;
+            }
+        }
+
         private VisualElement CreateForElementNode(ElementNode elementNode)
         {
             var element = _ctx.FiberElementFactory.Create(elementNode);
@@ -126,7 +144,7 @@ namespace Velvet
             }
             catch (Exception exception)
             {
-                ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+                ContainCreationCallbackFailure(element, exception);
             }
             _ctx.SyncRefCallback(element, elementNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
@@ -200,10 +218,10 @@ namespace Velvet
                 }
                 catch (Exception exception)
                 {
-                    // The element itself takes the slot when the wrap fails. Leaving the throw here
-                    // left the slot empty instead, with the element fully built and its ref already
-                    // queued against it by the sync above.
-                    ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+                    // Unless a catch in the walk unwinds it, the element itself takes the slot when the wrap
+                    // fails. Leaving the throw here left the slot empty instead, with the element fully built
+                    // and its ref already queued against it by the sync above.
+                    ContainCreationCallbackFailure(element, exception);
                 }
                 if (wrapper != null && wrapper != element)
                 {

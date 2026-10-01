@@ -392,29 +392,23 @@ namespace Velvet.Tests
             => V.Div(key: key, refCallback: s_rowRef,
                 children: new VNode[] { V.Component(InnerBoundaryRender, key: "inner") });
 
-        [Component(Compiler = false)]
-        private static VNode CallbackRefusingRowRender()
-            => V.ScrollView(onCreated: _ => throw new InvalidOperationException("callback refused"));
+        private static ReconcilerContext s_abortedContext;
 
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode InnerCallbackBoundaryRender()
-        {
-            Hooks.UseFallback(_ => V.Label(text: "inner fallback"));
-            return V.Component(CallbackRefusingRowRender, key: "refusing");
-        }
-
-        // A row holding its own boundary, which an element callback's error below it makes abort the pass.
+        // A row whose child raises the pass's abort while the row is created. A boundary catching an element
+        // callback's error there now catches it in the walk, and a boundary above this reconcile would get a context
+        // of its own (ReconcilerAbortSafetyTests' time-sliced case says why), so the child raises the abort itself.
         private static VNode RowAbortedFromInside(string key)
             => V.Div(key: key, refCallback: s_rowRef,
-                children: new VNode[] { V.Component(InnerCallbackBoundaryRender, key: "inner") });
+                children: new VNode[] { V.ScrollView(onCreated: _ => s_abortedContext.IsAborted = true) });
 
-        // GREEN_ON_BASE(characterization): the merge base releases this row when its boundary aborts the pass.
-        // An element callback's error still aborts it, and this keeps that release driven.
+        // GREEN_ON_BASE(characterization): the merge base releases a row the pass's abort catches mid-creation.
+        // What this keeps driven is that release, with the abort raised while the row is created.
         [Test]
         public void Given_ATimeSlicedKeyedTailAddWhoseRowAbortsFromInside_When_ItRuns_Then_TheRowGetsNoRef()
         {
             // Arrange — every old key matches the new side's head, so the time-sliced machine appends the rest.
             s_rowRef = CountRef;
+            s_abortedContext = Reconciler.Context;
             Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
@@ -429,13 +423,14 @@ namespace Velvet.Tests
                 Is.EqualTo("rows 1, ref 0 set up"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base releases this row when its boundary aborts the pass.
-        // An element callback's error still aborts it, and this keeps that release driven.
+        // GREEN_ON_BASE(characterization): the merge base releases a row the pass's abort catches mid-creation.
+        // What this keeps driven is that release, with the abort raised while the row is created.
         [Test]
         public void Given_ADesyncedKeyedRangeWhoseRebuiltRowAbortsFromInside_When_ItRebuilds_Then_TheRowGetsNoRef()
         {
             // Arrange — as the render-error case below.
             s_rowRef = CountRef;
+            s_abortedContext = Reconciler.Context;
             Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             var oldTree = new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);

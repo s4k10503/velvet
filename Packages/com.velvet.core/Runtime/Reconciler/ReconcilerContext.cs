@@ -1186,10 +1186,6 @@ namespace Velvet
         // none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
         internal int SuspensePrimaryDepth;
 
-        // The fallbacks of suspended primaries open on the walk, whose rows a walk an abort stopped still commits
-        // — see GeneralPathReconciler.CommitLeaf.
-        internal int SuspenseFallbackDepth;
-
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
         // ended — see CompleteEnterAfterThePass.
         internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
@@ -1347,9 +1343,10 @@ namespace Velvet
         // FiberNodePatcher that mirrors them — report to the console; a callback the reconciler makes for
         // an owner that is still live comes here instead, to the nearest error boundary. A third shape is
         // chosen against this rule rather than by it: ChildReconciler.DrainPendingPortalMounts leaves its
-        // ZLayerMountNode arm's throw on the render's own escape path, and argues that there. Reporting was
-        // rejected for the live case because a boundary is the mechanism a component has for its own
-        // failures, and an effect cleanup — the same kind of callback — already reaches one
+        // ZLayerMountNode arm's throw on the render's own escape path, and argues that there. A callback of an
+        // element still being created takes a fourth, FiberNodeFactory.ContainCreationCallbackFailure.
+        // Reporting was rejected for the live case because a boundary is the mechanism a component has for its
+        // own failures, and an effect cleanup — the same kind of callback — already reaches one
         // (HookEffectExecutor.RunCleanups).
         //
         // owner is the component the failing callback belongs to, and the search starts ABOVE it: a host

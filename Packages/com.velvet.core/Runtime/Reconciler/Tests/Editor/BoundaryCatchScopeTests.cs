@@ -75,6 +75,9 @@ namespace Velvet.Tests
             s_target = new VisualElement { name = "target" };
             s_callbackSetups = 0;
             s_callbackCleanups = 0;
+            s_siblingLayoutSetups = 0;
+            s_siblingLayoutCleanups = 0;
+            s_wrapRefSetups = 0;
         }
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
@@ -1486,8 +1489,8 @@ namespace Velvet.Tests
         private static int s_callbackSetups;
         private static int s_callbackCleanups;
 
-        // GREEN_ON_BASE(characterization): the merge base takes an element callback's error on the aborting path.
-        // It disposes what the element built, which a catch taken in the walk for that error would leave set up.
+        // GREEN_ON_BASE(characterization): the merge base takes an element callback's error on the aborting path,
+        // which disposes what the element built. What this pins is that the catch taken in the walk disposes it too.
         [Test]
         public void Given_AnElementCallbackErrorBelowABoundary_When_TheBoundaryCatchesOnMount_Then_NoEffectUnderTheElementIsLeftSetUp()
         {
@@ -1500,6 +1503,80 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_callbackSetups - s_callbackCleanups, Is.EqualTo(0));
         }
+
+        [Test]
+        public void Given_AWrapElementThatFailsBelowABoundary_When_TheBoundaryCatchesOnMount_Then_TheFallbackShowsAndTheElementsRefNeverRuns()
+        {
+            // Act — the element's ref is queued before its wrapElement runs
+            using var mounted = V.Mount(_root, V.Component(WrapHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Texts() + ", refs " + s_wrapRefSetups, Is.EqualTo("fallback, refs 0"));
+        }
+
+        private static int s_wrapRefSetups;
+
+        [Component(Compiler = false)]
+        private static VNode WrapThrowingRender()
+            => V.Button(text: "wrapped", key: "wrapped",
+                wrapElement: _ => throw new InvalidOperationException("Wrap throw"),
+                refCallback: _ =>
+                {
+                    s_wrapRefSetups++;
+                    return null;
+                });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode WrapBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(WrapThrowingRender, key: "wrapped");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode WrapHostRender() => V.Div(children: new VNode[] { V.Component(WrapBoundaryRender, key: "boundary") });
+
+        [Test]
+        public void Given_ALayoutEffectBesideAnElementWhoseCallbackFails_When_TheBoundaryCatchesOnMount_Then_ItNeverRuns()
+        {
+            // Act — the boundary catches the callback's error in the walk, so its children never commit
+            using var mounted = V.Mount(_root, V.Component(SiblingEffectCallbackHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback is read with the counts, since a mount nothing threw in sets the effect up
+            Assert.That(Texts() + ", setups " + s_siblingLayoutSetups + ", cleanups " + s_siblingLayoutCleanups,
+                Is.EqualTo("fallback, setups 0, cleanups 0"));
+        }
+
+        private static int s_siblingLayoutSetups;
+        private static int s_siblingLayoutCleanups;
+
+        [Component(Compiler = false)]
+        private static VNode LayoutEffectSiblingRender()
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_siblingLayoutSetups++;
+                return () => s_siblingLayoutCleanups++;
+            }, Array.Empty<object>());
+            return V.Label(text: "sibling");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SiblingEffectCallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(LayoutEffectSiblingRender, key: "sibling"),
+                V.Component(CallbackThrowingRender, key: "callback"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SiblingEffectCallbackHostRender()
+            => V.Div(children: new VNode[] { V.Component(SiblingEffectCallbackBoundaryRender, key: "boundary") });
 
         [Component(Compiler = false)]
         private static VNode EffectUnderTheElementRender()
@@ -1570,19 +1647,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APresenceBehindABoundaryThatCaughtAnElementCallbackError_When_TheNextRenderRemovesItsChild_Then_TheRowsAreTheFallbackAndTheTailAndTheExitCompletedOnce()
+        public void Given_APresenceBehindABoundaryCatchingAnElementCallbackError_When_ThatRenderRemovesItsChild_Then_TheChildLeavesTheTailUpdatesAndTheExitCompletes()
         {
-            // Arrange — the render the catch stopped removed the presence's child too
+            // Arrange
             using var mounted = V.Mount(_root, V.Component(StoppedPresenceHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act — the render the boundary catches in also removes the presence's child and moves the tail on
             s_setStoppedTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Act
-            s_setStoppedTick.Invoke(2);
-            mounted.FlushStateForTest();
-
             // Assert
-            Assert.That(Texts() + ", exits " + s_stoppedExitCompletions, Is.EqualTo("o-fallback,tail:2, exits 1"));
+            Assert.That(Texts() + ", exits " + s_stoppedExitCompletions, Is.EqualTo("o-fallback,tail:1, exits 1"));
         }
 
         // GREEN_ON_BASE(characterization): the merge base expands the presence's children on the stopped walk too,

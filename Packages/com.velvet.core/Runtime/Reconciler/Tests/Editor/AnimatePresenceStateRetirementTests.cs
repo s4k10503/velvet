@@ -117,6 +117,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             s_store = null;
+            s_abortedContext = null;
             s_ticks = null;
             s_enterCompletions = 0;
             s_overlay = new VisualElement { name = "overlay" };
@@ -256,14 +257,16 @@ namespace Velvet.Tests
             return V.Div(name: "outer", children: new VNode[]
             {
                 V.Div(name: "host", children: new VNode[] { state.Shown ? Presence(state.ChildKey) : null }),
-                state.Shown ? null : V.Component(AbortingBoundary, key: "boundary"),
+                V.Component(AbortingBoundary, state.Shown, key: "boundary"),
             });
         }
 
-        // As FastPathHostCatchingInsideItsReplacement, with the boundary raising the abort while that leaf is
-        // created, which stops the diff between phases — before the one that would take the presence's own
-        // leaf out of the tail. So the container's removals do not run, whatever returning from the strategy
-        // suggests.
+        private static ReconcilerContext s_abortedContext;
+
+        // As FastPathHostCatchingInsideItsReplacement, with the abort raised while that leaf is created, which stops
+        // the diff between phases — before the one that would take the presence's own leaf out of the tail. So the
+        // container's removals do not run, whatever returning from the strategy suggests. A boundary catching an
+        // element callback's error there catches it in the walk now, so the replacement raises the abort itself.
         [Component]
         private static VNode FastPathHostAbortingBeforeItsRemovalPhase()
         {
@@ -272,20 +275,23 @@ namespace Velvet.Tests
                 ? new VNode[] { V.Label(text: "first"), Presence(state.ChildKey) }
                 : new VNode[]
                 {
-                    V.Div(name: "replacement", children: new VNode[] { V.Component(AbortingBoundary, key: "boundary") }),
+                    V.Div(name: "replacement", children: new VNode[] { V.ScrollView(onCreated: _ => s_abortedContext.IsAborted = true) }),
                 });
         }
 
-        // An element callback's error below it, which it catches on the aborting path.
+        // An error below it that it catches on the aborting path: when shown turns false the child's own presence
+        // loses its only child, which has no exit animation, and the presence's onExitComplete fails in the walk.
         [Component(IsErrorBoundary = true)]
-        private static VNode AbortingBoundary()
+        private static VNode AbortingBoundary(bool shown)
         {
             Hooks.UseFallback(_ => V.Label(text: "caught"));
-            return V.Component(CallbackThrower, key: "thrower");
+            return V.Component(ExitFailer, shown, key: "thrower");
         }
 
         [Component]
-        private static VNode CallbackThrower() => V.ScrollView(onCreated: _ => throw new InvalidOperationException("boom"));
+        private static VNode ExitFailer(bool shown)
+            => V.AnimatePresence(key: "exit", onExitComplete: () => throw new InvalidOperationException("boom"),
+                children: shown ? new VNode[] { V.Label(text: "exiting", key: "exiting") } : Array.Empty<VNode>());
 
         [Component(IsErrorBoundary = true)]
         private static VNode CatchingBoundary()
@@ -615,7 +621,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the merge base retires this entry although the catch aborts the pass.
-        // An element callback's error still aborts it, and this keeps the per-container reading driven.
+        // An AnimatePresence's onExitComplete failing in the walk still aborts it, and this keeps the per-container
+        // reading driven.
         [Test]
         public void Given_APresenceContainerThatFinalized_When_ALaterBoundaryAbortsTheSamePass_Then_ItsBoundaryStateStillRetires()
         {
@@ -625,18 +632,19 @@ namespace Velvet.Tests
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(PresenceBesideAnAbortingBoundary, key: "host"), CaughtErrors.Unlogged);
             var ctx = mounted.Root.Reconciler.Context;
-            var recorded = ctx.PresenceStates.Count;
+            var recorded = EntriesUnder(ctx, "host");
 
             // Act — the presence leaves and the boundary aborts, in one update.
             store.Set(false, "a");
             ctx.BatchScheduler.DrainImmediateForTest();
 
-            // Assert — same fold as the sibling case above.
-            Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
+            // Assert — same fold as the sibling case above, over the presence in the host container alone: the
+            // boundary's own trigger is a presence too.
+            Assert.That((recorded, EntriesUnder(ctx, "host")), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): on the base an entry ended with its boundary fiber and nothing else.
-        // A container whose removals did not run could strand none of them, and that has to stay true.
+        // GREEN_ON_BASE(characterization): the merge base stops this diff before its removal phase as well, and keeps
+        // the entry. What this keeps driven is the entry outliving a removal phase that did not run.
         [Test]
         public void Given_APresenceOnAFastPathContainer_When_ItsDiffAbortsBeforeTheRemovalPhase_Then_ItsBoundaryStateSurvives()
         {
@@ -646,9 +654,10 @@ namespace Velvet.Tests
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(FastPathHostAbortingBeforeItsRemovalPhase, key: "host"), CaughtErrors.Unlogged);
             var ctx = mounted.Root.Reconciler.Context;
+            s_abortedContext = ctx;
             var host = _root.Q<VisualElement>("host");
 
-            // Act — the presence leaves and the leaf replacing its first sibling catches, in one update.
+            // Act — the presence leaves and the leaf replacing its first sibling raises the abort, in one update.
             store.Set(false, "a");
             ctx.BatchScheduler.DrainImmediateForTest();
 
@@ -926,6 +935,16 @@ namespace Velvet.Tests
                     variants: s_fade, animate: "visible", exit: "hidden",
                     transition: new StyleTransitionConfig { DurationSec = 0.3f }),
             });
+
+        private static int EntriesUnder(ReconcilerContext ctx, string parentName)
+        {
+            var count = 0;
+            foreach (var key in ctx.PresenceStates.Keys)
+            {
+                if (key.parent?.name == parentName) count++;
+            }
+            return count;
+        }
 
         // The parent element each surviving entry is keyed on, in table order. A count says how many are
         // left but not which, and the two-root cases turn on which of two entries the pass spared.
