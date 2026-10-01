@@ -1090,6 +1090,9 @@ namespace Velvet
             {
                 detachBridge();
                 sheetWatch.Dispose();
+                // A target with no panel holds the navigator's deferred attach hook, released with the bridge
+                // rather than left on an element the portal has stopped using.
+                FiberFocusNavigator.ReleasePendingAttachHooks(target, this);
             }, anchor);
         }
 
