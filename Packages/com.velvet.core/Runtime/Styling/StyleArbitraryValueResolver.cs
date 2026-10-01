@@ -1325,6 +1325,19 @@ namespace Velvet
         // filter set is single-sourced — see IsFilter.
         private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
 
+        // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
+        internal static void RecomposeFilter(VisualElement element)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                ApplyCombinedFilter(element, map);
+            }
+            else
+            {
+                StyleFilterEngineWrite.Write(element, null);
+            }
+        }
+
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
             List<FilterFunction>? functions = null;
@@ -1364,10 +1377,7 @@ namespace Velvet
                 }
             }
             // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write). It
-            // returns false — deferring to the instant write — for an element with no tween binding, off-panel,
-            // resolved transition lists the tween does not run under (the engine's own animation runs the change,
-            // or no transition does), or a non-interpolable change.
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
             if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
             {
                 StyleFilterEngineWrite.Write(element, functions);
@@ -1607,7 +1617,10 @@ namespace Velvet
             // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
-                element.style.filter = StyleKeyword.Null;
+                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
+                {
+                    StyleFilterEngineWrite.Write(element, null);
+                }
                 return true;
             }
             return false;

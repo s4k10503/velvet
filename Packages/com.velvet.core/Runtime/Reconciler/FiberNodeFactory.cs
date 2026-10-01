@@ -171,9 +171,7 @@ namespace Velvet
             // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
             // after the gradient so a pan mode sees the baked gradient already applied.
             _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
-            // transition-filter: register the tween binding so a later filter change animates.
-            // The mount's own filter is already applied instantly above (the binding is not enabled
-            // yet), matching CSS's no-transition-on-initial-value.
+            // transition-filter: bind the filter tween so teardown can pause its tick (FiberFilterTransitionApplier).
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
             // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
             // element's own content, bleeding outside the box) — a non-structural paint like CSS
@@ -341,8 +339,7 @@ namespace Velvet
                 element, appliedClasses, paintTail: false);
             _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
-            // transition-filter on a Motion host: a Motion can carry filter utilities + that class
-            // just like a plain element, so register the tween binding here too.
+            // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
             // The patch-time entry rather than ApplyRingOnCreate, whose clip-path gate would suppress the band
             // for a clip-path this Motion ignores (WarnIgnoredMotionUtilities); a Motion's patch passes no

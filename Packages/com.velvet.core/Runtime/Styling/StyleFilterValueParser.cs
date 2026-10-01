@@ -58,17 +58,21 @@ namespace Velvet
             ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,
         };
 
-        // The bracket prefixes whose value is a bare amount. Only a negative one is rejected: CSS leaves
-        // brightness() and saturate() unclamped above 1, and the first-party shaders standing in for them
-        // multiply/lerp unclamped to match (s_brightnessPreset).
+        // The bracket prefixes whose value is a bare amount. A negative one is rejected. CSS leaves contrast(),
+        // brightness() and saturate() unclamped above 1, and the first-party shaders standing in for the last two
+        // multiply/lerp unclamped to match (s_brightnessPreset); it clamps grayscale(), invert() and sepia() to 1.
         private static readonly Dictionary<string, ArbitraryProperty> s_amountFilterPrefixes = new()
+        {
+            ["contrast-"] = ArbitraryProperty.FilterContrast,
+            ["brightness-"] = ArbitraryProperty.FilterBrightness,
+            ["saturate-"] = ArbitraryProperty.FilterSaturate,
+        };
+
+        private static readonly Dictionary<string, ArbitraryProperty> s_unitAmountFilterPrefixes = new()
         {
             ["grayscale-"] = ArbitraryProperty.FilterGrayscale,
             ["invert-"] = ArbitraryProperty.FilterInvert,
             ["sepia-"] = ArbitraryProperty.FilterSepia,
-            ["contrast-"] = ArbitraryProperty.FilterContrast,
-            ["brightness-"] = ArbitraryProperty.FilterBrightness,
-            ["saturate-"] = ArbitraryProperty.FilterSaturate,
         };
 
         // Filter-function bracket prefixes, routed here so all filter-* utilities share the one compose-and-
@@ -83,6 +87,11 @@ namespace Velvet
             if (prefix == "hue-rotate-")
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
+                // CSS takes an angle here, and a number only where it is zero.
+                if (deg != 0f && IsUnitless(valueSpan))
+                {
+                    return false;
+                }
                 result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
                 return true;
             }
@@ -96,14 +105,39 @@ namespace Velvet
                 result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
                 return true;
             }
-            if (prefix == null || !s_amountFilterPrefixes.TryGetValue(prefix, out var property))
+            if (prefix == null)
             {
                 return null;
             }
-            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var amount) || amount < 0f) return false;
-            result = new ArbitraryStyle(property, amount, LengthUnit.Pixel);
+            var ceiling = float.PositiveInfinity;
+            if (s_unitAmountFilterPrefixes.TryGetValue(prefix, out var property))
+            {
+                ceiling = 1f;
+            }
+            else if (!s_amountFilterPrefixes.TryGetValue(prefix, out property))
+            {
+                return null;
+            }
+            var amount = 0f;
+            if (!TryParseAmount(valueSpan, out amount) || amount < 0f) return false;
+            result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
             return true;
         }
+
+        // A number, or a percentage of 1, as each of these CSS functions takes.
+        private static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
+        {
+            if (valueSpan.EndsWith("%"))
+            {
+                var parsed = StyleArbitraryValueResolver.TryParseFloat(valueSpan.Slice(0, valueSpan.Length - 1), out amount);
+                amount /= 100f;
+                return parsed;
+            }
+            return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
+        }
+
+        // Called only on a value TryParseAngleDegrees accepted, which is never empty.
+        private static bool IsUnitless(ReadOnlySpan<char> valueSpan) => !char.IsLetter(valueSpan[valueSpan.Length - 1]);
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every

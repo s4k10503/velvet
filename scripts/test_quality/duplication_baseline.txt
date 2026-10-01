@@ -133,7 +133,6 @@
 879a2e1d7e10	Runtime/Styling/StyleConditionalVariantManipulator.cs,Runtime/Styling/StyleRelationalVariantManipulator.cs
 87aac53228db	Runtime/Reconciler/AnchoredDriver.cs,Runtime/Styling/StyleAnimationScheduler.cs
 88b3cc2af8df	Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleFilterValueParser.cs
-8a27cb2c0880	Runtime/Reconciler/FiberFocusNavigator.cs,Runtime/Styling/StyleFilterTransitionDriver.cs
 8b2001e931a8	Runtime/Async/VelvetTaskSources.cs,Runtime/Async/VelvetTaskStateMachineRunners.cs
 8ee0a82330ab	Runtime/Styling/DropShadowSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 8efdc06fcdba	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs

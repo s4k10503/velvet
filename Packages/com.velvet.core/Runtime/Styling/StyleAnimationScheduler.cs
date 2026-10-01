@@ -1104,7 +1104,9 @@ namespace Velvet
 
         // Lands each named longhand of a variant tween within two frames while the entries before it keep timing
         // the rest of what they timed (MotionZeroDurationLandingTests). One whose value the pose changes gets a 1ms
-        // entry appended; `filter`'s is spelled `background-size`, under which a pose's blur lands. One whose value
+        // entry appended; `filter`'s comes with one for `background-size` on the same timing, which the engine
+        // animates an inline filter write by, so the engine lands a pose's blur (StyleFilterTransitionDriver
+        // .EngineTimesFilterWrites). One whose value
         // the pose repeats from the play's target leaves the list, which rests it at that target
         // (HeldTransitionOverrideEngineTests), through the rewrite MotionNativeTransitionGuard uses for the slots
         // a driver owns. A classic enter's or a preset exit's transition-property is its USS one, which is why
@@ -1129,11 +1131,11 @@ namespace Velvet
             {
                 if (named.Contains(longhand) && !repeated.Contains(longhand))
                 {
-                    names.Add(new StylePropertyName(StyleUtilityProperties.UssName(
-                        longhand == StyleLonghand.Filter ? StyleLonghand.BackgroundSize : longhand)));
-                    durations.Add(new TimeValue(1f, TimeUnit.Millisecond));
-                    easings.Add(new EasingFunction(EasingMode.Linear));
-                    delays?.Add(new TimeValue(0f, TimeUnit.Millisecond));
+                    AppendLanding(names, durations, easings, delays, longhand);
+                    if (longhand == StyleLonghand.Filter)
+                    {
+                        AppendLanding(names, durations, easings, delays, StyleLonghand.BackgroundSize);
+                    }
                 }
             }
             element.style.transitionProperty = names;
@@ -1143,6 +1145,15 @@ namespace Velvet
             {
                 element.style.transitionDelay = delays;
             }
+        }
+
+        private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
+            List<EasingFunction> easings, List<TimeValue>? delays, StyleLonghand longhand)
+        {
+            names.Add(new StylePropertyName(StyleUtilityProperties.UssName(longhand)));
+            durations.Add(new TimeValue(1f, TimeUnit.Millisecond));
+            easings.Add(new EasingFunction(EasingMode.Linear));
+            delays?.Add(new TimeValue(0f, TimeUnit.Millisecond));
         }
 
         private static readonly List<StylePropertyName> s_noNames = new();
