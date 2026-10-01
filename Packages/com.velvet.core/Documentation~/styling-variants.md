@@ -156,7 +156,8 @@ Lowest first, each row in the order `<` shows. Two variant rules of one rank —
 two `data-[…]:` rules — keep their payloads apart, so turning one off leaves the other's standing. While
 both hold, the one Tailwind emits later outranks the other, whatever order the className writes them in.
 On every property an arbitrary value shares with another variant rule of its rank, the one emitted later
-takes it; two classes settle it as the second consequence above describes. The order is first by their
+takes it (`hover:bg-red-500 hover:bg-[#f00]` paints `bg-red-500`, which sorts after the value); two
+classes settle it as the second consequence above describes. The order is first by their
 variants' values (`data-[side=left]:` before `data-[state=open]:`, `group-hover:` before
 `group-hover/card:`, `[&:first-child]:` before `[&:nth-child(1)]:`), then by the first property they
 differ on in Tailwind's property order (`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate

@@ -108,6 +108,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHoverClassBeforeAHoverValueSortingEarlier_When_Hovered_Then_TheClassWins()
+        {
+            // Arrange — hover:bg-[#f00] sorts before hover:bg-red-500, so the class is emitted later though the
+            // className writes it first.
+            var leaf = MountLeaf("hover:bg-red-500 hover:bg-[#f00]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That((leaf.style.backgroundColor.keyword, leaf.ClassListContains("bg-red-500")),
+                Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        [Test]
+        public void Given_AHoverValueBeforeAHoverClassSortingEarlier_When_Hovered_Then_TheValueWins()
+        {
+            // Arrange — hover:w-10 sorts before hover:w-[20px], so the value is emitted later though the className
+            // writes it first.
+            var leaf = MountLeaf("hover:w-[20px] hover:w-10");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That((leaf.style.width.value.value, leaf.ClassListContains("w-10")), Is.EqualTo((20f, false)));
+        }
+
+        [Test]
         public void Given_AShorthandAndALonghandHoverMargin_When_Hovered_Then_TheLonghandWinsItsSide()
         {
             // Arrange — margin sorts before margin-top in Tailwind's property order, so mt- is emitted later.
