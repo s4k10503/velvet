@@ -10,6 +10,7 @@ namespace Velvet
         Theme,
         Responsive,
         Relational,
+        Disabled,
     }
 
     // Applies a stacked-variant leaf payload iff BOTH the outer gate (set by the owning manipulator when its
@@ -29,10 +30,10 @@ namespace Velvet
         private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
         private readonly string[] _leaf;
-        private readonly int _priority;
+        private readonly long _priority;
         // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
         // peels to — one written token is one declaration site, and that is the position a reader would point
-        // at when this leaf ties with a plain hover: payload on the shared layer.
+        // at when this leaf ties with another rule of the same rank.
         private readonly int[] _declarations;
 
         private bool _outerOn;
@@ -41,9 +42,10 @@ namespace Velvet
         private ElementLocalVariantSignals _elementSignals = null!;
         private ResponsiveWidthSource _widthSource = null!;
         private RelationalVariantSignals _relSignals = null!;
+        private DisabledVariantSignal _disabledSignal = null!;
 
         public StyleStackedVariantManipulator(
-            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority,
+            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, long priority,
             int declaration)
         {
             _declarations = new[] { declaration };
@@ -58,6 +60,11 @@ namespace Velvet
             _priority = priority;
         }
 
+        // Starts an element-local inner at a state held before this manipulator existed (see
+        // StyleVariantManipulator.Holds). Called before it is added, since adding hooks the signals that
+        // take it from there.
+        public void SeedInner(bool on) => _innerOn = on;
+
         // Called by the owning manipulator each time its own gate flips.
         public void SetOuterGate(bool on)
         {
@@ -69,35 +76,52 @@ namespace Velvet
             Sync();
         }
 
-#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
-        private static StackedInnerSource SourceOf(StyleVariantKind kind) => kind switch
-        {
-            StyleVariantKind.Hover or StyleVariantKind.Focus or StyleVariantKind.FocusVisible
-                or StyleVariantKind.Active or StyleVariantKind.Checked => StackedInnerSource.ElementLocal,
-            StyleVariantKind.Dark => StackedInnerSource.Theme,
-            StyleVariantKind.Sm or StyleVariantKind.Md or StyleVariantKind.Lg
-                or StyleVariantKind.Xl or StyleVariantKind.Xxl => StackedInnerSource.Responsive,
-            StyleVariantKind.GroupHover or StyleVariantKind.GroupFocus
-                or StyleVariantKind.GroupFocusWithin or StyleVariantKind.GroupActive
-                or StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus
-                or StyleVariantKind.PeerFocusWithin or StyleVariantKind.PeerActive
-                or StyleVariantKind.PeerChecked => StackedInnerSource.Relational,
-        };
+        private static StackedInnerSource SourceOf(StyleVariantKind kind) => s_sourceOf[kind];
 
+        internal static bool IsElementLocalInner(StyleVariantKind kind) => SourceOf(kind) == StackedInnerSource.ElementLocal;
+
+        private static readonly VariantKindTable<StackedInnerSource> s_sourceOf = new(
+            (StyleVariantKind.Hover, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Focus, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.FocusVisible, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Active, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Checked, StackedInnerSource.ElementLocal),
+            (StyleVariantKind.Disabled, StackedInnerSource.Disabled),
+            (StyleVariantKind.Dark, StackedInnerSource.Theme),
+            (StyleVariantKind.Sm, StackedInnerSource.Responsive),
+            (StyleVariantKind.Md, StackedInnerSource.Responsive),
+            (StyleVariantKind.Lg, StackedInnerSource.Responsive),
+            (StyleVariantKind.Xl, StackedInnerSource.Responsive),
+            (StyleVariantKind.Xxl, StackedInnerSource.Responsive),
+            (StyleVariantKind.GroupHover, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupFocus, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupFocusWithin, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupActive, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerHover, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerFocus, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerFocusWithin, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerActive, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerChecked, StackedInnerSource.Relational),
+            (StyleVariantKind.GroupDisabled, StackedInnerSource.Relational),
+            (StyleVariantKind.PeerDisabled, StackedInnerSource.Relational));
+
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         // Edge-based inners survive an outer-gate close (see ReconcilerContext.GateStackedVariant):
         // their signals fire only on state edges, so a re-created manipulator could not re-seed a
-        // continuously-held hover/focus. Level-based inners (dark, responsive) re-derive their truth
+        // continuously-held hover/focus. Level-based inners (dark, responsive, disabled) re-derive their truth
         // on attach and are detached on close to release their subscriptions.
         internal bool RetainsAcrossOuterClose => _source switch
         {
             StackedInnerSource.ElementLocal or StackedInnerSource.Relational => true,
-            StackedInnerSource.Theme or StackedInnerSource.Responsive => false,
+            StackedInnerSource.Theme or StackedInnerSource.Responsive or StackedInnerSource.Disabled => false,
         };
 #pragma warning restore CS8524
 
         private bool TracksChecked =>
             _innerKind == StyleVariantKind.Checked
             || _relational is { State: StyleVariantClass.RelationalState.Checked };
+
+        private bool TracksRelationalDisabled => _relational is { State: StyleVariantClass.RelationalState.Disabled };
 
         // Forwards a drag session's synthetic release to the shared signal source (see
         // ElementLocalVariantSignals.SettleRelease); a non-element-local inner (dark:/sm:) has no press
@@ -127,6 +151,11 @@ namespace Velvet
             {
                 VelvetTheme.DarkModeChanged += OnDarkChanged;
                 EvaluateDark();
+            }
+            else if (_source == StackedInnerSource.Disabled)
+            {
+                _disabledSignal ??= new DisabledVariantSignal(SetInner);
+                _disabledSignal.Hook(target);
             }
             else // responsive or relational
             {
@@ -165,6 +194,10 @@ namespace Velvet
             else if (_source == StackedInnerSource.Theme)
             {
                 VelvetTheme.DarkModeChanged -= OnDarkChanged;
+            }
+            else if (_source == StackedInnerSource.Disabled)
+            {
+                _disabledSignal?.Unhook();
             }
             else
             {
@@ -255,13 +288,6 @@ namespace Velvet
             {
                 return;
             }
-            // A checked inner's value is seeded at hook time rather than arriving as an edge, so a re-resolve
-            // has to drop what the previous source seeded before reading the new one — the same order
-            // StyleRelationalVariantManipulator's Binding.Resolve keeps.
-            if (TracksChecked)
-            {
-                SetInner(false);
-            }
             // A named inner (dark:group-hover/sidebar:) resolves the `group/sidebar` source, not the unnamed one.
             var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(rel.IsPeer, _innerName);
             var source = rel.IsPeer
@@ -272,7 +298,8 @@ namespace Velvet
                 return;
             }
             _relSignals ??= new RelationalVariantSignals(OnRelSignal);
-            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked);
+            _relSignals.Hook(source, seedChecked: TracksChecked, registerChecked: TracksChecked,
+                trackDisabled: TracksRelationalDisabled);
         }
 
         private void UnhookRelational()

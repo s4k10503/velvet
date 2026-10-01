@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -850,8 +852,20 @@ namespace Velvet.Tests
             Assert.That(Blur(box), Is.EqualTo(8f).Within(1e-3f));
         }
 
-        // GREEN_ON_BASE(characterization): the base left a swapped tween's `all` in place under a zero-duration pose.
-        // So a blur the same render changes outside the pose is left to the engine, not to Velvet's filter driver.
+        // GREEN_ON_BASE(characterization): no filter tween of Velvet's runs on an element without transition-filter on the base.
+        // Here it is the matching background-size entry the landing appends beside filter's that keeps the
+        // landed blur the engine's.
+        [Test]
+        public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseNamingABlurFollows_Then_NoFilterTweenOfVelvetsTakesIt()
+        {
+            // Act
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0", "opacity-100", "blur-[8px]"), Opacity);
+            using var __ = mounted;
+
+            // Assert
+            Assert.That(FilterTweenRuns(box), Is.False);
+        }
+
         [Test]
         public void Given_ATweenSwapThatHasSwapped_When_AZeroDurationPoseRepeatingItsOpacityLandsBesideABlurChange_Then_TheBlurIsLeftToTheEngine()
         {
@@ -865,8 +879,16 @@ namespace Velvet.Tests
             // Act
             Tick();
 
-            // Assert
-            Assert.That(box.resolvedStyle.transitionProperty.Any(name => name.ToString() == "filter"), Is.False);
+            // Assert — no filter tween of Velvet's runs, and the painted blur has not reached the 6 an instant write
+            // would paint.
+            Assert.That((FilterTweenRuns(box), Blur(box) < 5.99f), Is.EqualTo((false, true)));
+        }
+
+        private static bool FilterTweenRuns(VisualElement element)
+        {
+            var table = (ConditionalWeakTable<VisualElement, StyleFilterTransitionBinding>)typeof(StyleFilterTransitionDriver)
+                .GetField("s_bindings", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+            return table.TryGetValue(element, out var binding) && binding.Scheduled != null;
         }
 
         [TestCase(TransitionType.Spring)]

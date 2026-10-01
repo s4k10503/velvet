@@ -26,6 +26,8 @@ namespace Velvet.Tests
     /// reconciliation owns the null-filtering decision.</item>
     /// <item>The indexed overload passes the zero-based position to both the selector and the renderer, in
     /// ascending order.</item>
+    /// <item>A selector returning null leaves the item unkeyed and logs a warning naming the component, once
+    /// per component.</item>
     /// <item><c>V.ListFragment</c> returns a single VNode that expands inline, so a header, the mapped items,
     /// and a footer land under one parent in declared order without an extra wrapper element; <c>V.List</c>
     /// used as the sole children argument keeps materializing its items directly under the parent.</item>
@@ -483,6 +485,82 @@ namespace Velvet.Tests
         [Component]
         private static VNode SoleListHostRender()
             => V.Div("c", V.List(Items, s => s, s => V.Label(text: s)));
+
+        #endregion
+
+        #region A null key
+
+        private static StateUpdater<int> s_setRound;
+
+        // The set lives for the domain, so a case re-run in one editor session would find its component
+        // already warned for. A tree without the set warns for nothing, which the cases below then say.
+        private static void ForgetWarnedComponents()
+            => ((HashSet<string>)typeof(V)
+                .GetField("s_componentsWarnedForMissingListKey", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.GetValue(null))?.Clear();
+
+        [Component]
+        private static VNode UnkeyedListRender()
+            => V.Div("c", V.List(Items, _ => null, s => V.Label(text: s)));
+
+        [Component]
+        private static VNode UnkeyedListRerenderedRender()
+        {
+            var (round, setRound) = Hooks.UseState(0);
+            s_setRound = setRound;
+            return V.Div("c", V.List(Items, _ => null, s => V.Label(text: s + round)));
+        }
+
+        private static List<string> CollectListKeyWarnings()
+        {
+            var warnings = new List<string>();
+            void Collect(string message, string _, UnityEngine.LogType type)
+            {
+                if (type == UnityEngine.LogType.Warning && message.Contains("Each child in a list")) warnings.Add(message);
+            }
+            UnityEngine.Application.logMessageReceived += Collect;
+            s_stopCollecting = () => UnityEngine.Application.logMessageReceived -= Collect;
+            return warnings;
+        }
+
+        private static Action s_stopCollecting;
+
+        [TearDown]
+        public void StopCollecting()
+        {
+            s_stopCollecting?.Invoke();
+            s_stopCollecting = null;
+        }
+
+        [Test]
+        public void Given_AKeySelectorReturningNull_When_AComponentRendersTheList_Then_AWarningNamesTheComponent()
+        {
+            // Arrange
+            ForgetWarnedComponents();
+            var warnings = CollectListKeyWarnings();
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(UnkeyedListRender, key: "host"));
+
+            // Assert
+            Assert.That(warnings.Count(w => w.Contains("rendered by VListTests.UnkeyedListRender,")), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AComponentWhoseListWarned_When_ItRendersTheListAgain_Then_NoFurtherWarningIsLogged()
+        {
+            // Arrange
+            ForgetWarnedComponents();
+            var warnings = CollectListKeyWarnings();
+            using var mounted = V.Mount(_root, V.Component(UnkeyedListRerenderedRender, key: "host"));
+
+            // Act
+            s_setRound.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the re-render took place, and only the mount warned.
+            Assert.That((warnings.Count, ((Label)_root.ElementAt(0).ElementAt(0)).text), Is.EqualTo((1, "i01")));
+        }
 
         #endregion
     }

@@ -509,7 +509,7 @@ namespace Velvet
 
     /// <summary>
     /// List virtualization node for large item collections.
-    /// Renders a ScrollView of fixed-height items and keeps only the items in view present in the DOM to ensure
+    /// Renders a ScrollView of items and keeps only the items in view present in the DOM to ensure
     /// performance.
     /// </summary>
     public sealed class VirtualListNode : VNode
@@ -520,8 +520,11 @@ namespace Velvet
         /// <summary>Function that returns a unique key for each item.</summary>
         public Func<object?, string> KeySelector { get; }
 
-        /// <summary>Fixed height (px) of each item.</summary>
+        /// <summary>Height (px) of every item, or 0 where <see cref="ItemHeightAt"/> gives each item its own.</summary>
         public float ItemHeight { get; }
+
+        /// <summary>Height (px) of the item at an index, or null where every item is <see cref="ItemHeight"/> tall.</summary>
+        public Func<int, float>? ItemHeightAt { get; }
 
         /// <summary>Function that produces a VNode from each item.</summary>
         public Func<object?, VNode> Renderer { get; }
@@ -535,9 +538,12 @@ namespace Velvet
         /// <summary>ScrollView.name (for USS #selector).</summary>
         public string? Name { get; init; }
 
+        /// <summary>The ref that holds the list's <see cref="VirtualListHandle"/> while the list is mounted.</summary>
+        public Ref<VirtualListHandle>? ListRef { get; init; }
+
         /// <summary>
-        /// Creates a virtualized list. Prefer the <see cref="V.VirtualList{T}"/> factory; this is the
-        /// type-erased form it builds.
+        /// Creates a virtualized list of items of one height. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+        /// factory; this is the type-erased form it builds.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, or <paramref name="renderer"/> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="itemHeight"/> is &lt;= 0, or <paramref name="overscan"/> is &lt; 0.</exception>
@@ -547,15 +553,42 @@ namespace Velvet
             float itemHeight,
             Func<object?, VNode> renderer,
             int overscan)
+            : this(items, keySelector, renderer, overscan)
         {
-            Items = items ?? throw new ArgumentNullException(nameof(items));
-            KeySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
             if (itemHeight <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(itemHeight), "ItemHeight must be greater than 0.");
             }
 
             ItemHeight = itemHeight;
+        }
+
+        /// <summary>
+        /// Creates a virtualized list whose items each take the height <paramref name="itemHeight"/> gives for
+        /// their index. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+        /// factory; this is the type-erased form it builds.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, <paramref name="itemHeight"/> or <paramref name="renderer"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="overscan"/> is &lt; 0.</exception>
+        public VirtualListNode(
+            IReadOnlyList<object?> items,
+            Func<object?, string> keySelector,
+            Func<int, float> itemHeight,
+            Func<object?, VNode> renderer,
+            int overscan)
+            : this(items, keySelector, renderer, overscan)
+        {
+            ItemHeightAt = itemHeight ?? throw new ArgumentNullException(nameof(itemHeight));
+        }
+
+        private VirtualListNode(
+            IReadOnlyList<object?> items,
+            Func<object?, string> keySelector,
+            Func<object?, VNode> renderer,
+            int overscan)
+        {
+            Items = items ?? throw new ArgumentNullException(nameof(items));
+            KeySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
             Renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
             if (overscan < 0)
             {
@@ -564,6 +597,56 @@ namespace Velvet
 
             Overscan = overscan;
         }
+    }
+
+    /// <summary>
+    /// Where <see cref="VirtualListHandle.ScrollToItem"/> places an item in the viewport: react-window's
+    /// <c>scrollToRow</c> <c>align</c>.
+    /// </summary>
+    public enum VirtualListAlign
+    {
+        /// <summary>Scroll as little as brings the item into view, and not at all where it already is.</summary>
+        Auto,
+
+        /// <summary><see cref="Auto"/> where the item is already in view, otherwise <see cref="Center"/>.</summary>
+        Smart,
+
+        /// <summary>Put the item's middle at the viewport's middle, as far as the list's ends allow.</summary>
+        Center,
+
+        /// <summary>Put the item's end at the viewport's end.</summary>
+        End,
+
+        /// <summary>Put the item's start at the viewport's start, as far as the list's end allows.</summary>
+        Start,
+    }
+
+    /// <summary>
+    /// The imperative API of a mounted <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>,
+    /// set on the list's <c>listRef</c> — the counterpart of react-window's <c>listRef</c>.
+    /// </summary>
+    public sealed class VirtualListHandle
+    {
+        private readonly FiberVirtualListController _controller;
+
+        internal VirtualListHandle(FiberVirtualListController controller, ScrollView element)
+        {
+            _controller = controller;
+            Element = element;
+        }
+
+        /// <summary>The list's ScrollView.</summary>
+        public ScrollView Element { get; }
+
+        /// <summary>
+        /// Scrolls the list so the item at <paramref name="index"/> sits where <paramref name="align"/> puts it in
+        /// the viewport the list's last layout gave it.
+        /// </summary>
+        /// <param name="index">The item's index.</param>
+        /// <param name="align">Where the item is placed in the viewport.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the list's items.</exception>
+        public void ScrollToItem(int index, VirtualListAlign align = VirtualListAlign.Auto)
+            => _controller.ScrollToItem(index, align);
     }
 
     /// <summary>

@@ -7,6 +7,7 @@
 [Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.Push(Velvet.Editor.DevTools.StateHistoryEntry): System.Void
 [Velvet.Editor] method Velvet.Editor.DevTools.VelvetDevToolsWindow.ShowWindow(): System.Void
 [Velvet.Editor] method Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer(): System.Void
+[Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand.RunAndExit(): System.Void
 [Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewWindow.ShowWindow(): System.Void
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Capacity: System.Int32
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Count: System.Int32
@@ -17,6 +18,7 @@
 [Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryEntry
 [Velvet.Editor] type Velvet.Editor.DevTools.VelvetDevToolsWindow
 [Velvet.Editor] type Velvet.Editor.PlayerBuild.PlayerScriptCompilation
+[Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewSmokeTestCommand
 [Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewWindow
 [Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
@@ -125,6 +127,7 @@
 [Velvet] ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetTaskCompletionSource`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object?], System.Func`2[System.Object?, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[System.Object?, Velvet.VNode], System.Int32): System.Void
 [Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object?], System.Func`2[System.Object?, System.String], System.Single, System.Func`2[System.Object?, Velvet.VNode], System.Int32): System.Void
 [Velvet] ctor Velvet.WheelBinding.ctor(): System.Void
 [Velvet] ctor Velvet.WorldSpaceNode.ctor(): System.Void
@@ -217,9 +220,11 @@
 [Velvet] field Velvet.StyleVariantKind.Active: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Checked: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Dark: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Disabled: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Focus: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.FocusVisible: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.GroupActive: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.GroupDisabled: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.GroupFocus: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.GroupFocusWithin: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.GroupHover: Velvet.StyleVariantKind
@@ -228,6 +233,7 @@
 [Velvet] field Velvet.StyleVariantKind.Md: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.PeerActive: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.PeerChecked: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerDisabled: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.PeerFocus: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.PeerFocusWithin: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.PeerHover: Velvet.StyleVariantKind
@@ -266,6 +272,11 @@
 [Velvet] field Velvet.VelvetTaskStatus.Faulted: Velvet.VelvetTaskStatus
 [Velvet] field Velvet.VelvetTaskStatus.Pending: Velvet.VelvetTaskStatus
 [Velvet] field Velvet.VelvetTaskStatus.Succeeded: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VirtualListAlign.Auto: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListAlign.Center: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListAlign.End: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListAlign.Smart: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListAlign.Start: Velvet.VirtualListAlign
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
@@ -519,7 +530,8 @@
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
 [Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): Velvet.ElementNode
 [Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?): Velvet.VirtualListNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]?): Velvet.VNode?
 [Velvet] method Velvet.V.WorldSpace(UnityEngine.Vector3, System.Nullable`1[UnityEngine.Quaternion], System.Nullable`1[UnityEngine.Vector2], Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.WorldSpaceNode
 [Velvet] method Velvet.VelvetFilters.Register(System.String, UnityEngine.UIElements.FilterFunctionDefinition?): System.Void
@@ -532,12 +544,15 @@
 [Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
 [Velvet] method Velvet.VelvetFonts.TryLoadAddressableFont(System.String?, UnityEngine.TextCore.Text.FontAsset?&): System.Boolean
 [Velvet] method Velvet.VelvetFonts.Unregister(System.String?): System.Void
+[Velvet] method Velvet.VelvetPreviewEnvironment.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Dispose(): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
 [Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
-[Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): System.IDisposable?
+[Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): Velvet.VelvetPreviewEnvironment?
+[Velvet] method Velvet.VelvetPreviewSmokeTest.Run(): System.Collections.Generic.IReadOnlyList`1[Velvet.VelvetPreviewSmokeResult]
+[Velvet] method Velvet.VelvetPreviewSmokeTest.Run(System.Collections.Generic.IEnumerable`1[Velvet.VelvetPreviewStory]): System.Collections.Generic.IReadOnlyList`1[Velvet.VelvetPreviewSmokeResult]
 [Velvet] method Velvet.VelvetPreviewStory.Build(): Velvet.VNode?
 [Velvet] method Velvet.VelvetPreviewStory.Build(System.Object?): Velvet.VNode?
 [Velvet] method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object?
@@ -610,6 +625,7 @@
 [Velvet] method Velvet.VelvetTask`1[T].GetAwaiter(): Velvet.VelvetTask+Awaiter`1[T~]
 [Velvet] method Velvet.VelvetTask`1[T].Preserve(): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask`1[T].SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
+[Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign): System.Void
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
@@ -776,6 +792,7 @@
 [Velvet] property Velvet.FiberElementProps.FieldValue: System.Object?
 [Velvet] property Velvet.FiberElementProps.FocusScope: Velvet.FocusScopeSettings?
 [Velvet] property Velvet.FiberElementProps.Focusable: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.NoDrag: System.Boolean
 [Velvet] property Velvet.FiberElementProps.Particles: Velvet.ParticlesSettings?
 [Velvet] property Velvet.FiberElementProps.SceneView: Velvet.SceneViewSettings?
 [Velvet] property Velvet.FiberElementProps.ScrollView: Velvet.ScrollViewSettings?
@@ -963,8 +980,11 @@
 [Velvet] property Velvet.VelvetPreviewAttribute.Height: System.Int32
 [Velvet] property Velvet.VelvetPreviewAttribute.Name: System.String?
 [Velvet] property Velvet.VelvetPreviewAttribute.Width: System.Int32
+[Velvet] property Velvet.VelvetPreviewEnvironment.StyleSheets: System.Collections.Generic.IReadOnlyList`1[UnityEngine.UIElements.StyleSheet]
 [Velvet] property Velvet.VelvetPreviewHost.MountError: System.Exception?
 [Velvet] property Velvet.VelvetPreviewHost.Story: Velvet.VelvetPreviewStory?
+[Velvet] property Velvet.VelvetPreviewSmokeResult.Failure: System.String?
+[Velvet] property Velvet.VelvetPreviewSmokeResult.Story: Velvet.VelvetPreviewStory
 [Velvet] property Velvet.VelvetPreviewStory.ArgsType: System.Type?
 [Velvet] property Velvet.VelvetPreviewStory.Assembly: System.Reflection.Assembly?
 [Velvet] property Velvet.VelvetPreviewStory.Group: System.String
@@ -986,10 +1006,13 @@
 [Velvet] property Velvet.VelvetTaskMethodBuilder`1[T].Task: Velvet.VelvetTask`1[T]
 [Velvet] property Velvet.VelvetTask`1[T].Status: Velvet.VelvetTaskStatus
 [Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
+[Velvet] property Velvet.VirtualListHandle.Element: UnityEngine.UIElements.ScrollView
 [Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
 [Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
+[Velvet] property Velvet.VirtualListNode.ItemHeightAt: System.Func`2[System.Int32, System.Single]?
 [Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object?]
 [Velvet] property Velvet.VirtualListNode.KeySelector: System.Func`2[System.Object?, System.String]
+[Velvet] property Velvet.VirtualListNode.ListRef: Velvet.Ref`1[Velvet.VirtualListHandle]?
 [Velvet] property Velvet.VirtualListNode.Name: System.String?
 [Velvet] property Velvet.VirtualListNode.Overscan: System.Int32
 [Velvet] property Velvet.VirtualListNode.Renderer: System.Func`2[System.Object?, Velvet.VNode]
@@ -1161,9 +1184,12 @@
 [Velvet] type Velvet.VelvetFontWeightEntry
 [Velvet] type Velvet.VelvetFonts
 [Velvet] type Velvet.VelvetPreviewAttribute
+[Velvet] type Velvet.VelvetPreviewEnvironment
 [Velvet] type Velvet.VelvetPreviewHost
 [Velvet] type Velvet.VelvetPreviewRegistry
 [Velvet] type Velvet.VelvetPreviewSetupAttribute
+[Velvet] type Velvet.VelvetPreviewSmokeResult
+[Velvet] type Velvet.VelvetPreviewSmokeTest
 [Velvet] type Velvet.VelvetPreviewStory
 [Velvet] type Velvet.VelvetResponsive
 [Velvet] type Velvet.VelvetRuntimeAssets
@@ -1185,6 +1211,8 @@
 [Velvet] type Velvet.VelvetTaskStatusExtensions
 [Velvet] type Velvet.VelvetTask`1[T]
 [Velvet] type Velvet.VelvetTheme
+[Velvet] type Velvet.VirtualListAlign
+[Velvet] type Velvet.VirtualListHandle
 [Velvet] type Velvet.VirtualListNode
 [Velvet] type Velvet.WheelBinding
 [Velvet] type Velvet.WorldSpaceNode
