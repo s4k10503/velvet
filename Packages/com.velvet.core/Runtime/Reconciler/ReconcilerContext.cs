@@ -1047,21 +1047,20 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
-        // Same-panel portal TARGET elements — a registered id's element (V.Portal(targetId:)) or one the
-        // caller passed outright (V.Portal(target:)) — that already carry
-        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge and the missing-sheet watch, mapped to
-        // the delegate that releases both. Doubles as the attach-once guard BindPortalTarget checks, since
+        // Same-panel portal targets as PortalSlotInfo records them — the content container of the element a
+        // registered id names (V.Portal(targetId:)) or the caller passed (V.Portal(target:)) — mapped to the
+        // bridge each carries: Anchor is the element FiberCrossPanelEventDispatcher's synthetic-bubbling
+        // listeners sit on (the container's owner, where it has one), and Release removes them and the
+        // missing-sheet watch. Doubles as the attach-once guard BindPortalTarget checks, since
         // multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
         // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
         // duplicate callbacks. The guard is scoped to
         // this one context: a second, independently mounted reconciler whose own Portal resolves to the
         // same registered target attaches its own bridge through its own instance of this dictionary,
-        // since it has no way to see this one. Harmless — Continue's ancestor walk itself is ctx-agnostic
-        // (it reads userData off the shared VisualElement, not off ctx), but the invocation at the end of
-        // that walk goes through THIS ctx's own EventManager, whose bindings table only ever learned
-        // about elements this context itself bound; a chain resolved via the other context's fibers has
-        // no matching entry there, so the second listener never double-invokes a handler — just redundant
-        // scanning on every event that reaches the shared target.
+        // since it has no way to see this one. Harmless — each listener's walk attributes rows through its own
+        // context's PortalState and invokes through that context's EventManager, so a row of the other
+        // context's portal resolves to no placeholder here and reaches only physical ancestors, which the walk
+        // leaves to native dispatch — just redundant scanning on every event that reaches the shared target.
         // Released by FiberElementCleaner.CleanupPortal once no live Portal resolves to the element any
         // more, and swept at Reconciler.Dispose for whatever the teardown order leaves behind. A target
         // the caller passed outright is routinely one Velvet itself rendered — an element reached

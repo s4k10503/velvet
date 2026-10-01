@@ -639,8 +639,8 @@ namespace Velvet.Tests
             s_setOwn!.Invoke(new[] { "a", "b" });
             Flush();
 
-            // Assert
-            Assert.That(content.Q<VisualElement>("p"), Is.SameAs(child));
+            // Assert — whether the child mounted at all is folded in, since two nulls are the same too.
+            Assert.That((child != null, ReferenceEquals(content.Q<VisualElement>("p"), child)), Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base keeps a held ScrollView portal's child across renders too.
@@ -657,8 +657,8 @@ namespace Velvet.Tests
             s_setOwn!.Invoke(new[] { "a", "b" });
             Flush();
 
-            // Assert
-            Assert.That(content.Q<VisualElement>("p"), Is.SameAs(child));
+            // Assert — whether the child mounted at all is folded in, since two nulls are the same too.
+            Assert.That((child != null, ReferenceEquals(content.Q<VisualElement>("p"), child)), Is.EqualTo((true, true)));
         }
 
         // An element whose contentContainer the test switches, as a custom element may.
