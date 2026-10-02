@@ -46,22 +46,36 @@ namespace Velvet.Tests
             Application.logMessageReceived += Record;
         }
 
+        // The restores run whatever a mount's disposal throws: the settings file and the records outlive
+        // this fixture, so a throw ahead of them leaves every later fixture and every later editor reading
+        // what a case here wrote.
         [TearDown]
         public void TearDown()
         {
-            Application.logMessageReceived -= Record;
-            foreach (var disposable in _disposables) disposable.Dispose();
+            var disposables = _disposables.ToArray();
             _disposables.Clear();
-            _reported.Clear();
-            MissingReported.SetValue(null, _reportedBefore);
-
-            BundledShaderBuildInclusion.Revert();
-            BundledStyleSheetBuildInclusion.Revert();
-            File.Delete(RecordFile(typeof(BundledShaderBuildInclusion)));
-            File.Delete(RecordFile(typeof(BundledStyleSheetBuildInclusion)));
-
-            if (_settingsFileBefore == null) File.Delete(VelvetBuildSettings.SettingsFile);
-            else File.WriteAllText(VelvetBuildSettings.SettingsFile, _settingsFileBefore);
+            try
+            {
+                foreach (var disposable in disposables) disposable.Dispose();
+            }
+            finally
+            {
+                Application.logMessageReceived -= Record;
+                _reported.Clear();
+                MissingReported.SetValue(null, _reportedBefore);
+                try
+                {
+                    BundledShaderBuildInclusion.Revert();
+                    BundledStyleSheetBuildInclusion.Revert();
+                    File.Delete(RecordFile(typeof(BundledShaderBuildInclusion)));
+                    File.Delete(RecordFile(typeof(BundledStyleSheetBuildInclusion)));
+                }
+                finally
+                {
+                    if (_settingsFileBefore == null) File.Delete(VelvetBuildSettings.SettingsFile);
+                    else File.WriteAllText(VelvetBuildSettings.SettingsFile, _settingsFileBefore);
+                }
+            }
         }
 
         private void Record(string condition, string stackTrace, LogType type)
@@ -220,6 +234,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
+        }
+
+        // GREEN_ON_BASE(construction): what this pins is the fixture's own TearDown, which the base run carries.
+        // Put back the TearDown that ran `foreach (var disposable in _disposables) disposable.Dispose();`
+        // ahead of its restores and outside any finally, and this reddens: the settings file is left
+        // excluding Velvet/FilterBrightness.
+        [Test]
+        public void Given_AMountWhoseDisposalThrows_When_TheTearDownRuns_Then_TheSettingsFileIsAsBefore()
+        {
+            // Arrange — a case's write to the settings file, and a mount ahead of it whose disposal throws.
+            VelvetBuildSettings.Change(settings => settings.SetExcluded(VelvetShaders.FilterBrightness, true));
+            var written = File.Exists(VelvetBuildSettings.SettingsFile);
+            var throwing = new ThrowingDisposable();
+            _disposables.Add(throwing);
+
+            // Act
+            var threw = false;
+            try
+            {
+                TearDown();
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+            finally
+            {
+                // Taken out either way, so the framework's own TearDown after this case restores cleanly.
+                _disposables.Remove(throwing);
+            }
+            var after = File.Exists(VelvetBuildSettings.SettingsFile)
+                ? File.ReadAllText(VelvetBuildSettings.SettingsFile)
+                : "<none>";
+
+            // Assert
+            Assert.That($"{written}|{threw}|{after}", Is.EqualTo($"True|True|{_settingsFileBefore ?? "<none>"}"));
+        }
+
+        private sealed class ThrowingDisposable : IDisposable
+        {
+            public void Dispose() => throw new InvalidOperationException("a mount whose disposal throws");
         }
 
         private VisualElement OnBarePanel(string name)
