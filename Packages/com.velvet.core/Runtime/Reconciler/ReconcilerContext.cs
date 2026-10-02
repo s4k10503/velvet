@@ -72,12 +72,10 @@ namespace Velvet
     }
 
     // Per-z-managed-element bookkeeping: which placeholder stands in its logical slot, which layer container
-    // currently holds it, the stacking parent both are scoped to, its last resolved z, and the monotonic
-    // mount-order tiebreak for same-z siblings (assigned once, at first entry, then stable — re-sorting on
-    // every patch would contradict "no periodic resort"). Keyed by the REAL element in
-    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    // currently holds it, the stacking parent both are scoped to, and its last resolved z. Keyed by the REAL
+    // element in ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
     internal readonly record struct ZLayerMember(
-        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ, ulong Order);
+        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ);
 
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
@@ -1028,10 +1026,6 @@ namespace Velvet
         // FiberZLayerCoordinator.DrainTeardowns, called from the same Reconciler.Reconcile top-level finally as
         // DrainPendingPortalMounts.
         public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
-
-        // Monotonic tiebreak counter for same-resolved-z siblings under one layer container, handed out once
-        // per element at its first entry into a layer (see ZLayerMember.Order).
-        internal ulong NextZOrder;
 
         // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
         // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but

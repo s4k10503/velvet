@@ -3,11 +3,11 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): the fixed named scale
-    /// (<c>z-0</c>…<c>z-50</c>), its negated form (<c>-z-10</c>), the arbitrary bracket form
-    /// (<c>z-[999]</c>, <c>z-[-5]</c>), the cascade (last-wins), and rejection of anything that only
-    /// looks like a z-* token (an unrecognized named level, a non-integer bracket, a bare "z-"
-    /// prefix). GWT, one assert per case.
+    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass) against Tailwind v4's z utility: a bare
+    /// non-negative integer (<c>z-15</c>), the arbitrary bracket form (<c>z-[999]</c>, <c>z-[-5]</c>), a leading
+    /// "-" negating either, the cascade (last-wins), and rejection of anything that only looks like a z-* token
+    /// (a suffix that is not an integer, a bare integer with a leading zero, a non-integer bracket). GWT, one
+    /// assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class StyleZIndexClassTests
@@ -123,10 +123,42 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnrecognizedNamedLevel_When_Parsed_Then_ItIsRejected()
+        public void Given_ABareIntegerOffTheOldNamedLevels_When_Parsed_Then_ItResolvesToThatInteger()
         {
-            // Arrange — z-15 is not on the fixed scale; only z-[15] would express it.
-            var ok = StyleZIndexClass.TryParse("z-15", out _);
+            // Arrange / Act — Tailwind v4 takes any non-negative integer as a bare z value.
+            StyleZIndexClass.TryParse("z-15", out var z);
+
+            // Assert
+            Assert.That(z, Is.EqualTo(15));
+        }
+
+        [Test]
+        public void Given_ANegatedBareInteger_When_Parsed_Then_ItResolvesToItsNegation()
+        {
+            // Arrange / Act
+            StyleZIndexClass.TryParse("-z-15", out var z);
+
+            // Assert
+            Assert.That(z, Is.EqualTo(-15));
+        }
+
+        [Test]
+        public void Given_ANegatedBracketInteger_When_Parsed_Then_TheBracketValueIsNegated()
+        {
+            // Arrange / Act — Tailwind v4 emits calc(5 * -1) for -z-[5].
+            StyleZIndexClass.TryParse("-z-[5]", out var z);
+
+            // Assert
+            Assert.That(z, Is.EqualTo(-5));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rejects z-07 as off its named scale; this pins the
+        // leading-zero rule that rejects it now.
+        [Test]
+        public void Given_ABareIntegerWithALeadingZero_When_Parsed_Then_ItIsRejected()
+        {
+            // Arrange / Act — Tailwind's isPositiveInteger requires the digits to print back unchanged.
+            var ok = StyleZIndexClass.TryParse("z-07", out _);
 
             // Assert
             Assert.That(ok, Is.False);

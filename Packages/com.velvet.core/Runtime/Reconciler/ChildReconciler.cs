@@ -459,6 +459,7 @@ namespace Velvet
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff.
             FiberZLayerCoordinator.DrainTeardowns(_ctx);
+            FiberZLayerCoordinator.ResortLayers(_ctx);
         }
 
         // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own

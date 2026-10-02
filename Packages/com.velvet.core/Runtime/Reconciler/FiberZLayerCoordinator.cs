@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -16,13 +17,8 @@ namespace Velvet
         public VisualElement Real = null!;
         public int ResolvedZ;
 
-        // Carries an already-assigned mount-order tiebreak forward across a deferred reposition (the target
-        // container did not exist yet for a sign flip on an already-z-managed element); null for a genuinely
-        // new entry (a fresh mount, or a none-to-z transition), which is assigned one on resolution.
-        public ulong? Order;
-
-        // Carries a focus rescue forward across the SAME deferred reposition Order does, for the identical
-        // reason: Reposition/RelocateFromOrdinarySlot capture this BEFORE their own detach (the only point Real
+        // Carries a focus rescue forward across a deferred reposition (the target container did not exist yet):
+        // Reposition/RelocateFromOrdinarySlot capture this BEFORE their own detach (the only point Real
         // is still attached to a live panel to read FocusController.focusedElement from), then this queued entry
         // is the sole surviving reference by the time ResolveQueuedMount finally re-attaches Real — see
         // FiberZLayerCoordinator.CaptureFocusForRescue / RestoreRescuedFocus. Null when nothing was focused (the
@@ -147,12 +143,11 @@ namespace Velvet
                 return;
             }
             var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ);
-            Place(ctx, placeholder, container, stackingParent, node.Real, node.ResolvedZ, node.Order, node.RescueFocus);
+            Place(ctx, placeholder, container, stackingParent, node.Real, node.ResolvedZ, node.RescueFocus);
         }
 
         // Patch-time: an already z-managed element's resolved z (or its front/back sign) changed. A no-op
-        // when the resolved value is unchanged — ordering is a mount/patch-time invariant maintained
-        // incrementally, never a periodic resort. Safe to call synchronously when the destination layer
+        // when the resolved value is unchanged. Safe to call synchronously when the destination layer
         // already exists (a pure container-membership move); defers to the drain only for the rarer case
         // where this parent's FIRST member of the opposite sign has just appeared.
         internal static void Reposition(ReconcilerContext ctx, VisualElement placeholder, VisualElement real, int newResolvedZ)
@@ -161,10 +156,9 @@ namespace Velvet
             {
                 return;
             }
-            // Captured before ANY branch below: every one of them physically detaches `real` from its current
-            // parent at some point (the same-container branch's own InsertSorted, DetachFromContainer for a
-            // cross-container move, or the deferred sign-flip) — UI Toolkit clears FocusController.focusedElement
-            // the instant an element leaves its panel's visual tree (see
+            // Captured before the branches below, two of which detach `real` from its current parent
+            // (DetachFromContainer for a cross-container move, and the deferred sign-flip) — UI Toolkit clears
+            // FocusController.focusedElement the instant an element leaves its panel's visual tree (see
             // FiberElementCleaner.RescueFocusFromWorldSpaceHost's own comment on the same behavior), even across
             // an immediate same-panel reattachment, so this must run while `real` is still attached to read it.
             var rescue = CaptureFocusForRescue(real);
@@ -176,14 +170,14 @@ namespace Velvet
                 {
                     DetachFromContainer(ctx, member.Container, real);
                 }
-                Place(ctx, placeholder, existing, stackingParent, real, newResolvedZ, member.Order, rescue);
+                Place(ctx, placeholder, existing, stackingParent, real, newResolvedZ, rescue);
                 return;
             }
             DetachFromContainer(ctx, member.Container, real);
             ctx.ZLayerMembers.Remove(real);
             ctx.PendingPortalMounts.Enqueue(
                 (placeholder, new ZLayerMountNode
-                    { Real = real, ResolvedZ = newResolvedZ, Order = member.Order, RescueFocus = rescue },
+                    { Real = real, ResolvedZ = newResolvedZ, RescueFocus = rescue },
                     null, null, null));
         }
 
@@ -313,20 +307,24 @@ namespace Velvet
             ctx.PendingZLayerTeardownChecks.Clear();
         }
 
-        // Places (inserts sorted, records bookkeeping) `real` into `container`, assigning a fresh mount-order
-        // tiebreak unless one is supplied (a reposition/relocation carries its element's existing order
-        // forward — see ZLayerMember.Order's own "assigned once" contract). rescueFocus mirrors that same
-        // "carry an already-captured value forward" shape for a focus rescue (see ZLayerMountNode.RescueFocus):
-        // restored here, once, since InsertSorted just below is what actually reattaches `real` to a panel,
-        // regardless of which caller (a synchronous reposition, or a deferred drain resolution) reached this.
+        // Records `real`'s bookkeeping and puts it at its sorted place in `container`. rescueFocus carries a focus
+        // rescue forward (see ZLayerMountNode.RescueFocus) and is restored here, once, whichever caller reached
+        // this.
         private static void Place(
             ReconcilerContext ctx, VisualElement placeholder, VisualElement container, VisualElement stackingParent,
-            VisualElement real, int resolvedZ, ulong? existingOrder = null, VisualElement? rescueFocus = null)
+            VisualElement real, int resolvedZ, VisualElement? rescueFocus = null)
         {
-            var order = existingOrder ?? ctx.NextZOrder++;
-            InsertSorted(ctx, container, real, resolvedZ, order);
+            var member = new ZLayerMember(placeholder, container, stackingParent, resolvedZ);
             ctx.ZLayerPlaceholders[placeholder] = real;
-            ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, container, stackingParent, resolvedZ, order);
+            ctx.ZLayerMembers[real] = member;
+            if (ReferenceEquals(real.parent, container))
+            {
+                Resort(ctx, container);
+            }
+            else
+            {
+                InsertSorted(ctx, container, real, member);
+            }
             RestoreRescuedFocus(rescueFocus);
         }
 
@@ -417,10 +415,10 @@ namespace Velvet
             return container;
         }
 
-        // Inserts (or repositions) `real` at its sorted position within `container`: resolved z ascending,
-        // ties broken by mount order. Only ever mutates `container`'s own children — never `container`'s
-        // parent — so this is safe from any call site, synchronous or deferred.
-        private static void InsertSorted(ReconcilerContext ctx, VisualElement container, VisualElement real, int resolvedZ, ulong order)
+        // Inserts `real`, arriving from another parent, at its sorted position within `container`. Only ever
+        // mutates `container`'s own children — never `container`'s parent — so this is safe from any call site,
+        // synchronous or deferred.
+        private static void InsertSorted(ReconcilerContext ctx, VisualElement container, VisualElement real, ZLayerMember member)
         {
             if (real.parent != null)
             {
@@ -430,18 +428,85 @@ namespace Velvet
             for (var i = 0; i < container.childCount; i++)
             {
                 var sibling = container.ElementAt(i);
-                if (!ctx.ZLayerMembers.TryGetValue(sibling, out var siblingInfo))
-                {
-                    continue;
-                }
-                if (siblingInfo.ResolvedZ > resolvedZ
-                    || (siblingInfo.ResolvedZ == resolvedZ && siblingInfo.Order > order))
+                if (ctx.ZLayerMembers.TryGetValue(sibling, out var siblingInfo) && Compare(siblingInfo, member) > 0)
                 {
                     insertAt = i;
                     break;
                 }
             }
             container.Insert(insertAt, real);
+        }
+
+        // Paint order within a layer: resolved z ascending, then tree order, which for siblings of one stacking
+        // parent is their placeholders' declared order — CSS stacks equal z values in tree order.
+        private static int Compare(ZLayerMember a, ZLayerMember b)
+        {
+            var byZ = a.ResolvedZ.CompareTo(b.ResolvedZ);
+            return byZ != 0
+                ? byZ
+                : a.StackingParent.IndexOf(a.Placeholder).CompareTo(b.StackingParent.IndexOf(b.Placeholder));
+        }
+
+        // Post-pass, once the placeholders sit where the pass put them: a keyed move of them changes tree order
+        // without touching any member.
+        internal static void ResortLayers(ReconcilerContext ctx)
+        {
+            foreach (var record in ctx.ZLayerHosts.Values)
+            {
+                if (record.Front != null) Resort(ctx, record.Front);
+                if (record.Back != null) Resort(ctx, record.Back);
+            }
+        }
+
+        // Re-sorts `container` when its members are out of order. Hierarchy.Sort reorders within one parent, so
+        // no member leaves the panel the way a remove-and-insert makes it. A ring band keeps its place directly
+        // after the member it rings (RingOverlay.Place); any other child goes last.
+        private static void Resort(ReconcilerContext ctx, VisualElement container)
+        {
+            if (MembersInOrder(ctx, container))
+            {
+                return;
+            }
+            var members = new List<(ZLayerMember Member, VisualElement Element)>();
+            foreach (var child in container.Children())
+            {
+                if (ctx.ZLayerMembers.TryGetValue(child, out var member))
+                {
+                    members.Add((member, child));
+                }
+            }
+            members.Sort((x, y) => Compare(x.Member, y.Member));
+            var rank = new Dictionary<VisualElement, int>(members.Count * 2);
+            foreach (var (_, element) in members)
+            {
+                rank[element] = rank.Count;
+                if (ctx.RingBindings.TryGetValue(element, out var ring))
+                {
+                    rank[ring.Overlay] = rank.Count;
+                }
+            }
+            container.hierarchy.Sort((x, y) => RankOf(rank, x).CompareTo(RankOf(rank, y)));
+        }
+
+        private static int RankOf(Dictionary<VisualElement, int> rank, VisualElement child)
+            => rank.TryGetValue(child, out var r) ? r : int.MaxValue;
+
+        private static bool MembersInOrder(ReconcilerContext ctx, VisualElement container)
+        {
+            ZLayerMember? previous = null;
+            foreach (var child in container.Children())
+            {
+                if (!ctx.ZLayerMembers.TryGetValue(child, out var member))
+                {
+                    continue;
+                }
+                if (previous != null && Compare(previous.Value, member) > 0)
+                {
+                    return false;
+                }
+                previous = member;
+            }
+            return true;
         }
 
         // Detaches `real` from `container` (a no-op if it has already moved) and marks the container for an

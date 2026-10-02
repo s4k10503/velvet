@@ -4,10 +4,8 @@ namespace Velvet
 {
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
-    // Supports z-auto, the fixed named scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, the
-    // sign prefixes the whole class), and the arbitrary bracket form (z-[999],
-    // z-[-5] — the bracket already carries a signed integer, so no outer "-" is recognized for it: z-index has
-    // no separate magnitude/direction split the way a length utility does).
+    // Follows Tailwind v4's z utility: z-auto, a bare non-negative integer (z-15), a bracketed integer (z-[-5]),
+    // and a leading "-" negating either of the last two (-z-15, -z-[5]).
     internal static class StyleZIndexClass
     {
         // Cheap early-out gate: true when ANY class looks like a z-* utility (after stripping a leading "-").
@@ -80,10 +78,7 @@ namespace Velvet
         // A null z is z-auto.
         public static bool TryParse(string cls, out int? z) => TryParse(cls, out z, out _);
 
-        // z-auto, z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
-        // z-[<int>] (arbitrary, the bracket's own sign — z-[-5] is how a negative arbitrary value is spelled,
-        // not -z-[5]). Anything else (including a non-numeric bracket, or a bare "z-" prefix that is not one
-        // of these shapes) returns false.
+        // -z-auto is rejected: Tailwind generates nothing for it.
         private static bool TryParse(string cls, out int? z, out bool important)
         {
             z = null;
@@ -99,44 +94,35 @@ namespace Velvet
                 return true;
             }
 
-            // TryStripBrackets goes first (it self-guards on length, so it is safe to evaluate against any
-            // cls) and its success implies cls.Length >= 5, which is what makes the cls[0]/cls[1] reads below
-            // safe without a separate bounds check.
-            if (StyleArbitraryValueResolver.TryStripBrackets(cls, 2, out var inner) && cls[0] == 'z' && cls[1] == '-')
-            {
-                var parsed = int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value);
-                z = value;
-                return parsed;
-            }
-
             var negate = cls[0] == '-';
             var offset = negate ? 1 : 0;
             if (cls.Length <= offset + 2 || cls[offset] != 'z' || cls[offset + 1] != '-')
             {
                 return false;
             }
-            if (!TryNamedLevel(cls.Substring(offset + 2), out var level))
+            int value;
+            if (StyleArbitraryValueResolver.TryStripBrackets(cls, offset + 2, out var inner))
+            {
+                if (!int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+                {
+                    return false;
+                }
+            }
+            else if (!TryBareInteger(cls.Substring(offset + 2), out value))
             {
                 return false;
             }
-            z = negate ? -level : level;
+            z = negate ? -value : value;
             return true;
         }
 
-        // Tailwind v3's fixed levels, the same fixed-scale choice rotate-* and the spacing utilities make; any
-        // other integer is spelled z-[N].
-        private static bool TryNamedLevel(string suffix, out int level)
+        // Tailwind's isPositiveInteger: the digits must read back as the number they parse to, so z-07 is not a
+        // bare value.
+        private static bool TryBareInteger(string suffix, out int value)
         {
-            switch (suffix)
-            {
-                case "0": level = 0; return true;
-                case "10": level = 10; return true;
-                case "20": level = 20; return true;
-                case "30": level = 30; return true;
-                case "40": level = 40; return true;
-                case "50": level = 50; return true;
-                default: level = 0; return false;
-            }
+            value = 0;
+            return !(suffix.Length > 1 && suffix[0] == '0')
+                && int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out value);
         }
     }
 }

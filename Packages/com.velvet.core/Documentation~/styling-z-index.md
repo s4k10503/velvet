@@ -24,12 +24,11 @@ does.
 | Utility | Resolved z |
 |---|---|
 | `z-auto` | none: the element is left unstacked, so `z-10 z-auto` resets the earlier `z-10` |
-| `z-0` / `z-10` / `z-20` / `z-30` / `z-40` / `z-50` | Tailwind's fixed named scale |
-| `-z-10` … `-z-50` | negated named scale |
+| `z-<N>` | a non-negative integer written without a leading zero (`z-0`, `z-10`, `z-15`), as Tailwind v4 takes it |
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
+| `-z-<N>` / `-z-[N]` | the negation of either form above |
 
-The named scale is Tailwind v3's fixed one, the same choice `rotate-*` and the spacing utilities make:
-`z-15` is not on it, `z-[15]` is. Each form also accepts the important modifier (`!z-10`, `z-10!`,
+Each form also accepts the important modifier (`!z-10`, `z-10!`,
 `!z-[5]`, `z-[5]!`): an important `z-*` wins over every plain one on the same element wherever it sits
 in the class list, and within either group the later class wins.
 
@@ -43,8 +42,9 @@ physically reorders the declaring children list. Instead:
   creates a **layer container** — a plain, reconciler-invisible `VisualElement` sized to the
   parent's own content box. The **front** layer (non-negative z) is always the parent's last
   child; the **back** layer (negative z) is always its *first* child.
-- A z-marked element's real content relocates into its layer container, sorted by resolved z
-  (mount order breaks ties), while a hidden, zero-footprint **placeholder** — a real, displayed,
+- A z-marked element's real content relocates into its layer container, sorted by resolved z and,
+  among equal values, by declared position, as CSS stacks equal z in tree order (a keyed reorder of
+  equal-z siblings re-sorts the layer once the pass ends), while a hidden, zero-footprint **placeholder** — a real, displayed,
   zero-size element (not `display: none`, which would drop it from the focus ring) — is left at
   its declared position so the reconciler, `first:`/`last:`/`odd:`/`even:`/`nth-child` structural
   variants, and Tab order all still see it there.
@@ -73,11 +73,12 @@ physically reorders the declaring children list. Instead:
   at the element's declared slot; Tab reaching it forwards focus into the relocated element, and
   Tab leaving the relocated element's own subtree redirects to the declared position's next
   sibling — so `z-*` never changes keyboard navigation order.
-- **A resort preserves focus.** Every z transition (a mount-order tie resolving, a sign flip, a
-  patch-time z change) detaches and re-inserts the real element — UI Toolkit clears
-  `FocusController.focusedElement` the instant an element leaves its panel's visual tree, even for
-  an immediate same-panel reattachment — so the relocation rescues and restores focus when the
-  moving element (or a descendant of it) holds it.
+- **A relocation preserves focus.** A z change within one layer re-sorts the layer without the
+  element leaving the panel. Gaining or losing a z, and a sign flip between the front and back
+  layers, move the real element to another parent, which detaches and re-inserts it — UI Toolkit
+  clears `FocusController.focusedElement` the instant an element leaves its panel's visual tree,
+  even for an immediate same-panel reattachment — so the relocation rescues and restores focus
+  when the moving element (or a descendant of it) holds it.
 - **`group-`/`peer-` cross the layer boundary.** A z-managed element's physical parent is its layer
   container, one hop different from its logical parent. `group-*:` ancestor lookups are unaffected
   (the container is a transparent hop on the way up). A `peer-*:` search walks declared siblings: a
