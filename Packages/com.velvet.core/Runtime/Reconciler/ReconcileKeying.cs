@@ -57,16 +57,13 @@ namespace Velvet
         // Registers one old node under its reconcile key while building the keyed-diff old→(index,node)
         // map. On a duplicate key the later writer wins (the new-side lookup only ever resolves to the
         // last entry): the displaced earlier index is recorded as an orphan so the removal pass cleans
-        // it up — it is not covered by the usedKeys removal test — and a warning is logged. Shared by
-        // both flat keyed-diff map-build sites (synchronous keyed, time-sliced Pass2BuildMap).
+        // it up — it is not covered by the usedKeys removal test. Shared by both flat keyed-diff
+        // map-build sites (synchronous keyed, time-sliced Pass2BuildMap).
         internal static void RegisterOldKey(ChildKey key, VNode? node, int index,
             Dictionary<ChildKey, (int index, VNode? node)> map, HashSet<int>? orphaned)
         {
             if (map.TryAdd(key, (index, node))) return;
 
-            FiberLogger.LogWarning("ReconcileKeying",
-                $"Duplicate key detected in keyed reconciliation: {key}. " +
-                "Later element overwrites earlier one, causing unnecessary destroy/recreate.");
             orphaned!.Add(map[key].index);
             map[key] = (index, node);
         }
