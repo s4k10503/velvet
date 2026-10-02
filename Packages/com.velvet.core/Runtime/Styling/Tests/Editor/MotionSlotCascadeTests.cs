@@ -1,0 +1,130 @@
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins which of a variant's classes a spring/bezier plan reads each slot from when several of them write
+    /// it: the one the cascade lets hold the slot at rest, decided slot by slot.
+    /// </summary>
+    [TestFixture]
+    internal sealed class MotionSlotCascadeTests
+    {
+        [Test]
+        public void Given_TwoPresetOpacitiesInOneVariant_When_Resolved_Then_TheOneDeclaredLaterInTheStylesheetIsTheTarget()
+        {
+            // Arrange — .opacity-20 comes later in the class list, .opacity-50 later in the stylesheet.
+            var to = new[] { "opacity-50", "opacity-20" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, to);
+
+            // Assert
+            Assert.That(plan.Opacity?.to, Is.EqualTo(0.5f));
+        }
+
+        [Test]
+        public void Given_ABracketOpacityBeforeAPresetOne_When_Resolved_Then_TheBracketValueIsTheTarget()
+        {
+            // Arrange — the bracket form resolves to inline style, which outranks the preset's stylesheet rule.
+            var to = new[] { "opacity-[.3]", "opacity-50" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, to);
+
+            // Assert
+            Assert.That(plan.Opacity?.to, Is.EqualTo(0.3f));
+        }
+
+        [Test]
+        public void Given_AShorthandAndALonghandOnBothSides_When_Resolved_Then_EachEdgeAnimatesFromItsOwnHolder()
+        {
+            // Arrange — .pt-* is declared after .p-*, so it holds the top edge and the shorthand the other three.
+            var from = new[] { "p-0", "pt-4" };
+            var to = new[] { "p-8", "pt-2" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to);
+
+            // Assert
+            Assert.That(Lengths(plan),
+                Is.EqualTo("PaddingBottom:0->32 PaddingLeft:0->32 PaddingRight:0->32 PaddingTop:16->8"));
+        }
+
+        [Test]
+        public void Given_AnUnreadableCornerAfterAReadableShorthand_When_Resolved_Then_ThatCornerIsNotAnimated()
+        {
+            // Arrange — .rounded-tl-full is declared after .rounded-3xl and holds the top-left corner at rest,
+            // and no magnitude is read from it.
+            var to = new[] { "rounded-3xl", "rounded-tl-full" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "rounded-none" }, to);
+
+            // Assert
+            Assert.That(Lengths(plan), Is.EqualTo(
+                "BorderBottomLeftRadius:0->24 BorderBottomRightRadius:0->24 BorderTopRightRadius:0->24"));
+        }
+
+        [Test]
+        public void Given_AnImportantBracketWidthBeforeAPlainOne_When_Resolved_Then_TheImportantValueIsTheTarget()
+        {
+            // Arrange
+            var to = new[] { "!w-[40px]", "w-[20px]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[0px]" }, to);
+
+            // Assert
+            Assert.That(Lengths(plan), Is.EqualTo("Width:0->40"));
+        }
+
+        [Test]
+        public void Given_APerAxisScaleAfterAUniformOne_When_Resolved_Then_NoScaleChannelIsPlanned()
+        {
+            // Arrange — the per-axis layer writes the x axis over the uniform one, a pair no single scale
+            // magnitude describes.
+            var to = new[] { "scale-[1.4]", "scale-x-[.5]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+
+            // Assert
+            Assert.That(plan.Scale, Is.Null);
+        }
+
+        [Test]
+        public void Given_APerAxisScaleBeforeAUniformOne_When_Resolved_Then_TheUniformValueIsNotTheTarget()
+        {
+            // Arrange — the resolver composes a per-axis layer over the uniform one whichever comes first.
+            var to = new[] { "scale-x-[.5]", "scale-[1.4]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+
+            // Assert
+            Assert.That(plan.Scale?.to, Is.Not.EqualTo(1.4f));
+        }
+
+        // GREEN_ON_BASE(characterization): an x and a y translate on one side each drive their own axis.
+        // The slot-by-slot reading has to keep that although the two share one longhand.
+        [Test]
+        public void Given_AnXAndAYTranslateOnOneSide_When_Resolved_Then_BothAxesTakeTheirOwnValue()
+        {
+            // Arrange — translate-x-4 is 16px and translate-y-2 is 8px on the spacing scale.
+            var to = new[] { "translate-x-4", "translate-y-2" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new string[0], to);
+
+            // Assert
+            Assert.That((plan.TranslateX?.to, plan.TranslateY?.to), Is.EqualTo(((float?)16f, (float?)8f)));
+        }
+
+        private static string Lengths(MotionSpringClassParser.SpringPlan plan)
+            => string.Join(" ", (plan.Lengths ?? new List<MotionSpringClassParser.LengthChannelPlan>())
+                .Select(channel => $"{channel.Property}:{channel.From}->{channel.To}")
+                .OrderBy(text => text, System.StringComparer.Ordinal));
+    }
+}

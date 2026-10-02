@@ -588,6 +588,57 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
+        public void Given_AClassDeclaredByTwoUngatedRules_When_TheTableIsDerived_Then_ItIsReported()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(@"
+.util { color: rgb(0, 0, 0); }
+.other { opacity: 0.5; }
+.util { opacity: 0.25; }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.ClassDeclaredByMoreThanOneRule }, codes);
+        }
+
+        [Fact]
+        public void Given_TwoClassesInOneSheet_When_TheTableIsDerived_Then_TheLaterDeclaredHasTheGreaterCascadePosition()
+        {
+            // Arrange — declared against name order, so a position read off the sorted class map would invert.
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(@"
+.opacity-75 { opacity: 0.75; }
+.opacity-25 { opacity: 0.25; }"));
+            var probe = StyleTableTestHelper.Load(run);
+
+            // Act
+            var later = probe.CascadePositionOf("opacity-25") > probe.CascadePositionOf("opacity-75");
+
+            // Assert
+            Assert.True(later);
+        }
+
+        [Fact]
+        public void Given_ClassesInTwoImportedSheets_When_TheTableIsDerived_Then_TheLaterSheetsClassHasTheGreaterCascadePosition()
+        {
+            // Arrange — the later partial's class sorts first by name.
+            var run = StyleTableTestHelper.Derive(
+                new StyleSheetInput("/styles/_tokens.uss", ".opacity-75 { opacity: 0.75; }"),
+                new StyleSheetInput("/styles/_effects.uss", ".opacity-25 { opacity: 0.25; }"),
+                new StyleSheetInput(
+                    "/styles/StyleUtilities.uss",
+                    "@import url(\"_tokens.uss\");\n@import url(\"_effects.uss\");"));
+            var probe = StyleTableTestHelper.Load(run);
+
+            // Act
+            var later = probe.CascadePositionOf("opacity-25") > probe.CascadePositionOf("opacity-75");
+
+            // Assert
+            Assert.True(later);
+        }
+
+        [Fact]
         public void Given_AnUnterminatedRuleBlock_When_TheTableIsDerived_Then_ItIsReported()
         {
             // Arrange

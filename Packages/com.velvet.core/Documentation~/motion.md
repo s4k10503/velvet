@@ -248,15 +248,16 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   "transparent"), so a property only one side names is **not** animated: the swap lands it
   instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
   `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
-- **A shorthand and a longhand naming the same slot both snap.** `p-8` with `pt-2` — or `size-*`
-  with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
-  `border-t-*` — has two utilities claiming one slot, so neither animates and the swap lands them
-  both. Which of the two holds the shared slot at rest is not something the animation can derive:
-  for preset classes it is stylesheet declaration order, which the class strings do not carry, while
-  for bracket-form tokens it is class-array position instead. Use one or the other on a given axis.
-  One caveat: the rule only sees utilities whose value is readable, so an unreadable longhand beside
-  a readable shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still
-  drives the corner the longhand owns at rest.
+- **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
+  is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
+  corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
+  rest. An inline-resolved token (a bracket form, `-mt-2`, `translate-x-4`) holds it over any
+  stylesheet utility, an important one (`!w-[40px]`) over a plain one, and otherwise the later one in
+  the class string; between two stylesheet utilities the one the stylesheet declares later holds it,
+  wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
+  other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
+  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
+  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing

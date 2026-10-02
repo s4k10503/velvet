@@ -170,6 +170,16 @@ namespace Velvet.SourceGenerators.Tests
             return _rule.GetProperty("Gate")!.GetValue(rule)!.ToString()!;
         }
 
+        /// <summary>Where <paramref name="className"/>'s rule sits among the classes the sheets declare.</summary>
+        public int CascadePositionOf(string className)
+        {
+            if (!TryGet(className, out var rule))
+            {
+                throw new InvalidOperationException($"The table defines no rule for '{className}'.");
+            }
+            return (int)_rule.GetProperty("CascadePosition")!.GetValue(rule)!;
+        }
+
         /// <summary>How many bundled utilities declare <c>transition-property</c>.</summary>
         public int TransitionCount =>
             (int)_transitions.GetProperty("Count", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
