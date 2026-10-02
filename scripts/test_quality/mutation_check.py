@@ -2357,31 +2357,6 @@ def il_reading_assemblies(project, ran=None):
     return names - {None}
 
 
-def il_reading_fixtures(project, results):
-    """The fixtures `results` ran whose class a test file reading IL declares, by full name: the
-    readings a session cannot take for a mutant in an assembly they read, and an own launch over them
-    alone can."""
-    classes = set()
-    for root, directories, files in os.walk(str(project)):
-        directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
-        for name in files:
-            if name.endswith("Tests.cs"):
-                text = (Path(root) / name).read_text(encoding="utf-8", errors="replace")
-                if IL_READ.search(text):
-                    classes.update(FIXTURE_CLASS.findall(text))
-    try:
-        root = ET.parse(str(results)).getroot()
-    except (OSError, ET.ParseError):
-        return []
-    return sorted({suite.get("fullname") for suite in root.iter("test-suite")
-                   if suite.get("type") == "TestFixture" and suite.get("name") in classes})
-
-
-def fixture_scope(fixtures):
-    """A -testFilter selecting exactly `fixtures`' cases, one anchored term each."""
-    return ["-testFilter", ";".join("^{}$".format(re.sub(r"[.+]", "[.+]", fixture)) for fixture in fixtures)]
-
-
 def killed_by_behaviour(names, text_readers):
     """The failing cases that are not a text-reading fixture's.
 
@@ -2885,11 +2860,10 @@ def confirmed_for(plan, position, runs, found):
 
 
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
-                       baseline_wall, text_readers, whole_scope, campaign, scope, il_left=None):
+                       baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
     (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it.
-    Every other mutant is left to its own launches. A survivor in an assembly a fixture reads the IL
-    of is put in `il_left` with its session reading, which stands for every fixture but those."""
+    Every other mutant is left to its own launches."""
     directory = output / "session"
     directory.mkdir(exist_ok=True)
     for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
@@ -2956,12 +2930,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                   confirmed_for(plan, position, runs, found), text_readers)
         if reading is not None and reading[0] in SURVIVING and assembly in il_read:
             # The session compiled every guard into the assembly, so a fixture reading its IL read the
-            # union of the mutants rather than this one; every other fixture ran this mutant alone.
-            if il_left is not None:
-                il_left[index] = reading[:2]
-                print("[{}] the session's reading stands but for the fixtures reading {}'s IL, which "
-                      "run alone in its own launch".format(index, assembly))
-                continue
+            # union of the mutants rather than this one.
             reading = None
         if reading is None:
             print("[{}] the session's reading does not stand, so it takes its own launch".format(index))
@@ -3286,7 +3255,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # whose session reading does not stand -- takes its own launches below, as every mutant once did.
     # Not under --editor-arg: the runner starts each stage itself, so an argument meant for the test
     # framework would scope the baseline and the own launches and not the session's stages.
-    in_session, il_left = {}, {}
+    in_session = {}
     if args.editor_arg and not args.launch_per_mutant:
         print("--editor-arg reaches no session stage, so every mutant takes its own launches")
     if not args.launch_per_mutant and not args.editor_arg:
@@ -3295,7 +3264,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
         if pending:
             in_session = measure_in_session(args, project, holder, output, mutants, pending,
                                             baseline_results, baseline, baseline_wall, text_readers,
-                                            excluding(scope, text_readers), campaign, scope, il_left)
+                                            excluding(scope, text_readers), campaign, scope)
     own = set(selected) - set(in_session)
 
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
@@ -3323,27 +3292,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             print("{} alone passed in {:.0f}s, so each of its mutants is given {:.0f}s there".format(
                 ", ".join(names), area_wall, bound))
             attempts[area] = (attempt, names, bound, counts["total"])
-
-    # The IL-reading fixtures' own baseline, taken as an area's is: what a mutant in `il_left` runs in
-    # place of the whole suite, whose every other fixture its session reading already answered for.
-    il_attempt = None
-    fixtures = il_reading_fixtures(project, baseline_results) if il_left else []
-    if fixtures:
-        attempt = excluding(fixture_scope(fixtures), text_readers) + args.editor_arg
-        results = output / "baseline-il.xml"
-        if results.exists():
-            results.unlink()
-        il_wall, timed_out, _ = run_suite(args.unity, project, args.platform, attempt, results,
-                                          output / "baseline-il.log", ceiling, holder)
-        counts = read_counts(results)
-        if timed_out or not counts or counts["failed"] or counts["inconclusive"] or not counts["passed"]:
-            print("the fixtures reading IL did not pass green alone, so their mutants run on the whole "
-                  "suite")
-        else:
-            bound = min(ceiling, il_wall * NARROW_MARGIN)
-            print("the {} fixture(s) reading IL passed alone in {:.0f}s, so each mutant the session left "
-                  "to them is given {:.0f}s there".format(len(fixtures), il_wall, bound))
-            il_attempt = (attempt, ("the fixtures reading IL",), bound, counts["total"])
 
     originals = {path: path.read_text() for path in targets}
     written = {}
@@ -3392,10 +3340,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
-            il_run = index in il_left and il_attempt is not None
-            if il_run:
-                attempt, narrowed_to, narrow_bound, area_cases = il_attempt
-            early, wall, neighbours, late, crashed, stands = [], 0.0, 0, False, None, None
+            early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
                 narrowed = output / "mutant-{:03d}-narrowed.xml".format(index)
                 narrowed_log = output / "mutant-{:03d}-narrowed.log".format(index)
@@ -3410,21 +3355,10 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                                       text_readers)
                 if not early:
                     crashed = mutant_crash(narrowed, narrowed_log, dll, baseline_hashes)
-                narrowed_counts = read_counts(narrowed)
-                # A complete pass of the IL-reading fixtures over this mutant's own build is the reading
-                # its session could not take, so the session's verdict stands with it. Showing them an
-                # unguarded copy inside the session instead was rejected: that copy is the unmutated
-                # program, which they pass whatever the mutant does. A complete area pass is no verdict,
-                # so the whole suite still runs.
-                if (il_run and not early and not crashed
-                        and not timed_out and narrowed_counts and not narrowed_counts["failed"]
-                        and not narrowed_counts["inconclusive"]
-                        and complete_result(narrowed, since, area_cases)
-                        and sha(dll) != baseline_hashes.get(dll.name)):
-                    stands = il_left[index]
+                # A complete narrowed pass is no verdict, so the whole suite still runs.
                 late = late and bool(early)
             timed_out = False
-            if not early and not crashed and stands is None:
+            if not early and not crashed:
                 since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
                                                    results, log, args.timeout, holder)
@@ -3452,10 +3386,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             elif crashed:
                 mutant.verdict = CRASHED
                 mutant.detail = crashed[:160]
-            elif stands is not None:
-                mutant.verdict, detail = stands
-                mutant.detail = "{}; the session, and the fixtures reading IL alone over its own build" \
-                    .format(detail or "-")
             # Only where no result could be read: a readable one is the suite's own reading, and a
             # kill taken from the wall clock would override it. One short of complete is left to
             # TIMED_OUT.

@@ -5985,8 +5985,7 @@ class SessionRoutingTests(unittest.TestCase):
 
 
     def test_Given_ASurvivorInAnAssemblyAFixtureReadsTheILOf_When_TheSessionEnds_Then_ItTakesItsOwnLaunch(self):
-        # Arrange — that fixture read every guard compiled together, not this mutant's build, and the
-        # baseline ran none of the fixtures reading IL, so nothing narrower than the suite answers.
+        # Arrange — that fixture read every guard compiled together, not this mutant's build.
         campaign = self.campaign
         campaign.outcome = "survived"
         self.il_read = {mutation_check.assembly_of(campaign.source), "Elsewhere"}
@@ -5996,83 +5995,6 @@ class SessionRoutingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
-
-    # The fixture reading IL, and one that does not.
-    IL_FIXTURE_BASELINE = ('<test-run total="1" passed="1" failed="0" inconclusive="0">'
-                           '<test-suite type="TestFixture" name="ProbeILTests" fullname="Velvet.Tests.ProbeILTests" />'
-                           '<test-suite type="TestFixture" name="ProbeTests" fullname="Velvet.Tests.ProbeTests" />'
-                           '</test-run>')
-
-    COMPLETE_PASS = ('<test-run result="Passed" total="1" testcasecount="1" passed="1" failed="0" '
-                     'inconclusive="0" />')
-
-    def il_read_survivor(self, narrowed=COMPLETE_PASS):
-        """A survivor the session read, in an assembly the project's one IL-reading fixture reads, run
-        with `narrowed` as what that fixture's own launch over the mutant writes."""
-        campaign = self.campaign
-        campaign.outcome = "survived"
-        campaign.baseline_text = self.IL_FIXTURE_BASELINE
-        reader = campaign.project / mutation_check.PACKAGE / "Runtime/Tests/Editor/ProbeILTests.cs"
-        reader.parent.mkdir(parents=True, exist_ok=True)
-        reader.write_text('class ProbeILTests { void A() { ModuleDefinition.ReadModule("x"); } }')
-        self.il_read = {mutation_check.assembly_of(campaign.source)}
-        scopes, plain = [], campaign.run_suite
-
-        def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
-            scopes.append((Path(results).name, list(scope)))
-            reading = plain(unity, project, platform, scope, results, log, timeout, holder)
-            if Path(results).name == "mutant-001-narrowed.xml":
-                Path(results).write_text(narrowed)
-            return reading
-        campaign.run_suite = run_suite
-        campaign.run("--max", "1")
-        return campaign, scopes
-
-    def test_Given_AnILReadSurvivor_When_ItsOwnLaunchRuns_Then_ItRunsTheILReadingFixturesAlone(self):
-        # Act
-        _, scopes = self.il_read_survivor()
-
-        # Assert — after the baseline and those fixtures' own baseline, one launch over them, no whole one.
-        self.assertEqual([(name, scope[scope.index("-testFilter") + 1] if "-testFilter" in scope else None)
-                          for name, scope in scopes],
-                         [("baseline.xml", None), ("baseline-il.xml", "^Velvet[.+]Tests[.+]ProbeILTests$"),
-                          ("mutant-001-narrowed.xml", "^Velvet[.+]Tests[.+]ProbeILTests$")])
-
-    def test_Given_AnILReadSurvivorThoseFixturesPassOver_When_ItIsRecorded_Then_ItSurvives(self):
-        # Act
-        campaign, _ = self.il_read_survivor()
-
-        # Assert
-        self.assertEqual(campaign.recorded(), mutation_check.SURVIVED)
-
-    def test_Given_AnILReadSurvivorThoseFixturesFailOver_When_ItIsRecorded_Then_ItIsKilled(self):
-        # Act — the fixture reading this mutant's own build notices what the guarded build hid.
-        campaign, _ = self.il_read_survivor(FAILING_RESULTS)
-
-        # Assert
-        self.assertEqual(campaign.recorded(), mutation_check.KILLED)
-
-    def test_Given_AnILReadSurvivorWhoseFixturesFailedOnlyAsTextReaders_When_ItIsMeasured_Then_TheWholeSuiteRuns(self):
-        # Arrange — a failure that is no kill is still no pass.
-        (self.campaign.project / mutation_check.PACKAGE / "Runtime/Tests/Editor/CTests.cs").parent.mkdir(
-            parents=True, exist_ok=True)
-        (self.campaign.project / mutation_check.PACKAGE / "Runtime/Tests/Editor/CTests.cs").write_text(
-            "class C { object Corpus = DocumentationCorpus.All; }")
-
-        # Act
-        campaign, _ = self.il_read_survivor('<test-run result="Failed" total="1" testcasecount="1" passed="0" '
-                                            'failed="1" inconclusive="0"><test-case fullname="N.C.Kills" '
-                                            'result="Failed" /></test-run>')
-
-        # Assert
-        self.assertEqual(campaign.launched[-1], "mutant-001.xml")
-
-    def test_Given_AnILReadSurvivorWhoseFixturesLaunchFellShort_When_ItIsMeasured_Then_TheWholeSuiteRuns(self):
-        # Act — fewer cases than those fixtures' baseline held, so the launch is no reading.
-        campaign, _ = self.il_read_survivor('<test-run total="0" passed="0" failed="0" inconclusive="0" />')
-
-        # Assert
-        self.assertEqual(campaign.launched[-1], "mutant-001.xml")
 
     def test_Given_ASurvivorTheSessionRead_When_ItsAssemblyIsAsked_Then_ItIsAskedOfWhatTheBaselineRan(self):
         # Arrange — only those assemblies' fixtures run beside the mutant.
@@ -6097,35 +6019,6 @@ class SessionRoutingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.rewrites, [])
-
-
-class ILReaderCoverageTests(unittest.TestCase):
-    """A session survivor in an assembly some fixture reads the IL of stands once those fixtures pass
-    over its own build, so a fixture opening the compiled assembly that `IL_READ` does not find would
-    have its pass over the session's guarded build taken as this mutant's."""
-
-    # How a fixture finds a compiled assembly on disk, which is independent of how it then reads it.
-    LOCATES = re.compile(r"\.Assembly\.Location\b|ScriptAssemblies")
-
-    def test_Given_TheFixturesOpeningACompiledAssembly_When_Read_Then_EachIsReadAsILOrLeftOutOfEveryLaunch(self):
-        # Arrange — the package's Unity test sources; a `~` directory is not compiled by the editor.
-        readers = mutation_check.text_reading_fixtures(REPO_ROOT)
-        opening = []
-        for root, directories, files in os.walk(str(REPO_ROOT)):
-            directories[:] = [name for name in directories
-                              if name not in ("Library", "Logs", "Temp", "obj", ".git") and not name.endswith("~")]
-            for name in files:
-                if name.endswith("Tests.cs"):
-                    text = (Path(root) / name).read_text(encoding="utf-8", errors="replace")
-                    if self.LOCATES.search(text):
-                        opening.append((name, text))
-
-        # Act
-        unread = sorted(name for name, text in opening if not mutation_check.IL_READ.search(text)
-                        and not set(mutation_check.FIXTURE_CLASS.findall(text)) & readers)
-
-        # Assert — and some fixture does open one, or the reading measured nothing.
-        self.assertEqual((bool(opening), unread), (True, []))
 
 
 class ILReadingAssemblyTests(unittest.TestCase):
