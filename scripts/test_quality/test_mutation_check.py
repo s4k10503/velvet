@@ -3712,7 +3712,8 @@ class LaunchTreeTests(unittest.TestCase):
 
     SOURCE = mutation_check.PACKAGE + "/Editor/Record.cs"
 
-    def two_launches(self, relative, leave, between=None, results=None, before=None, launches=2):
+    def two_launches(self, relative, leave, between=None, results=None, before=None, launches=2,
+                     uncommitted=None):
         """What each launch read at `relative`, each writing `left` there when `leave` holds, `before`
         running ahead of the first and `between` ahead of each later one. What the campaign printed and
         what it stopped with are kept as `printed` and `stopped`, and the run's put-back copies under
@@ -3739,6 +3740,8 @@ class LaunchTreeTests(unittest.TestCase):
             subprocess.run(git + ["init", "-q"], check=True)
             subprocess.run(git + ["add", ".gitignore", "ProjectSettings", "Packages"], check=True)
             subprocess.run(git + ["commit", "-q", "-m", "tree"], check=True)
+            if uncommitted is not None:
+                source.write_text(uncommitted)
             holder = mutation_check.Holder(project / mutation_check.SENTINEL)
             output = project / "out"
             holder.state = mutation_check.tree_before_baseline(project, output, holder.sentinel)
@@ -3762,7 +3765,7 @@ class LaunchTreeTests(unittest.TestCase):
                 self.put_back = holder.state.put_back
                 self.left = {relative: copy.read_text() for relative, copy in holder.state.put_back if copy}
                 self.after = {relative: (project / relative).read_text() if (project / relative).exists()
-                              else "-" for relative in ("ProjectSettings/Graphics.asset", "Notes.txt")}
+                              else "-" for relative in ("ProjectSettings/Graphics.asset", "Notes.txt", self.SOURCE)}
             return (root / "seen").read_text().splitlines()
 
     def test_Given_AFileALaunchLeft_When_TheNextLaunchPutsItBack_Then_ItsLineNamesWhereTheCopyIs(self):
@@ -3800,6 +3803,61 @@ class LaunchTreeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(kept, ["first", "second"])
+
+    def test_Given_AHeldSourceReleasedThenEdited_When_TheNextLaunchStarts_Then_TheEditStays(self):
+        # Arrange — edited after the campaign put it back and before the next launch.
+        def hold(holder, project):
+            source = project / self.SOURCE
+            holder.hold(source, source.read_text(), "mutated", "a mutant")
+            source.write_text("mutated")
+
+        def release_then_edit(holder, project):
+            holder.release()
+            (project / self.SOURCE).write_text("an edit")
+
+        # Act
+        self.two_launches(self.SOURCE, leave=False, before=hold, between=release_then_edit)
+
+        # Assert — the campaign stopped naming it.
+        self.assertEqual((self.after[self.SOURCE], self.SOURCE in (self.stopped or "")), ("an edit", True))
+
+    def test_Given_AnUncommittedSourceHeldAndReleased_When_TheNextLaunchStarts_Then_ItRuns(self):
+        # Arrange — a local campaign over a change not yet committed, as `--base` reads one.
+        def hold(holder, project):
+            source = project / self.SOURCE
+            holder.hold(source, source.read_text(), "mutated", "a mutant")
+            source.write_text("mutated")
+
+        # Act
+        seen = self.two_launches(self.SOURCE, leave=False, before=hold, between=lambda holder, _: holder.release(),
+                                 uncommitted="uncommitted")
+
+        # Assert
+        self.assertEqual((self.stopped, seen), (None, ["mutated", "uncommitted"]))
+
+    def test_Given_APutBackUnderAStrictUmask_When_ItsCopyIsKept_Then_ItIsReadableByOthers(self):
+        # Arrange — CI keeps it as root inside the editor's container and uploads it as another user.
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".gitignore").write_text("/out/\n")
+            subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
+            state = mutation_check.tree_before_baseline(project, project / "out", project / mutation_check.SENTINEL)
+            (project / "deep" / "er").mkdir(parents=True)
+            (project / "deep" / "er" / "Left.txt").write_text("left")
+            previous = os.umask(0o077)
+            try:
+                # Act
+                state.restore([])
+            finally:
+                os.umask(previous)
+            stash = project / "out" / "put-back"
+            unreadable = sorted(str(path.relative_to(stash)) for path in [stash, *stash.rglob("*")]
+                                if path.stat().st_mode & (0o005 if path.is_dir() else 0o004)
+                                != (0o005 if path.is_dir() else 0o004))
+            kept = sum(1 for path in stash.rglob("Left.txt"))
+
+        # Assert
+        self.assertEqual((kept, unreadable), (1, []))
 
     def test_Given_ATrackedFileEditedBetweenTwoLaunches_When_TheNextLaunchStarts_Then_TheEditStays(self):
         # Arrange — no launch was running when it changed.
@@ -3904,6 +3962,31 @@ class LaunchTreeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(seen[1], "<test-run />")
+
+
+class EditedSourceCampaign(StubbedCampaign):
+    """A campaign whose mutated source is edited while it waits for the machine before a mutant."""
+
+    EDIT = "// somebody's edit\n"
+
+    def unity_busy(self):
+        busy = super().unity_busy()
+        if len(self.seen) == 2:
+            self.source.write_text(self.EDIT)
+        return busy
+
+
+class EditedSourceTests(unittest.TestCase):
+    def test_Given_ASourceEditedBeforeItsMutantIsWritten_When_TheCampaignRuns_Then_ItStopsAndTheEditStays(self):
+        # Arrange
+        campaign = EditedSourceCampaign()
+
+        # Act
+        stopped = campaign.run("--max", "1", "--launch-per-mutant")
+
+        # Assert
+        self.assertEqual((campaign.source.read_text(), "changed since the campaign read it" in str(stopped)),
+                         (EditedSourceCampaign.EDIT, True))
 
 
 class PutBackSummaryCampaign(StubbedCampaign):
