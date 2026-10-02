@@ -49,6 +49,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -1676,7 +1677,12 @@ class TreeState:
 
     Put back by the harness rather than by the fixtures that write them, because an editor killed at its
     bound runs nothing of its own, and the launch after it would read what that editor's tests left.
-    What is overwritten or removed is copied under `stash` first, so nothing a launch puts back is lost.
+    What is overwritten or removed is copied first, under a directory of this run's own inside `stash`:
+    a stopped campaign is finished by running again over the same `--output`.
+
+    Only what a launch changed is put back. A file that changed between the end of one launch and the
+    start of the next changed while no editor of the campaign's was running, so somebody else changed it,
+    and the campaign stops rather than overwrite their edit.
     """
 
     def __init__(self, project, files, outside, stash):
@@ -1684,7 +1690,11 @@ class TreeState:
         self.files = files
         self.outside = [Path(path) for path in outside]
         self.stash = Path(stash)
+        self.run = None
         self.launches = 0
+        self.put_back = []
+        self.after = None
+        self.kept_after = set()
 
     @classmethod
     def capture(cls, project, outside, stash):
@@ -1706,22 +1716,65 @@ class TreeState:
         shown = subprocess.run(["git", "-C", str(self.project), "show", ":" + relative], capture_output=True)
         return shown.stdout if shown.returncode == 0 else None
 
+    def relative_kept(self, keep):
+        kept = set()
+        for path in keep:
+            try:
+                kept.add(Path(path).resolve().relative_to(self.project.resolve()).as_posix())
+            except ValueError:
+                continue
+        return kept
+
+    def reading(self):
+        """Relative path -> its content's hash, or None where it is absent, for every file this state
+        answers for."""
+        found = {}
+        for relative in set(reported_paths(self.project)) | set(self.files):
+            if not self.excluded(self.project / relative):
+                content = file_bytes(self.project / relative)
+                found[relative] = None if content is None else hashlib.sha256(content).hexdigest()
+        return found
+
+    def settled(self, keep):
+        """Records the tree a launch ended on, which the next `restore` compares against."""
+        self.after, self.kept_after = self.reading(), self.relative_kept(keep)
+
+    def changed_since_last_launch(self, keep):
+        if self.after is None:
+            return []
+        now, kept = self.reading(), self.relative_kept(keep) | self.kept_after
+        return sorted(relative for relative in set(now) | set(self.after)
+                      if relative not in kept and now.get(relative) != self.after.get(relative))
+
     def restore(self, keep):
         """Puts back every file that differs from the reading, other than those in `keep`, and returns
-        their relative paths."""
+        (relative path, where what was there was copied, or None where nothing was) for each.
+
+        Refuses, putting nothing back, where a file changed since the last launch ended."""
+        edited = self.changed_since_last_launch(keep)
+        if edited:
+            raise SystemExit(
+                "{} changed in the tree while no editor of this campaign was running, so somebody else "
+                "changed it, and putting the tree back would overwrite their edit. A campaign owns its "
+                "worktree while it runs; finish the edit elsewhere and run the campaign again over the "
+                "same --output to measure what is left.".format(", ".join(edited)))
         self.launches += 1
         reported = reported_paths(self.project)
-        kept = {Path(path).resolve() for path in keep}
+        kept = self.relative_kept(keep)
         restored = []
         for relative in sorted(set(reported) | set(self.files)):
             path = self.project / relative
-            if self.excluded(path) or path.resolve() in kept:
+            if self.excluded(path) or relative in kept:
                 continue
             want, have = self.wanted(relative, reported.get(relative, False)), file_bytes(path)
             if want == have:
                 continue
+            copy = None
             if have is not None:
-                copy = self.stash / str(self.launches) / relative
+                if self.run is None:
+                    self.stash.mkdir(parents=True, exist_ok=True)
+                    self.run = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%dT%H%M%S-"), dir=str(self.stash)))
+                copy = self.run / str(self.launches) / relative
                 copy.parent.mkdir(parents=True, exist_ok=True)
                 copy.write_bytes(have)
             if want is None:
@@ -1733,8 +1786,15 @@ class TreeState:
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(want)
-            restored.append(relative)
+            restored.append((relative, copy))
+        self.put_back.extend(restored)
         return restored
+
+
+def put_back_line(relative, copy):
+    if copy is None:
+        return "  {}, which the launch before had removed".format(relative)
+    return "  {}; what the launch before left there is at {}".format(relative, copy)
 
 
 def tree_before_baseline(project, output, sentinel):
@@ -1921,8 +1981,8 @@ def launch(command, timeout, holder, env=None, expired=None):
     if holder is not None and holder.state is not None:
         restored = holder.state.restore(holder.held_paths())
         if restored:
-            print("put back before this launch, as the baseline saw them: {}".format(", ".join(restored)),
-                  flush=True)
+            print("\n".join(["put back before this launch, as the baseline saw them:"]
+                            + [put_back_line(relative, copy) for relative, copy in restored]), flush=True)
     start = time.time()
     said = []
     if holder is not None:
@@ -1972,6 +2032,8 @@ def launch(command, timeout, holder, env=None, expired=None):
     wall = time.time() - start
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
+    if holder is not None and holder.state is not None:
+        holder.state.settled(holder.held_paths())
     return wall, timed_out, peak, "".join(said), child.pid
 
 
@@ -3683,8 +3745,14 @@ def main():
     else:
         selected = sharded(chosen, args.shard)
         if selected:
-            measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
-                    set(selected))
+            try:
+                measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
+                        set(selected))
+            finally:
+                if holder.state is not None and holder.state.put_back:
+                    print("\n".join(["\nput back during this campaign, as the baseline saw them:"]
+                                    + [put_back_line(relative, copy)
+                                       for relative, copy in holder.state.put_back]), flush=True)
         else:
             print(coverage)
         if args.shard is not None:

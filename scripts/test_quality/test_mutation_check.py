@@ -3712,9 +3712,11 @@ class LaunchTreeTests(unittest.TestCase):
 
     SOURCE = mutation_check.PACKAGE + "/Editor/Record.cs"
 
-    def two_launches(self, relative, leave, between=None, results=None):
-        """What each of two launches read at `relative`, each writing `left` there when `leave` holds and
-        `between` running after the first."""
+    def two_launches(self, relative, leave, between=None, results=None, before=None, launches=2):
+        """What each launch read at `relative`, each writing `left` there when `leave` holds, `before`
+        running ahead of the first and `between` ahead of each later one. What the campaign printed and
+        what it stopped with are kept as `printed` and `stopped`, and the run's put-back copies under
+        `self.stash`."""
         body = textwrap.dedent("""\
             path = os.path.join(project, {relative!r})
             with open(os.path.join(os.path.dirname(project), "seen"), "a") as seen:
@@ -3724,6 +3726,7 @@ class LaunchTreeTests(unittest.TestCase):
                 open(path, "w").write("left")
             open(results, "w").write("<test-run />")
             """).format(relative=relative, leave=leave)
+        self.printed, self.stopped = "", None
         with scripted_editor(body) as (editor, project, root, _holders):
             (project / "ProjectSettings").mkdir()
             (project / "ProjectSettings/Graphics.asset").write_text("clean")
@@ -3740,18 +3743,105 @@ class LaunchTreeTests(unittest.TestCase):
             output = project / "out"
             holder.state = mutation_check.tree_before_baseline(project, output, holder.sentinel)
             output.mkdir()
+            spoken = io.StringIO()
             try:
-                with contextlib.redirect_stdout(io.StringIO()):
-                    for launch in range(2):
-                        if launch and between:
-                            between(holder, project)
+                with contextlib.redirect_stdout(spoken):
+                    for launch in range(launches):
+                        hook = between if launch else before
+                        if hook:
+                            hook(holder, project)
                         written = (results or (lambda _project, number: root / "results-{}.xml".format(
                             number)))(project, launch)
                         mutation_check.run_suite(editor, str(project), "EditMode", [], written,
                                                  root / "run.log", 30, holder)
+            except SystemExit as stop:
+                self.stopped = str(stop.code)
             finally:
                 holder.release()
+                self.printed = spoken.getvalue()
+                self.put_back = holder.state.put_back
+                self.left = {relative: copy.read_text() for relative, copy in holder.state.put_back if copy}
+                self.after = {relative: (project / relative).read_text() if (project / relative).exists()
+                              else "-" for relative in ("ProjectSettings/Graphics.asset", "Notes.txt")}
             return (root / "seen").read_text().splitlines()
+
+    def test_Given_AFileALaunchLeft_When_TheNextLaunchPutsItBack_Then_ItsLineNamesWhereTheCopyIs(self):
+        # Act
+        self.two_launches("ProjectSettings/Graphics.asset", leave=True)
+
+        # Assert
+        (relative, copy), = self.put_back
+        self.assertIn(mutation_check.put_back_line(relative, copy), self.printed.splitlines())
+
+    def test_Given_AFileALaunchLeft_When_TheNextLaunchPutsItBack_Then_TheCopyHoldsWhatTheLaunchLeft(self):
+        # Act
+        self.two_launches("ProjectSettings/Graphics.asset", leave=True)
+
+        # Assert
+        self.assertEqual(self.left, {"ProjectSettings/Graphics.asset": "left"})
+
+    def test_Given_TwoRunsOverOneOutput_When_EachPutsBackTheSameFile_Then_BothCopiesAreKept(self):
+        # Arrange — a stopped campaign is finished by a second run over the same --output.
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".gitignore").write_text("/out/\n")
+            subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
+            output = project / "out"
+            runs = [mutation_check.tree_before_baseline(project, output, project / mutation_check.SENTINEL)
+                    for _ in range(2)]
+            copies = []
+
+            # Act
+            for run, left in zip(runs, ("first", "second")):
+                (project / "Left.txt").write_text(left)
+                (_, copy), = run.restore([])
+                copies.append(copy)
+            kept = [copy.read_text() for copy in copies]
+
+        # Assert
+        self.assertEqual(kept, ["first", "second"])
+
+    def test_Given_ATrackedFileEditedBetweenTwoLaunches_When_TheNextLaunchStarts_Then_TheEditStays(self):
+        # Arrange — no launch was running when it changed.
+        def edit(_holder, project):
+            (project / "ProjectSettings/Graphics.asset").write_text("an edit")
+
+        # Act
+        self.two_launches("ProjectSettings/Graphics.asset", leave=False, between=edit)
+
+        # Assert — the campaign stopped naming it.
+        self.assertEqual((self.after["ProjectSettings/Graphics.asset"],
+                          "ProjectSettings/Graphics.asset" in (self.stopped or "")), ("an edit", True))
+
+    def test_Given_AFileCreatedBetweenTwoLaunches_When_TheNextLaunchStarts_Then_ItStays(self):
+        # Arrange
+        def create(_holder, project):
+            (project / "Notes.txt").write_text("notes")
+
+        # Act
+        self.two_launches("ProjectSettings/Graphics.asset", leave=False, between=create)
+
+        # Assert
+        self.assertEqual((self.after["Notes.txt"], "Notes.txt" in (self.stopped or "")), ("notes", True))
+
+    def test_Given_AMutationReleasedAndAnotherHeldBetweenLaunches_When_TheNextLaunchStarts_Then_ItRuns(self):
+        # Arrange — the first launch ran over a held mutation the campaign then put back itself.
+        def hold(holder, project):
+            source = project / self.SOURCE
+            holder.hold(source, source.read_text(), "mutated", "a mutant")
+            source.write_text("mutated")
+
+        def release_and_hold_another(holder, project):
+            holder.release()
+            other = project / "ProjectSettings/Graphics.asset"
+            holder.hold(other, other.read_text(), "mutated too", "another mutant")
+            other.write_text("mutated too")
+
+        # Act
+        seen = self.two_launches(self.SOURCE, leave=False, before=hold, between=release_and_hold_another)
+
+        # Assert
+        self.assertEqual((self.stopped, len(seen)), (None, 2))
 
     def test_Given_AFileALaunchLeftThatGitDoesNotTrack_When_TheNextLaunchStarts_Then_ItIsGone(self):
         # Act
@@ -3814,6 +3904,33 @@ class LaunchTreeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(seen[1], "<test-run />")
+
+
+class PutBackSummaryCampaign(StubbedCampaign):
+    """A campaign whose baseline editor leaves a file git reports, through a real `launch`."""
+
+    LEFT = "ProjectSettings/Left.json"
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        path = self.project / self.LEFT
+        script = ("import os; os.makedirs({!r}, exist_ok=True); open({!r}, 'w').write('left')".format(
+            str(path.parent), str(path)) if Path(results).name == "baseline.xml" else "pass")
+        mutation_check.launch([sys.executable, "-c", script], 30, holder)
+        return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+
+
+class PutBackSummaryTests(unittest.TestCase):
+    def test_Given_ALaunchThatLeftAFile_When_TheCampaignEnds_Then_ItsSummaryNamesTheCopy(self):
+        # Arrange
+        campaign = PutBackSummaryCampaign()
+
+        # Act
+        campaign.run("--max", "1", "--launch-per-mutant")
+
+        # Assert — the copy of what the baseline left, listed after the closing heading.
+        copy, = (campaign.project / "out" / "put-back").glob("**/" + PutBackSummaryCampaign.LEFT)
+        closing = campaign.printed.partition("put back during this campaign")[2].splitlines()
+        self.assertIn(mutation_check.put_back_line(PutBackSummaryCampaign.LEFT, copy.resolve()), closing)
 
 
 class ProjectLockTests(unittest.TestCase):
