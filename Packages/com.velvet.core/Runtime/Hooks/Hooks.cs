@@ -908,7 +908,9 @@ namespace Velvet
                 return default;
             }
             var data = UseContext(RouterContext.LoaderData);
-            return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
+            object? value = null;
+            data?.TryGetValue(routeId, out value);
+            return value is T typed ? typed : default;
         }
 
         /// <summary>

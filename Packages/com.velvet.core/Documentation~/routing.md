@@ -78,6 +78,11 @@ navigation is sequenced against it.
 | `LoaderMode.Await` (default) | The navigation waits. The route already on screen stays there, `Hooks.UseNavigation().State` reports `Loading`, and the location commits with the data. | a plain `loader` |
 | `LoaderMode.Suspend` | The navigation commits at once and the loader runs on. `Hooks.UseLoaderData` returns `default` until it resolves, then the route re-renders. | none: React Router defers a value inside a loader's data instead, as the next section does |
 
+A loader receives a `RouteLoaderContext` carrying the matched `Params`, the `Url` being navigated to with
+its query string, and that query string parsed as `SearchParams` — what React Router's loader reads off
+its `params` and its `request`. A guard receives the same context, and an action's `RouteActionContext`
+carries the same `Url` and `SearchParams`.
+
 `Await` is the one that awaits real I/O, and an `Await` loader that never completes is a navigation
 that never commits. Loaders of one navigation all start before any of them is awaited, so the matched
 chain's loaders — a parent layout's and its child's — run concurrently rather than one after the next.

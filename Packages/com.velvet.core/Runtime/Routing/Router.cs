@@ -611,7 +611,7 @@ namespace Velvet
             ActionOutcome? action = null;
             try
             {
-                var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken);
+                var guardResult = await RunGuardChecks(matches, path, mode, pending, cancellationToken);
                 if (guardResult.HasValue)
                 {
                     return guardResult.Value;
@@ -635,7 +635,7 @@ namespace Velvet
                 }
                 mode = ModeAfterAction(mode, submission, action);
 
-                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, pending, cancellationToken,
+                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, path, pending, cancellationToken,
                     KeptFrom(path), LaunchLimit(matches, action));
                 if (loaderResult.HasValue)
                 {
@@ -762,6 +762,7 @@ namespace Velvet
 
         private async VelvetTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
+            string path,
             NavigationMode mode,
             PendingNavigation pending,
             CancellationToken cancellationToken)
@@ -787,6 +788,7 @@ namespace Velvet
                     {
                         Params = match.Params,
                         Path = match.MatchedPath,
+                        Url = path,
                     };
                     redirectTarget = match.Route.Guard(loaderContext);
                 }
@@ -857,6 +859,7 @@ namespace Velvet
         // per history entry.
         private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
+            string path,
             PendingNavigation pending,
             CancellationToken cancellationToken,
             IReadOnlyList<RouteMatch>? keptFrom,
@@ -866,7 +869,7 @@ namespace Velvet
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
             // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
             // which is what the check below is reading.
-            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken, keptFrom, launchLimit);
+            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken, keptFrom, launchLimit, path);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -1216,6 +1219,7 @@ namespace Velvet
                 Path = match.MatchedPath,
                 Method = submission.Method,
                 FormData = submission.FormData,
+                Url = path,
             };
             try
             {

@@ -17,6 +17,14 @@ namespace Velvet
 
         /// <summary>What the submission sent: the <c>formData</c> handed to <c>submit</c>.</summary>
         public object? FormData { get; init; }
+
+        /// <summary>The path submitted to, with its query string, as <see cref="RouteLoaderContext.Url"/> is.</summary>
+        public string Url { get; init; } = string.Empty;
+
+        /// <summary>The query string of <see cref="Url"/>, as <see cref="RouteLoaderContext.SearchParams"/> reads it.</summary>
+        public ISearchParams SearchParams => _searchParams ??= RouteQuery.ParseQuery(Url);
+
+        private ISearchParams? _searchParams;
     }
 
     /// <summary>How <see cref="SubmitFunction"/> and <see cref="Router.SubmitAsync(object, SubmitOptions, System.Threading.CancellationToken)"/> submit: React Router's <c>SubmitOptions</c>.</summary>
