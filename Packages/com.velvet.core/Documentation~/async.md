@@ -72,9 +72,9 @@ result.
 
 A member that fails does not end the wait — the others are still waited for, as `Task.WhenAll` waits.
 Awaiting the combination then throws what awaiting a `Task.WhenAll` throws: the first fault in argument
-order — the member's own exception — or, where no member faulted, an `OperationCanceledException`
-carrying the token of the first cancelled member in argument order, so a fault outranks a cancellation
-whichever arrived first. The combination keeps every member's fault in argument order, a member that is
+order — the member's own exception — or, where no member faulted, the first cancelled member's own
+`OperationCanceledException` in argument order, so a fault outranks a cancellation whichever arrived
+first. The combination keeps every member's fault in argument order, a member that is
 itself a faulted combination contributing all of its own, and a cancelled member contributing none.
 `AsTask()` hands them to the `Task`'s `Exception` as `Task.WhenAll` holds them, so await
 `VelvetTask.WhenAll(…).AsTask()` where each failure matters. `AttachExternalCancellation` keeps all of them,

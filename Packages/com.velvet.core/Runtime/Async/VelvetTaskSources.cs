@@ -364,10 +364,6 @@ namespace Velvet
             {
                 _source.TrySetResult();
             }
-            else if (failure is OperationCanceledException canceled)
-            {
-                _source.TrySetCanceled(canceled.CancellationToken);
-            }
             else
             {
                 _source.TrySetException(failure);
@@ -411,10 +407,6 @@ namespace Velvet
             if (failure == null)
             {
                 _source.TrySetResult(_results);
-            }
-            else if (failure is OperationCanceledException canceled)
-            {
-                _source.TrySetCanceled(canceled.CancellationToken);
             }
             else
             {

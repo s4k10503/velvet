@@ -8,9 +8,6 @@ namespace Velvet
     {
         Action MoveNext { get; }
 
-        VelvetTask Task { get; }
-
-
         void SetResult();
 
         void SetException(Exception exception);
@@ -19,9 +16,6 @@ namespace Velvet
     internal interface IVelvetTaskStateMachineRunner<T>
     {
         Action MoveNext { get; }
-
-        VelvetTask<T> Task { get; }
-
 
         void SetResult(T result);
 
@@ -45,14 +39,18 @@ namespace Velvet
 
         public Action MoveNext => _moveNext;
 
-        public VelvetTask Task => new(this);
-
         public short Version => _core.Version;
 
         // The runner reaches the builder's field before the state machine is copied onto it: a struct
         // state machine copies by value, so a copy taken first carries a null runner, and neither
         // SetResult nor SetException on the resumed copy then reaches the task the caller holds.
-        public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner? field)
+        // The task is taken here, at the version this call owns, and not on each read of the builder's
+        // Task: the consume resets the runner and returns it to the pool, so a later read would see the
+        // next version, and once the pool hands the runner on, another call's task.
+        public static void Rent(
+            ref TStateMachine stateMachine,
+            [NotNull] ref IVelvetTaskStateMachineRunner? field,
+            ref VelvetTask? task)
         {
             var runner = Pool.Rent();
             if (runner == null)
@@ -65,6 +63,7 @@ namespace Velvet
             }
 
             field = runner;
+            task = new VelvetTask(runner);
             runner._stateMachine = stateMachine;
             runner._returnedToPool = false;
         }
@@ -128,12 +127,14 @@ namespace Velvet
 
         public Action MoveNext => _moveNext;
 
-        public VelvetTask<T> Task => new(this);
-
         public short Version => _core.Version;
 
-        // Same publish-before-copy ordering as the non-generic AsyncVelvetTaskMethod.
-        public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner<T>? field)
+        // Same publish-before-copy ordering, and the same once-per-call task, as the non-generic
+        // AsyncVelvetTaskMethod.
+        public static void Rent(
+            ref TStateMachine stateMachine,
+            [NotNull] ref IVelvetTaskStateMachineRunner<T>? field,
+            ref VelvetTask<T>? task)
         {
             var runner = Pool.Rent();
             if (runner == null)
@@ -146,6 +147,7 @@ namespace Velvet
             }
 
             field = runner;
+            task = new VelvetTask<T>(runner);
             runner._stateMachine = stateMachine;
             runner._returnedToPool = false;
         }

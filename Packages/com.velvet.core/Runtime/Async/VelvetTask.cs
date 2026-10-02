@@ -94,14 +94,7 @@ namespace Velvet
 
             var source = VelvetTaskSourcePool.Rent();
             source.MarkReturnToPoolOnConsume();
-            if (exception is OperationCanceledException canceled)
-            {
-                source.TrySetCanceled(canceled.CancellationToken);
-            }
-            else
-            {
-                source.TrySetException(exception);
-            }
+            source.TrySetException(exception);
 
             return new VelvetTask(source);
         }
@@ -115,14 +108,7 @@ namespace Velvet
 
             var source = VelvetTaskSourcePool<T>.Rent();
             source.MarkReturnToPoolOnConsume();
-            if (exception is OperationCanceledException canceled)
-            {
-                source.TrySetCanceled(canceled.CancellationToken);
-            }
-            else
-            {
-                source.TrySetException(exception);
-            }
+            source.TrySetException(exception);
 
             return new VelvetTask<T>(source);
         }
@@ -384,7 +370,7 @@ namespace Velvet
     {
         IVelvetTaskStateMachineRunner? _runner;
         Exception? _exception;
-        VelvetTask? _faultedTask;
+        VelvetTask? _task;
 
         public static VelvetTaskMethodBuilder Create() => default;
 
@@ -392,14 +378,14 @@ namespace Velvet
         {
             get
             {
-                if (_runner != null)
+                if (_task is { } task)
                 {
-                    return _runner.Task;
+                    return task;
                 }
 
                 if (_exception != null)
                 {
-                    return _faultedTask ??= VelvetTask.FromException(_exception);
+                    return (_task = VelvetTask.FromException(_exception)).Value;
                 }
 
                 return VelvetTask.CompletedTask;
@@ -443,7 +429,7 @@ namespace Velvet
         {
             if (_runner == null)
             {
-                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner);
+                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner, ref _task);
             }
 
             awaiter.OnCompleted(_runner.MoveNext);
@@ -455,7 +441,7 @@ namespace Velvet
         {
             if (_runner == null)
             {
-                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner);
+                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner, ref _task);
             }
 
             awaiter.UnsafeOnCompleted(_runner.MoveNext);
@@ -467,7 +453,7 @@ namespace Velvet
         IVelvetTaskStateMachineRunner<T>? _runner;
         Exception? _exception;
         T _result;
-        VelvetTask<T>? _faultedTask;
+        VelvetTask<T>? _task;
 
         public static VelvetTaskMethodBuilder<T> Create() => default;
 
@@ -475,14 +461,14 @@ namespace Velvet
         {
             get
             {
-                if (_runner != null)
+                if (_task is { } task)
                 {
-                    return _runner.Task;
+                    return task;
                 }
 
                 if (_exception != null)
                 {
-                    return _faultedTask ??= VelvetTask.FromException<T>(_exception);
+                    return (_task = VelvetTask.FromException<T>(_exception)).Value;
                 }
 
                 return new VelvetTask<T>(_result);
@@ -530,7 +516,7 @@ namespace Velvet
         {
             if (_runner == null)
             {
-                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner);
+                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner, ref _task);
             }
 
             awaiter.OnCompleted(_runner.MoveNext);
@@ -542,7 +528,7 @@ namespace Velvet
         {
             if (_runner == null)
             {
-                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner);
+                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner, ref _task);
             }
 
             awaiter.UnsafeOnCompleted(_runner.MoveNext);
