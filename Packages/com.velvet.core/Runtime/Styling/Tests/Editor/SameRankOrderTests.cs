@@ -81,6 +81,17 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoSupportsQueriesOnOnePaddingSide_When_BothHold_Then_TheLaterQueryWins()
+        {
+            // Arrange / Act — "display:flex" sorts before "gap:1px", so Tailwind emits the px- rule later; property
+            // order alone would put px- first.
+            var leaf = MountLeaf("supports-[gap:1px]:px-[20px] supports-[display:flex]:pl-[10px]");
+
+            // Assert
+            Assert.That(leaf.style.paddingLeft.value.value, Is.EqualTo(20f));
+        }
+
+        [Test]
         public void Given_TwoHoverWidthsWrittenLargestFirst_When_Hovered_Then_TheCandidateOrderDecides()
         {
             // Arrange — hover:w-[10px] sorts before hover:w-[20px], so the 20 px rule is emitted later.
@@ -292,6 +303,34 @@ namespace Velvet.Tests
             // Assert — no inline margin-top is left to hide the class.
             Assert.That((leaf.style.marginTop.keyword, leaf.ClassListContains("mt-4"), leaf.style.marginLeft.value.value),
                 Is.EqualTo((StyleKeyword.Null, true, 4f)));
+        }
+
+        [Test]
+        public void Given_ABaseClassAndABaseValueOnOnePadding_When_AHoverTopClassHolds_Then_TheValueKeepsTheOtherSides()
+        {
+            // Arrange — Tailwind emits p-4 before p-[12px], so the value keeps every side hover:pt-6 does not write.
+            var leaf = MountLeaf("p-4 p-[12px] hover:pt-6");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert
+            Assert.That(leaf.style.paddingLeft.value.value, Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_ABaseClassAndABaseValueOnOnePadding_When_AHoverTopClassArrivesAfterFocus_Then_TheClassTakesTheTop()
+        {
+            // Arrange — the focus rule ranks the element's classes before the hover rule arrives.
+            var leaf = MountLeaf("p-4 p-[12px] focus:bg-red-500 hover:pt-6");
+            using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+
+            // Assert — no inline padding-top is left to hide the class.
+            Assert.That((leaf.style.paddingTop.keyword, leaf.ClassListContains("pt-6")),
+                Is.EqualTo((StyleKeyword.Null, true)));
         }
 
         [Test]

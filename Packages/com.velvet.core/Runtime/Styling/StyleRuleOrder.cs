@@ -82,10 +82,6 @@ namespace Velvet
 
         private static bool SameTokens(string[] a, string[] z)
         {
-            if (a.Length != z.Length)
-            {
-                return false;
-            }
             for (var i = 0; i < a.Length; i++)
             {
                 if (!ReferenceEquals(a[i], z[i]))
