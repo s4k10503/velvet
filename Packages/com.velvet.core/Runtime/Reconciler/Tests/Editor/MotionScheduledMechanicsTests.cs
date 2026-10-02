@@ -3288,8 +3288,8 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("b").resolvedStyle.backgroundColor.r, Is.InRange(0.15f, 0.5f));
         }
 
-        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so a duration-[x] written
-        // mid-move stays. A narrowing writes that slot, and must hand back the one written last.
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so the latest stays.
+        // A narrowing over single-entry lists writes none of them, and must leave a duration-[x] written mid-move there.
         [Test]
         public void Given_ANarrowedMotionWhoseArbitraryDurationChangesMidMove_When_TheMoveLands_Then_TheNewDurationIsHandedBack()
         {
@@ -3610,6 +3610,124 @@ namespace Velvet.Tests
             return (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args);
         }
 
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so the duration-[x] stays.
+        // A narrowing that writes the element's paired lists must take it as the element's own and hand it back.
+        [Test]
+        public void Given_ANarrowedMotionWithPairedTiming_When_ItTakesAnArbitraryDurationMidMove_Then_ThatDurationIsItsOwnOnceItLands()
+        {
+            // Arrange — the bundled sheet and the test's own; "a" alone under "card", transitioning its transform by class
+            // and background-color and opacity on paired durations by its rules, some way into a move of its own.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aClasses = "transition-transform layout-id-test-two";
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — it takes a duration-[700ms] mid-move; past the landing.
+            s_aClasses = "transition-transform layout-id-test-two duration-[700ms]";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+
+            // Assert
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.7f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWithPairedTimingWhosePoseTweenOutlastsItsMove_When_TheTweenEnds_Then_NoTimingIsLeftInline()
+        {
+            // Arrange — the bundled sheet and the test's own; "a" alone under "card", transitioning everything by class and
+            // background-color and opacity on paired durations by its rules, moving on three tenths of a second's tween and
+            // swapping its pose on a second's a few frames in.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("hidden", "transition-all layout-id-test-two");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, Layout = new StyleTransitionConfig { DurationSec = 0.3f, Easing = EasingMode.Linear },
+            };
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+
+            // Act — the move lands mid-tween; past the tween's end.
+            AdvancePast(1.5f);
+
+            // Assert
+            var a = Root.Q<VisualElement>("a");
+            Assert.That((a.style.transitionDuration.keyword, a.style.transitionDelay.keyword, a.style.transitionTimingFunction.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionWithPairedTimingWhosePoseTweenOutlastsItsMove_When_ItTakesAnArbitraryDurationMidMove_Then_ThatDurationIsItsOwnOnceTheTweenEnds()
+        {
+            // Arrange — as above: "a" narrowed on its paired durations, moving on three tenths of a second's tween and
+            // swapping its pose on a second's a few frames in.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("hidden", "transition-all layout-id-test-two");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, Layout = new StyleTransitionConfig { DurationSec = 0.3f, Easing = EasingMode.Linear },
+            };
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+
+            // Act — it takes a duration-[700ms] before the move lands; past the tween's end.
+            s_aClasses = "transition-all layout-id-test-two duration-[700ms]";
+            RenderShared(mounted);
+            AdvancePast(1.5f);
+
+            // Assert
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.7f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_ANarrowedMotionDrivenByAnAnimateClassWhosePoseTweenOutlastsItsMove_When_ItTakesAnArbitraryDuration_Then_NoTransitionIsWrittenInline()
+        {
+            // Arrange — the bundled sheet and the test's own; "a" alone under "card", transitioning its transform by class
+            // and background-color and opacity on paired durations by its rules, pulsing its opacity, moving on three
+            // tenths of a second's tween and swapping its pose on a second's a few frames in; past the tween's end.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("hidden", "transition-transform layout-id-test-two animate-pulse");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, Layout = new StyleTransitionConfig { DurationSec = 0.3f, Easing = EasingMode.Linear },
+            };
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(1.5f);
+
+            // Act — it takes a duration-[700ms].
+            s_aClasses = "transition-transform layout-id-test-two animate-pulse duration-[700ms]";
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         [Test]
         public void Given_AFollowerMountedWithItsLead_When_ItsBackgroundChanges_Then_TheBackgroundTransitions()
         {
@@ -3849,8 +3967,8 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.opacity, Is.EqualTo(0.5f).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so an enter's stays. A
-        // narrowing that lets go mid-enter must not write over it.
+        // GREEN_ON_BASE(characterization): the base's suspension never writes the duration slot, so an enter's stays.
+        // A narrowing that lets go mid-enter must not write over it.
         [Test]
         public void Given_ALayoutIdMotionWhoseMoveLandsBeforeItsEnterTweenEnds_When_TheMoveLands_Then_TheEnterKeepsItsTiming()
         {
@@ -3989,8 +4107,8 @@ namespace Velvet.Tests
             Assert.That(projection.DrawnRotate, Is.EqualTo(Mathf.LerpUnclamped(45f, spin, progress)).Within(0.5f));
         }
 
-        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone, so the duration the
-        // resolver wrote stays. A narrowing that writes the duration list must hand that one back.
+        // GREEN_ON_BASE(characterization): the base's suspension writes transition-property alone and leaves the duration.
+        // A narrowing that writes the duration list must hand the resolver's back.
         [Test]
         public void Given_ATransitionAllMotionWithAnArbitraryDurationThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItsOwnDurationIsHandedBack()
         {

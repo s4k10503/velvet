@@ -303,8 +303,19 @@ namespace Velvet
             }
             var style = element.style;
             var slot = style.transitionProperty;
-            // A variant tween writing over the lists keeps them until it ends, and clears them itself.
-            if (!HoldsAForeignValue(element)) HandBackTiming(element, suspension);
+            // A tween holding the lists puts the element's own back as it ends, rather than the narrowing's it held
+            // (Given_ANarrowedMotionWithPairedTimingWhosePoseTweenOutlastsItsMove_When_TheTweenEnds_Then_NoTimingIsLeftInline).
+            if (suspension.WroteTiming && s_tweenTimings.TryGetValue(element, out var hold))
+            {
+                (hold.Duration, hold.Delay, hold.Curve) = (suspension.OwnDuration, suspension.OwnDelay, suspension.OwnCurve);
+            }
+            else if (!HoldsAForeignValue(element))
+            {
+                HandBackTiming(element, suspension);
+            }
+            // None of the lists is the narrowing's from here on, whoever holds the record
+            // (Given_ANarrowedMotionDrivenByAnAnimateClassWhosePoseTweenOutlastsItsMove_When_ItTakesAnArbitraryDuration_Then_NoTransitionIsWrittenInline).
+            suspension.WroteTiming = false;
             if (Wrote(suspension, slot.value)) style.transitionProperty = suspension.Owners.Count > 0 ? s_none : StyleKeyword.Null;
             suspension.Written = null;
         }
@@ -369,7 +380,7 @@ namespace Velvet
         /// Writes the element's own inline duration list, as a <c>duration-[x]</c> class gives it. Where
         /// <see cref="Narrow"/> has written its own lists over the element's, it replaces the one kept aside and the
         /// narrowed lists are written again from it
-        /// (Given_ANarrowedMotionWhoseArbitraryDurationChangesMidMove_When_TheMoveLands_Then_TheNewDurationIsHandedBack);
+        /// (Given_ANarrowedMotionWithPairedTiming_When_ItTakesAnArbitraryDurationMidMove_Then_ThatDurationIsItsOwnOnceItLands);
         /// where a tween has, it replaces the one the tween puts back as it ends.
         /// </summary>
         internal static void WriteOwnDuration(VisualElement element, StyleList<TimeValue> duration)
