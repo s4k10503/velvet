@@ -5645,21 +5645,14 @@ class AreaOfTests(unittest.TestCase):
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Per platform: the shard job, a mutant's cost, and the longest measured of each setup phase added
-    # together. EditMode's setup is everything before activation, activation and baseline, 152 + 41 +
-    # 362 s, over 121 of its shards on CI; its mutant is 215 s, which 18 of their 645 mutant runs
-    # exceeded -- ten kills of up to 540 s and eight hangs at --timeout. PlayMode's setup is the same
-    # three, 130 + 37 + 374 s. Its mutant is the slowest measured, 364 s, plus the 100 s its five
-    # bounded cases spend where a mutant stops the frame driver, 5 x 20 s measured locally. Where the
-    # platform is narrowed, a shard also takes an area's own launch at most once for each area it
-    # holds, and each mutant a narrowed launch at `NARROW_MARGIN` times that. The area's is 84 s, what
-    # the Styling area's own launch took on one CI shard.
-    COSTS = {"EditMode": ("mutation-shard", 215, 555),
-             "PlayMode": ("mutation-playmode-shard", 464, 541)}
-    AREA_LAUNCH = 84
+    # Charged at most once for each area a narrowed platform's shard holds; the slowest measured.
+    AREA_LAUNCH = 145
 
-    def fits(self, platform):
-        job, slowest, setup = self.COSTS[platform]
+    # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
+    # baseline, of its baseline and after its last verdict, added together. A charge is built on the
+    # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
+    # is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
+    def fits(self, job, platform, mutant, setup):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
@@ -5668,20 +5661,27 @@ class ShardCeilingTests(unittest.TestCase):
         area = self.AREA_LAUNCH if narrowed else 0
         areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
             "*/Tests/Editor/*.asmdef")})
-        mutant = slowest + area * getattr(mutation_check, "NARROW_MARGIN", 0)
         return (per is not None and found is not None
                 and setup + areas * area + per * mutant <= int(found.group(1)) * 60)
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
+        # filled at the mean of those it had; and one mutant hanging at --timeout's 900 s besides.
+        mutant, setup = 493, 201 + 375 + 12 + 900
+
         # Act
-        fits = self.fits("EditMode")
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup)
 
         # Assert
         self.assertTrue(fits)
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
+        # driver, 5 x 20 s measured locally.
+        mutant, setup = 934 + 100, 202 + 625 + 11
+
         # Act
-        fits = self.fits("PlayMode")
+        fits = self.fits("mutation-playmode-shard", "PlayMode", mutant, setup)
 
         # Assert
         self.assertTrue(fits)
