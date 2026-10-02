@@ -97,9 +97,8 @@ MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
 # an area's own launch for each area, fit that platform's shard job's timeout in mutation.yml, and that
-# case holds each pair together. The charge is the slowest measured shard's mean rather than a worst
-# case, so a full shard can still outrun the job, and the mutants it had not reached are then recorded
-# by no shard.
+# case holds each pair together. The charge is not a worst case, so a full shard can still outrun the
+# job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.

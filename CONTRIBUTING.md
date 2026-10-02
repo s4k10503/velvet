@@ -263,9 +263,9 @@ before its baseline, 375 s on an EditMode baseline and 625 s on a PlayMode one, 
 launch. A shard that finished spent at most 12 s after its last verdict, and from the end of its
 baseline to its last verdict, less its areas' own launches, a median of 145 s a mutant on EditMode and 790 s on
 PlayMode, where 84 of the 115 mutants those shards held took a launch of their own. The slowest
-PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 476 s a
+PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
-median of those it had; its session's confirmation under the unmutated program failed, and 15 of its
+mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
 16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can

@@ -5420,10 +5420,9 @@ class ShardCeilingTests(unittest.TestCase):
     AREA_LAUNCH = 145
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. A mutant is charged the
-    # slowest measured shard's seconds per mutant, which hold that shard's narrowed runs, so no
-    # narrowed launch is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the
-    # measurements.
+    # baseline, of its baseline and after its last verdict, added together. A charge is built on the
+    # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
+    # is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
     def fits(self, job, platform, mutant, setup):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
@@ -5437,8 +5436,9 @@ class ShardCeilingTests(unittest.TestCase):
                 and setup + areas * area + per * mutant <= int(found.group(1)) * 60)
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange
-        mutant, setup = 476, 201 + 375 + 12
+        # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
+        # filled at the mean of those it had; and one mutant hanging at --timeout's 900 s besides.
+        mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup)

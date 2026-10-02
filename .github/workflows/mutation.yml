@@ -157,7 +157,7 @@ jobs:
     needs: [license-check, mutation-plan, library]
     if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 160
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
