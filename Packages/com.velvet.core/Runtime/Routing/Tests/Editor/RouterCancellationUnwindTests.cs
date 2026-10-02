@@ -37,13 +37,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheMatchingEvent_When_TheAttemptGoesOn_Then_ItIsNotDispossessed()
+        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheMatchingEvent_When_TheAttemptGoesOn_Then_TheUnmatchedPathTakesOver()
         {
             // The status transition is raised from inside the attempt that made it, so a subscriber
             // navigating from there reaches the router while that attempt holds the claim and has committed
-            // nothing. The whole sequence is read because the dispossession shows up as a transition between
-            // two of the attempt's own, and the unmatched result is folded in because a case that arranged
-            // no inner navigation would otherwise still see the sequence it expects.
+            // nothing. A path no route matches takes over from it as any other navigation does, and the
+            // attempt it took over from must then report nothing of its own.
             // Arrange
             var router = new Router(_routes);
             router.NavigateSync("/home");
@@ -63,8 +62,8 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                $"inner={innerResult} statuses={string.Join(",", seen)}",
-                Is.EqualTo("inner=NotFound statuses=Matching,Loading,Ready"));
+                $"inner={innerResult} statuses={string.Join(",", seen)} path={router.CurrentLocation.Path}",
+                Is.EqualTo("inner=NotFound statuses=Matching,NotFound path=/no-such-route"));
         }
 
         [Test]

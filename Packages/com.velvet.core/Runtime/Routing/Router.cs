@@ -190,7 +190,8 @@ namespace Velvet
         /// <returns>
         /// A <see cref="NavigationResult"/> indicating the outcome:
         /// <see cref="NavigationResult.Success"/> on completion,
-        /// <see cref="NavigationResult.NotFound"/> when no route matches,
+        /// <see cref="NavigationResult.NotFound"/> when no route matches, once the path has committed with React
+        /// Router's 404 as the error of the route <c>routing.md</c> names,
         /// <see cref="NavigationResult.Blocked"/> when a Blocker rejects the attempt,
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
         /// when it is asked of a router already disposed,
@@ -549,13 +550,6 @@ namespace Velvet
             var pathForMatch = RouteQuery.StripQuery(path);
             var matches = _routeTree.Match(pathForMatch);
 
-            if (matches == null)
-            {
-                WithdrawInitiatorsDestination(initiator);
-                ReportUnclaimedOutcome(RouterStatus.NotFound);
-                return NavigationResult.NotFound;
-            }
-
             PendingNavigation pending;
             if (initiator.HasValue)
             {
@@ -565,10 +559,8 @@ namespace Velvet
             }
             else
             {
-                // Everything past the Blocker an attempt does to the router at large happens on this side of
-                // the match, and that is the point of taking the claim here: an attempt that matches no route
-                // must not dispossess one still under way in a guard or a loader, because that attempt is the
-                // only one able to put Status back and the only one its destination and its token belong to.
+                // A path no route matches takes over too, as React Router aborts the navigation in flight
+                // before it matches, and then commits its 404 below.
                 if (takeover != null)
                 {
                     // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
@@ -593,6 +585,11 @@ namespace Velvet
                     }
                 }
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), redirects: 0);
+            }
+
+            if (matches == null)
+            {
+                return CommitNotFound(path, pathForMatch, mode, pending, cancellationToken);
             }
 
             // Built here rather than at the commit so the phases below have a destination to publish while
@@ -680,6 +677,43 @@ namespace Velvet
             OnLocationChanged?.Invoke(location);
 
             return NavigationResult.Success;
+        }
+
+        // React Router's handleNavigational404: the location commits with no loader run and its 404 as the
+        // error of the route NotFoundMatches names, which keeps whatever data its loader last settled with.
+        // A cancelled attempt commits nothing, as the matched path's checks have it: a redirect whose
+        // initiator a newer navigation took over from is one.
+        private NavigationResult CommitNotFound(
+            string path, string pathname, NavigationMode mode, PendingNavigation pending,
+            CancellationToken cancellationToken)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                ReleaseClaim(pending, RouterStatus.Idle);
+                return NavigationResult.Cancelled;
+            }
+
+            var matches = _routeTree.NotFoundMatches();
+            // Completes without awaiting, since launch limit 0 starts no loader.
+            var round = _loaderRunner.RunLoadersAsync(matches, cancellationToken, keptFrom: null, launchLimit: 0)
+                .GetAwaiter().GetResult();
+            var location = BuildLocation(path, matches);
+            CommitHistoryEntry(path, mode, pending);
+            CurrentLocation = location;
+            PendingLocation = null;
+            _revalidationRequired = false;
+            _actionData = EmptyActionData;
+            _loaderData = new Dictionary<string?, object>(round.Results);
+            _loaderErrors = new Dictionary<string?, Exception>
+            {
+                [matches[0].RouteId] = new RouteErrorResponse(404, "Not Found",
+                    new InvalidOperationException($"No route matches URL \"{pathname}\"")),
+            };
+            _loaderRunner.Promote(round);
+            Status = RouterStatus.NotFound;
+            _blockerManager.ResetAll();
+            OnLocationChanged?.Invoke(location);
+            return NavigationResult.NotFound;
         }
 
         #region Per-attempt navigation state
@@ -1094,7 +1128,8 @@ namespace Velvet
                 Replace = replace;
                 if (Array.IndexOf(FormMethods, Method) < 0)
                 {
-                    Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
+                    Refusal = new RouteErrorResponse(405, "Method Not Allowed",
+                        new InvalidOperationException($"Invalid request method \"{Method}\""));
                 }
             }
 
@@ -1205,9 +1240,9 @@ namespace Velvet
             var match = matches[outcome.Target];
             if (match.Route?.Action == null)
             {
-                outcome.Error = new InvalidOperationException(
+                outcome.Error = new RouteErrorResponse(405, "Method Not Allowed", new InvalidOperationException(
                     $"You made a {submission.Method} request to \"{RouteQuery.StripQuery(path)}\" but did not provide an "
-                    + $"`action` for route \"{match.RouteId}\", so there is no way to handle the request.");
+                    + $"`action` for route \"{match.RouteId}\", so there is no way to handle the request."));
                 return outcome;
             }
             var context = new RouteActionContext

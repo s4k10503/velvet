@@ -118,6 +118,16 @@ a `V.Outlet` inside that `errorElement` renders nothing. The error stays until t
 location: a navigation, which renders the route navigated to, or the errored route again on the way back;
 or a `Suspend` loader of the current location settling, which renders the route again in place.
 
+A path no route matches commits as well, as React Router's does, and `NavigateAsync` returns
+`NavigationResult.NotFound` once it has. It takes over from a navigation in flight, runs no guard, action
+or loader, and commits with a single match: the only top-level route when there is one, otherwise the
+first top-level route that is pathless or `/`, otherwise a route of no element standing in for one. That
+route's error is a `RouteErrorResponse` with status 404, so its `errorElement` — or the default one, which
+shows an error response as its status and reason phrase, `404 Not Found` — renders, and it keeps the data
+its loader last settled with while every other route's is dropped. `RouteErrorResponse` is React Router's
+`ErrorResponse`, which the router also records for a 405 below; `error is RouteErrorResponse` is
+`isRouteErrorResponse(error)`.
+
 ### Deferred data
 
 A loader that has part of its data at once and part later returns the late part as a `Deferred<T>` inside

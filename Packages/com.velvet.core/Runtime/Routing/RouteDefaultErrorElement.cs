@@ -23,11 +23,13 @@ namespace Velvet
             }, new object?[] { error });
 #endif
 
+            // An error response shows its status and no stack, as React Router's shows one that is not an Error.
+            var response = error as RouteErrorResponse;
             return V.Div(children: new VNode?[]
             {
                 V.Label(text: "Unexpected Application Error!"),
-                V.Label(text: error?.Message),
-                error?.StackTrace != null ? V.Label(text: error.StackTrace) : null,
+                V.Label(text: response != null ? $"{response.Status} {response.StatusText}" : error?.Message),
+                response == null && error?.StackTrace != null ? V.Label(text: error.StackTrace) : null,
             });
         }
     }

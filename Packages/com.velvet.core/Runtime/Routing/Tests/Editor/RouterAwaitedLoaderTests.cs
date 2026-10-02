@@ -286,11 +286,13 @@ namespace Velvet.Tests
             // Act
             var guarded = await router.NavigateAsync("/guarded");
 
-            // Assert — the refused result rides along because a destination reading /users/7 is also what
-            // a guard that redirected nowhere at all would leave.
+            // Assert — the committed path rides along because a destination reading /users/7 is also what
+            // a guard that redirected nowhere at all would leave, and the stale redirect committing its 404
+            // is what would move it.
             Assert.That(
-                $"guarded={guarded} loading={router.PendingLocation?.Path ?? "none"}",
-                Is.EqualTo("guarded=NotFound loading=/users/7"));
+                $"guarded={guarded} loading={router.PendingLocation?.Path ?? "none"} "
+                + $"path={router.CurrentLocation?.Path}",
+                Is.EqualTo("guarded=Cancelled loading=/users/7 path=/home"));
         });
 
         [UnityTest]
@@ -423,7 +425,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheHeldNavigationStillCommits()
+        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_ItTakesOverAndCommits()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -438,16 +440,13 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 $"unmatched={unmatched} held={held} path={router.CurrentLocation?.Path}",
-                Is.EqualTo("unmatched=NotFound held=Success path=/users/7"));
+                Is.EqualTo("unmatched=NotFound held=Cancelled path=/nowhere"));
         });
 
         [UnityTest]
-        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheStatusStillDescribesTheHeldNavigation()
+        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_NothingIsLeftLoading()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // An attempt that never matched takes no claim, so it is not the one Status belongs to. The
-            // result it hands its own caller is folded in: withholding the status must not cost the caller
-            // the outcome.
             // Arrange
             var (router, _) = RouterAwaitingItsLoader();
             router.NavigateAsync("/users/7").Forget();
@@ -456,8 +455,9 @@ namespace Velvet.Tests
             var unmatched = await router.NavigateAsync("/nowhere");
 
             // Assert
-            Assert.That($"unmatched={unmatched} status={router.Status}",
-                Is.EqualTo("unmatched=NotFound status=Loading"));
+            Assert.That(
+                $"unmatched={unmatched} status={router.Status} pending={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("unmatched=NotFound status=NotFound pending=none"));
         });
     }
 }

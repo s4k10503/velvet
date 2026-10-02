@@ -243,7 +243,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
+        public void Given_GuardRedirectToMissingRouteDuringBack_When_ItCommits_Then_ItReplacesTheEntryBehind()
         {
             // Arrange
             var router = new Router(new[]
@@ -253,14 +253,15 @@ namespace Velvet.Tests
             });
             router.NavigateSync("/b");
             router.NavigateSync("/a");
-            Assume.That(router.HistoryIndex, Is.EqualTo(1), "Precondition: positioned on /a at index 1");
 
             // Act
             enableGuard();
             router.GoBackSync();
 
             // Assert
-            Assert.That((router.CurrentLocation.Path, router.HistoryIndex), Is.EqualTo(("/a", 1)));
+            Assert.That(
+                (router.CurrentLocation.Path, router.HistoryIndex, router.CanGoForward),
+                Is.EqualTo(("/nonexistent", 0, true)));
         }
 
         #endregion
@@ -315,6 +316,8 @@ namespace Velvet.Tests
 
         #region Push with failed redirect
 
+        // GREEN_ON_BASE(characterization): a push whose redirect never arrives keeps the forward entry. It
+        // fails at the redirect limit now that a redirect to a path no route matches commits its 404.
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
@@ -323,7 +326,7 @@ namespace Velvet.Tests
             {
                 Route("home"),
                 Route("page"),
-                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/nonexistent")),
+                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/admin")),
             });
             router.NavigateSync("/home");
             router.NavigateSync("/page");
@@ -331,10 +334,10 @@ namespace Velvet.Tests
             Assume.That((router.HistoryIndex, router.CanGoForward), Is.EqualTo((0, true)),
                 "Precondition: at /home (index 0) with /page available forward");
 
-            // Act
+            // Act — the guard redirects to its own route until the redirect limit refuses the attempt.
             enableGuard();
             var pushResult = router.NavigateSync("/admin");
-            Assume.That(pushResult, Is.EqualTo(NavigationResult.NotFound),
+            Assume.That(pushResult, Is.EqualTo(NavigationResult.Error),
                 "Precondition: the push's guard redirect failed");
 
             // Assert

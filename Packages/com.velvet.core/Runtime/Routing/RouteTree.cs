@@ -57,6 +57,41 @@ namespace Velvet
             return null;
         }
 
+        /// <summary>
+        /// React Router's getShortCircuitMatches: the one-route chain a path no route matches commits, its
+        /// 404 recorded against that route. A table of one route takes it; otherwise the first top-level
+        /// route that is pathless or the root path, or else a route of no element that stands in for one.
+        /// </summary>
+        internal IReadOnlyList<RouteMatch> NotFoundMatches() => _notFoundMatches ??= BuildNotFoundMatches();
+
+        private IReadOnlyList<RouteMatch>? _notFoundMatches;
+
+        private IReadOnlyList<RouteMatch> BuildNotFoundMatches()
+        {
+            RouteDefinition? route = _routes.Length == 1 ? _routes[0] : null;
+            for (var index = 0; route == null && index < _routes.Length; index++)
+            {
+                var path = _routes[index].Path;
+                if (string.IsNullOrEmpty(path) || path == "/")
+                {
+                    route = _routes[index];
+                }
+            }
+
+            var id = route == null ? ShimErrorRouteId : AppendRouteId(string.Empty, route);
+            return new[]
+            {
+                new RouteMatch
+                {
+                    Route = route ?? new RouteDefinition(),
+                    Params = new Dictionary<string, string>(),
+                    RouteId = id,
+                },
+            };
+        }
+
+        private const string ShimErrorRouteId = "__shim-error-route__";
+
         #region Branch flattening
 
         private sealed class RouteBranch
