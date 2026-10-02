@@ -363,8 +363,8 @@ namespace Velvet
                 return true;
             }
             unit = LeadingUnit.EmLength;
-            if (value.EndsWith("em".AsSpan(), StringComparison.Ordinal)
-                && !value.EndsWith("rem".AsSpan(), StringComparison.Ordinal))
+            if (value.EndsWith("em".AsSpan(), StringComparison.OrdinalIgnoreCase)
+                && !value.EndsWith("rem".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 return StyleArbitraryValueResolver.TryParseFloat(value.Slice(0, value.Length - 2), out amount);
             }

@@ -426,6 +426,7 @@ namespace Velvet.Tests
         [TestCase("leading-[1.5]", "<line-height=1.5em>hi</line-height>")]
         [TestCase("leading-[0]", "<line-height=0em>hi</line-height>")]
         [TestCase("leading-[1.5em]", "<line-height=1.5em>hi</line-height>")]
+        [TestCase("leading-[1.5EM]", "<line-height=1.5em>hi</line-height>")]
         [TestCase("leading-[150%]", "<line-height=1.5em>hi</line-height>")]
         [TestCase("leading-[2rem]", "<line-height=32px>hi</line-height>")]
         public void Given_LeadingBracketInACssLineHeightUnit_When_ParsedAndApplied_Then_ProducesTheMatchingTag(
