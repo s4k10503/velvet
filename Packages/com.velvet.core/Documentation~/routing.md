@@ -110,6 +110,14 @@ one in place of its `element`, the layout routes below it included, as React Rou
 element does: a heading, the exception's message and its stack trace. In the editor and in a
 development build it also logs the exception.
 
+An error thrown below a route's `element` — while rendering, from an effect or its cleanup, or from an
+element's ref or creation callback — goes to the same place, as React Router's RenderErrorBoundary sends
+it: the nearest route at or above it that carries an `errorElement` renders it in place of its `element`,
+and the root renders the default one where none does. `Hooks.UseRouteError` returns that error there, and
+a `V.Outlet` inside that `errorElement` renders nothing. The error stays until the router publishes a new
+location: a navigation, which renders the route navigated to, or the errored route again on the way back;
+or a `Suspend` loader of the current location settling, which renders the route again in place.
+
 ### Deferred data
 
 A loader that has part of its data at once and part later returns the late part as a `Deferred<T>` inside
@@ -164,7 +172,9 @@ public static class Product
 `V.Await` takes a function of the value or, as element children, components that read it through
 `Hooks.UseAsyncValue`. Its `errorElement` renders when the deferred value's task fails or rendering the
 value throws, and `Hooks.UseAsyncError` returns the exception beneath it; without one the exception
-propagates to the nearest error boundary. Any number of `V.Await` may read one `Deferred<T>`.
+propagates to the nearest error boundary. After a throw while rendering the value, the `errorElement` stays
+for whatever deferred value that `V.Await` is handed next, as React Router's AwaitErrorBoundary keeps it,
+until the `V.Await` remounts — give it a new `key`. Any number of `V.Await` may read one `Deferred<T>`.
 
 ## Route actions
 

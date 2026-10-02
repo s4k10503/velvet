@@ -1192,7 +1192,8 @@ namespace Velvet
 
         // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
         // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
-        // (GeneralPathReconciler.ExpandBoundaryInline) or on the aborting path (FiberErrorBoundary.TryCatch). A
+        // (GeneralPathReconciler.ExpandBoundaryInline), in its own reconcile (Reconciler.ReconcileCatching) or on
+        // the aborting path (FiberErrorBoundary.TryCatch). A
         // VirtualList renders its rows outside any pass as it scrolls, and there it completes at once, since no
         // pass end would reach it.
         internal void CompleteEnterAfterThePass(MotionNode? motion, ComponentFiber? boundary)
@@ -1204,8 +1205,8 @@ namespace Velvet
             else PendingEnterCompletions.Add((motion, boundary));
         }
 
-        // The entries a render below boundary queued: read before a catch on the aborting path detaches what that
-        // render created, since an entry's owner is placed by its parent chain.
+        // The entries a render below boundary queued: read before a catch detaches what that render created, since
+        // an entry's owner is placed by its parent chain.
         internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
         {
             List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
@@ -1611,6 +1612,42 @@ namespace Velvet
             }
             RemoveSuspenseFallback(boundary, position);
         }
+
+        // The Suspense and AnimatePresence records kept against a boundary, taken before its own reconcile so that
+        // a catch there can put them back (FiberCommitWork.ReconcileOwnRowsCatching).
+        internal BoundaryRecords RecordsOf(ComponentFiber boundary)
+        {
+            var suspense = _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
+                ? new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>(keys)
+                : null;
+            HashSet<(VisualElement? Parent, long Position)>? presence = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (ReferenceEquals(key.boundary, boundary)) (presence ??= new()).Add((key.parent, key.presenceKey));
+            }
+            return new BoundaryRecords(suspense, presence);
+        }
+
+        // Puts the boundary's Suspense records back as they were and drops the AnimatePresence records the failed
+        // render added; one that was there before stays as that render left it.
+        internal void RestoreRecordsOf(ComponentFiber boundary, BoundaryRecords before)
+        {
+            if (before.Suspense == null) _suspenseFallbackKeys.Remove(boundary);
+            else _suspenseFallbackKeys[boundary] = before.Suspense;
+            List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? added = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (!ReferenceEquals(key.boundary, boundary)) continue;
+                if (before.Presence != null && before.Presence.Contains((key.parent, key.presenceKey))) continue;
+                (added ??= new()).Add(key);
+            }
+            if (added == null) return;
+            foreach (var key in added) PresenceStates.Remove(key);
+        }
+
+        internal readonly record struct BoundaryRecords(
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>? Suspense,
+            HashSet<(VisualElement? Parent, long Position)>? Presence);
 
         private void RemoveSuspenseFallback(ComponentFiber? boundary,
             (VisualElement? Container, VisualElement? PortalScope, long Position) position)

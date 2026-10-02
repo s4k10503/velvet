@@ -19,8 +19,8 @@ namespace Velvet.Tests
     /// transparent to the propagation.</item>
     /// <item>A boundary over multiple children aborts the in-progress render when the first child throws and
     /// shows its fallback.</item>
-    /// <item>A boundary recovers: once a later render produces no throwing child, the abort state resets, all
-    /// children mount, and the fallback factory does not restart.</item>
+    /// <item>A boundary that caught keeps its fallback until it remounts: a boundary given a new key renders
+    /// its children again, every one of them mounting, and its fallback factory does not run again.</item>
     /// <item>A catch rewrites the boundary's own slot range rather than the first slots of its
     /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
     /// <item>Where the pass that catches is itself re-placing the boundary, the rest of that pass commits and
@@ -32,7 +32,7 @@ namespace Velvet.Tests
     /// boundary is showing keep their state and their effect.</item>
     /// <item>A component that render drops is cleaned up, whether the parent itself, a child that re-rendered,
     /// with its own children, or an element that child owns dropped it, and it comes back as a new instance
-    /// when rendered again, as does one whose own cleanup threw into the boundary that caught it.</item>
+    /// when rendered again. One whose own cleanup threw into the boundary that caught it is disposed.</item>
     /// <item>A catch leaves no fiber on the reconciler's fiber stack once the pass ends.</item>
     /// </list>
     /// </summary>
@@ -178,49 +178,75 @@ namespace Velvet.Tests
                 "A first child that throws aborts the multi-child render and fires the boundary's fallback factory");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base renders the children of a boundary given a new key too.
+        // A boundary keeps its fallback until it remounts now, and a new key remounting it is what this pins.
         [Test]
-        public void Given_MultiChildBoundaryAfterFallback_When_AllChildrenSucceed_Then_AllChildrenMount()
+        public void Given_MultiChildBoundaryAfterFallback_When_ItIsGivenANewKey_Then_AllChildrenMount()
         {
             // Arrange — drive the boundary into its fallback first
-            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(MultiChildHostRender, key: "multi-host"), CaughtErrors.Unlogged);
             s_multiFirstChildShouldThrow = true;
             s_multiChildCount = 2;
             s_multiSetTick.Invoke(1);
             mounted.FlushStateForTest();
-            Assume.That(s_multiFallbackShown, Is.True, "Precondition: the first pass shows the fallback");
-            s_multiFallbackShown = false;
+            var fellBack = s_multiFallbackShown;
             s_multiNormalRenderCount = 0;
             s_multiFirstChildShouldThrow = false;
 
             // Act
-            s_multiSetTick.Invoke(2);
+            s_multiSetGeneration.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_multiNormalRenderCount, Is.GreaterThanOrEqualTo(s_multiChildCount),
-                "Once all children succeed the abort state resets and every child mounts");
+            // Assert — the catch is folded in, since a boundary that never caught mounts its children as well
+            Assert.That((fellBack, s_multiNormalRenderCount >= s_multiChildCount), Is.EqualTo((true, true)),
+                "A boundary given a new key remounts, and every child mounts");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base runs no fallback factory for a boundary given a new key.
+        // A boundary keeps its fallback until it remounts now, and a remount not showing it is what this pins.
         [Test]
-        public void Given_MultiChildBoundaryAfterFallback_When_AllChildrenSucceed_Then_FallbackDoesNotRestart()
+        public void Given_MultiChildBoundaryAfterFallback_When_ItIsGivenANewKey_Then_FallbackDoesNotRestart()
         {
             // Arrange — drive the boundary into its fallback first
-            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(MultiChildHostRender, key: "multi-host"), CaughtErrors.Unlogged);
             s_multiFirstChildShouldThrow = true;
             s_multiChildCount = 2;
             s_multiSetTick.Invoke(1);
             mounted.FlushStateForTest();
-            Assume.That(s_multiFallbackShown, Is.True, "Precondition: the first pass shows the fallback");
+            var fellBack = s_multiFallbackShown;
             s_multiFallbackShown = false;
             s_multiFirstChildShouldThrow = false;
 
             // Act
+            s_multiSetGeneration.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the catch is folded in, since a boundary that never caught runs no factory either
+            Assert.That((fellBack, s_multiFallbackShown), Is.EqualTo((true, false)),
+                "A remounted boundary does not run its fallback factory");
+        }
+
+        [Test]
+        public void Given_MultiChildBoundaryAfterFallback_When_ItRendersAgainWithNoChildThrowing_Then_ItKeepsItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MultiChildHostRender, key: "multi-host"), CaughtErrors.Unlogged);
+            s_multiFirstChildShouldThrow = true;
+            s_multiChildCount = 2;
+            s_multiSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+            s_multiNormalRenderCount = 0;
+            s_multiFirstChildShouldThrow = false;
+
+            // Act — the boundary's own update, which React answers from the error state it keeps
             s_multiSetTick.Invoke(2);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_multiFallbackShown, Is.False,
-                "After recovery the fallback factory does not re-run");
+            Assert.That(
+                string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)) + ", children rendered "
+                    + s_multiNormalRenderCount,
+                Is.EqualTo("error, children rendered 0"));
         }
 
         #endregion
@@ -315,6 +341,18 @@ namespace Velvet.Tests
             s_multiNormalRenderCount = 0;
             s_multiFallbackShown = false;
             s_multiSetTick = null;
+            s_multiSetGeneration = null;
+        }
+
+        private static Action<int> s_multiSetGeneration;
+
+        // Keys the boundary by a generation, so a new generation remounts it.
+        [Component]
+        private static VNode MultiChildHostRender()
+        {
+            var (generation, setGeneration) = Hooks.UseState(0);
+            s_multiSetGeneration = setGeneration;
+            return V.Component(MultiChildBoundaryRender, key: "multi-" + generation);
         }
 
         [Component(IsErrorBoundary = true)]
@@ -873,10 +911,9 @@ namespace Velvet.Tests
             s_droppedSetValue = null;
             s_throwingCleanupRuns = 0;
             s_throwingSetValue = null;
+            s_throwingFiber = null;
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this sibling by stopping the pass short of it.
-        // The catch taken in the walk keeps it by rendering it with its state, which this pins.
         [Test]
         public void Given_ASiblingBehindACatchingBoundary_When_ItCatchesInTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
@@ -900,7 +937,7 @@ namespace Velvet.Tests
             Assert.That(
                 (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
-                Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
+                Is.EqualTo("fell back, cleanups 0, unreached-fallback,count:1"));
         }
 
         [Test]
@@ -979,8 +1016,6 @@ namespace Velvet.Tests
                 Is.EqualTo("fell back, cleanups 2, grandchild:0"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this sibling by stopping the pass short of it.
-        // The catch taken in the walk keeps it by rendering it with its state, which this pins.
         [Test]
         public void Given_ASiblingBehindACatchInsideAChildThatReRendered_When_ItCatchesInThatRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
@@ -1005,7 +1040,7 @@ namespace Velvet.Tests
             Assert.That(
                 (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
-                Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
+                Is.EqualTo("fell back, cleanups 0, unreached-fallback,count:1"));
         }
 
         // GREEN_ON_BASE(characterization): the merge base sweeps this component with the orphans of the walk it stops.
@@ -1083,7 +1118,7 @@ namespace Velvet.Tests
             Assert.That(
                 (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterCatch + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
-                Is.EqualTo("fell back, cleanups 1, count:0,thrower"));
+                Is.EqualTo("fell back, cleanups 1, count:0,unreached-fallback"));
         }
 
         private static VelvetTaskCompletionSource<string> s_pendingResource;
@@ -1215,8 +1250,7 @@ namespace Velvet.Tests
         private static Action<int> s_throwingSetValue;
 
         // GREEN_ON_BASE(characterization): the merge base already disposes an orphan whose cleanup raised the abort.
-        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep, and a
-        // later render mounting the component at the same key gets a new instance rather than the old one.
+        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep.
         [Test]
         public void Given_AnOrphanWhoseCleanupThrowsIntoABoundary_When_TheRenderDropsIt_Then_ItIsDisposed()
         {
@@ -1225,25 +1259,26 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
             s_throwingSetValue.Invoke(5);
             mounted.FlushStateForTest();
-            s_unreachedSetHostTick.Invoke(1);
-            mounted.FlushStateForTest();
-            var fellBack = _root.FindLabelByText("cleanup-fallback") != null;
+            var orphan = s_throwingFiber;
 
             // Act
-            s_unreachedSetHostTick.Invoke(2);
+            s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
 
-            // Assert
+            // Assert — the fallback term says the boundary caught the cleanup's error
             Assert.That(
-                (fellBack ? "fell back" : "never fell back") + ", cleanup ran " + s_throwingCleanupRuns + ", "
-                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
-                Is.EqualTo("fell back, cleanup ran 1, throwing:0"));
+                (_root.FindLabelByText("cleanup-fallback") != null ? "fell back" : "never fell back")
+                    + ", cleanup ran " + s_throwingCleanupRuns + ", disposed " + orphan?.IsDisposed,
+                Is.EqualTo("fell back, cleanup ran 1, disposed True"));
         }
+
+        private static ComponentFiber s_throwingFiber;
 
         [Component(Compiler = false)]
         private static VNode ThrowingCleanupRender()
         {
+            s_throwingFiber = FiberAmbientStack.Current;
             var (value, setValue) = Hooks.UseState(0);
             s_throwingSetValue = setValue;
             Hooks.UseEffect(() => () =>

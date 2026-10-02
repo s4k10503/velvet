@@ -90,8 +90,10 @@ namespace Velvet
             }
         }
 
-        // A memo expanded without a component owner supplies its cache as an explicit root source.
-        internal static void ReturnRetiredTree(VNode?[]? retired, ComponentFiber? owner, FiberMemoCache? memoCache = null)
+        // A memo expanded without a component owner supplies its cache as an explicit root source. A tree about to
+        // be committed beside the retired one, which no committed state holds yet, is passed as alsoLive.
+        internal static void ReturnRetiredTree(
+            VNode?[]? retired, ComponentFiber? owner, FiberMemoCache? memoCache = null, VNode?[]? alsoLive = null)
         {
             if (retired == null || retired.Length == 0) return;
 
@@ -100,6 +102,7 @@ namespace Velvet
             {
                 MarkOwnerRoots(owner, live);
                 memoCache?.MarkCachedTrees(live);
+                WalkTree(alsoLive, live, WalkMode.Mark);
                 SweepTree(retired, live);
             }
             finally
