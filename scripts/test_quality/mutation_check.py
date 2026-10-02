@@ -1545,6 +1545,11 @@ class Holder:
         # then is held until it does rather than leaving that editor running over a restored tree.
         self.starting = False
         self.pending = None
+        self.state = None
+
+    def held_paths(self):
+        held = self.outstanding()
+        return set() if held in (None, UNREADABLE) else {Path(entry["source"]) for entry in held_sources(held)}
 
     def started(self):
         """Ends the start `launch` marked, delivering a signal that arrived during it."""
@@ -1631,6 +1636,111 @@ def held_sources(held):
 
 def held_names(held):
     return ", ".join(entry.get("source", "<unnamed>") for entry in held_sources(held))
+
+
+# --------------------------------------------------------------------------------------------------
+# The tree every launch starts from
+# --------------------------------------------------------------------------------------------------
+
+# A file the package's sources name directly under Library/, where git reports nothing: taken off those
+# sources as a quoted path, so a new one is covered without anyone listing it.
+LIBRARY_FILE = re.compile(r'"(Library/[^"/]+)"')
+
+
+def library_files(project):
+    found = set()
+    for path in (Path(project) / PACKAGE).rglob("*.cs"):
+        if "/Tests/" not in path.as_posix():
+            found.update(LIBRARY_FILE.findall(path.read_text(encoding="utf-8", errors="replace")))
+    return sorted(found)
+
+
+def reported_paths(project):
+    """Relative path -> whether git tracks it, for each file `git status` reports."""
+    result = subprocess.run(["git", "-C", str(project), "status", "--porcelain=v1", "-z",
+                             "--untracked-files=all", "--no-renames"], capture_output=True, check=True)
+    return {entry[3:].decode("utf-8", "surrogateescape"): entry[:2] != b"??"
+            for entry in result.stdout.split(b"\0") if len(entry) > 3}
+
+
+def file_bytes(path):
+    try:
+        return path.read_bytes()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+
+
+class TreeState:
+    """The project's files as they stood before the baseline, which `launch` puts back before every
+    editor it starts: each file git reports and each of `library_files`.
+
+    Put back by the harness rather than by the fixtures that write them, because an editor killed at its
+    bound runs nothing of its own, and the launch after it would read what that editor's tests left.
+    What is overwritten or removed is copied under `stash` first, so nothing a launch puts back is lost.
+    """
+
+    def __init__(self, project, files, outside, stash):
+        self.project = Path(project)
+        self.files = files
+        self.outside = [Path(path) for path in outside]
+        self.stash = Path(stash)
+        self.launches = 0
+
+    @classmethod
+    def capture(cls, project, outside, stash):
+        project = Path(project)
+        state = cls(project, {}, outside, stash)
+        for relative in set(reported_paths(project)) | set(library_files(project)):
+            if not state.excluded(project / relative):
+                state.files[relative] = file_bytes(project / relative)
+        return state
+
+    def excluded(self, path):
+        return any(path == outside or outside in path.parents for outside in self.outside)
+
+    def wanted(self, relative, tracked):
+        if relative in self.files:
+            return self.files[relative]
+        if not tracked:
+            return None
+        shown = subprocess.run(["git", "-C", str(self.project), "show", ":" + relative], capture_output=True)
+        return shown.stdout if shown.returncode == 0 else None
+
+    def restore(self, keep):
+        """Puts back every file that differs from the reading, other than those in `keep`, and returns
+        their relative paths."""
+        self.launches += 1
+        reported = reported_paths(self.project)
+        kept = {Path(path).resolve() for path in keep}
+        restored = []
+        for relative in sorted(set(reported) | set(self.files)):
+            path = self.project / relative
+            if self.excluded(path) or path.resolve() in kept:
+                continue
+            want, have = self.wanted(relative, reported.get(relative, False)), file_bytes(path)
+            if want == have:
+                continue
+            if have is not None:
+                copy = self.stash / str(self.launches) / relative
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                copy.write_bytes(have)
+            if want is None:
+                path.unlink()
+                for parent in path.parents:
+                    if parent == self.project or any(parent.iterdir()):
+                        break
+                    parent.rmdir()
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(want)
+            restored.append(relative)
+        return restored
+
+
+def tree_before_baseline(project, output, sentinel):
+    """What every launch starts from: the tree as it stands now, apart from `output` and `sentinel`,
+    which the campaign itself writes while it runs."""
+    return TreeState.capture(project, [output, sentinel], Path(output) / "put-back")
 
 
 def unity_busy():
@@ -1808,6 +1918,11 @@ def launch(command, timeout, holder, env=None, expired=None):
     """One editor launch: its wall clock, whether it had to be killed, the most other editors seen at
     once, what it printed, and the process group it ran in. `expired`, where given, is asked every few
     seconds as well, and a true answer kills the editor as the bound does."""
+    if holder is not None and holder.state is not None:
+        restored = holder.state.restore(holder.held_paths())
+        if restored:
+            print("put back before this launch, as the baseline saw them: {}".format(", ".join(restored)),
+                  flush=True)
     start = time.time()
     said = []
     if holder is not None:
@@ -2103,28 +2218,35 @@ QUOTED = re.compile(r'"([A-Za-z_][\w.]*)"')
 DECLARED_TYPE = re.compile(r"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_]\w*)")
 
 
-def il_reading_assemblies(project):
+def il_reading_assemblies(project, ran=None):
     """The assemblies some fixture reads the IL of: those declaring a type whose `typeof(...).Assembly`
     such a fixture takes, and those it names by a string equal to an assembly's name.
 
     Derived as `text_reading_fixtures` is. A name counts whichever .asmdef in the project declares it,
-    test assemblies included, since what matters is only whether a mutated one is among them.
+    test assemblies included, since what matters is only whether a mutated one is among them. Given
+    `ran`, the test assemblies a baseline ran, a fixture in none of them is not counted: a session on
+    that baseline's platform never runs it beside a mutant.
     """
-    sources, asmdefs = [], {}
+    sources, asmdefs, owners = [], {}, {}
     for root, directories, files in os.walk(str(project)):
         directories[:] = [name for name in directories if name not in ("Library", "obj", "Logs", "Temp")]
         for name in files:
             path = Path(root) / name
             if name.endswith(".asmdef"):
                 try:
-                    asmdefs[json.loads(path.read_text())["name"]] = path.parent
+                    declared = json.loads(path.read_text())["name"]
                 except (OSError, ValueError, KeyError):
                     continue
+                asmdefs[declared] = path.parent
+                owners[path.parent] = declared
             elif name.endswith(".cs"):
                 sources.append(path)
     types, names = set(), set()
     for path in sources:
         if not path.name.endswith("Tests.cs"):
+            continue
+        owner = next((owners[parent] for parent in path.parents if parent in owners), None)
+        if ran is not None and owner not in ran:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if IL_READ.search(text):
@@ -2503,6 +2625,8 @@ def run_session(args, project, plan, directory, holder):
     progress = directory / "runner-progress.json"
     done = directory / "runner-done"
     failed = directory / "runner-failed"
+    leaked = directory / "runner-leaked"
+    reference = directory / "runner-reference"
     items = plan["items"]
     runs, lost = {}, set()
     launches = 0
@@ -2513,7 +2637,7 @@ def run_session(args, project, plan, directory, holder):
             plan["start"], plan["end"] = position, end
             plan_path.write_text(json.dumps(plan, indent=1))
             state.write_text(json.dumps({"position": position, "stage": 0, "phase": "arm"}))
-            for stale in (progress, done, failed):
+            for stale in (progress, done, failed, leaked, reference):
                 if stale.exists():
                     stale.unlink()
             log = directory / "session-{:03d}.log".format(position)
@@ -2580,6 +2704,19 @@ def run_session(args, project, plan, directory, holder):
             reached = end if done.exists() else where.get("position", position)
             for passed in range(position, min(reached, end)):
                 runs[passed] = {"launch": launches, "peak": peaks.get(passed, 0)}
+            try:
+                leak = json.loads(leaked.read_text())
+            except (OSError, ValueError):
+                leak = None
+            if leak is not None:
+                left = leak["position"]
+                print("[{}] left {} other than the launch found it, so the session is launched again past "
+                      "it".format(items[left]["id"], ", ".join(leak["changed"])), flush=True)
+                # An item stopped before its last stage is lost below, as one whose editor died is.
+                if leak["complete"]:
+                    runs[left] = {"launch": launches, "peak": peaks.get(left, 0)}
+                    position = left + 1
+                    continue
             if failed.exists():
                 return runs, lost, "the runner stopped: {}".format(failed.read_text().strip())
             if stuck:
@@ -2657,6 +2794,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     plan, segments = session_plan(project, mutants, placed, attempts, whole_scope, args.platform, ceiling,
                                   args.timeout, directory)
     plan["segments"] = segments
+    plan["watch"] = library_files(project)
 
     rewritten = {project / relative: text for relative, text in answer["files"].items()}
     if not wait_for_quiet(args.busy_timeout):
@@ -2683,7 +2821,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         counts = stage_counts(stage)
         expected[name] = counts["total"] if counts else None
     found = confirmations(plan, directory)
-    il_read = il_reading_assemblies(project)
+    il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
     measured = {}
     for position, item in enumerate(plan["items"]):
         index = item["id"]
@@ -2984,6 +3122,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # Before the baseline, not before the loop: the guard reaps the editor as well as restoring, and
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
+    holder.state = tree_before_baseline(project, output, holder.sentinel)
     baseline_results = output / "baseline.xml"
     if baseline_results.exists():
         baseline_results.unlink()

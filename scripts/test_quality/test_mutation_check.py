@@ -2152,6 +2152,7 @@ class StubbedCampaign:
     # What the baseline is reported to have taken. Zero is a baseline with the whole bound to spare,
     # which is what separates a mutant that hung from a bound the suite was always going to outrun.
     baseline_seconds = 0.0
+    baseline_text = GREEN_RESULTS
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
@@ -2164,7 +2165,8 @@ class StubbedCampaign:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
             return wall, True, 0
-        Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
+        Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else
+                                 GREEN_RESULTS if mutant else self.baseline_text)
         Path(log).write_text(
             "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
             if (mutant and self.build_error) else
@@ -3702,6 +3704,116 @@ def run_scripted(editor, project, root, timeout=30):
     with contextlib.redirect_stdout(io.StringIO()):
         mutation_check.run_suite(editor, str(project), "EditMode", [], root / "results.xml",
                                  root / "run.log", timeout)
+
+
+class LaunchTreeTests(unittest.TestCase):
+    """Every launch starts from the tree `measure` read before the baseline, whatever the launch before
+    it left there, and nothing the campaign itself holds is put back."""
+
+    SOURCE = mutation_check.PACKAGE + "/Editor/Record.cs"
+
+    def two_launches(self, relative, leave, between=None, results=None):
+        """What each of two launches read at `relative`, each writing `left` there when `leave` holds and
+        `between` running after the first."""
+        body = textwrap.dedent("""\
+            path = os.path.join(project, {relative!r})
+            with open(os.path.join(os.path.dirname(project), "seen"), "a") as seen:
+                seen.write((open(path).read() if os.path.exists(path) else "-") + "\\n")
+            if {leave!r}:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                open(path, "w").write("left")
+            open(results, "w").write("<test-run />")
+            """).format(relative=relative, leave=leave)
+        with scripted_editor(body) as (editor, project, root, _holders):
+            (project / "ProjectSettings").mkdir()
+            (project / "ProjectSettings/Graphics.asset").write_text("clean")
+            source = project / self.SOURCE
+            source.parent.mkdir(parents=True)
+            source.write_text('const string RecordFile = "Library/VelvetRecord.txt";')
+            (project / ".gitignore").write_text("/Library/\n/Temp/\n")
+            git = ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@t", "-c",
+                   "commit.gpgsign=false"]
+            subprocess.run(git + ["init", "-q"], check=True)
+            subprocess.run(git + ["add", ".gitignore", "ProjectSettings", "Packages"], check=True)
+            subprocess.run(git + ["commit", "-q", "-m", "tree"], check=True)
+            holder = mutation_check.Holder(project / mutation_check.SENTINEL)
+            output = project / "out"
+            holder.state = mutation_check.tree_before_baseline(project, output, holder.sentinel)
+            output.mkdir()
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    for launch in range(2):
+                        if launch and between:
+                            between(holder, project)
+                        written = (results or (lambda _project, number: root / "results-{}.xml".format(
+                            number)))(project, launch)
+                        mutation_check.run_suite(editor, str(project), "EditMode", [], written,
+                                                 root / "run.log", 30, holder)
+            finally:
+                holder.release()
+            return (root / "seen").read_text().splitlines()
+
+    def test_Given_AFileALaunchLeftThatGitDoesNotTrack_When_TheNextLaunchStarts_Then_ItIsGone(self):
+        # Act
+        seen = self.two_launches("ProjectSettings/VelvetBuildSettings.json", leave=True)
+
+        # Assert
+        self.assertEqual(seen, ["-", "-"])
+
+    def test_Given_ATrackedFileALaunchChanged_When_TheNextLaunchStarts_Then_ItIsAsCommitted(self):
+        # Act
+        seen = self.two_launches("ProjectSettings/Graphics.asset", leave=True)
+
+        # Assert
+        self.assertEqual(seen, ["clean", "clean"])
+
+    def test_Given_ALibraryFileThePackageNamesLeftBehind_When_TheNextLaunchStarts_Then_ItIsGone(self):
+        # Arrange — Library/ is ignored, so git reports nothing there.
+        relative = "Library/VelvetRecord.txt"
+
+        # Act
+        seen = self.two_launches(relative, leave=True)
+
+        # Assert
+        self.assertEqual(seen, ["-", "-"])
+
+    def test_Given_AMutationHeldBetweenLaunches_When_TheNextLaunchStarts_Then_ItReadsTheMutation(self):
+        # Arrange
+        def mutate(holder, project):
+            source = project / self.SOURCE
+            original = source.read_text()
+            holder.hold(source, original, "mutated", "a mutant")
+            source.write_text("mutated")
+
+        # Act
+        seen = self.two_launches(self.SOURCE, leave=False, between=mutate)
+
+        # Assert
+        self.assertEqual(seen[1], "mutated")
+
+    def test_Given_TheRecordOfAHeldMutation_When_TheNextLaunchStarts_Then_ItIsStillThere(self):
+        # Arrange
+        def mutate(holder, project):
+            source = project / self.SOURCE
+            holder.hold(source, source.read_text(), "mutated", "a mutant")
+            source.write_text("mutated")
+
+        # Act
+        seen = self.two_launches(mutation_check.SENTINEL, leave=False, between=mutate)
+
+        # Assert
+        self.assertNotEqual(seen[1], "-")
+
+    def test_Given_AResultTheFirstLaunchWroteUnderTheOutput_When_TheNextLaunchStarts_Then_ItIsKept(self):
+        # Arrange — under a directory git reports, as an --output inside the project is.
+        def results(project, number):
+            return project / "out" / "results-{}.xml".format(number)
+
+        # Act
+        seen = self.two_launches("out/results-0.xml", leave=False, results=results)
+
+        # Assert
+        self.assertEqual(seen[1], "<test-run />")
 
 
 class ProjectLockTests(unittest.TestCase):
@@ -5558,8 +5670,9 @@ class SessionRoutingTests(unittest.TestCase):
         mutation_check.rewrite_schemata = self.campaign.rewrite
         mutation_check.run_session = self.campaign.session
         mutation_check.response_file = lambda _project, _assembly: "Library/Bee/artifacts/x/A.rsp"
-        self.il_read = set()
-        mutation_check.il_reading_assemblies = lambda _project: self.il_read
+        self.il_read, self.il_asked = set(), []
+        mutation_check.il_reading_assemblies = lambda _project, ran=None: (
+            self.il_asked.append(ran), self.il_read)[1]
         self.addCleanup(self.restore, saved + (READ_IL,))
 
     @staticmethod
@@ -5681,6 +5794,20 @@ class SessionRoutingTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launched, ["baseline.xml", "mutant-001.xml"])
 
+    def test_Given_ASurvivorTheSessionRead_When_ItsAssemblyIsAsked_Then_ItIsAskedOfWhatTheBaselineRan(self):
+        # Arrange — only those assemblies' fixtures run beside the mutant.
+        campaign = self.campaign
+        campaign.outcome = "survived"
+        campaign.baseline_text = ('<test-run total="1" passed="1" failed="0" inconclusive="0">'
+                                  '<test-suite type="Assembly" name="Velvet.Tests.Ran.dll" duration="1" />'
+                                  '</test-run>')
+
+        # Act
+        campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.il_asked, [{"Velvet.Tests.Ran"}])
+
     def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_NoMutantIsMeasuredInASession(self):
         # Arrange — the runner starts each stage itself, so the argument would reach none of them.
         campaign = self.campaign
@@ -5709,6 +5836,35 @@ class ILReadingAssemblyTests(unittest.TestCase):
 
         # Act
         read = mutation_check.il_reading_assemblies(project)
+
+        # Assert
+        self.assertEqual(read, {"Read"})
+
+    def read_beside(self, ran):
+        """What counts as read where the one fixture reading `Read` is in the test assembly `T`, under a
+        baseline that ran `ran`."""
+        project = Path(tempfile.mkdtemp(prefix="il-read-"))
+        directory = project / "Packages" / "Read"
+        directory.mkdir(parents=True)
+        (directory / "Read.asmdef").write_text(json.dumps({"name": "Read"}))
+        (directory / "Read.cs").write_text("public static class V { }")
+        tests = directory / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(
+            "class ReaderTests { void A() { ModuleDefinition.ReadModule(typeof(V).Assembly.Location); } }")
+        return mutation_check.il_reading_assemblies(project, ran=ran)
+
+    def test_Given_AFixtureInAnAssemblyTheBaselineDidNotRun_When_Derived_Then_NothingIsRead(self):
+        # Act
+        read = self.read_beside({"Other"})
+
+        # Assert
+        self.assertEqual(read, set())
+
+    def test_Given_AFixtureInAnAssemblyTheBaselineRan_When_Derived_Then_ItsReadingCounts(self):
+        # Act
+        read = self.read_beside({"T"})
 
         # Assert
         self.assertEqual(read, {"Read"})
@@ -5924,6 +6080,39 @@ class SessionLaunchTests(unittest.TestCase):
         # Assert
         self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
                          ([2], {0: 1, 1: 1, 3: 2}))
+
+    def leaves_the_tree_changed(self, complete):
+        def leaks(expired):
+            self.progress(1)
+            (self.directory / "runner-leaked").write_text(json.dumps(
+                {"position": 1, "complete": complete, "changed": ["ProjectSettings/VelvetBuildSettings.json"]}))
+        return leaks
+
+    def test_Given_AWholeItemThatLeftTheTreeChanged_When_TheSessionGoesOn_Then_ItStandsAndTheRestRelaunch(self):
+        # Arrange
+        self.scripts = [self.leaves_the_tree_changed(complete=True), self.finishes]
+
+        # Act
+        with contextlib.redirect_stdout(io.StringIO()):
+            runs, lost, _ = self.session()
+
+        # Assert
+        self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
+                         ([], {0: 1, 1: 1, 2: 2, 3: 2}))
+
+    # GREEN_ON_BASE(characterization): the base loses an item its launch ended in; this holds that a
+    # changed tree reported before its last stage does not make it stand.
+    def test_Given_AnItemThatLeftTheTreeChangedBeforeItsLastStage_When_TheSessionGoesOn_Then_ItIsLost(self):
+        # Arrange
+        self.scripts = [self.leaves_the_tree_changed(complete=False), self.finishes]
+
+        # Act
+        with contextlib.redirect_stdout(io.StringIO()):
+            runs, lost, _ = self.session()
+
+        # Assert
+        self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
+                         ([1], {0: 1, 2: 2, 3: 2}))
 
     def test_Given_AStageOlderThanItsBound_When_Asked_Then_ItHasExpired(self):
         # Arrange — the plan's stage bound plus the slack, and a second past it.
