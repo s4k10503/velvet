@@ -5677,8 +5677,8 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
-        # driver, 5 x 20 s measured locally.
-        mutant, setup = 934 + 100, 202 + 625 + 11
+        # driver, 5 x 20 s measured locally; and one mutant hanging at --timeout's 900 s besides.
+        mutant, setup = 934 + 100, 202 + 625 + 11 + 900
 
         # Act
         fits = self.fits("mutation-playmode-shard", "PlayMode", mutant, setup)
