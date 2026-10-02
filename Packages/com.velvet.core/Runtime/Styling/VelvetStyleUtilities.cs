@@ -157,8 +157,8 @@ namespace Velvet
         /// <summary>Set from the editor assembly, where the project's build settings live: whether the project
         /// left the sheet's holder out of its builds, which silences the report.</summary>
         internal static Func<bool>? MissingReportSilenced;
-        private static FieldInfo? s_importsField;
-        private static FieldInfo? s_importedSheetField;
+        private static readonly FieldInfo? s_importsField = EngineMember.StyleSheetImports.ResolveField();
+        private static readonly FieldInfo? s_importedSheetField = EngineMember.ImportedStyleSheet.ResolveField();
 
         // Styles resolve on a panel, so that is where the search runs: at the panel's next scheduler tick rather
         // than at the call, so a sheet attached after the call is seen, and again after each arrival, since the
@@ -492,10 +492,8 @@ namespace Velvet
 
         private static IEnumerable<StyleSheet> ReadImports(StyleSheet sheet)
         {
-            s_importsField ??= typeof(StyleSheet).GetField("imports", BindingFlags.Instance | BindingFlags.NonPublic);
             foreach (var import in s_importsField?.GetValue(sheet) as Array ?? Array.Empty<object>())
             {
-                s_importedSheetField ??= import.GetType().GetField("styleSheet");
                 var imported = s_importedSheetField?.GetValue(import) as StyleSheet;
                 if (imported != null) yield return imported;
             }

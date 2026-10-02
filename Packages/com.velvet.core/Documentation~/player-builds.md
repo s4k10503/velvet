@@ -94,3 +94,19 @@ it measured at more than twice the added startup. **Why not Addressables**, whic
 replacement: it asks the consumer to create a group and run an Addressables build, and a package cannot
 assume either has happened — a first-run failure there is worse than either number here.
 
+## Engine members read by name
+
+Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
+focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
+flag, UI Toolkit's internal property-change event, and the `@import`s of a stylesheet. `EngineMember`
+declares every one, and `EngineMemberRegistryTests` fails when the runtime looks a member up by name
+anywhere else.
+
+Managed code stripping can remove a member that only a lookup by name reaches, so the package hands the
+linker a link.xml keeping exactly those members, from an `IUnityLinkerProcessor` step. There is nothing to
+configure; the file is written under the project's Temp folder while the build runs.
+
+A member that no longer resolves leaves the feature reading it undone rather than throwing.
+`EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the
+editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
+
