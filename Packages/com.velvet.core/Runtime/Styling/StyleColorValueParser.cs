@@ -126,8 +126,8 @@ namespace Velvet
 
         // Parses a color opacity modifier ({bg|text|border}-<color>/<N>). The base <color> is a palette name
         // (red-500/white/black/transparent) or an arbitrary [#hex]/[rgb(...)] value; <N> is an integer percent
-        // 0..100 (alpha = N/100) or an arbitrary [0..1] fraction (.../[0.32]). The modifier is authoritative:
-        // it OVERWRITES the base color's alpha (an 8-digit-hex base's alpha is replaced, not multiplied).
+        // 0..100 (alpha = N/100) or an arbitrary [0..1] fraction (.../[0.32]). The modifier scales the base colour's
+        // alpha, as Tailwind's color-mix with transparent does: bg-[#ff000080]/50 is a quarter opaque.
         // Returns false for an unknown prefix, an unresolvable base, or an out-of-range N.
         internal static bool TryParseColorOpacityModifier(string className, out ArbitraryStyle result)
         {
@@ -174,7 +174,7 @@ namespace Velvet
                 return false;
             }
 
-            color.a = alpha;
+            color.a *= alpha;
             result = new ArbitraryStyle(property, color);
             return true;
         }

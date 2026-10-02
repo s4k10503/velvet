@@ -156,13 +156,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AlphaHexBaseWithOpacityModifier_When_Parsed_Then_ModifierReplacesBaseAlpha()
+        public void Given_AlphaHexBaseWithOpacityModifier_When_Parsed_Then_ModifierScalesBaseAlpha()
         {
-            // Act — base alpha 0x80 (~0.5); the /20 modifier is authoritative and replaces it.
+            // Act — base alpha 0x80; Tailwind mixes it with transparent at 20%, which scales that alpha.
             var ok = StyleArbitraryValueResolver.TryParse("bg-[#ef444480]/20", out var s);
 
             // Assert
-            Assert.That((ok, s.Color.a), Is.EqualTo((true, 0.2f)));
+            Assert.That(ok ? s.Color.a : float.NaN, Is.EqualTo(128f / 255f * 0.2f).Within(1e-5f));
         }
 
         [Test]
