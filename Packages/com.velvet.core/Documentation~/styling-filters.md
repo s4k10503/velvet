@@ -78,8 +78,10 @@ parameters, so a definition declaring more is rejected at registration.)
 
 A name nothing is registered under is a reference to a missing filter: the element draws no filter at
 all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
-name is warned about once. An extra argument, or an argument that fails its slot's grammar, leaves the class
-adding nothing, like an unrecognized utility, until a registration that accepts the arguments.
+name is warned about once, and a change into or out of that state applies at once, as CSS interpolates a list
+holding a `url()` discretely. An extra argument, or an argument that fails its slot's grammar, leaves the class
+adding nothing, as CSS drops an invalid declaration, so a layer of the same name under it still applies; a
+registration that accepts the arguments resolves it.
 
 ### Composition and layering
 
@@ -163,9 +165,10 @@ Under Velvet's tween:
 ### Contract
 
 - **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
-  every element carrying the name again, at once and without a transition, as a filter appearing behind a
-  `url()` changes no computed value in CSS. A class applied before its name was registered resolves when it
-  is registered, in the compose slot it took when applied.
+  every element carrying the name again, without starting a transition, as a filter appearing behind a `url()`
+  changes no computed value in CSS. A filter tween already running keeps its clock and heads for the new
+  definition where its arguments line up, and is otherwise replaced by the new filter at once. A class applied
+  before its name was registered resolves when it is registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).

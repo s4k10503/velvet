@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 using Object = UnityEngine.Object;
@@ -603,6 +604,47 @@ namespace Velvet.Tests
             finally
             {
                 VelvetFilters.Unregister("late-tween");
+            }
+        }
+
+        [Test]
+        public void Given_TransitionFilterAndABlur_When_AnUnregisteredCustomIsApplied_Then_TheFilterIsDroppedAtOnce()
+        {
+            // Arrange — CSS interpolates a list holding a url() discretely, so the change applies at once.
+            var element = MountResolved("transition-filter blur-[4px]");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[never-registered-tween:1]", StyleLayerPriority.Base);
+
+            // Assert
+            Assert.That((binding.Scheduled == null, element.style.filter.value?.Count ?? 0), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_ARunningTweenOverACustom_When_ItsNameIsRegisteredAgain_Then_TheTweenRunsOnTowardTheNewDefinition()
+        {
+            // Arrange — a registration changes no computed value, so a transition already running keeps running.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var first = CreateUserDefinition(new FilterParameter(0f));
+            var second = CreateUserDefinition(new FilterParameter(0f));
+            VelvetFilters.Register("rebind-tween", first);
+            try
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[rebind-tween:1]", StyleLayerPriority.Base);
+                LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[VelvetFilters\].*already registered"));
+
+                // Act
+                VelvetFilters.Register("rebind-tween", second);
+
+                // Assert
+                Assert.That((binding.Scheduled != null, binding.Target?.LastOrDefault().customDefinition == second),
+                    Is.EqualTo((true, true)));
+            }
+            finally
+            {
+                VelvetFilters.Unregister("rebind-tween");
             }
         }
 
@@ -1645,10 +1687,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADestroyedCustomBehindAContrast_When_TheContrastIsRemoved_Then_ItFadesOutToOne()
+        public void Given_ADestroyedCustomBehindAContrast_When_TheContrastIsRemoved_Then_NoFilterIsPaintedAtOnce()
         {
-            // Arrange — a contrast and a user custom composed at rest, then the custom's definition destroyed,
-            // which drops it from the next compose.
+            // Arrange — a contrast and a user custom composed at rest, then the custom's definition destroyed, which
+            // leaves the next compose naming no live filter, so the chain drops discretely.
             var element = MountResolved("w-[100px] h-[40px]");
             var definition = CreateUserDefinition(new FilterParameter(0f));
             ApplyContrast(element, 2f);
@@ -1657,12 +1699,12 @@ namespace Velvet.Tests
             SetInlineTransition(element, new[] { "all" }, new[] { new TimeValue(0.3f) }, new[] { new TimeValue(0f) });
             Object.DestroyImmediate(definition);
 
-            // Act — the compose leaves no filter at all.
+            // Act
             ClearContrast(element);
             AdvanceAndPaint(element.panel, 0.15);
 
-            // Assert — half way from 2 to 1.
-            Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+            // Assert
+            Assert.That(element.resolvedStyle.filter.Count(), Is.Zero);
         }
 
         // GREEN_ON_BASE(characterization): removing a blur leaves the inline filter cleared at once, as it did before.

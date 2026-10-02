@@ -704,6 +704,9 @@ namespace Velvet
             // apply a custom filter.
             public List<(string Name, SortedList<long, ArbitraryStyle> Stack)>? Customs;
 
+            // Whether the filter last composed from this map was dropped for a name no live definition answers.
+            public bool FilterChainDropped;
+
             // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
             // halves decide one outcome together — an inline layer a USS class outranks has to stop
             // painting, and a class an inline layer outranks has to stop counting — and because sharing this
@@ -839,9 +842,9 @@ namespace Velvet
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
             {
-                if (map.Customs == null)
+                if (FindCustomStack(map, style.Custom!.Name) == null)
                 {
-                    s_customFilterHosts.Add(new WeakReference<VisualElement>(element));
+                    AddCustomFilterHost(style.Custom.Name, element);
                 }
                 ApplyCustomFilterLayer(map, style, priority);
             }
@@ -870,22 +873,59 @@ namespace Velvet
             }
         }
 
-        // The elements whose layer map holds a filter-[name:args] stack, which a registration change re-resolves.
-        // An entry outlives the map it was added for, since ClearAll drops the map alone; the walk below removes
-        // it then.
-        private static readonly List<WeakReference<VisualElement>> s_customFilterHosts = new();
+        // Per registered name, the elements holding a layer stack under it: a registration change re-resolves
+        // those and no others. An element joins a name when its map first holds that name's stack and leaves when
+        // ClearAll drops the map, so it is listed once per name. One the collector took without a ClearAll is
+        // pruned when its name next grows past twice the size it had at the last prune, or is re-resolved.
+        private static readonly Dictionary<string, (List<WeakReference<VisualElement>> Hosts, int Pruned)> s_customFilterHosts = new();
+
+        private static void AddCustomFilterHost(string name, VisualElement element)
+        {
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
+            {
+                entry = (new List<WeakReference<VisualElement>>(), 0);
+            }
+            if (entry.Hosts.Count >= 2 * Math.Max(entry.Pruned, 8))
+            {
+                entry.Hosts.RemoveAll(host => !host.TryGetTarget(out _));
+                entry.Pruned = entry.Hosts.Count;
+            }
+            entry.Hosts.Add(new WeakReference<VisualElement>(element));
+            s_customFilterHosts[name] = entry;
+        }
+
+        private static void RemoveCustomFilterHosts(VisualElement element, LayerMap map)
+        {
+            if (map.Customs == null)
+            {
+                return;
+            }
+            foreach (var (name, _) in map.Customs)
+            {
+                if (s_customFilterHosts.TryGetValue(name, out var entry))
+                {
+                    entry.Hosts.RemoveAll(host => !host.TryGetTarget(out var held) || held == element);
+                }
+            }
+        }
 
         // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
-        // registered under it, and recomposes each element holding one at once: CSS transitions a change of the
-        // computed filter, and a filter that appears or goes behind a url() changes none.
+        // registered under it, and recomposes each element holding one. CSS changes no computed value when a
+        // filter appears or goes behind a url(), so a filter tween already running keeps its clock, with the
+        // re-resolved filter in its frames (StyleFilterTransitionDriver.TryRebind); where the tween cannot take
+        // it, or the element's chain is dropped on either side, the change is written at once.
         internal static void ReresolveCustomFilter(string name)
         {
-            for (var i = s_customFilterHosts.Count - 1; i >= 0; i--)
+            if (!s_customFilterHosts.TryGetValue(name, out var entry))
             {
-                if (!s_customFilterHosts[i].TryGetTarget(out var element)
-                    || !s_layers.TryGetValue(element, out var map) || map.Customs == null)
+                return;
+            }
+            var hosts = entry.Hosts;
+            for (var i = hosts.Count - 1; i >= 0; i--)
+            {
+                if (!hosts[i].TryGetTarget(out var element) || !s_layers.TryGetValue(element, out var map))
                 {
-                    s_customFilterHosts.RemoveAt(i);
+                    hosts.RemoveAt(i);
                     continue;
                 }
                 var stack = FindCustomStack(map, name);
@@ -898,11 +938,19 @@ namespace Velvet
                     StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
                     stack[stack.Keys[k]] = style;
                 }
-                using (StyleFilterEngineWrite.WithoutTransition())
+                var wasDropped = map.FilterChainDropped;
+                var functions = ComposeFilter(map, out var dropped);
+                map.FilterChainDropped = dropped;
+                if (wasDropped || dropped || !StyleFilterTransitionDriver.TryRebind(element, functions))
                 {
-                    ApplyCombinedFilter(element, map);
+                    using (StyleFilterEngineWrite.WithoutTransition())
+                    {
+                        WriteComposedFilter(element, functions);
+                    }
                 }
             }
+            entry.Pruned = hosts.Count;
+            s_customFilterHosts[name] = entry;
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
@@ -967,8 +1015,7 @@ namespace Velvet
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
         // property. The only case this matters today is FilterCustom, whose value carries the NAME that
         // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
-        // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
-        // style; every other property clears exactly like the (property, priority) overload.
+        // arguments); every other property clears exactly like the (property, priority) overload.
         public static void Clear(VisualElement element, in ArbitraryStyle style, long priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
@@ -1309,6 +1356,10 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
+            if (element != null && s_layers.TryGetValue(element, out var map))
+            {
+                RemoveCustomFilterHosts(element, map);
+            }
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -1508,8 +1559,37 @@ namespace Velvet
             }
         }
 
+        // CSS interpolates a filter list holding a url() discretely, so a change into or out of a dropped chain is
+        // written at once rather than handed to either animator.
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
+            var wasDropped = map.FilterChainDropped;
+            var functions = ComposeFilter(map, out var dropped);
+            map.FilterChainDropped = dropped;
+            if (wasDropped || dropped)
+            {
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    WriteComposedFilter(element, functions);
+                }
+                return;
+            }
+            WriteComposedFilter(element, functions);
+        }
+
+        private static void WriteComposedFilter(VisualElement element, List<FilterFunction>? functions)
+        {
+            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
+            // from-side, so it must run BEFORE the instant write below (never observing its own write).
+            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            {
+                StyleFilterEngineWrite.Write(element, functions);
+            }
+        }
+
+        private static List<FilterFunction>? ComposeFilter(LayerMap map, out bool dropped)
+        {
+            dropped = false;
             List<FilterFunction>? functions = null;
             foreach (var prop in s_filterOrder)
             {
@@ -1526,37 +1606,34 @@ namespace Velvet
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
             // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
-            // LayerMap.Customs). A winning layer with no definition names no live filter — never registered,
-            // unregistered, or DESTROYED since it was applied, which compares equal to null — and CSS ignores
-            // the whole chain when a url() names no filter. A layer whose registration refuses its arguments
-            // is an inert class's and adds nothing.
-            if (map.Customs != null)
+            // LayerMap.Customs). A layer whose registration refuses its arguments is an invalid declaration's,
+            // which CSS drops at parse time, so the layer under it wins. A winning layer with no definition
+            // names no live filter — never registered, unregistered, or DESTROYED since it was applied, which
+            // compares equal to null — and CSS ignores the whole chain when a url() names no filter.
+            if (map.Customs == null)
             {
-                foreach (var (_, stack) in map.Customs)
+                return functions;
+            }
+            foreach (var (_, stack) in map.Customs)
+            {
+                var top = stack.Count - 1;
+                while (top >= 0 && stack.Values[top].Custom!.Rejected)
                 {
-                    if (stack.Count == 0)
-                    {
-                        continue;
-                    }
-                    var custom = stack.Values[stack.Count - 1].Custom!;
-                    if (custom.Rejected)
-                    {
-                        continue;
-                    }
-                    if (custom.Definition == null)
-                    {
-                        functions = null;
-                        break;
-                    }
-                    (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
+                    top--;
                 }
+                if (top < 0)
+                {
+                    continue;
+                }
+                var custom = stack.Values[top].Custom!;
+                if (custom.Definition == null)
+                {
+                    dropped = true;
+                    return null;
+                }
+                (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
             }
-            // Velvet's filter tween owns the write when it runs; it reads the current inline list as its
-            // from-side, so it must run BEFORE the instant write below (never observing its own write).
-            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
-            {
-                StyleFilterEngineWrite.Write(element, functions);
-            }
+            return functions;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public

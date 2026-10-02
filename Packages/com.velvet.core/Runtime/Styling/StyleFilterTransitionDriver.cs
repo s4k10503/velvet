@@ -160,6 +160,48 @@ namespace Velvet
             return true;
         }
 
+        // Takes a re-resolved custom filter into a running tween, keeping its clock: each position of to holds the
+        // filter its channel ran, or a Custom that replaced the channel's definition with arguments that line up,
+        // which the channel then heads for. False, changing nothing, where no tween runs or a position does not
+        // line up.
+        internal static bool TryRebind(VisualElement element, List<FilterFunction>? to)
+        {
+            if (!s_bindings.TryGetValue(element, out var b) || b.Scheduled == null || to == null
+                || b.Target == null || b.Target.Count != to.Count)
+            {
+                return false;
+            }
+            var channels = (Channel[])b.Channels.Clone();
+            for (var k = 0; k < to.Count && k < channels.Length; k++)
+            {
+                var channel = channels[k];
+                if (to[k].type != channel.Type)
+                {
+                    return false;
+                }
+                if (channel.Type != FilterFunctionType.Custom || ReferenceEquals(to[k].customDefinition, channel.Definition))
+                {
+                    continue;
+                }
+                var args = Snapshot(to[k]);
+                if (args.Length != channel.From.Length)
+                {
+                    return false;
+                }
+                for (var p = 0; p < args.Length; p++)
+                {
+                    if (args[p].type != channel.From[p].type)
+                    {
+                        return false;
+                    }
+                }
+                channels[k] = new Channel(channel.Type, to[k].customDefinition, channel.From, args);
+            }
+            b.Channels = channels;
+            b.Target = to;
+            return true;
+        }
+
         // The USS names of the filter property and of the one the inline-filter setter animates a list write by.
         private const string FilterPropertyName = "filter";
         private const string BackgroundSizePropertyName = "background-size";

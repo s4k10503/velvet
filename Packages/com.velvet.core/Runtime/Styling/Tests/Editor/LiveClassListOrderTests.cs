@@ -732,27 +732,30 @@ namespace Velvet.Tests
                 + "value re-applied from the live list, in whatever order that list holds it");
         }
 
+        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order.
+        // What shows the case can fail is collecting the classes with `Insert(0, cls)` rather than
+        // `Add(cls)` in the settle re-apply: each arrangement then composes the two the other way round.
         [Test]
         [ReaderVerdict(MotionReapplyReader)]
-        public void Given_TwoCustomFilterTokensRoutedBeforeTheirNamesWereRegistered_When_TheMotionSettleReappliesThem_Then_TheyComposeInTheOrderTheyWereRouted()
+        public void Given_TwoCustomFilterTokensOnTheLiveClassList_When_TheMotionSettleReappliesThem_Then_TheyComposeInTheClassListOrder()
         {
-            // Arrange — a filter-[name:args] token is a layer from its routing on, registered or not, so it sits
-            // on no live class list and the routing fixes its compose slot. The names are registered in the
-            // order neither arrangement routed them in.
-            var added = Carrying("filter-[halo:1]", "filter-[speckle:2]");
-            var reversed = Carrying("filter-[speckle:2]", "filter-[halo:1]");
-            RegisterCustomFilter("speckle");
+            // Arrange — written onto the class list as an app writes it, past the routing, which would have made
+            // each a layer of its own; the settle re-apply is then each token's first application, and a custom
+            // filter's first application fixes its compose slot.
             RegisterCustomFilter("halo");
+            RegisterCustomFilter("speckle");
+            var added = DocumentRootWith("filter-[halo:1]", "filter-[speckle:2]");
+            var reversed = DocumentRootWith("filter-[speckle:2]", "filter-[halo:1]");
 
             // Act
             Settle(added);
             Settle(reversed);
 
             // Assert
-            Assert.That((SortedClassList(added), ComposedCustomFilters(added), ComposedCustomFilters(reversed)),
-                Is.EqualTo((string.Empty, "halo speckle", "speckle halo")),
-                "the settle path re-applies what the live class list names, which holds no custom filter, so "
-                + "the order each was routed in stays the compose order");
+            Assert.That((ComposedCustomFilters(added), ComposedCustomFilters(reversed)),
+                Is.EqualTo(("halo speckle", "speckle halo")),
+                "the settle path re-applies each token the live class list names, and for a custom filter applied "
+                + "there for the first time that list's order is the compose order");
         }
 
         // GREEN_ON_BASE(characterization): the bundled sheets declare no member of these families but one.
