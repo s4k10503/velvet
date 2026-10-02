@@ -34,10 +34,8 @@ namespace Velvet.Tests
     /// Panels cannot be constructed at all and simulation is the only option. The physical-bubbling test
     /// drives the reconciler directly (mirroring <see cref="PortalTests"/>), because the contract under
     /// test there is only the physical reparenting the reconciler performs and needs no fiber machinery;
-    /// every other mount goes through <c>V.Mount</c> (not a bare <c>Reconciler.Reconcile</c> call), since
-    /// the synthetic bridge resolves the logical ancestor from <c>DetachedMountContext</c>, which is
-    /// stamped only while a real root fiber stays current on <c>FiberStack</c> through the post-reconcile
-    /// drain. The registry's static target table is cleared in <see cref="SetUp"/> and
+    /// every other mount goes through <c>V.Mount</c> (not a bare <c>Reconciler.Reconcile</c> call). The
+    /// registry's static target table is cleared in <see cref="SetUp"/> and
     /// <see cref="TearDown"/> so registrations never leak.
     /// </remarks>
     [TestFixture]
@@ -107,11 +105,7 @@ namespace Velvet.Tests
         public void Given_PortalChildFiresPointerDown_When_HandlerOnLogicalAncestor_Then_HandlerInvoked()
         {
             // Arrange — the logical ancestor carries a Velvet PointerDownBinding; its child is a registry Portal
-            // whose content physically mounts under the target, off the ancestor's physical chain. Both the
-            // Portal call site and its content are wrapped in components (rather than bare elements) so the
-            // portal drain (ChildReconciler.DrainPendingPortalMounts) has top-level ComponentFibers to stamp
-            // DetachedMountContext onto — see FiberCrossPanelEventDispatcher's own comment on the bare-element
-            // limitation this mirrors from the layer/world-space case.
+            // whose content physically mounts under the target, off the ancestor's physical chain.
             var bubbledToLogical = false;
             var binding = new PointerDownBinding { Handler = _ => bubbledToLogical = true };
             _mounted = V.Mount(_logicalAncestor, V.Motion(
@@ -135,10 +129,10 @@ namespace Velvet.Tests
         {
             // Arrange — the same mount, plus a raw callback on the target (the portal child's physical ancestor).
             // The portal content here is a BARE V.Div (no enclosing V.Component) and the mount goes through the
-            // bare reconciler (no root fiber), so the same-panel synthetic bridge that auto-attaches to
-            // _portalTarget on every same-panel portal mount (see ReconcilerContext.SamePanelPortalBridges) finds
-            // no DetachedMountContext to resolve and is a no-op here — this test is unaffected and still pins
-            // ordinary native physical bubbling in isolation from the synthetic path.
+            // bare reconciler (no root fiber). The same-panel synthetic bridge that auto-attaches to
+            // _portalTarget on every same-panel portal mount (see ReconcilerContext.SamePanelPortalBridges) runs
+            // too, and invokes only events: bindings, which nothing on the logical chain carries — so this test
+            // pins ordinary native physical bubbling in isolation from the synthetic path.
             var bubbledToPhysical = false;
             EventCallback<PointerDownEvent> onTargetPointerDown = _ => bubbledToPhysical = true;
             _portalTarget.RegisterCallback(onTargetPointerDown);
@@ -593,9 +587,8 @@ namespace Velvet.Tests
         public void Given_PointerDownOnTheRegistryTargetItself_When_Dispatched_Then_LogicalAncestorHandlerDoesNotFire()
         {
             // Arrange — dispatch directly on the registry TARGET container, not on the Portal's own
-            // content. Continue's walk looks for a DetachedMountContext starting AT the native event
-            // target: that marker lives only on the Portal's own top-level children, never on the
-            // pre-existing target container itself, so the walk finds nothing and the bridge is a no-op.
+            // content. The container is a row of no portal range, so its logical ancestors are its physical
+            // ones, which native dispatch reaches itself.
             var target = new VisualElement();
             _window.rootVisualElement.Add(target);
             FiberPortalRegistry.Register("same-panel-target-self-target", target);

@@ -424,18 +424,22 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
-        // A boundary whose own reconcile runs inside another component's pass — a VirtualList row mounting
-        // during that pass — catches on the aborting path, and the abort it raises belongs to this reconcile
-        // alone: the enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what
-        // tells that abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of
-        // the body, so only a fallback this render swapped in has set it. A deferred render keeps its abort even
-        // so: it swaps one in only in the drain of a parked pass ahead of this call, into rows the walk around it
-        // is diffing, and that walk must stop.
+        // A boundary reconciling its own output catches a render error below it inside that reconcile, as the walk
+        // catches one below a boundary it expands, and shows its fallback once the reconcile has returned
+        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an element
+        // callback's error — inside another component's pass, a VirtualList row mounting during that pass, the
+        // abort it raises belongs to this reconcile alone: the
+        // enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what tells that
+        // abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of the body, so
+        // only a fallback this render swapped in has set it. A deferred render keeps its abort even so: it swaps
+        // one in only in the drain of a parked pass ahead of this call, into rows the walk around it is diffing,
+        // and that walk must stop.
         private static void ReconcileRenderedTree(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
-            FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
@@ -495,7 +499,7 @@ namespace Velvet
 
                 FiberBeginWork.CommitSettledHookDeps(fiber);
 
-                var newTree = FiberTreeReturn.NormalizeToArray(rendered);
+                var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
                 if (fiber.Reconciler?.HasPendingWork == true)
@@ -542,6 +546,8 @@ namespace Velvet
                     // Commit the new tree BEFORE retiring the old one so the recycle sweep can mark
                     // the committed state live (a memo hit legitimately shares nodes across the two).
                     fiber.PreviousTree = newTree;
+                    // A pass of this fiber that completes renders whatever an earlier one suspended on.
+                    fiber.SuspendedOn = null;
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
@@ -587,9 +593,7 @@ namespace Velvet
                         // Delegate to the parent reconcile's SuspenseNode handling. The finally's PopFiber runs.
                         throw;
                     }
-                    FiberLogger.LogWarning("Suspense",
-                        "FiberRenderer: FiberSuspendSignal propagated without finding a Suspense boundary." +
-                        " Wrap with V.Suspense().");
+                    SuspendWithoutBoundary(fiber);
                     return;
                 }
                 FiberErrorBoundary.OnRenderError(fiber, ex);
@@ -677,6 +681,8 @@ namespace Velvet
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
+            // A boundary showing the fallback it caught committed that fallback rather than its body's output.
+            if (fiber.CaughtError != null) return;
             // The mount root's Body is a constant passthrough closure over the caller-built tree
             // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
             // returns the SAME node graph the commit owns: there is no render purity to validate,
@@ -766,6 +772,48 @@ namespace Velvet
 
         #region FiberAsyncResource resolve commit path
 
+        // A suspend that reaches the fiber whose pass it is, with no walk above that pass for a Suspense
+        // expansion to catch it in. The boundary above renders again with this fiber dirty, so its walk renders
+        // this fiber's update again where that expansion catches the suspend: a memoized fiber left clean
+        // would bail there on equal props, and the update it holds would never render. Searched from the
+        // parent: a boundary this fiber renders has already caught whatever suspended inside it.
+        internal static void SuspendPassOwner(ComponentFiber fiber)
+        {
+            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            if (boundary == null)
+            {
+                SuspendWithoutBoundary(fiber);
+                return;
+            }
+            FiberWorkLoop.RequestRenderFromHook(fiber);
+            boundary.InvalidateMemoCache();
+            FiberWorkLoop.RequestRenderFromHook(boundary);
+        }
+
+        private static void SuspendWithoutBoundary(ComponentFiber fiber)
+        {
+            fiber.SuspendedOn = fiber.Reconciler!.Context.SuspendingReader;
+            FiberLogger.LogWarning("Suspense",
+                $"FiberRenderer: {Hooks.ComponentName(fiber)} suspended with no Suspense boundary above it;" +
+                " it renders again when the resource resolves. Wrap with V.Suspense().");
+        }
+
+        // Every pass on the walk that suspended on this fiber's read is retried, not only the outermost: an inner
+        // one the outer retry would bail on, memoized with equal props, would otherwise never render what it
+        // suspended on. The outer retry subsumes the inner ones it reaches, since they are then dirty.
+        private static void RetrySuspendedPasses(ComponentFiber fiber)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (!ReferenceEquals(current.SuspendedOn, fiber))
+                {
+                    continue;
+                }
+                current.SuspendedOn = null;
+                FiberWorkLoop.RequestRenderFromHook(current);
+            }
+        }
+
         // Commit path called by Hooks.Use (Suspense in function components) when an FiberAsyncResource resolves.
         // Uses a partial Lane scheme: step 1 (child sync RenderAndReconcile) + step 2 (boundary swap goes
         // through the Lane queue).
@@ -780,39 +828,37 @@ namespace Velvet
                 fiber.MountPoint?.schedule.Execute(() => NotifyAsyncResourceCompleted(fiber));
                 return;
             }
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
-            var underBoundary = boundary != null && !ReferenceEquals(boundary, fiber);
-            // Settle the child's subtree to its resolved output. Under a wrapper-less Suspense boundary the
-            // child's host slot is currently occupied by the fallback, so render WITHOUT committing
-            // (deferReconcile): the boundary's re-render below commits the fallback→children reveal in one
-            // pass: a resolved resource schedules the boundary itself, not the child. This single
-            // render handles all three resolve outcomes: a resolved child settles its PreviousTree for the
-            // boundary to reuse; a faulted child's Use<T> throws a real exception that routes to the error
-            // boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps the
-            // fallback. Without a boundary (plain async) the child commits its own slot directly.
+            // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a
+            // boundary this fiber renders itself wraps its output, never its own read.
+            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            if (boundary == null)
+            {
+                // What React retries is the work that suspended on this read; with none waiting on it, nothing
+                // renders, and a pass that suspended on another read takes this value up when it is retried.
+                RetrySuspendedPasses(fiber);
+                return;
+            }
+            // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
+            // the fallback, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
+            // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
+            // child. This single render handles all three resolve outcomes: a resolved child settles its
+            // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes
+            // to the error boundary via OnRenderError; a still-pending child re-throws FiberSuspendSignal and keeps
+            // the fallback.
             // Read before the render, which can dispose this fiber when an error boundary above it catches.
             var context = fiber.Reconciler!.Context;
             var catchesBeforeTheRender = context.NextCaughtErrorSequence;
             try
             {
-                RenderAndReconcile(fiber, deferReconcile: underBoundary);
+                RenderAndReconcile(fiber, deferReconcile: true);
             }
             catch (FiberSuspendSignal)
             {
                 return;
             }
-            if (!underBoundary && fiber.Reconciler?.HasPendingWork != true)
-            {
-                // Plain async (no Suspense boundary): the resolved child commits its own slot in the
-                // call above, so its effects, its UseImperativeHandle factory and the inline children that
-                // render mounted commit here. Under a boundary the child's commit is driven by the
-                // boundary's re-render below (Mount path = Run is invoked there); skipping the call avoids
-                // committing what the boundary's re-render is about to discard.
-                FiberEffects.CommitSubtreeEffects(fiber);
-            }
             // An error boundary that caught the render above has shown its fallback for this error already, and a
             // retry that renders the faulted child again has it caught and reported a second time.
-            if (underBoundary && context.NextCaughtErrorSequence == catchesBeforeTheRender)
+            if (context.NextCaughtErrorSequence == catchesBeforeTheRender)
             {
                 // Invalidate the (possibly memoized) boundary so its re-render re-walks the now-resolved
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.

@@ -376,6 +376,79 @@ namespace Velvet
             return callback;
         }
 
+        // The overloads below name delegate shapes so a C# 9 caller, which has no natural type for a lambda,
+        // can leave the type argument off as TypeScript's useCallback does. None of them takes one type
+        // argument: beside UseCallback<T>, such an overload is a candidate for every existing explicit call,
+        // which a Func<TResult> one binds to itself for a null or a lambda returning a delegate
+        // (UseCallback<Action>(null) returning a Func<Action>), and an Action<T1> one makes ambiguous (CS0121).
+        // UseCallbackInferenceTests compiles both at C# 9.
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action UseCallback(Action callback) => UseCallback<Action>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action UseCallback(Action callback, params object?[]? deps) => UseCallback<Action>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback) => UseCallback<Action<T1, T2>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2> UseCallback<T1, T2>(Action<T1, T2> callback, params object?[]? deps) => UseCallback<Action<T1, T2>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback) => UseCallback<Action<T1, T2, T3>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Action&lt;T1, T2, T3&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Action<T1, T2, T3> UseCallback<T1, T2, T3>(Action<T1, T2, T3> callback, params object?[]? deps) => UseCallback<Action<T1, T2, T3>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback) => UseCallback<Func<T1, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, TResult> UseCallback<T1, TResult>(Func<T1, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback) => UseCallback<Func<T1, T2, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, TResult> UseCallback<T1, T2, TResult>(Func<T1, T2, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, TResult>>(callback, deps);
+
+        /// <summary>Unmemoized <see cref="UseCallback{T}(T)"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">The callback returned as-is.</param>
+        /// <returns><paramref name="callback"/>.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback) => UseCallback<Func<T1, T2, T3, TResult>>(callback);
+
+        /// <summary>Memoized <see cref="UseCallback{T}(T, object?[])"/> for a callback of type <c>Func&lt;T1, T2, T3, TResult&gt;</c>.</summary>
+        /// <param name="callback">Callback to memoize.</param>
+        /// <param name="deps">Dependency values, compared as <see cref="UseCallback{T}(T, object?[])"/> compares them.</param>
+        /// <returns>The cached callback reference.</returns>
+        public static Func<T1, T2, T3, TResult> UseCallback<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> callback, params object?[]? deps) => UseCallback<Func<T1, T2, T3, TResult>>(callback, deps);
+
         #endregion
 
         #region UseMemo
@@ -627,15 +700,12 @@ namespace Velvet
         internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
-        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
-        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller is matching or loading
-        /// the next location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as
-        /// the router's status transitions.
+        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Submitting"/> while
+        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller runs a submission's
+        /// guards or action, <see cref="NavigationLifecycle.Loading"/> while it is matching or loading the next
+        /// location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the
+        /// router's status transitions.
         /// </summary>
-        /// <remarks>
-        /// A <c>submitting</c> state is intentionally not modelled because Velvet has no route action /
-        /// form-submission model.
-        /// </remarks>
         public static NavigationState UseNavigation()
         {
             _ = Resolve("UseNavigation");
@@ -667,13 +737,29 @@ namespace Velvet
 
         private static NavigationState ReadNavigationState(Router router)
         {
-            var lifecycle = router.Status is RouterStatus.Matching or RouterStatus.Loading
-                ? NavigationLifecycle.Loading
-                : NavigationLifecycle.Idle;
+#pragma warning disable CS8524 // no discard arm: a new status has to say which phase it reports
+            var lifecycle = router.Status switch
+            {
+                RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
+                RouterStatus.Submitting => NavigationLifecycle.Submitting,
+                RouterStatus.Idle or RouterStatus.Ready or RouterStatus.NotFound or RouterStatus.Error =>
+                    NavigationLifecycle.Idle,
+            };
+#pragma warning restore CS8524
+            if (lifecycle == NavigationLifecycle.Idle)
+            {
+                return default;
+            }
 
-            var location = lifecycle == NavigationLifecycle.Loading ? router.PendingLocation : null;
-
-            return new NavigationState { State = lifecycle, Location = location };
+            var submission = router.PendingSubmission;
+            return new NavigationState
+            {
+                State = lifecycle,
+                Location = router.PendingLocation,
+                FormMethod = submission?.FormMethod,
+                FormAction = submission?.Action,
+                FormData = submission?.FormData,
+            };
         }
 
         /// <summary>
@@ -767,6 +853,47 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Returns a function that submits form data to a route's action, or with a <c>get</c> method navigates
+        /// with it as the query string: React Router's <c>useSubmit</c>. With no
+        /// <see cref="SubmitOptions.Action"/> it submits to the route the calling component renders in, and a
+        /// relative one resolves from there; <see cref="Router.SubmitAsync(object, SubmitOptions, System.Threading.CancellationToken)"/>
+        /// states the rest. The function keeps its identity across renders while the router and that route do.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static SubmitFunction UseSubmit()
+        {
+            _ = Resolve("UseSubmit");
+            var router = UseRouterOrThrow("UseSubmit");
+            var baseRouteIndex = UseBaseRouteIndex();
+            return UseCallback<SubmitFunction>(
+                (formData, options) => router.SubmitAsync(formData, options, baseRouteIndex, default),
+                router, baseRouteIndex);
+        }
+
+        /// <summary>
+        /// Returns the result of the action that committed the current location, when the action belongs to the
+        /// route at the current Outlet depth, cast to <typeparamref name="T"/>: React Router's
+        /// <c>useActionData</c>. Returns <c>default</c> otherwise.
+        /// </summary>
+        /// <typeparam name="T">Expected action result type.</typeparam>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static T? UseActionData<T>()
+        {
+            _ = Resolve("UseActionData");
+            _ = UseRouterOrThrow("UseActionData");
+            var routeId = CurrentRouteId();
+            var data = UseContext(RouterContext.ActionData);
+            if (routeId == null)
+            {
+                return default;
+            }
+            data.TryGetValue(routeId, out var value);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
         /// Returns the loader data for the route at the current Outlet depth, cast to <typeparamref name="T"/>.
         /// Returns <c>default</c> when there is no data.
         /// </summary>
@@ -785,16 +912,22 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns the loader error for the route at the current Outlet depth, or null when the route did
-        /// not error.
+        /// Returns the error the route at the current Outlet depth failed with — an error thrown below its
+        /// element, while rendering, from an effect or from an element callback, or else its loader's — or null
+        /// when the route did not error.
         /// </summary>
         public static Exception? UseRouteError()
         {
             _ = Resolve("UseRouteError");
             _ = UseRouterOrThrow("UseRouteError");
+            var renderError = UseContext(RouteErrorBoundary.RenderError);
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
             var errors = UseContext(RouterContext.Errors);
+            if (renderError != null)
+            {
+                return renderError;
+            }
             if (location?.Matches == null || depth <= 0 || errors == null || errors.Count == 0)
             {
                 return null;
@@ -1637,7 +1770,10 @@ namespace Velvet
                 var existing = slots[index];
                 // AreEqualObjects, not AreEqual: ResourceKey is declared object, which is exactly the
                 // erasure the comment over AreEqualObjects warns against.
-                if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey))
+                // The StrictMode re-run of the render that read this resource is the same attempt, and React's
+                // second invocation keeps the thenable the first one tracked, whatever key it passes.
+                if (existing is FiberAsyncResource<T> typed
+                    && (ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey) || IsStrictDiagnosticPass(fiber)))
                 {
                     resource = typed;
                 }
@@ -1662,12 +1798,16 @@ namespace Velvet
                 }
             }
 
-            return resource.Status switch
+            switch (resource.Status)
             {
-                FiberAsyncResourceStatus.Success => resource.Result,
-                FiberAsyncResourceStatus.Error => throw resource.Error!,
-                _ => throw FiberSuspendSignal.Instance,
-            };
+                case FiberAsyncResourceStatus.Success:
+                    return resource.Result;
+                case FiberAsyncResourceStatus.Error:
+                    throw resource.Error!;
+                default:
+                    fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    throw FiberSuspendSignal.Instance;
+            }
         }
 
         #endregion
@@ -1690,6 +1830,11 @@ namespace Velvet
         /// <b>Bubble-up</b>: when the factory returns <c>null</c> or itself throws, the exception
         /// bubbles to the next enclosing Error Boundary, ultimately reaching the root as an
         /// unhandled exception when no boundary catches it.
+        /// <para/>
+        /// Once the component has caught, each later render of it invokes the factory again with the error
+        /// it caught and renders what it returns in place of its children, until the component remounts —
+        /// give it a new <c>key</c> to render its children again. On those renders a factory that returns
+        /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
         public static void UseFallback(Func<Exception, VNode> factory)
@@ -1754,9 +1899,28 @@ namespace Velvet
             }
 
             var existing = fiber.TransitionSlots[index];
+            ThrowPendingError(fiber, existing);
             // See HookTransitionSlot.LastRenderedPending for why a read site writes.
             existing.LastRenderedPending = existing.IsPending;
             return (existing.IsPending, existing.Starter);
+        }
+
+        // A render off the Transition lane asks for it again rather than throwing, since React throws the error
+        // where the isPending update carrying it renders.
+        private static void ThrowPendingError(ComponentFiber fiber, HookTransitionSlot slot)
+        {
+            var error = slot.PendingError;
+            if (error == null)
+            {
+                return;
+            }
+            if (!FiberWorkLoop.IsRenderingTransitionLane)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+                return;
+            }
+            slot.PendingError = null;
+            error.Throw();
         }
 
         #endregion

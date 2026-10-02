@@ -182,6 +182,13 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
+        /// The fiber whose read suspended a pass this fiber started on its own, where no Suspense boundary
+        /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
+        /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
+        /// </summary>
+        internal ComponentFiber? SuspendedOn { get; set; }
+
+        /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
         /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
@@ -193,6 +200,10 @@ namespace Velvet
         /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
+
+        // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
+        // FiberEffects.HideLayoutEffects.
+        internal bool LayoutEffectsHidden { get; set; }
 
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
@@ -542,6 +553,7 @@ namespace Velvet
                 slot.AsyncOwnerDepth = 0;
                 ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
+                slot.PendingError = null;
             }
         }
 
@@ -748,9 +760,16 @@ namespace Velvet
         /// </summary>
         internal bool IsShowingFallback { get; set; }
 
-        // Set while the walk expanding this boundary's output is on the stack to catch a render error below
-        // it: GeneralPathReconciler.ExpandBoundaryInline sets it and FiberErrorBoundary.TryCatch reads it.
+        // Set while a frame that expands or reconciles this boundary's output is on the stack to catch a render
+        // error below it: GeneralPathReconciler.ExpandBoundaryInline and Reconciler.ReconcileCatching set it, and
+        // FiberErrorBoundary.TryCatch reads it.
         internal bool CatchesInTheWalk { get; set; }
+
+        // What this boundary caught, set where the catch succeeds: React's boundary keeps its error state until it
+        // remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it. Cleared by RouteErrorBoundary on
+        // a new location, as React Router's boundary resets there, and by a Suspense expansion whose primary
+        // suspends, which discards the render that caught, where that expansion's own walk reached the boundary.
+        internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
 
         /// <summary>
         /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is

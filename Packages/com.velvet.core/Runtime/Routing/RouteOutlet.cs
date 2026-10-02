@@ -14,8 +14,12 @@ namespace Velvet
             var depth = Hooks.UseContext(RouterContext.Depth);
             var errors = Hooks.UseContext(RouterContext.Errors);
             var router = Hooks.UseContext(RouterContext.Router);
+            // Beneath an errorElement a route's boundary shows for an error thrown below it, an Outlet renders
+            // nothing, as React Router renders that errorElement with no outlet.
+            var renderError = Hooks.UseContext(RouteErrorBoundary.RenderError);
 
-            if (!TryResolveMatch(location, depth, errors, out var routeElement, out var routeDepth, out var match))
+            if (renderError != null
+                || !TryResolveMatch(location, depth, errors, out var routeElement, out var routeDepth, out var match))
             {
                 FiberOutletScope.ReleaseRenderingOutletScope();
                 return V.Fragment(Array.Empty<VNode>());
@@ -30,8 +34,26 @@ namespace Velvet
                 children: new VNode[]
                 {
                     V.Provider(RouterContext.OutletContext, outletContext!,
-                        children: new VNode[] { routeElement }),
+                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement!) }),
                 });
+        }
+
+        // One key and one place for every route this Outlet wraps, as React Router's boundary has, so a
+        // navigation between two such routes resets it rather than remounting it — RouteErrorBoundary owns the
+        // reset.
+        //
+        // What renders for an error the route's element throws while rendering is its own errorElement, and at the
+        // root the default one, as React Router wraps a route with either in its RenderErrorBoundary — around
+        // an errorElement rendering for a loader error too.
+        private static VNode WithRenderErrorBoundary(
+            RouterLocation? location, RouteMatch match, int depth, ComponentNode routeElement)
+        {
+            var errorElement = match.Route?.ErrorElement
+                ?? (depth == 0 ? V.Component(RouteDefaultErrorElement.Render, key: "velvet-default-error-element") : null);
+            return errorElement == null
+                ? routeElement
+                : V.Component(RouteErrorBoundary.Render,
+                    new RouteErrorBoundary.Props(location, errorElement, routeElement), key: "velvet-route-error-boundary");
         }
 
         // The route this Outlet renders, or false for none. depth indexes location.Matches; the returned
@@ -131,9 +153,16 @@ namespace Velvet
                 return -1;
             }
 
-            // MUTANT_SURVIVES(equivalent): the root iteration and the fallthrough below both answer 0.
-            // Stopping one short of the root therefore cannot change what this returns.
-            for (var i = deepestErrored; i >= 0; i--)
+            return NearestErrorBoundary(matches, deepestErrored);
+        }
+
+        // The route at or above index that renders an error there: the nearest with an ErrorElement, or the
+        // root, which renders the default one.
+        internal static int NearestErrorBoundary(IReadOnlyList<RouteMatch> matches, int index)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): stopping one short of the root changes nothing, since the
+            // root's own iteration and the fallthrough below both return 0.
+            for (var i = index; i >= 0; i--)
             {
                 if (matches[i].Route?.ErrorElement != null)
                 {
@@ -141,8 +170,6 @@ namespace Velvet
                 }
             }
 
-            // No route at or above the errored route defines an ErrorElement: bubble to the implicit root
-            // boundary.
             return 0;
         }
     }

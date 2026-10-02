@@ -11,6 +11,8 @@ namespace Velvet
         Ready,
         NotFound,
         Error,
+        /// <summary>A submission other than <c>get</c> has matched, and its guards or its action are running.</summary>
+        Submitting,
     }
 
     /// <summary>Controls how a successful navigation changes history.</summary>
@@ -54,21 +56,16 @@ namespace Velvet
         public IReadOnlyList<RouteMatch>? Matches { get; init; }
     }
 
-    /// <summary><c>Hooks.UseNavigation</c> reports these phases.</summary>
-    /// <remarks>
-    /// <c>submitting</c> is intentionally absent: Velvet has no route action / form-submission model,
-    /// so the only in-flight phase is a location transition.
-    /// </remarks>
+    /// <summary><c>Hooks.UseNavigation</c> reports these phases: React Router's <c>navigation.state</c>.</summary>
     public enum NavigationLifecycle
     {
         Idle,
         Loading,
+        /// <summary>A submission's guards or action are running.</summary>
+        Submitting,
     }
 
-    /// <summary>
-    /// Snapshot of the active navigation exposed by <c>Hooks.UseNavigation</c>, restricted to
-    /// <see cref="NavigationLifecycle.Idle"/> / <see cref="NavigationLifecycle.Loading"/>.
-    /// </summary>
+    /// <summary>Snapshot of the active navigation exposed by <c>Hooks.UseNavigation</c>.</summary>
     public readonly struct NavigationState
     {
         public NavigationLifecycle State { get; init; }
@@ -78,5 +75,18 @@ namespace Velvet
         /// <c>navigation.location</c> is <c>undefined</c> then.
         /// </summary>
         public RouterLocation? Location { get; init; }
+
+        /// <summary>
+        /// The lower-case method of the submission in flight, while one is, as React Router 6.28 reports it
+        /// without <c>v7_normalizeFormMethod</c>; null otherwise, as
+        /// <c>navigation.formMethod</c> is <c>undefined</c> then.
+        /// </summary>
+        public string? FormMethod { get; init; }
+
+        /// <summary>The path the submission in flight was made to; null while none is.</summary>
+        public string? FormAction { get; init; }
+
+        /// <summary>What the submission in flight sent; null while none is.</summary>
+        public object? FormData { get; init; }
     }
 }
