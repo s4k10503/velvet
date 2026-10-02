@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using Velvet;
 using Velvet.TestUtilities;
@@ -241,6 +242,76 @@ namespace Velvet.Tests
             Assert.That(
                 new[] { result[0].Route.Path, result[1].Route.Path },
                 Is.EqualTo(new[] { "room", "" }));
+        }
+
+        #endregion
+
+        #region Pathless layouts
+
+        [Test]
+        public void Given_APathlessLayoutUnderTheRoot_When_MatchingTheRootPath_Then_TheLayoutIsNotInTheChain()
+        {
+            // Arrange
+            var tree = new RouteTree(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("", children: new[] { Route("settings") }),
+                }),
+            });
+
+            // Act
+            var result = tree.Match("/");
+
+            // Assert
+            Assert.That(result.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_OnlyAPathlessLayoutAtTheTop_When_MatchingTheRootPath_Then_NothingMatches()
+        {
+            // Arrange
+            var tree = new RouteTree(new[]
+            {
+                Route("", children: new[] { Route("settings") }),
+            });
+
+            // Act
+            var result = tree.Match("/");
+
+            // Assert
+            Assert.That(result, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): an empty children array declares no children, as React Router's
+        // `route.children.length > 0` reads it, so the pathless-layout rule must leave this index route a match.
+        [Test]
+        public void Given_AnIndexRouteWithAnEmptyChildrenArray_When_MatchingItsParentsPath_Then_ItJoinsTheChain()
+        {
+            // Arrange
+            var tree = new RouteTree(new[]
+            {
+                Route("room", children: new[] { Route("", children: Array.Empty<RouteDefinition>()) }),
+            });
+
+            // Act
+            var result = tree.Match("/room");
+
+            // Assert
+            Assert.That(result.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ARouteWithNoPathAndNoChildren_When_MatchingTheRootPath_Then_NothingMatches()
+        {
+            // Arrange
+            var tree = new RouteTree(new[] { new RouteDefinition { Path = null, Element = V.Component(StubA) } });
+
+            // Act
+            var result = tree.Match("/");
+
+            // Assert
+            Assert.That(result, Is.Null);
         }
 
         #endregion
@@ -805,8 +876,49 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (result[0].RouteId, result[1].RouteId),
-                Is.EqualTo(("/room", "/room/?index")),
+                Is.EqualTo(("0", "0-0")),
                 "The index route id is disambiguated from its parent's id");
+        }
+
+        [Test]
+        public void Given_NestedRoutes_When_Matched_Then_EachRouteIdIsItsPositionInTheTree()
+        {
+            // Arrange
+            var tree = new RouteTree(new[]
+            {
+                Route("/"),
+                Route("a", children: new[]
+                {
+                    Route("b"),
+                    Route("c", children: new[] { Route("d") }),
+                }),
+            });
+
+            // Act
+            var result = tree.Match("/a/c/d");
+
+            // Assert
+            Assert.That(
+                string.Join(",", Array.ConvertAll(result.ToArray(), match => match.RouteId)),
+                Is.EqualTo("1,1-1,1-1-0"));
+        }
+
+        [Test]
+        public void Given_TwoSiblingPathlessLayouts_When_EachIsMatchedThroughItsChild_Then_TheirRouteIdsDiffer()
+        {
+            // Arrange
+            var tree = new RouteTree(new[]
+            {
+                Route("", children: new[] { Route("a") }),
+                Route("", children: new[] { Route("b") }),
+            });
+
+            // Act
+            var first = tree.Match("/a");
+            var second = tree.Match("/b");
+
+            // Assert
+            Assert.That(first[0].RouteId, Is.Not.EqualTo(second[0].RouteId));
         }
 
         #endregion

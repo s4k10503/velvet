@@ -106,7 +106,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That(router.CurrentActionData["/items"], Is.EqualTo("POST lamp"));
+            Assert.That(router.CurrentActionData.GetValueOrDefault("0-0"), Is.EqualTo("POST lamp"));
         }
 
         [Test]
@@ -146,7 +146,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors["/items"].Message, router.CurrentActionData.Count),
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, router.CurrentActionData.Count),
                 Is.EqualTo(("action-failed", 0)));
         }
 
@@ -183,8 +183,8 @@ namespace Velvet.Tests
             Submit(router, null, PostToItems);
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo(
-                "You made a POST request to \"/items\" but did not provide an `action` for route \"/items\", so there "
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo(
+                "You made a POST request to \"/items\" but did not provide an `action` for route \"0\", so there "
                 + "is no way to handle the request."));
         }
 
@@ -222,7 +222,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That((string.Join(",", _log), router.GetLoaderData("/items")), Is.EqualTo(("root", (object)"items")));
+            Assert.That((string.Join(",", _log), router.GetLoaderData("0-0")), Is.EqualTo(("root", (object)"items")));
         }
 
         [Test]
@@ -246,7 +246,7 @@ namespace Velvet.Tests
             router.SubmitAsync("second", PostToItems).Forget();
 
             // Assert
-            Assert.That((router.Status, router.CurrentActionData["/items"]), Is.EqualTo((RouterStatus.Loading, (object)"saved")));
+            Assert.That((router.Status, router.CurrentActionData.GetValueOrDefault("0-0")), Is.EqualTo((RouterStatus.Loading, (object)"saved")));
         }
 
         [Test]
@@ -389,7 +389,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, _log.Contains("action")),
                 Is.EqualTo(("Invalid request method \"HEAD\"", false)));
         }
 
@@ -490,7 +490,7 @@ namespace Velvet.Tests
             Submit(router, null, new SubmitOptions { Method = "post" });
 
             // Assert
-            Assert.That(router.CurrentActionData["/"], Is.EqualTo("root"));
+            Assert.That(router.CurrentActionData.GetValueOrDefault("0"), Is.EqualTo("root"));
         }
 
         [Test]

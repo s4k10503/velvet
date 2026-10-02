@@ -280,7 +280,7 @@ namespace Velvet
             }
             var search = to == null ? SearchOf(CurrentLocation?.Path ?? string.Empty) : string.Empty;
             var matches = CurrentLocation?.Matches;
-            var index = matches != null && IsIndexRoute(matches[AnchorIndex(matches, baseRouteIndex)].Route);
+            var index = matches != null && matches[AnchorIndex(matches, baseRouteIndex)].Route?.IsIndex == true;
             var naked = HasBareIndex(search);
             if (index && !naked)
             {
@@ -292,10 +292,6 @@ namespace Velvet
             }
             return path + search;
         }
-
-        // React Router's route.index. A route with an empty path and children is a pathless layout.
-        private static bool IsIndexRoute(RouteDefinition? route)
-            => route?.Path == "" && (route.Children == null || route.Children.Length == 0);
 
         private static bool HasBareIndex(string path)
         {
@@ -1111,7 +1107,7 @@ namespace Velvet
         private static int ActionTargetIndex(IReadOnlyList<RouteMatch> matches, string path)
         {
             var leaf = matches.Count - 1;
-            if (IsIndexRoute(matches[leaf].Route) && HasBareIndex(path))
+            if (matches[leaf].Route?.IsIndex == true && HasBareIndex(path))
             {
                 return leaf;
             }

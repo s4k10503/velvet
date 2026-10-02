@@ -43,6 +43,10 @@ publishes it, with the location, the loader data, the loader errors and the acti
 `Hooks.UseRouteError` and `Hooks.UseActionData` read. It renders the matched route through a `V.Outlet` of its own, so it takes
 no children — what appears beneath it is the route table's own elements.
 
+Each route's loader data, action data and error are held under its `RouteDefinition.Id`, React Router's
+route `id`, which defaults to the route's position in the table. A pathless layout — a route with an
+empty path and children — matches only through one of its children, as React Router's does.
+
 Those seven hooks read what it publishes, and so does every `V.Outlet`: the location picks the route to
 render and the errors pick the boundary that replaces it. The hooks that **act** on a router rather
 than read from it — `Hooks.UseNavigate` (and so every `V.Link`, `V.NavLink` and `V.Navigate`),

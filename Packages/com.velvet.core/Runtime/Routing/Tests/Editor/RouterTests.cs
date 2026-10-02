@@ -207,7 +207,7 @@ namespace Velvet.Tests
             router.NavigateSync("/data");
 
             // Assert
-            Assert.That(router.GetLoaderData("/data"), Is.EqualTo("loaded"));
+            Assert.That(router.GetLoaderData("0"), Is.EqualTo("loaded"));
         }
 
         #endregion
@@ -438,7 +438,7 @@ namespace Velvet.Tests
             router.GoForwardSync();
 
             // Assert
-            Assert.That(router.GetLoaderData("/data"), Is.EqualTo("loaded-2"));
+            Assert.That(router.GetLoaderData("0-1"), Is.EqualTo("loaded-2"));
         }
 
         [Test]
@@ -484,7 +484,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.GetLoaderData("/page1"), Is.EqualTo("page1-2"));
+            Assert.That(router.GetLoaderData("0-0"), Is.EqualTo("page1-2"));
         }
 
         [Test]
@@ -556,7 +556,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["/boom"].Message, Is.EqualTo("boom-2"));
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("boom-2"));
         }
 
         #endregion
@@ -922,7 +922,7 @@ namespace Velvet.Tests
             router.NavigateSync("/ready");
 
             // Assert
-            Assert.That(router.GetLoaderData("/ready"), Is.EqualTo("ready-data"),
+            Assert.That(router.GetLoaderData("0-0"), Is.EqualTo("ready-data"),
                 "A result produced before the commit belongs to the location that commit establishes");
         }
 

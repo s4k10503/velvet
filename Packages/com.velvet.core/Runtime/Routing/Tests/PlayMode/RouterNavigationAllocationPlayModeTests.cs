@@ -41,8 +41,6 @@ namespace Velvet.Tests
             router.NavigateAsync("/target").GetAwaiter().GetResult();
         }
 
-        // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
-        // This change reads it over three windows.
         [UnityTest]
         public IEnumerator Given_WarmNavigateAsyncSteadyState_When_Navigated_Then_AllocationMatchesPinnedExpectation()
         {
@@ -52,7 +50,7 @@ namespace Velvet.Tests
             }
 
             var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
-            Assert.That(blocks, Is.EqualTo(92));
+            Assert.That(blocks, Is.EqualTo(101));
             yield return null;
         }
     }

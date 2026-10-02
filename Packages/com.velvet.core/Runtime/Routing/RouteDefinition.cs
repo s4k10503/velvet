@@ -16,6 +16,15 @@ namespace Velvet
         public string? Path { get; init; }
 
         /// <summary>
+        /// The key this route's loader data, action data and error are held under, as
+        /// <see cref="RouteMatch.RouteId"/> and <see cref="Router.GetLoaderData"/> read it: React Router's
+        /// route <c>id</c>. Null takes the route's position in the tree, its index among its siblings
+        /// joined to its parent's position by <c>-</c> (<c>"0"</c>, <c>"0-1"</c>). Two routes of one tree
+        /// sharing an id throw <see cref="ArgumentException"/> when the tree is built.
+        /// </summary>
+        public string? Id { get; init; }
+
+        /// <summary>
         /// Function-type component to mount when this route matches.
         /// Pass a <see cref="ComponentNode"/> built via V.Component().
         /// </summary>
@@ -61,5 +70,8 @@ namespace Velvet
         /// (case-insensitive). Set true for a case-sensitive route.
         /// </summary>
         public bool CaseSensitive { get; init; } = false;
+
+        // React Router's route.index. A route with an empty path and children is a pathless layout.
+        internal bool IsIndex => Path == "" && (Children == null || Children.Length == 0);
     }
 }

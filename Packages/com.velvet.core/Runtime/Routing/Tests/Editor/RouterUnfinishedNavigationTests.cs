@@ -267,7 +267,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                $"result={result} path={router.CurrentLocation?.Path} data={router.GetLoaderData("/target")}",
+                $"result={result} path={router.CurrentLocation?.Path} data={router.GetLoaderData("2")}",
                 Is.EqualTo("result=Cancelled path=/target data=target-data"),
                 "An attempt that never commits must leave the loader data of the location that did");
         }
