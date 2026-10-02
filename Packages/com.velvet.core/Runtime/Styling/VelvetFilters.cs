@@ -20,8 +20,9 @@ namespace Velvet
     /// declared defaults outright. Custom functions
     /// compose into the same inline <c>filter</c> list as the built-in <c>blur-*</c>/<c>contrast-*</c>/…
     /// utilities: built-ins first (canonical CSS order), then customs in class order.
-    /// Registration is not reactive: a class resolved before its name was registered stays inert until
-    /// the element's class list changes again.
+    /// Registration reaches mounted elements: registering, re-registering or unregistering a name re-resolves
+    /// every element carrying it, and an element carrying a name nothing is registered under draws no filter,
+    /// as CSS ignores a filter chain whose <c>url()</c> names no filter.
     /// Not thread-safe (main thread only).
     /// </summary>
     public static class VelvetFilters
@@ -89,13 +90,25 @@ namespace Velvet
             {
                 Debug.LogWarning($"[VelvetFilters] \"{name}\" is already registered; overwriting.");
             }
+            StyleArbitraryValueResolver.ReresolveCustomFilter(name);
         }
 
-        /// <summary>Removes a registration. Returns true when the name was registered.</summary>
-        public static bool Unregister(string name) => NameKeyedRegistry.Unregister(name, s_definitions);
+        /// <summary>
+        /// Removes a registration, after which an element carrying the name draws no filter. Returns true when
+        /// the name was registered.
+        /// </summary>
+        public static bool Unregister(string name)
+        {
+            if (!NameKeyedRegistry.Unregister(name, s_definitions))
+            {
+                return false;
+            }
+            StyleArbitraryValueResolver.ReresolveCustomFilter(name);
+            return true;
+        }
 
-        // Parse-time lookup for the filter-[name:args] resolver branch. A destroyed (fake-null) asset
-        // fails the lookup so the token falls through instead of applying a dead definition.
+        // Parse-time lookup for the filter-[name:args] resolver branch. A destroyed (fake-null) asset fails the
+        // lookup, so the token resolves as a name nothing is registered under rather than to a dead definition.
         internal static bool TryGet(string name, out FilterFunctionDefinition definition)
         {
             if (s_definitions.TryGetValue(name, out definition!) && definition != null)

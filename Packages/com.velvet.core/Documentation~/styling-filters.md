@@ -73,12 +73,13 @@ a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
 `#rrggbb` / `rgb(…)` / a named color). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
-fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4
+fails its slot's grammar, refuses the arguments as a whole. (UI Toolkit's `FilterFunction` holds at most 4
 parameters, so a definition declaring more is rejected at registration.)
 
-A token that cannot resolve — an unregistered name (warned once), an extra argument, or an
-argument that fails its slot's grammar — is not claimed and stays an inert class, like any
-unrecognized utility.
+A name nothing is registered under is a reference to a missing filter: the element draws no filter at
+all, its built-in utilities included, as CSS ignores the whole chain when a `url()` names no filter. The
+name is warned about once. An extra argument, or an argument that fails its slot's grammar, leaves the class
+adding nothing, like an unrecognized utility, until a registration that accepts the arguments.
 
 ### Composition and layering
 
@@ -156,33 +157,23 @@ Under Velvet's tween:
   and snaps too.
 - A definition **destroyed mid-tween** drops out of the frames the tween paints instead of throwing;
   the remaining filters keep animating. The value the tween settles on is the one composed when it
-  started, so a dead definition is cleared from the element by the next compose rather than at settle.
+  started, so the element's next compose, rather than the settle, drops its whole filter, as for any name no
+  live definition answers.
 
 ### Contract
 
-- **Register before mount.** Resolution happens when a class is applied, and registration is not
-  reactive: `Register` re-resolves no element and raises no event. A class applied before its name
-  was registered does not resolve at that point.
+- **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
+  every element carrying the name again, at once and without a transition, as a filter appearing behind a
+  `url()` changes no computed value in CSS. A class applied before its name was registered resolves when it
+  is registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
-- Re-registering a name warns and overwrites; `Unregister` removes it. Removing a class (or a
-  variant turning off) still clears its layer after an unregister — the clear resolves the
-  name syntactically, not through the registry — but an element that keeps the class keeps its
-  already-resolved filter, so unregister after the consuming trees unmount.
-- A definition destroyed after registration stops rendering: the compose skips dead
-  definitions instead of throwing.
-
-### What a late registration does today
-
-Characterization, not contract. This is what the current implementation does; a release that made a
-registry change reach mounted trees would change it, so register before mount rather than building
-on any of it.
-
-A class applied before its name was registered stays on the USS class list instead of resolving to an
-inline value, and paints nothing. It resolves the next time some pass re-applies that element's
-inline values from the classes it still carries — a motion on the element settling, being cancelled
-or detaching does that, and so does a class change that removes another filter-family token.
+- Re-registering a name warns and overwrites; `Unregister` removes it, and an element that keeps the
+  class draws no filter until the name is registered again. A re-registered definition that refuses a
+  class's arguments leaves that class inert, and the next registration that accepts them resolves it.
+- A definition destroyed after registration stops rendering, and the element's next compose drops its
+  whole filter, as for a name nothing is registered under.
 
 ### Authoring the definition
 

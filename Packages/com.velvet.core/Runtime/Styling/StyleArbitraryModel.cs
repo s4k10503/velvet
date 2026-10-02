@@ -349,24 +349,30 @@ namespace Velvet
         }
     }
 
-    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the
-    // per-name layer-stack key, and the ONLY field the clear path reads — a clear synthesized for a
-    // no-longer-registered name carries a null Definition and empty Args), the FilterFunctionDefinition
-    // VelvetFilters.Register stored under that name, and the arguments in declaration order — the
-    // explicitly supplied segments followed by a tail padded from the declaration's defaults, so the
-    // composed function always carries the full declared parameter count (an under-filled function
-    // reads stale material-property state at render time instead of the declared defaults).
+    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the per-name
+    // layer-stack key, and the ONLY field the clear path reads), the FilterFunctionDefinition
+    // VelvetFilters.Register stored under that name, the arguments in declaration order — the explicitly
+    // supplied segments followed by a tail padded from the declaration's defaults, so the composed function
+    // always carries the full declared parameter count (an under-filled function reads stale
+    // material-property state at render time instead of the declared defaults) — and the bracket body it was
+    // parsed from, which a registration change parses again. A null Definition is a name no registration
+    // answers, unless Rejected says the registration answering it refuses the arguments.
     internal sealed class CustomFilterValue
     {
         public readonly string Name;
         public readonly FilterFunctionDefinition Definition;
         public readonly FilterParameter[] Args;
+        public readonly string Token;
+        public readonly bool Rejected;
 
-        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args)
+        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args, string token = "",
+            bool rejected = false)
         {
             Name = name;
             Definition = definition;
             Args = args;
+            Token = token;
+            Rejected = rejected;
         }
     }
 }

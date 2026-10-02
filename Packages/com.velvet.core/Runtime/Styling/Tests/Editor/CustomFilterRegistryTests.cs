@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -23,12 +24,12 @@ namespace Velvet.Tests
     /// or re-slotting to the end.</item>
     /// <item>Custom filters participate in per-property layer priority like every other arbitrary value:
     /// a variant layer (hover:) over the same name wins while active and restores the base on clear.</item>
-    /// <item>An unregistered name, an argument that fails its declared slot's grammar, more arguments than
-    /// the declaration, or a malformed argument is not claimed (the token stays an inert class), and the
-    /// variant tokenizer never mistakes the colon inside the brackets for a variant separator.</item>
-    /// <item>Lifecycle: clearing an applied token still removes its layer after the name was unregistered
-    /// (the clear path resolves the name syntactically, not through the registry), and a definition
-    /// destroyed after registration is skipped at compose time instead of throwing.</item>
+    /// <item>An argument that fails its declared slot's grammar, more arguments than the declaration, or a
+    /// malformed argument leaves the token composing nothing, and the variant tokenizer never mistakes the
+    /// colon inside the brackets for a variant separator. A name no live definition answers —
+    /// never registered, unregistered, or destroyed — leaves the element drawing no filter at all.</item>
+    /// <item>Registering, re-registering or unregistering a name resolves every element carrying it again,
+    /// and clearing an applied token removes its layer whatever the registry holds.</item>
     /// <item>Registration validates its inputs: reserved built-in family names (case-insensitively), null
     /// definitions and malformed names are rejected with a warning; a duplicate registration warns and
     /// overwrites.</item>
@@ -271,35 +272,23 @@ namespace Velvet.Tests
             Assert.That((fn.parameterCount, fn.GetParameter(1).floatValue), Is.EqualTo((2, 1f)));
         }
 
-        [Test]
-        public void Given_MoreArgumentsThanTheDeclaration_When_Parsed_Then_TheTokenIsNotClaimed()
+        // GREEN_ON_BASE(characterization): the base leaves each of these an inert class, which composes nothing
+        // either; the layer each now holds, kept for a later registration to read, has to compose nothing too.
+        [TestCase("filter-[dissolve:0.5:0.6]", TestName = "Given_MoreArgumentsThanTheDeclaration_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[glow:2]", TestName = "Given_AFloatArgumentForADeclaredColorSlot_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[dissolve:#ff0000]", TestName = "Given_AColorArgumentForADeclaredFloatSlot_When_Applied_Then_TheClassComposesNothing")]
+        [TestCase("filter-[dissolve:abc]", TestName = "Given_AMalformedArgument_When_Applied_Then_TheClassComposesNothing")]
+        public void Given_ArgumentsTheDeclarationRefuses_When_Applied_Then_TheClassComposesNothing(string token)
         {
-            // Act — dissolve declares a single slot; a second argument has no slot to land in.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:0.5:0.6]", out _);
+            // Arrange — dissolve declares one float slot and glow a colour then a float.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, token, StyleLayerPriority.Base);
 
             // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_AFloatArgumentForADeclaredColorSlot_When_Parsed_Then_TheTokenIsNotClaimed()
-        {
-            // Act — glow's first slot is a color; a bare number fails the slot's grammar rather than
-            // silently binding a float where the shader expects a color.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[glow:2]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_AColorArgumentForADeclaredFloatSlot_When_Parsed_Then_TheTokenIsNotClaimed()
-        {
-            // Act — dissolve's only slot is a float; a color literal fails the slot's grammar.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:#ff0000]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(el.style.filter.value?.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
         }
 
         [Test]
@@ -345,23 +334,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnregisteredCustomFilterName_When_Parsed_Then_TheTokenIsNotClaimed()
+        public void Given_AnUnregisteredNameBesideABuiltIn_When_Applied_Then_NoFilterIsDrawn()
         {
-            // Act — an unknown name must fall through (an inert class), like any unrecognized bracket value.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[never-registered:1]", out _);
+            // Arrange — CSS ignores the whole chain when a url() names no filter.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[never-registered:1]", StyleLayerPriority.Base);
 
             // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_AMalformedArgument_When_Parsed_Then_TheTokenIsNotClaimed()
-        {
-            // Act — a registered name with an unparseable argument rejects rather than half-applying.
-            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:abc]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): pins the engine cap the registry's four-parameter check exists for.
@@ -467,34 +450,32 @@ namespace Velvet.Tests
             Assert.That((f.Count, f[0].type), Is.EqualTo((1, FilterFunctionType.Blur)));
         }
 
-        // GREEN_ON_BASE(characterization): the base keyed the layer by rank alone, so its off-toggle matched; the
-        // case now passes a className position, which the key carries, so it pins that both toggles use it.
         [Test]
-        public void Given_ANameUnregisteredWhileAHoverLayerIsActive_When_TheHoverTogglesOff_Then_TheBaseArgumentsAreRestored()
+        public void Given_ANameUnregisteredWhileAHoverLayerIsActive_When_TheHoverTogglesOffAndTheNameReturns_Then_TheBaseArgumentsCompose()
         {
-            // Arrange — the variant off-toggle re-resolves its payload; that resolution must not depend on
-            // the registry still knowing the name, or the hover layer survives the toggle.
+            // Arrange — the off-toggle has to remove the hover layer while the name resolves to nothing, or the
+            // hover arguments come back with the registration.
             var el = new VisualElement();
             StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[dissolve:0.3]", StyleLayerPriority.Base);
             StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: true, StyleLayerPriority.Hover,
                 declarations: new[] { 1 });
-            Assume.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.9f),
-                "Precondition: the hover layer overrides the base while active");
             VelvetFilters.Unregister("dissolve");
-
-            // Act — at a className position, as every production caller passes, so the key carries it.
             StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.9]" }, on: false, StyleLayerPriority.Hover,
                 declarations: new[] { 1 });
+            var drawnWhileMissing = el.style.filter.value?.Count ?? 0;
+
+            // Act
+            VelvetFilters.Register("dissolve", _dissolveDef);
 
             // Assert
-            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0.3f));
+            var f = el.style.filter.value;
+            Assert.That((drawnWhileMissing, f?.Count == 1 ? f[0].GetParameter(0).floatValue : float.NaN), Is.EqualTo((0, 0.3f)));
         }
 
         [Test]
-        public void Given_ADefinitionDestroyedAfterApply_When_TheFilterRecomposes_Then_TheDeadFunctionIsSkipped()
+        public void Given_ADefinitionDestroyedAfterApply_When_TheFilterRecomposes_Then_NoFilterIsDrawn()
         {
-            // Arrange — a destroyed definition compares equal to null (a dead asset), and the engine's
-            // FilterFunction constructor throws on it; the compose must skip the dead layer instead.
+            // Arrange — a destroyed definition compares equal to null, so the layer names no live filter.
             var el = new VisualElement();
             var doomed = CreateDefinition(new FilterParameter(0f));
             RegisterForTestRun("doomed-x", doomed);
@@ -504,9 +485,109 @@ namespace Velvet.Tests
             // Act — an unrelated filter change forces the recompose that reads the cached layer.
             StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
 
-            // Assert — the recompose survives and carries only the live function.
+            // Assert
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        #endregion
+
+        #region Registration reaching mounted elements
+
+        [Test]
+        public void Given_AClassAppliedBeforeItsNameWasRegistered_When_Registered_Then_ItResolvesWithItsArguments()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-x:0.6]", StyleLayerPriority.Base);
+
+            // Act
+            RegisterForTestRun("late-x", _fadeDef);
+
+            // Assert
             var f = el.style.filter.value;
-            Assert.That((f.Count, f[0].type), Is.EqualTo((1, FilterFunctionType.Blur)));
+            Assert.That(f?.Count == 1 ? (f[0].customDefinition, f[0].GetParameter(0).floatValue) : (null, float.NaN),
+                Is.EqualTo((_fadeDef, 0.6f)));
+        }
+
+        [Test]
+        public void Given_TwoNamesAppliedBeforeRegistration_When_RegisteredInTheOtherOrder_Then_TheyComposeInTheOrderApplied()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-first:1]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[late-second:1]", StyleLayerPriority.Base);
+
+            // Act
+            RegisterForTestRun("late-second", _waveDef);
+            RegisterForTestRun("late-first", _fadeDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Select(f => f.customDefinition), Is.EqualTo(new[] { _fadeDef, _waveDef }));
+        }
+
+        [Test]
+        public void Given_AResolvedName_When_Unregistered_Then_NoFilterIsDrawn()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
+
+            // Act
+            VelvetFilters.Unregister("fade");
+
+            // Assert
+            Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AResolvedName_When_RegisteredAgainUnderAnotherDefinition_Then_TheElementComposesTheNewOne()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade:1]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+
+            // Act
+            VelvetFilters.Register("fade", _waveDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Single().customDefinition, Is.EqualTo(_waveDef));
+        }
+
+        [Test]
+        public void Given_ANameRegisteredAgainUnderADefinitionRefusingItsArguments_When_Recomposed_Then_TheBuiltInsAloneCompose()
+        {
+            // Arrange — glow takes a colour then a float, and dissolve one float, so the arguments no longer fit.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[glow:#ff0000:2]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+
+            // Act
+            VelvetFilters.Register("glow", _dissolveDef);
+
+            // Assert
+            Assert.That(el.style.filter.value?.Select(f => f.type), Is.EqualTo(new[] { FilterFunctionType.Blur }));
+        }
+
+        [Test]
+        public void Given_ARefusedClass_When_ADefinitionAcceptingItsArgumentsIsRegistered_Then_ItResolvesAgain()
+        {
+            // Arrange — the class keeps the arguments a refusing registration could not read.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[glow:#ff0000:2]", StyleLayerPriority.Base);
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+            VelvetFilters.Register("glow", _dissolveDef);
+            var drawnWhileRefused = el.style.filter.value?.Count ?? 0;
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*already registered"));
+
+            // Act
+            VelvetFilters.Register("glow", _glowDef);
+
+            // Assert
+            var f = el.style.filter.value;
+            Assert.That((drawnWhileRefused, f?.Count == 1 ? f[0].GetParameter(1).floatValue : float.NaN), Is.EqualTo((0, 2f)));
         }
 
         #endregion
@@ -531,6 +612,8 @@ namespace Velvet.Tests
             Assert.That(el.style.filter.value[0].customDefinition, Is.EqualTo(second));
         }
 
+        // GREEN_ON_BASE(characterization): the base refuses the registration too. A name nothing is registered
+        // under now parses, as a reference to a missing filter, so the registry is asked rather than the parse.
         [Test]
         public void Given_AReservedBuiltInName_When_Registered_Then_TheRegistrationIsRejected()
         {
@@ -540,8 +623,8 @@ namespace Velvet.Tests
             // Act
             VelvetFilters.Register("blur", CreateDefinition());
 
-            // Assert — the reserved name never resolves as a custom filter.
-            Assert.That(StyleArbitraryValueResolver.TryParse("filter-[blur:1]", out _), Is.False);
+            // Assert
+            Assert.That(VelvetFilters.TryGet("blur", out _), Is.False);
         }
 
         [Test]

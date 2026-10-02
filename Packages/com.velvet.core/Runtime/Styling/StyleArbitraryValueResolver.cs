@@ -839,6 +839,10 @@ namespace Velvet
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             if (style.Property == ArbitraryProperty.FilterCustom)
             {
+                if (map.Customs == null)
+                {
+                    s_customFilterHosts.Add(new WeakReference<VisualElement>(element));
+                }
                 ApplyCustomFilterLayer(map, style, priority);
             }
             else
@@ -863,6 +867,41 @@ namespace Velvet
             if (map.Projection != null)
             {
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
+            }
+        }
+
+        // The elements whose layer map holds a filter-[name:args] stack, which a registration change re-resolves.
+        // An entry outlives the map it was added for, since ClearAll drops the map alone; the walk below removes
+        // it then.
+        private static readonly List<WeakReference<VisualElement>> s_customFilterHosts = new();
+
+        // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
+        // registered under it, and recomposes each element holding one at once: CSS transitions a change of the
+        // computed filter, and a filter that appears or goes behind a url() changes none.
+        internal static void ReresolveCustomFilter(string name)
+        {
+            for (var i = s_customFilterHosts.Count - 1; i >= 0; i--)
+            {
+                if (!s_customFilterHosts[i].TryGetTarget(out var element)
+                    || !s_layers.TryGetValue(element, out var map) || map.Customs == null)
+                {
+                    s_customFilterHosts.RemoveAt(i);
+                    continue;
+                }
+                var stack = FindCustomStack(map, name);
+                if (stack == null || stack.Count == 0)
+                {
+                    continue;
+                }
+                for (var k = 0; k < stack.Count; k++)
+                {
+                    StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
+                    stack[stack.Keys[k]] = style;
+                }
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    ApplyCombinedFilter(element, map);
+                }
             }
         }
 
@@ -1305,52 +1344,14 @@ namespace Velvet
             {
                 Clear(element, in style, priority);
             }
-            else if (!TryClearUnregisteredFilterToken(element, core, priority))
+            else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
-                if (StyleBackgroundImageResolver.TryParse(core, out _))
-                {
-                    StyleBackgroundImageResolver.Clear(element);
-                }
-                else
-                {
-                    element.RemoveFromClassList(core);
-                }
+                StyleBackgroundImageResolver.Clear(element);
             }
-        }
-
-        // Clears a filter-[name:args] token whose name is not (or no longer) registered. The
-        // registry-gated parse does not claim such a token, but a layer applied while the name WAS
-        // registered is still composed and must leave; the name alone identifies the layer, so it is
-        // resolved syntactically. The class-list removal mirrors the never-registered apply, which
-        // fell through to the class list — each action is a no-op in the other's scenario. Returns
-        // false when the token is not a custom-filter shape at all.
-        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, long priority)
-        {
-            if (!TryResolveUnregisteredFilterClear(core, out var style))
+            else
             {
-                return false;
+                element.RemoveFromClassList(core);
             }
-            Clear(element, in style, priority);
-            element.RemoveFromClassList(core);
-            return true;
-        }
-
-        // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
-        // registered. Apply-side resolution (TryParse) is registry-gated — an unregistered name is not
-        // claimed — but the layer a previous apply registered must stay clearable after an unregister,
-        // or it would ghost in the composed filter forever. The token's shape alone carries everything a
-        // clear needs: the ArbitraryStyle-aware Clear reads only the NAME, so a name-only synthetic style
-        // (null definition, no arguments) suffices. Purely syntactic — no registry lookup, no warning.
-        internal static bool TryResolveUnregisteredFilterClear(string core, out ArbitraryStyle style)
-        {
-            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out var name))
-            {
-                style = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
-                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>()));
-                return true;
-            }
-            style = default;
-            return false;
         }
 
         // Prefixes classifying a core token as part of the composed filter family (the built-in filter
@@ -1525,10 +1526,10 @@ namespace Velvet
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
             // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
-            // LayerMap.Customs). A winning layer whose definition has been DESTROYED since it was applied
-            // compares equal to null (a dead asset) and is skipped: the engine's FilterFunction
-            // constructor throws on a dead definition, and a function bound to one could not render
-            // anything anyway.
+            // LayerMap.Customs). A winning layer with no definition names no live filter — never registered,
+            // unregistered, or DESTROYED since it was applied, which compares equal to null — and CSS ignores
+            // the whole chain when a url() names no filter. A layer whose registration refuses its arguments
+            // is an inert class's and adds nothing.
             if (map.Customs != null)
             {
                 foreach (var (_, stack) in map.Customs)
@@ -1538,9 +1539,14 @@ namespace Velvet
                         continue;
                     }
                     var custom = stack.Values[stack.Count - 1].Custom!;
-                    if (custom.Definition == null)
+                    if (custom.Rejected)
                     {
                         continue;
+                    }
+                    if (custom.Definition == null)
+                    {
+                        functions = null;
+                        break;
                     }
                     (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
                 }

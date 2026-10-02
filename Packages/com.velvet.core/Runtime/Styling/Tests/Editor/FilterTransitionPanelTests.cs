@@ -582,6 +582,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterAndANameRegisteredAfterApply_When_Registered_Then_ItsFilterIsWrittenWithoutATween()
+        {
+            // Arrange — the element draws no filter while its custom names nothing registered.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            var definition = CreateUserDefinition(new FilterParameter(0f));
+            StyleArbitraryValueResolver.ApplyClassToken(element, "filter-[late-tween:1]", StyleLayerPriority.Base);
+
+            try
+            {
+                // Act
+                VelvetFilters.Register("late-tween", definition);
+
+                // Assert
+                var written = element.style.filter.value;
+                Assert.That((binding.Scheduled == null, written?.Count == 1 ? written[0].GetParameter(0).floatValue : float.NaN),
+                    Is.EqualTo((true, 1f)));
+            }
+            finally
+            {
+                VelvetFilters.Unregister("late-tween");
+            }
+        }
+
+        [Test]
         public void Given_NoTransitionFilterClass_When_FilterChanges_Then_InstantWrite()
         {
             // Arrange — no opt-in class, so no binding: the opt-in gate must keep the change instant.

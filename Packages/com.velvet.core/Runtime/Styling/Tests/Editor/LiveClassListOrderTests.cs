@@ -732,35 +732,27 @@ namespace Velvet.Tests
                 + "value re-applied from the live list, in whatever order that list holds it");
         }
 
-        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order.
-        // What shows the case can fail is collecting the classes with `Insert(0, cls)` rather than
-        // `Add(cls)` in the settle re-apply: measured, each arrangement then composes the two the other
-        // way round and the pair inverts.
         [Test]
         [ReaderVerdict(MotionReapplyReader)]
-        public void Given_TwoCustomFilterTokensRoutedBeforeTheirNamesWereRegistered_When_TheMotionSettleReappliesThem_Then_TheyComposeInTheOrderTheClassListHoldsThem()
+        public void Given_TwoCustomFilterTokensRoutedBeforeTheirNamesWereRegistered_When_TheMotionSettleReappliesThem_Then_TheyComposeInTheOrderTheyWereRouted()
         {
-            // Arrange — whether a resolver owns a token is decided when the token is routed, and a
-            // filter-[name:args] whose name is not registered yet is owned by nobody, so it lands on the
-            // live class list. Registering the names afterwards makes the settle path's re-apply the FIRST
-            // application of each, and a custom filter's first application is what fixes its compose slot.
+            // Arrange — a filter-[name:args] token is a layer from its routing on, registered or not, so it sits
+            // on no live class list and the routing fixes its compose slot. The names are registered in the
+            // order neither arrangement routed them in.
             var added = Carrying("filter-[halo:1]", "filter-[speckle:2]");
             var reversed = Carrying("filter-[speckle:2]", "filter-[halo:1]");
-            RegisterCustomFilter("halo");
             RegisterCustomFilter("speckle");
+            RegisterCustomFilter("halo");
 
             // Act
             Settle(added);
             Settle(reversed);
 
-            // Assert — the class list of one arrangement rides along, sorted so it pins no order of its
-            // own: had the names been registered before the routing, both tokens would have resolved to
-            // inline style at that point and the compose order would be the routing's rather than this
-            // reading's.
+            // Assert
             Assert.That((SortedClassList(added), ComposedCustomFilters(added), ComposedCustomFilters(reversed)),
-                Is.EqualTo(("filter-[halo:1] filter-[speckle:2]", "halo speckle", "speckle halo")),
-                "the settle path re-applies each token the live class list still names, and for a custom "
-                + "filter applied there for the first time that list's order is the compose order");
+                Is.EqualTo((string.Empty, "halo speckle", "speckle halo")),
+                "the settle path re-applies what the live class list names, which holds no custom filter, so "
+                + "the order each was routed in stays the compose order");
         }
 
         // GREEN_ON_BASE(characterization): the bundled sheets declare no member of these families but one.
