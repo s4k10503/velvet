@@ -305,6 +305,9 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, true, 4f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base never takes part of a value's longhands for a class, so p-[12px]
+        // keeps its left side there. What reddens it is `>=` in place of `>` in ClearClaimedLonghands' claim test,
+        // which hands p-4 the sides it ties p-[12px] on.
         [Test]
         public void Given_ABaseClassAndABaseValueOnOnePadding_When_AHoverTopClassHolds_Then_TheValueKeepsTheOtherSides()
         {
