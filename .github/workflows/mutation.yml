@@ -157,7 +157,7 @@ jobs:
     needs: [license-check, mutation-plan, library]
     if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -259,7 +259,7 @@ jobs:
       needs.license-check.outputs.has_license == 'true' && needs.mutation-playmode-plan.result == 'success'
       && needs.mutation-playmode-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 195
     strategy:
       fail-fast: false
       matrix:

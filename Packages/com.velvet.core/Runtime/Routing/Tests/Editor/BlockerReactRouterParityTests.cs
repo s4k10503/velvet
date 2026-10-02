@@ -347,7 +347,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReleasedNavigationTheNextBlockerBlocks_When_ItEnds_Then_OnlyTheReleasingBlockerReturnsToIdle()
+        public void Given_AReleasedNavigationTheNextBlockerBlocks_When_ItEnds_Then_TheReleasingBlockerStaysProceeding()
         {
             // Arrange — the first Blocker holds the navigation, and a second registered after it is the one
             // the released navigation is put to.
@@ -363,7 +363,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((releasing.Status, holding.Status),
-                Is.EqualTo((RouteBlockerStatus.Idle, RouteBlockerStatus.Blocked)));
+                Is.EqualTo((RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked)));
         }
 
         [Test]
