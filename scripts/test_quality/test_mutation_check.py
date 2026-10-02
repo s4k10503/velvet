@@ -3927,10 +3927,12 @@ class PutBackSummaryTests(unittest.TestCase):
         # Act
         campaign.run("--max", "1", "--launch-per-mutant")
 
-        # Assert — the copy of what the baseline left, listed after the closing heading.
-        copy, = (campaign.project / "out" / "put-back").glob("**/" + PutBackSummaryCampaign.LEFT)
+        # Assert — the one copy of what the baseline left, listed after the closing heading.
+        copies = sorted((campaign.project / "out" / "put-back").glob("**/" + PutBackSummaryCampaign.LEFT))
         closing = campaign.printed.partition("put back during this campaign")[2].splitlines()
-        self.assertIn(mutation_check.put_back_line(PutBackSummaryCampaign.LEFT, copy.resolve()), closing)
+        self.assertEqual((len(copies), [line for line in closing if PutBackSummaryCampaign.LEFT in line]),
+                         (1, [mutation_check.put_back_line(PutBackSummaryCampaign.LEFT, copy.resolve())
+                              for copy in copies]))
 
 
 class ProjectLockTests(unittest.TestCase):
