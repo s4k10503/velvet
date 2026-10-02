@@ -214,8 +214,8 @@ new StyleTransitionConfig
   overshoots (0 not at all, 0.3 when left null), and the play lands on its target once `DurationSec` has
   passed, held between 0.01 and 10 seconds (0.8 when only `Bounce` is set), a `layoutId` move on it
   included. Any of the three physics knobs takes precedence over both, and a spring setting one ignores
-  any `DurationSec` but 0. A `DurationSec` of exactly 0 lands any spring at once, physics knobs or not, as
-  Framer makes any zero-duration transition instant: a presence removes a child whose exit is such a spring
+  any `DurationSec` but 0. Outside a sequence step (*Timelines* below), a `DurationSec` of exactly 0 lands
+  any spring at once, physics knobs or not, as Framer makes any zero-duration transition instant: a presence removes a child whose exit is such a spring
   at once, and a `layoutId` move on one lands at once. An exit on a spring its duration describes that is
   cancelled by its key returning starts its duration over.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
