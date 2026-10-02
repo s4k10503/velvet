@@ -1680,10 +1680,8 @@ class TreeState:
     What is overwritten or removed is copied first, under a directory of this run's own inside `stash`:
     a stopped campaign is finished by running again over the same `--output`.
 
-    A campaign owns its worktree. What changed while a launch ran cannot be told from what its tests
-    wrote, so it is put back like them, its copy kept. A file that changed between the end of one launch,
-    or the campaign's own release of a held source, and the start of the next changed while none of the
-    campaign's editors ran, and the campaign stops rather than overwrite it.
+    A campaign owns its worktree: an edit made while one runs may be put back. Where the campaign sees
+    that a file changed between two launches it stops instead, naming it.
     """
 
     def __init__(self, project, files, outside, stash):
@@ -1742,8 +1740,9 @@ class TreeState:
         self.after = {relative: content for relative, content in self.reading().items() if relative not in kept}
 
     def released(self, paths):
-        """Records `paths` as the campaign's release of them left them, so an edit made to one before
-        the next launch is compared rather than passed over as held."""
+        """Records `paths` as the campaign's release of them left them. A held source git already
+        reports, an uncommitted one, would otherwise read at the next launch as changed since the last
+        one ended, which it was not."""
         if self.after is None:
             return
         for relative in self.relative_kept(paths):
@@ -3327,8 +3326,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if not wait_for_quiet(args.busy_timeout):
                 raise SystemExit("another Unity test run is still in flight after {}s, so this "
                                  "mutant's failures would not all be its own".format(args.busy_timeout))
-            # The mutation is built from the text read before the baseline, so writing it over a file that
-            # has changed since would lose that change with nothing kept of it.
+            # The mutation is built from `originals`, so writing it over a file that has changed since they
+            # were read would lose that change with nothing kept of it.
             if mutant.path.read_text() != originals[mutant.path]:
                 raise SystemExit("{} changed since the campaign read it, and the next mutation would be "
                                  "written over that change. A campaign owns its worktree while it runs; "
