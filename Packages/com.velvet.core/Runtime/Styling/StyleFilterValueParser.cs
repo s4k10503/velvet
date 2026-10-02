@@ -157,10 +157,12 @@ namespace Velvet
         // rest. Each colon-separated segment fills the next declared slot and is parsed by that slot's
         // declared type — a float slot takes a signed float, a color slot the shared color grammar — and
         // the missing tail is padded from the declared defaults, so the resolved argument list always
-        // carries the full declared parameter count. Rejects (the whole token falls through as an inert
-        // class): more segments than declared slots, a segment failing its slot's grammar, or an empty
-        // segment — a registered name must not half-apply. Never negated: "-filter-[..]" has no meaning
-        // for a named reference.
+        // carries the full declared parameter count. More segments than declared slots, a segment failing
+        // its slot's grammar, or an empty segment refuse the arguments, and the layer composes nothing — a
+        // registered name must not half-apply. A name nothing is registered under resolves to a reference
+        // with no definition, the url() to a missing filter that makes CSS ignore the whole chain. Either
+        // keeps its bracket body for a registration change to read again. Never negated: "-filter-[..]" has
+        // no meaning for a named reference.
         internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
@@ -181,11 +183,24 @@ namespace Velvet
             {
                 if (s_warnedUnregistered.Add(name))
                 {
-                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; the filter-[{name}:...] class is inert.");
+                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; an element carrying filter-[{name}:...] draws no filter until it is.");
                 }
-                return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), valueSpan.ToString()));
+                return true;
             }
 
+            var token = valueSpan.ToString();
+            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, TryReadArguments(definition, valueSpan, colon, out var args)
+                ? new CustomFilterValue(name, definition, args, token)
+                : new CustomFilterValue(name, null!, Array.Empty<FilterParameter>(), token, rejected: true));
+            return true;
+        }
+
+        private static bool TryReadArguments(FilterFunctionDefinition definition, ReadOnlySpan<char> valueSpan, int colon,
+            out FilterParameter[] args)
+        {
+            args = Array.Empty<FilterParameter>();
             var declarations = definition.parameters;
             var declaredCount = declarations?.Length ?? 0;
             // Registration rejects a declaration of more than the 4 parameters a filter function can
@@ -213,13 +228,13 @@ namespace Velvet
                 return false;
             }
 
-            var args = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
+            var read = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
             var remaining = colon < 0 ? ReadOnlySpan<char>.Empty : valueSpan.Slice(colon + 1);
             for (var slot = 0; slot < suppliedCount; slot++)
             {
                 var next = remaining.IndexOf(':');
                 var segment = next < 0 ? remaining : remaining.Slice(0, next);
-                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out args[slot]))
+                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out read[slot]))
                 {
                     return false;
                 }
@@ -231,10 +246,9 @@ namespace Velvet
             // leaving stale material-property state where the declared default should be.
             for (var slot = suppliedCount; slot < declaredCount; slot++)
             {
-                args[slot] = declarations![slot].interpolationDefaultValue;
+                read[slot] = declarations![slot].interpolationDefaultValue;
             }
-
-            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, args));
+            args = read;
             return true;
         }
 
@@ -265,32 +279,6 @@ namespace Velvet
                 return false;
             }
             parameter = new FilterParameter(color);
-            return true;
-        }
-
-        // Extracts the NAME from a token of the filter-[name(:args)] shape — purely syntactic: no
-        // registry lookup, no warning, no argument validation. The CLEAR paths resolve names through
-        // this instead of TryParseCustomFilter: a layer applied while its name was registered must stay
-        // locatable (and removable) after the name is unregistered, and resolution-for-apply is
-        // registry-gated while resolution-for-clear must not be.
-        internal static bool TryExtractCustomFilterName(string cls, out string name)
-        {
-            name = null!;
-            const string shape = "filter-[";
-            if (cls == null || cls.Length < shape.Length + 2
-                || !cls.StartsWith(shape, StringComparison.Ordinal)
-                || cls[cls.Length - 1] != ']')
-            {
-                return false;
-            }
-            var body = cls.AsSpan(shape.Length, cls.Length - shape.Length - 1);
-            var colon = body.IndexOf(':');
-            var nameSpan = colon < 0 ? body : body.Slice(0, colon);
-            if (nameSpan.Length == 0)
-            {
-                return false;
-            }
-            name = nameSpan.ToString();
             return true;
         }
 
