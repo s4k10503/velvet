@@ -90,6 +90,11 @@ namespace Velvet
         public float Damping;
         public float Mass;
 
+        // StyleTransitionConfig.SpringSettleSec: where set, the play settles once this much time has passed since
+        // it started moving (ElapsedSec), and its rest thresholds are not consulted.
+        public double? SettleAtSec;
+        public double ElapsedSec;
+
         // The recurring tick, scheduled on the panel root. Paused (and nulled) once every channel has settled,
         // or on cancel.
         public IVisualElementScheduledItem? Tick;
@@ -124,13 +129,17 @@ namespace Velvet
         /// Builds the running state from a resolved plan, or null when the plan animates nothing (the caller
         /// should treat this exactly like a zero-duration tween: land the classes and complete immediately).
         /// </summary>
-        public static MotionSpringState? Create(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping, float mass)
+        public static MotionSpringState? Create(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
+            float mass, double? settleAtSec = null)
         {
             if (plan.IsEmpty)
             {
                 return null;
             }
-            var state = new MotionSpringState { Stiffness = stiffness, Damping = damping, Mass = mass };
+            var state = new MotionSpringState
+            {
+                Stiffness = stiffness, Damping = damping, Mass = mass, SettleAtSec = settleAtSec,
+            };
             if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to);
             if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
             if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
@@ -301,6 +310,11 @@ namespace Velvet
             // initial (pre-tick) write already does, so the style writes live in exactly one place instead of
             // being duplicated here.
             WriteChannelValues(element, state);
+            if (state.SettleAtSec is { } settleAtSec)
+            {
+                state.ElapsedSec += dtSec;
+                return state.ElapsedSec >= settleAtSec;
+            }
             return settled;
         }
 
@@ -380,12 +394,75 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Re-targets every active channel toward the value it STARTED from (see
-        /// <see cref="SpringChannel.RestingTarget"/>) — the exit-cancel hand-off. Each channel's
-        /// <see cref="SpringIntegrator"/> instance is untouched, so its current value/velocity carry over
-        /// unbroken; only the goal it steps toward next changes.
+        /// Starts each channel of <paramref name="next"/> that <paramref name="previous"/> also drives from where
+        /// <paramref name="previous"/> has it, so a swap interrupting a spring continues from the value it was
+        /// drawn at rather than from the pose the interrupted swap was heading for. A numeric channel keeps its velocity too,
+        /// unless <paramref name="next"/> settles at a set time, which Framer Motion starts with zero velocity; a
+        /// color starts at the color drawn, with none.
         /// </summary>
-        public static void Retarget(MotionSpringState state) => ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
+        public static void ContinueFrom(MotionSpringState next, MotionSpringState previous)
+        {
+            var keepsVelocity = next.SettleAtSec == null;
+            Continue(next.Opacity, previous.Opacity, keepsVelocity);
+            Continue(next.TranslateX, previous.TranslateX, keepsVelocity);
+            Continue(next.TranslateY, previous.TranslateY, keepsVelocity);
+            Continue(next.Scale, previous.Scale, keepsVelocity);
+            Continue(next.Rotate, previous.Rotate, keepsVelocity);
+            if (next.Lengths != null && previous.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = previous.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
+                    Continue(length.Value, match?.Value, keepsVelocity);
+                }
+            }
+            if (next.Colors != null && previous.Colors != null)
+            {
+                for (var i = 0; i < next.Colors.Count; i++)
+                {
+                    var color = next.Colors[i];
+                    var match = previous.Colors.Find(c => c.Property == color.Property);
+                    if (match != null)
+                    {
+                        next.Colors[i] = new SpringColorChannel(color.Property,
+                            MotionPropertyInterpolation.LerpColor(match.From, match.To, match.Progress.Integrator.Value),
+                            color.To);
+                    }
+                }
+            }
+        }
+
+        private static void Continue(SpringChannel? next, SpringChannel? previous, bool keepsVelocity)
+        {
+            if (next == null || previous == null)
+            {
+                return;
+            }
+            next.Integrator = new SpringIntegrator(previous.Integrator.Value,
+                keepsVelocity ? previous.Integrator.Velocity : 0f);
+        }
+
+        /// <summary>
+        /// Re-targets every active channel toward the value it STARTED from (see
+        /// <see cref="SpringChannel.RestingTarget"/>) — the exit-cancel hand-off. Each channel keeps its current
+        /// value and velocity; only the goal it steps toward next changes. A spring settling at a set time
+        /// (<see cref="MotionSpringState.SettleAtSec"/>) starts that time over and drops the velocity, as Framer
+        /// Motion starts every animation on a spring its duration describes with zero velocity.
+        /// </summary>
+        public static void Retarget(MotionSpringState state)
+        {
+            if (state.SettleAtSec == null)
+            {
+                ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
+                return;
+            }
+            state.ElapsedSec = 0.0;
+            ForEachActiveChannel(state, static c =>
+            {
+                c.Target = c.RestingTarget;
+                c.Integrator = new SpringIntegrator(c.Integrator.Value);
+            });
+        }
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

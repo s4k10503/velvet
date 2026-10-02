@@ -226,7 +226,9 @@ namespace Velvet
             if (transition.Type == TransitionType.Spring)
             {
                 return Math.Max(0f, transition.DelaySec)
-                    + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
+                    + (transition.SpringSettleSec is { } settleSec
+                        ? SampledSettleSec(settleSec)
+                        : SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass));
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
@@ -264,6 +266,17 @@ namespace Velvet
         private const double SpringRestSpeed = 2.0;
         private const int SpringSampleMs = 50;
         private const int MaxSpringDurationMs = 20000;
+
+        // A spring its duration describes reports done at that duration, so the first 50ms sample at or past it.
+        private static float SampledSettleSec(double settleSec)
+        {
+            var ms = 0;
+            while (ms < settleSec * 1000.0)
+            {
+                ms += SpringSampleMs;
+            }
+            return ms / 1000f;
+        }
 
         // Zero for parameters a play refuses to tick, since that play completes at once.
         private static float SpringDurationSec(float stiffness, float damping, float mass)

@@ -41,23 +41,73 @@ namespace Velvet
         /// </summary>
         public TransitionType Type { get; init; } = TransitionType.Tween;
 
+        // Which of the spring knobs and DurationSec the caller set, since a spring naming none of the three
+        // physics knobs and either DurationSec or Bounce takes its physics from those two instead. Copied field by
+        // field wherever a config is rebuilt from another, so a copy keeps the set the caller wrote.
+        private float? _stiffness;
+        private float? _damping;
+        private float? _mass;
+        private float? _durationSec;
+        private DurationSpring? _durationSpring;
+
         /// <summary>
         /// Spring stiffness (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values snap toward the target faster.
+        /// Higher values snap toward the target faster. Defaults to 100, or, where none of
+        /// <see cref="Stiffness"/>, <see cref="Damping"/> and <see cref="Mass"/> is set and
+        /// <see cref="DurationSec"/> or <see cref="Bounce"/> is, to the stiffness of the spring that duration and
+        /// bounce describe.
         /// </summary>
-        public float Stiffness { get; init; } = 100f;
+        public float Stiffness
+        {
+            get => _stiffness ?? (TakesDurationSpring ? FromDuration.Stiffness : 100f);
+            init => _stiffness = value;
+        }
 
         /// <summary>
         /// Spring damping (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values settle with less oscillation.
+        /// Higher values settle with less oscillation. Defaults to 10, or to the damping of the spring
+        /// <see cref="DurationSec"/> and <see cref="Bounce"/> describe, as <see cref="Stiffness"/> says.
         /// </summary>
-        public float Damping { get; init; } = 10f;
+        public float Damping
+        {
+            get => _damping ?? (TakesDurationSpring ? FromDuration.Damping : 10f);
+            init => _damping = value;
+        }
 
         /// <summary>
         /// Spring mass (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values feel heavier / slower to accelerate.
+        /// Higher values feel heavier / slower to accelerate. Defaults to 1, which is also the mass of a spring
+        /// <see cref="DurationSec"/> and <see cref="Bounce"/> describe.
         /// </summary>
-        public float Mass { get; init; } = 1f;
+        public float Mass
+        {
+            get => _mass ?? 1f;
+            init => _mass = value;
+        }
+
+        /// <summary>
+        /// How far a spring described by <see cref="DurationSec"/> overshoots its target: 0 settles without
+        /// overshooting, and larger values bounce more, as Framer Motion's spring <c>bounce</c> does (one minus
+        /// the damping ratio, which is held between 0.05 and 1). Null leaves it at 0.3 wherever
+        /// <see cref="DurationSec"/> describes the spring. Only meaningful when <see cref="Type"/> is
+        /// <see cref="TransitionType.Spring"/> and none of <see cref="Stiffness"/>, <see cref="Damping"/> and
+        /// <see cref="Mass"/> is set; a spring setting any of the three takes its physics from them.
+        /// </summary>
+        public float? Bounce { get; init; }
+
+        // A spring whose physics DurationSec and Bounce describe, Framer's getSpringOptions rule: any physics knob
+        // the caller set wins over both.
+        private bool TakesDurationSpring
+            => _stiffness == null && _damping == null && _mass == null && (_durationSec != null || Bounce != null);
+
+        private DurationSpring FromDuration => _durationSpring ??= DurationSpring.Derive(_durationSec, Bounce);
+
+        // When a spring play ends (DurationSpring.SettleSec), or null where its physics alone decide.
+        internal double? SpringSettleSec => TakesDurationSpring ? FromDuration.SettleSec : null;
+
+        // A spring given a duration of exactly 0 lands at once, as Framer makes any transition with a zero
+        // duration instant before it reads the type.
+        internal bool SpringLandsAtOnce => Type == TransitionType.Spring && _durationSec == 0f;
 
         /// <summary>
         /// First control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
@@ -89,12 +139,18 @@ namespace Velvet
 
         /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
-        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring's settle time is
-        /// decided entirely by <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not a fixed
-        /// duration. For <see cref="TransitionType.Bezier"/> it IS the (fixed) duration, exactly as for a plain
-        /// tween — only the easing sampling differs.
+        /// For <see cref="TransitionType.Bezier"/> it IS the (fixed) duration, exactly as for a plain
+        /// tween — only the easing sampling differs. For <see cref="TransitionType.Spring"/>, where none of
+        /// <see cref="Stiffness"/>, <see cref="Damping"/> and <see cref="Mass"/> is set, it describes the spring
+        /// together with <see cref="Bounce"/>, as Framer Motion's spring <c>duration</c> does: the play settles on
+        /// its target once this long has passed (held between 0.01 and 10 seconds), and a value of exactly 0
+        /// lands it at once. A spring setting any of the three physics knobs ignores any other duration.
         /// </summary>
-        public float DurationSec { get; init; }
+        public float DurationSec
+        {
+            get => _durationSec ?? 0f;
+            init => _durationSec = value;
+        }
 
         /// <summary>
         /// Easing mode. Applied as the inline transition-timing-function style.
@@ -183,14 +239,13 @@ namespace Velvet
 
         /// <summary>
         /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
-        /// an exiting ghost) rather than removed instantly. A spring's settle time is decided by
-        /// <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not <see cref="DurationSec"/>
-        /// (documented as ignored for <see cref="TransitionType.Spring"/>), so a spring counts as animated
-        /// regardless of DurationSec — including the degenerate case where the exit's variant pair touches no
-        /// spring-animatable channel at all, which still plays through the spring machinery (completing on its
-        /// own, deferred, rather than being pre-empted by an instant-removal gate keyed on this flag).
+        /// an exiting ghost) rather than removed instantly. A spring counts as animated unless its duration is
+        /// exactly 0 (<see cref="SpringLandsAtOnce"/>) — including the degenerate case where the exit's variant
+        /// pair touches no spring-animatable channel at all, which still plays through the spring machinery
+        /// (completing on its own, deferred, rather than being pre-empted by an instant-removal gate keyed on
+        /// this flag).
         /// </summary>
-        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
+        internal bool HasExitAnimation => Type == TransitionType.Spring ? !SpringLandsAtOnce : DurationSec > 0f;
 
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
@@ -229,7 +284,7 @@ namespace Velvet
                 EnterToClass = EnterToClass,
                 ExitFromClass = ExitFromClass,
                 ExitToClass = ExitToClass,
-                DurationSec = durationSec ?? DurationSec,
+                _durationSec = durationSec ?? _durationSec,
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
@@ -241,9 +296,10 @@ namespace Velvet
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
                 Type = Type,
-                Stiffness = Stiffness,
-                Damping = Damping,
-                Mass = Mass,
+                _stiffness = _stiffness,
+                _damping = _damping,
+                _mass = _mass,
+                Bounce = Bounce,
                 BezierX1 = BezierX1,
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
@@ -273,15 +329,16 @@ namespace Velvet
             {
                 ExitFromClass = exitFromClass,
                 ExitToClass = exitToClass,
-                DurationSec = DurationSec,
+                _durationSec = _durationSec,
                 Easing = Easing,
                 ExitEasing = ExitEasing,
                 DelaySec = DelaySec,
                 PropertyOverrides = PropertyOverrides,
                 Type = Type,
-                Stiffness = Stiffness,
-                Damping = Damping,
-                Mass = Mass,
+                _stiffness = _stiffness,
+                _damping = _damping,
+                _mass = _mass,
+                Bounce = Bounce,
                 BezierX1 = BezierX1,
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
@@ -340,7 +397,8 @@ namespace Velvet
         /// <summary>
         /// A physics-integrated spring (see the internal SpringIntegrator): <see cref="StyleTransitionConfig.Stiffness"/>
         /// / <see cref="StyleTransitionConfig.Damping"/> / <see cref="StyleTransitionConfig.Mass"/> decide the
-        /// curve and settle time instead of a fixed duration — CSS/USS transitions cannot express a spring, so
+        /// curve and settle time, or <see cref="StyleTransitionConfig.DurationSec"/> and
+        /// <see cref="StyleTransitionConfig.Bounce"/> describe both where none of the three is set — CSS/USS transitions cannot express a spring, so
         /// this is driven by a per-frame tick that writes inline styles directly (like the ring co-fade
         /// tick), not <c>transition-duration</c>/<c>transition-timing-function</c>.
         /// Only <see cref="Velvet.MotionNode"/>'s variant enter/exit (<c>variants</c> + <c>initial</c>/<c>animate</c>/

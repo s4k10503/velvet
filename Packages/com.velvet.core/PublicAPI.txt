@@ -972,6 +972,7 @@
 [Velvet] property Velvet.StyleTransitionConfig.BezierX2: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.BezierY1: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.BezierY2: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.Bounce: System.Nullable`1[System.Single]
 [Velvet] property Velvet.StyleTransitionConfig.Damping: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.DelayChildrenSec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.DelaySec: System.Single

@@ -263,6 +263,55 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Starts each channel of <paramref name="next"/> that <paramref name="previous"/> also drives from the value
+        /// <paramref name="previous"/> draws it at — the bezier sibling of
+        /// <see cref="MotionSpringDriver.ContinueFrom"/>, less the velocity a tween does not carry.
+        /// </summary>
+        public static void ContinueFrom(BezierTweenState next, BezierTweenState previous)
+        {
+            var eased = CurrentEased(previous);
+            Continue(next.Opacity, previous.Opacity, eased);
+            Continue(next.TranslateX, previous.TranslateX, eased);
+            Continue(next.TranslateY, previous.TranslateY, eased);
+            Continue(next.Scale, previous.Scale, eased);
+            Continue(next.Rotate, previous.Rotate, eased);
+            if (next.Lengths != null && previous.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = previous.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
+                    if (match != null)
+                    {
+                        length.Value.From = MotionPropertyInterpolation.LerpLength(match.Property, match.Value.From,
+                            match.Value.To, eased);
+                    }
+                }
+            }
+            if (next.Colors != null && previous.Colors != null)
+            {
+                for (var i = 0; i < next.Colors.Count; i++)
+                {
+                    var color = next.Colors[i];
+                    var match = previous.Colors.Find(c => c.Property == color.Property);
+                    if (match != null)
+                    {
+                        var progress = Mathf.LerpUnclamped(match.Progress.From, match.Progress.To, eased);
+                        next.Colors[i] = new BezierColorChannel(color.Property,
+                            MotionPropertyInterpolation.LerpColor(match.From, match.To, progress), color.To);
+                    }
+                }
+            }
+        }
+
+        private static void Continue(BezierTweenChannel? next, BezierTweenChannel? previous, float eased)
+        {
+            if (next != null && previous != null)
+            {
+                next.From = Mathf.LerpUnclamped(previous.From, previous.To, eased);
+            }
+        }
+
+        /// <summary>
         /// Freezes each active channel's CURRENT sampled value as its new <see cref="BezierTweenChannel.From"/>,
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,
         /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh full-duration reversal from

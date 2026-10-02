@@ -164,7 +164,7 @@ namespace Velvet.Tests
         public void Given_ASpringExitThatDeclaresADuration_When_TheChildIsRemovedBeforeItsEnterSwaps_Then_AnAxisNoPoseNamesStaysAtRest()
         {
             // Arrange — the enter starts from a y the resting and exit poses leave unnamed, and the spring
-            // carries a duration, which a spring does not play on.
+            // carries a duration, which describes it in place of its physics knobs.
             var variants = new Dictionary<string, MotionVariant>
             {
                 ["away"] = "translate-x-[0px] translate-y-[40px]",

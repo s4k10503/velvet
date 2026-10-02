@@ -202,12 +202,19 @@ new StyleTransitionConfig
 ```
 
 - Springs drive the channels of a variant delta (see *Driven channels* below) with a
-  velocity-preserving integrator: **interrupting a spring retargets from the current value *and
-  velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
-  all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics.
-- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
-  a label mid-spring retargets from the current value and velocity.
+  velocity-preserving integrator. A spring enter or label change that interrupts a running spring enter
+  starts each channel the two share from the value it is drawn at, a numeric one with its velocity too,
+  as Framer animates every value from the one it has; a color carries no velocity, as Framer tracks none
+  for one. An exit cancelled by its key returning heads back from its value and velocity. An exit whose
+  delta resolves no channel at all completes immediately.
+- A spring setting none of `Stiffness`, `Damping` and `Mass` can be described by `DurationSec` and
+  `Bounce` instead, as Framer's spring `duration` and `bounce` describe one: `Bounce` is how far it
+  overshoots (0 not at all, 0.3 when left null), and the play lands on its target once `DurationSec` has
+  passed, held between 0.01 and 10 seconds (0.8 when only `Bounce` is set). A `DurationSec` of exactly 0
+  lands the spring at once. Any of the three physics knobs takes precedence over both, and a spring setting
+  one ignores any `DurationSec` but 0. An interrupted spring that its duration describes starts its duration over
+  with no velocity, as Framer's does.
+- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -315,7 +322,8 @@ with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, si
 function is a function of time and so must be monotone; a value outside that range is invalid and
 falls back to the default curve with a one-shot console warning instead of being silently clamped.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
-target mid-tween.
+target mid-tween. A bezier enter or label change that interrupts a running bezier enter starts each channel
+the two share from the value it is drawn at, as a spring's does (*Springs* above).
 
 ## Shared-element layout animation (`layoutId`)
 
@@ -439,7 +447,8 @@ A step is exactly one of:
   defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring: a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
-  at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
+  at most 20 seconds — or, for a spring its `DurationSec` and `Bounce` describe, the first 50ms sample
+  at or past that duration. A label does not tell the sequence how far anything moves, and 100 is the travel
   Framer takes when it cannot read the distance.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.

@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// Pins the bezier and spring drivers' lifecycles against a live (simulated) panel — the coverage
     /// the panel-free driver units cannot give. Both drivers must: start once their element is
     /// attached (both production call sites play the enter BEFORE insertion); play a presence exit
-    /// (a spring's exit is not gated on <c>DurationSec</c>, documented as ignored for springs); leave
+    /// (a spring's exit is not gated on its <c>DurationSec</c> being positive); leave
     /// a resolver-backed resting value (e.g. <c>translate-x-4</c>, inline-only, no USS rule) intact
     /// after settling; release a cancel that lands before or during their delayed tick without
     /// waiting on a tick that would never start; scrub their inline pose when the subtree is torn
@@ -371,7 +371,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpringConfigWithDefaultDuration_When_APresenceChildExits_Then_TheGhostStaysWhileTheSpringPlays()
         {
-            // Arrange — DurationSec is left at its default (documented as ignored for springs).
+            // Arrange — DurationSec is left unset, so the spring's physics alone decide when it settles.
             s_hostVariants = s_fade;
             s_hostTransition = Spring();
             using var store = new SetStore("a");
