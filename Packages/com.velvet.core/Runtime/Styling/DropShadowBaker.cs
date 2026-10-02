@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Velvet
 {
     // Bakes the Velvet/DropShadow SDF shader into a full-size shadow texture and caches the result.
-    // UI Toolkit (6000.3) has no native box-shadow, so a shadow-*/drop-shadow-* utility paints a baked
+    // UI Toolkit (6000.3) has no native box-shadow, so a shadow-* utility paints a baked
     // shadow texture behind its caster (DropShadowSilhouette draws it as a single quad in the caster's own
     // generateVisualContent). The shader is BAKED once (Graphics.Blit) rather than applied as a live
     // per-element material: UITK freezes a custom-material element's draw-command order at first generation,

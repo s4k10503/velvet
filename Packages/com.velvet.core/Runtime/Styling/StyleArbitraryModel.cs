@@ -252,6 +252,12 @@ namespace Velvet
         // or a base layer and a hover layer of the SAME name, never clobber each other. The Custom field
         // on ArbitraryStyle carries the resolved definition and parsed arguments; Value/Unit/Color are unused.
         FilterCustom,     // filter-[dissolve:0.4] -> filter: <custom function>(0.4) (payload = Custom)
+        // drop-shadow-md / drop-shadow-[0_2px_4px_#000] -> one drop-shadow function per shadow (payload =
+        // DropShadow), composed after every function above it in s_filterOrder.
+        FilterDropShadow,
+        // drop-shadow-red-500/50 -> the colour every drop-shadow takes where Tailwind's colour variable reaches
+        // it (Color).
+        FilterDropShadowColor,
         #endregion
 
         // Size shorthand (StyleLength; fans out to width + height, like Inset).
@@ -294,6 +300,8 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // Payload for FilterDropShadow; null for every other property.
+        public DropShadowValue? DropShadow { get; }
 
         // Creates a length/angle result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
@@ -306,6 +314,7 @@ namespace Velvet
             Value3 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
         }
 
         // Creates a pair-valued length result.
@@ -320,6 +329,7 @@ namespace Velvet
             Value3 = value3;
             Color = default;
             Custom = null;
+            DropShadow = null;
         }
 
         // Creates a color result.
@@ -333,6 +343,21 @@ namespace Velvet
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
             Custom = null;
+            DropShadow = null;
+        }
+
+        // Creates a FilterDropShadow result.
+        public ArbitraryStyle(ArbitraryProperty property, DropShadowValue dropShadow)
+        {
+            Property = property;
+            DropShadow = dropShadow;
+            Value = 0f;
+            Unit = LengthUnit.Pixel;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
+            Color = default;
+            Custom = null;
         }
 
         // Creates a FilterCustom result.
@@ -340,12 +365,47 @@ namespace Velvet
         {
             Property = property;
             Custom = custom;
+            DropShadow = null;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
             Color = default;
+        }
+    }
+
+    // A drop-shadow-* size token's shadows. Literal marks the tokens whose Tailwind rule writes the shadows'
+    // own colours into the filter, whatever a drop-shadow colour token says; Alpha is the /N modifier, which
+    // also scales that colour token's colour.
+    internal sealed class DropShadowValue
+    {
+        public readonly DropShadowLayer[] Shadows;
+        public readonly bool Literal;
+        public readonly float? Alpha;
+
+        public DropShadowValue(DropShadowLayer[] shadows, bool literal, float? alpha)
+        {
+            Shadows = shadows;
+            Literal = literal;
+            Alpha = alpha;
+        }
+    }
+
+    // One drop-shadow() function: the offset and standard deviation in pixels, and the colour.
+    internal readonly struct DropShadowLayer
+    {
+        public readonly float X;
+        public readonly float Y;
+        public readonly float Deviation;
+        public readonly Color Color;
+
+        public DropShadowLayer(float x, float y, float deviation, Color color)
+        {
+            X = x;
+            Y = y;
+            Deviation = deviation;
+            Color = color;
         }
     }
 

@@ -723,7 +723,7 @@ namespace Velvet
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
                 ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}"
-                    + $"|{(style.Custom == null ? string.Empty : rawCls)}"
+                    + $"|{(style.Custom == null && style.DropShadow == null ? string.Empty : rawCls)}"
                 : rawCls;
 
         private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,

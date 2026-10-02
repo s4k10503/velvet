@@ -15,6 +15,7 @@ namespace Velvet
         internal const string GradientSilhouette = "Velvet/GradientSilhouette";
         internal const string FilterBrightness = "Velvet/FilterBrightness";
         internal const string FilterSaturate = "Velvet/FilterSaturate";
+        internal const string FilterDropShadow = "Velvet/FilterDropShadow";
 
         internal static readonly string[] Names =
         {
@@ -22,6 +23,7 @@ namespace Velvet
             GradientSilhouette,
             FilterBrightness,
             FilterSaturate,
+            FilterDropShadow,
         };
 
         // Every lookup goes through here so a name that does not resolve is reported once per run rather than

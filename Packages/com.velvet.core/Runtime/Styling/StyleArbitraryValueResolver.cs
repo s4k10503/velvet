@@ -77,6 +77,12 @@ namespace Velvet
                 return true;
             }
 
+            // The drop-shadow family takes a modifier after its bracket, which the bracket path below rejects.
+            if (StyleFilterValueParser.TryParseDropShadow(className, out result))
+            {
+                return true;
+            }
+
             var negate = className.Length > 0 && className[0] == '-';
             var offset = negate ? 1 : 0;
 
@@ -1492,7 +1498,11 @@ namespace Velvet
 
         // Built from s_filterOrder (declared after it so the textual static-init order is satisfied) so the
         // filter set is single-sourced — see IsFilter.
-        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
+        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder)
+        {
+            ArbitraryProperty.FilterDropShadow,
+            ArbitraryProperty.FilterDropShadowColor,
+        };
 
         // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
         internal static void RecomposeFilter(VisualElement element)
@@ -1521,6 +1531,7 @@ namespace Velvet
                     (functions ??= new List<FilterFunction>()).Add(fn);
                 }
             }
+            AppendDropShadows(map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
@@ -1551,6 +1562,69 @@ namespace Velvet
             {
                 StyleFilterEngineWrite.Write(element, functions);
             }
+        }
+
+        // Tailwind's drop-shadow utilities write variables rather than the filter: a size writes
+        // --tw-drop-shadow-size with each colour reading --tw-drop-shadow-color, and a colour writes that colour,
+        // scaled by the --tw-drop-shadow-alpha a size's modifier writes. Both write --tw-drop-shadow: a literal
+        // size its own shadows, none an empty one, and every other token var(--tw-drop-shadow-size). At one rank
+        // the colour's rule sorts after the size's and wins.
+        private static void AppendDropShadows(LayerMap map, ref List<FilterFunction>? functions)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
+            {
+                return;
+            }
+            var definition = BuiltInFilterDefinitions.DropShadow;
+            if (definition == null)
+            {
+                return;
+            }
+            var size = sizes.Values[sizes.Count - 1].DropShadow!;
+            Color? variable = null;
+            var colorWrites = false;
+            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0)
+            {
+                var color = colors.Values[colors.Count - 1].Color;
+                color.a *= AlphaVariable(sizes) ?? 1f;
+                variable = color;
+                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
+                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+            }
+            foreach (var shadow in size.Shadows)
+            {
+                var color = shadow.Color;
+                if (!size.Literal || colorWrites)
+                {
+                    if (variable != null)
+                    {
+                        color = variable.Value;
+                    }
+                    else if (size.Alpha != null)
+                    {
+                        color.a = size.Alpha.Value;
+                    }
+                }
+                var function = new FilterFunction(definition!);
+                function.AddParameter(new FilterParameter(shadow.X));
+                function.AddParameter(new FilterParameter(shadow.Y));
+                function.AddParameter(new FilterParameter(shadow.Deviation));
+                function.AddParameter(new FilterParameter(color));
+                (functions ??= new List<FilterFunction>()).Add(function);
+            }
+        }
+
+        // The highest layer declaring a modifier: a size without one leaves --tw-drop-shadow-alpha alone.
+        private static float? AlphaVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow!.Alpha is { } alpha)
+                {
+                    return alpha;
+                }
+            }
+            return null;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public

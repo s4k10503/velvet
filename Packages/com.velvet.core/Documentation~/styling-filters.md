@@ -3,8 +3,8 @@
 UI Toolkit 6.3 renders the USS `filter` property — a list of filter functions applied to an
 element's rendered output, the CSS `filter` equivalent. Velvet exposes it two ways:
 
-- **Built-in utilities** (`blur-*`, `contrast-*`, `grayscale-*`, …) mirroring Tailwind's filter
-  scale, resolved to inline filter functions.
+- **Built-in utilities** (`blur-*`, `contrast-*`, `grayscale-*`, …, `drop-shadow-*`) mirroring
+  Tailwind's filter scale, resolved to inline filter functions.
 - **The custom filter registry** (`VelvetFilters`), which exposes user-authored
   `FilterFunctionDefinition` assets (custom filter shaders) to class strings as
   `filter-[name:args]` — the CSS `filter: url(#name)` parity point.
@@ -38,9 +38,30 @@ over-darken). Only negative amounts are rejected, as CSS disallows them. Both sh
 build by the step [player-builds.md](player-builds.md) describes, which needs nothing from you.
 
 Stacked filters compose in a fixed order (blur, brightness, contrast, grayscale, hue-rotate, invert,
-saturate, sepia) regardless of class order, as Tailwind composes its filter utilities into one `filter`
+saturate, sepia, drop-shadow) regardless of class order, as Tailwind composes its filter utilities into one `filter`
 value. A browser applies a `filter` list in the order it is written, and the list Tailwind writes is in this
 order.
+
+### `drop-shadow-*`
+
+| Utility | Shadows |
+|---|---|
+| `drop-shadow` | `0 1px 2px` black at 10% and `0 1px 1px` black at 6%, Tailwind's deprecated default |
+| `drop-shadow-xs` / `-sm` / `-md` / `-lg` / `-xl` / `-2xl` | `0 1px 1px` 5% / `0 1px 2px` 15% / `0 3px 3px` 12% / `0 4px 4px` 15% / `0 9px 7px` 10% / `0 25px 25px` 15%, in black |
+| `drop-shadow-none` | none |
+| `drop-shadow-[<shadow>(,<shadow>)*]` | each shadow two or three lengths (`px`, `rem` at 16px, or a bare number) and a colour, with `_` for spaces: `drop-shadow-[0_35px_35px_rgba(0,0,0,0.25)]` |
+| `drop-shadow-<color>` / `drop-shadow-[<color>]` | a palette name or an arbitrary colour, which colours the size beside it |
+
+The third length is the standard deviation of the blur, as CSS reads `drop-shadow()`. The shadow follows what
+the element draws, children and transparency included, and is drawn below it; `Velvet/FilterDropShadow` renders
+it, and the build step [player-builds.md](player-builds.md) describes ships it.
+
+A size and a colour on one element combine as Tailwind's do. The colour replaces each shadow's colour, except
+under the bare `drop-shadow`, or a theme size without a modifier, that outranks it: those write their own
+colours, so `drop-shadow-[#f00] hover:drop-shadow-md` is black on hover, while an arbitrary shadow takes the
+colour whichever outranks. A `/N` modifier on a theme size or an arbitrary shadow replaces its shadows' alpha;
+on any size it scales a colour token's alpha, and on a colour it scales that colour's own. A colour with no size
+draws no shadow.
 
 Filter utilities work everywhere other utilities do: under variants
 (`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. A filter change
@@ -138,8 +159,9 @@ removed at the **end** of the list fades in from, or out to, its neutral value �
 either animator (Group E of `FilterTransitionPanelTests`). Any other change is discrete and applies at once, as in
 CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`), or a position whose function
 changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
-`sepia`) and the two first-party built-in customs (`brightness`, `saturate`) interpolate, so
-`transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
+`sepia`) and the first-party built-in customs (`brightness`, `saturate`, `drop-shadow`) interpolate, so
+`transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly. A
+`drop-shadow` added or removed at the end fades from or to every length `0` and a transparent colour, as CSS pads it.
 Under Velvet's tween:
 
 - **User custom filters interpolate** when both sides hold the *same registered definition* at a position with
@@ -164,7 +186,7 @@ Under Velvet's tween:
   reactive: `Register` re-resolves no element and raises no event. A class applied before its name
   was registered does not resolve at that point.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
-  `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
+  `invert`, `saturate`, `sepia`, `drop-shadow`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
 - Re-registering a name warns and overwrites; `Unregister` removes it. Removing a class (or a
   variant turning off) still clears its layer after an unregister — the clear resolves the
@@ -188,6 +210,7 @@ or detaching does that, and so does a class change that removes another filter-f
 
 The definition asset and its shader contract are Unity's:
 [FilterFunctionDefinition](https://docs.unity3d.com/6000.3/Documentation/ScriptReference/UIElements.FilterFunctionDefinition.html)
-(`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness` and
-`Velvet/FilterSaturate` shaders are written against `UnityUIEFilter.cginc`, and
-`BuiltInFilterShaderPlaybackTests` renders them on this project's URP pipeline.
+(`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness`,
+`Velvet/FilterSaturate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
+`BuiltInFilterShaderPlaybackTests` and `DropShadowFilterPlaybackTests` render them on this project's URP
+pipeline.

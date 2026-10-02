@@ -3,10 +3,9 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the parsing contract for Velvet's <c>shadow-*</c> and <c>drop-shadow-*</c> utility classes
-    /// (<see cref="StyleShadowClass"/>): preset resolution for both families, CSS-cascade "last class wins"
-    /// (including <c>-none</c> overriding an earlier preset from either family — because Velvet renders both
-    /// shadow families through one silhouette-following element, they share a single cascade slot), the
+    /// Specifies the parsing contract for Velvet's <c>shadow-*</c> utility classes
+    /// (<see cref="StyleShadowClass"/>): preset resolution, CSS-cascade "last class wins" (including
+    /// <c>shadow-none</c> overriding an earlier preset), that <c>drop-shadow-*</c> stays out of it, the
     /// companion <c>rounded-*</c> corner-radius resolution the shadow silhouette follows, and that the C#
     /// corner-radius mirror stays in lockstep with the <c>--radius-*</c> token scale in <c>_tokens.uss</c> (a
     /// token re-alignment that forgets to update this mirror would bake the old corner into the silhouette).
@@ -160,64 +159,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADropShadowPreset_When_Extracted_Then_AShadowIsWanted()
+        public void Given_ADropShadowPreset_When_Extracted_Then_NoBoxShadowIsWanted()
         {
-            // Arrange
+            // Arrange — drop-shadow-* is a filter, painted by no box shadow.
             var classes = new[] { "w-full", "drop-shadow-md" };
-
-            // Act
-            var want = StyleShadowClass.TryExtract(classes, out _);
-
-            // Assert
-            Assert.That(want, Is.True);
-        }
-
-        [Test]
-        public void Given_ADropShadowPreset_When_Extracted_Then_ItUsesTheDropScaleNotTheBoxScale()
-        {
-            // Arrange — drop-shadow-md is tighter than shadow-md (the filter scale).
-            var classes = new[] { "drop-shadow-md" };
-            StyleShadowClass.TryExtract(new[] { "shadow-md" }, out var boxSpec);
-
-            // Act
-            StyleShadowClass.TryExtract(classes, out var dropSpec);
-
-            // Assert
-            Assert.That(dropSpec.Blur, Is.LessThan(boxSpec.Blur));
-        }
-
-        [Test]
-        public void Given_ABareDropShadow_When_Extracted_Then_TheDefaultPresetResolves()
-        {
-            // Arrange
-            var classes = new[] { "drop-shadow" };
-
-            // Act
-            var want = StyleShadowClass.TryExtract(classes, out var spec);
-
-            // Assert
-            Assert.That(want && spec.Blur > 0f, Is.True);
-        }
-
-        [Test]
-        public void Given_AShadowThenADropShadow_When_Extracted_Then_TheLaterFamilyWins()
-        {
-            // Arrange — one cascade slot across both families: the later utility wins.
-            var classes = new[] { "shadow-md", "drop-shadow-lg" };
-            StyleShadowClass.TryExtract(new[] { "drop-shadow-lg" }, out var expected);
-
-            // Act
-            StyleShadowClass.TryExtract(classes, out var spec);
-
-            // Assert
-            Assert.That(spec.Blur, Is.EqualTo(expected.Blur));
-        }
-
-        [Test]
-        public void Given_AShadowThenADropShadowNone_When_Extracted_Then_NoShadowIsWanted()
-        {
-            // Arrange — drop-shadow-none must be able to kill an earlier shadow-lg, like CSS resets.
-            var classes = new[] { "shadow-lg", "drop-shadow-none" };
 
             // Act
             var want = StyleShadowClass.TryExtract(classes, out _);
@@ -227,16 +172,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassSeesIt()
+        public void Given_ADropShadowClass_When_Gated_Then_HasShadowClassPassesItBy()
         {
-            // Arrange — the cheap early-out gate must not skip drop-shadow-only elements.
+            // Arrange — drop-shadow-* is a filter, which the painted shadow has no part in.
             var classes = new[] { "drop-shadow-xl" };
 
             // Act
             var has = StyleShadowClass.HasShadowClass(classes);
 
             // Assert
-            Assert.That(has, Is.True);
+            Assert.That(has, Is.False);
+        }
+
+        [Test]
+        public void Given_AShadowThenADropShadowNone_When_Extracted_Then_TheBoxShadowStillApplies()
+        {
+            // Arrange — CSS's box-shadow and filter are separate properties, so neither family's none resets the other.
+            var classes = new[] { "shadow-lg", "drop-shadow-none" };
+            StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var expected);
+
+            // Act
+            var want = StyleShadowClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That((want, spec.Blur), Is.EqualTo((true, expected.Blur)));
         }
 
         [Test]

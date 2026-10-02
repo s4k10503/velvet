@@ -545,6 +545,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheDropShadowFamilyName_When_Registered_Then_TheRegistrationIsRejected()
+        {
+            // Arrange — the teardown unregisters the name should the registration be accepted.
+            _registered.Add("drop-shadow");
+            LogAssert.Expect(LogType.Warning, new Regex(@"\[VelvetFilters\].*reserved"));
+
+            // Act
+            VelvetFilters.Register("drop-shadow", CreateDefinition());
+
+            // Assert
+            Assert.That(VelvetFilters.TryGet("drop-shadow", out _), Is.False);
+        }
+
+        [Test]
         public void Given_ACaseVariantOfAReservedName_When_Registered_Then_TheRegistrationIsRejected()
         {
             // Arrange — the reservation is a contract about the FAMILY name, so a case-varied spelling

@@ -35,7 +35,7 @@ namespace Velvet
         }
     }
 
-    // Parses Velvet's shadow-* AND drop-shadow-* utility classes into a ShadowSpec
+    // Parses Velvet's shadow-* utility classes into a ShadowSpec
     // preset, and resolves the companion rounded-* corner radius the shadow follows. Same shape as
     // StyleGapClass / StyleVariantClass: a cheap prefix gate
     // (HasShadowClass) plus a cascade-correct extractor (TryExtract, last
@@ -63,21 +63,6 @@ namespace Velvet
             ["2xl"] = new ShadowSpec(ShadowColor(0.40f), 64f, 18f, 0f),
         };
 
-        // drop-shadow-* presets: a single-shadow approximation of the filter: drop-shadow()
-        // scale (whose presets stack two shadows — Velvet's one SDF pass keeps the dominant layer).
-        // Tighter and fainter than the shadow-* scale. In Velvet both families render
-        // through the same silhouette-following mechanism (the painted shadow already follows a
-        // skewed caster), so the practical difference is the preset scale.
-        private static readonly Dictionary<string, ShadowSpec> DropPresets = new()
-        {
-            ["sm"] = new ShadowSpec(ShadowColor(0.05f), 2f, 1f, 0f),
-            [""] = new ShadowSpec(ShadowColor(0.10f), 4f, 1f, 0f),
-            ["md"] = new ShadowSpec(ShadowColor(0.12f), 6f, 4f, 0f),
-            ["lg"] = new ShadowSpec(ShadowColor(0.10f), 16f, 10f, 0f),
-            ["xl"] = new ShadowSpec(ShadowColor(0.11f), 26f, 20f, 0f),
-            ["2xl"] = new ShadowSpec(ShadowColor(0.15f), 50f, 25f, 0f),
-        };
-
         // Mirrors --radius-* in _tokens.uss. rounded-full / arbitrary radii are left to the
         // geometry-driven resolvedStyle path (TryResolveCornerRadius returns false for them).
         private static readonly Dictionary<string, float> RadiusScale = new()
@@ -100,13 +85,13 @@ namespace Velvet
         // can interpolate through.
         internal static bool TryGetRadiusPx(string suffix, out float px) => RadiusScale.TryGetValue(suffix, out px);
 
-        // True when cls belongs to either shadow family this layer owns (recognized or not-yet-valid).
+        // True when cls belongs to the shadow family this layer owns (recognized or not-yet-valid).
         // Both the array gate below and the variant-payload gate answer through this one predicate, so
-        // which tokens count as "a shadow utility" is defined in exactly one place.
+        // which tokens count as "a shadow utility" is defined in exactly one place. drop-shadow-* is a
+        // filter (StyleFilterValueParser.TryParseDropShadow), composed independently of this paint as CSS
+        // composes filter apart from box-shadow.
         public static bool IsShadowClass(string cls)
-            => !string.IsNullOrEmpty(cls)
-                && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)
-                    || cls == "drop-shadow" || cls.StartsWith("drop-shadow-", StringComparison.Ordinal));
+            => !string.IsNullOrEmpty(cls) && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal));
 
         // Cheap early-out gate: true when ANY class is shadow or begins with shadow-. Used
         // to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
@@ -162,11 +147,7 @@ namespace Velvet
                 return false;
             }
 
-            // CSS has two shadow channels (box-shadow / filter: drop-shadow); Velvet renders both
-            // through its single shadow element, so the two families share ONE cascade slot — the
-            // last recognized utility of EITHER family wins (each family's -none included).
             string suffix;
-            var table = Presets;
             if (cls == "shadow")
             {
                 suffix = "";
@@ -174,16 +155,6 @@ namespace Velvet
             else if (cls.StartsWith("shadow-", StringComparison.Ordinal))
             {
                 suffix = cls.Substring("shadow-".Length);
-            }
-            else if (cls == "drop-shadow")
-            {
-                suffix = "";
-                table = DropPresets;
-            }
-            else if (cls.StartsWith("drop-shadow-", StringComparison.Ordinal))
-            {
-                suffix = cls.Substring("drop-shadow-".Length);
-                table = DropPresets;
             }
             else
             {
@@ -195,13 +166,13 @@ namespace Velvet
                 wantShadow = false;
                 return true;
             }
-            if (table.TryGetValue(suffix, out spec))
+            if (Presets.TryGetValue(suffix, out spec))
             {
                 wantShadow = true;
                 return true;
             }
             // Arbitrary value: shadow-[x_y_blur_spread_#color] (underscores are spaces). Sits AFTER the
-            // preset lookup so a named preset never reaches it; both families share this one parse.
+            // preset lookup so a named preset never reaches it.
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && TryParseArbitrary(inner.ToString(), out spec))
             {

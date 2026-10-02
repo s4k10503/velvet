@@ -19,7 +19,7 @@ namespace Velvet
         // mean something different from the blur-* utilities defined here.
         internal static readonly string[] BuiltInFamilyNames =
         {
-            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia",
+            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia", "drop-shadow",
         };
 
         // The named filter presets (the suffix after the filter prefix). These have no USS class — they
@@ -138,6 +138,172 @@ namespace Velvet
 
         // Called only on a value TryParseAngleDegrees accepted, which is never empty.
         private static bool IsUnitless(ReadOnlySpan<char> valueSpan) => !char.IsLetter(valueSpan[valueSpan.Length - 1]);
+
+        // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
+        private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()
+        {
+            ["xs"] = new[] { Black(0f, 1f, 1f, 0.05f) },
+            ["sm"] = new[] { Black(0f, 1f, 2f, 0.15f) },
+            ["md"] = new[] { Black(0f, 3f, 3f, 0.12f) },
+            ["lg"] = new[] { Black(0f, 4f, 4f, 0.15f) },
+            ["xl"] = new[] { Black(0f, 9f, 7f, 0.1f) },
+            ["2xl"] = new[] { Black(0f, 25f, 25f, 0.15f) },
+        };
+
+        private static readonly DropShadowLayer[] s_bareDropShadow = { Black(0f, 1f, 2f, 0.1f), Black(0f, 1f, 1f, 0.06f) };
+
+        private static DropShadowLayer Black(float x, float y, float deviation, float alpha)
+            => new(x, y, deviation, new Color(0f, 0f, 0f, alpha));
+
+        // drop-shadow, drop-shadow-<size>, drop-shadow-none, drop-shadow-[<shadow>(,<shadow>)*], each but none
+        // taking a /N alpha, and drop-shadow-<color>(/N) or drop-shadow-[<color>](/N). Which of Tailwind's rules
+        // write their own colours follows its utility: the bare token and a theme size with no modifier do, an
+        // arbitrary shadow never.
+        internal static bool TryParseDropShadow(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            const string family = "drop-shadow";
+            if (!className.StartsWith(family, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(className, family.Length);
+            var value = className.AsSpan(family.Length, (slash < 0 ? className.Length : slash) - family.Length);
+            float? alpha = null;
+            if (slash >= 0)
+            {
+                if (!StyleColorValueParser.TryParseAlphaModifier(className.AsSpan(slash + 1), out var modifier))
+                {
+                    return false;
+                }
+                alpha = modifier;
+            }
+            if (value.Length == 0)
+            {
+                result = DropShadowSize(s_bareDropShadow, true, alpha);
+                return true;
+            }
+            if (value.Length < 2 || value[0] != '-')
+            {
+                return false;
+            }
+            var suffix = value.Slice(1).ToString();
+            if (suffix == "none")
+            {
+                if (alpha != null)
+                {
+                    return false;
+                }
+                result = DropShadowSize(Array.Empty<DropShadowLayer>(), true, null);
+                return true;
+            }
+            if (s_dropShadowPreset.TryGetValue(suffix, out var preset))
+            {
+                result = DropShadowSize(preset, alpha == null, alpha);
+                return true;
+            }
+            Color color;
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && !StyleColorValueParser.TryParseColor(inner, out color))
+            {
+                if (!TryParseShadowList(inner, out var shadows))
+                {
+                    return false;
+                }
+                result = DropShadowSize(shadows, false, alpha);
+                return true;
+            }
+            if (!VelvetPalette.TryResolveColorToken(suffix, out color))
+            {
+                return false;
+            }
+            // Tailwind mixes the colour with transparent at the modifier's percentage, which scales its alpha.
+            color.a *= alpha ?? 1f;
+            result = new ArbitraryStyle(ArbitraryProperty.FilterDropShadowColor, color);
+            return true;
+        }
+
+        private static ArbitraryStyle DropShadowSize(DropShadowLayer[] shadows, bool literal, float? alpha)
+            => new(ArbitraryProperty.FilterDropShadow, new DropShadowValue(shadows, literal, alpha));
+
+        // Comma-separated shadows, each two or three lengths and a colour, separated by '_'. A colour is
+        // required: CSS's default is currentcolor, which no Velvet colour grammar resolves.
+        private static bool TryParseShadowList(ReadOnlySpan<char> list, out DropShadowLayer[] shadows)
+        {
+            shadows = Array.Empty<DropShadowLayer>();
+            var parsed = new List<DropShadowLayer>();
+            foreach (var shadow in SplitOutsideParens(list, ','))
+            {
+                if (!TryParseShadow(shadow.AsSpan(), out var layer))
+                {
+                    return false;
+                }
+                parsed.Add(layer);
+            }
+            shadows = parsed.ToArray();
+            return true;
+        }
+
+        private static bool TryParseShadow(ReadOnlySpan<char> shadow, out DropShadowLayer layer)
+        {
+            layer = default;
+            Span<float> lengths = stackalloc float[3];
+            var lengthCount = 0;
+            Color? color = null;
+            foreach (var token in SplitOutsideParens(shadow, '_'))
+            {
+                if (token.Length == 0)
+                {
+                    continue;
+                }
+                if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var length, out var unit))
+                {
+                    if (unit != LengthUnit.Pixel || lengthCount == 3)
+                    {
+                        return false;
+                    }
+                    lengths[lengthCount++] = length;
+                    continue;
+                }
+                if (color != null || !StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsed))
+                {
+                    return false;
+                }
+                color = parsed;
+            }
+            if (lengthCount < 2 || color == null || lengths[2] < 0f)
+            {
+                return false;
+            }
+            layer = new DropShadowLayer(lengths[0], lengths[1], lengths[2], color.Value);
+            return true;
+        }
+
+        // The pieces of value between separators lying outside any parentheses.
+        private static List<string> SplitOutsideParens(ReadOnlySpan<char> value, char separator)
+        {
+            var pieces = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '(')
+                {
+                    depth++;
+                }
+                else if (value[i] == ')')
+                {
+                    depth--;
+                }
+                else if (value[i] == separator && depth == 0)
+                {
+                    pieces.Add(value.Slice(start, i - start).ToString());
+                    start = i + 1;
+                }
+            }
+            pieces.Add(value.Slice(start).ToString());
+            return pieces;
+        }
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every
@@ -309,7 +475,8 @@ namespace Velvet
             {
                 return true;
             }
-            return cls.StartsWith("blur-", StringComparison.Ordinal)
+            return cls.StartsWith("drop-shadow", StringComparison.Ordinal)
+                || cls.StartsWith("blur-", StringComparison.Ordinal)
                 || cls.StartsWith("contrast-", StringComparison.Ordinal)
                 || cls.StartsWith("hue-rotate-", StringComparison.Ordinal)
                 || cls.StartsWith("-hue-rotate-", StringComparison.Ordinal)
