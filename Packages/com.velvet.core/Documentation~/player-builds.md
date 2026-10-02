@@ -103,8 +103,9 @@ declares every one, and `EngineMemberRegistryTests` fails when the runtime looks
 anywhere else.
 
 Managed code stripping can remove a member that only a lookup by name reaches, so the package hands the
-linker a link.xml keeping exactly those members, from an `IUnityLinkerProcessor` step. There is nothing to
-configure; the file is written under the project's Temp folder while the build runs.
+linker a link.xml keeping those members, from an `IUnityLinkerProcessor` step; a method is kept with every
+overload of its name. There is nothing to configure; the file is written under the project's Temp folder
+while the build runs.
 
 A member that no longer resolves leaves the feature reading it undone rather than throwing.
 `EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the

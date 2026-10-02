@@ -74,8 +74,9 @@ namespace Velvet
         /// <summary>The member's name; for <see cref="MemberTypes.TypeInfo"/>, the same as <see cref="TypeName"/>.</summary>
         internal readonly string Name;
 
-        /// <summary>A field's or a property's type, or a type's base type, as <see cref="Type.ToString"/> renders
-        /// it.</summary>
+        /// <summary>A field's or a property's type, a type's base type, or a method's return type followed by its
+        /// parameter types in parentheses, each as <see cref="Type.ToString"/> renders it: a by-ref or out parameter
+        /// ends in <c>&amp;</c>.</summary>
         internal readonly string Shape;
 
         /// <summary>A property whose setter is called as well as its getter.</summary>
@@ -102,6 +103,14 @@ namespace Velvet
             => new(assembly, typeName, MemberTypes.Property, name, propertyType, writable: true);
 
         // Constructed through its parameterless constructor, which is kept with it.
+        // Matched on the whole signature, so an overload or a parameter turned by-ref is not taken for the one read.
+        private static EngineMember Method(Assembly assembly, string typeName, string name, string returnType,
+            params string[] parameterTypes)
+            => new(assembly, typeName, MemberTypes.Method, name, Signature(returnType, parameterTypes));
+
+        private static string Signature(string returnType, IEnumerable<string> parameterTypes)
+            => $"{returnType}({string.Join(",", parameterTypes)})";
+
         private static EngineMember ConstructedType(Assembly assembly, string typeName, string baseType)
             => new(assembly, typeName, MemberTypes.TypeInfo, typeName, baseType);
 
@@ -118,6 +127,8 @@ namespace Velvet
 
         internal Type? ResolveType() => Resolve() as Type;
 
+        internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;
+
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
@@ -130,6 +141,12 @@ namespace Velvet
             if (Kind == MemberTypes.TypeInfo)
             {
                 return type.BaseType?.ToString() == Shape && type.GetConstructor(Type.EmptyTypes) != null ? type : null;
+            }
+
+            if (Kind == MemberTypes.Method)
+            {
+                return type.GetMethods(OwnMembers).FirstOrDefault(method => method.Name == Name && Signature(
+                    method.ReturnType.ToString(), method.GetParameters().Select(p => p.ParameterType.ToString())) == Shape);
             }
 
             if (Kind == MemberTypes.Field)

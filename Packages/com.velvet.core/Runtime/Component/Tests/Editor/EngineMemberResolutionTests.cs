@@ -150,6 +150,38 @@ namespace Velvet.Tests
             Assert.That(resolved, Is.EqualTo((true, false)));
         }
 
+        [Test]
+        public void Given_AMethodDeclaredWithAByValueParameterWhereTheEngineTakesItByRef_When_Resolved_Then_NothingIsFound()
+        {
+            // Arrange — StyleCache.TryGetValue(long, out ComputedStyle) has an overload on (int, out StyleVariableContext).
+            var control = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean",
+                new[] { "System.Int64", "UnityEngine.UIElements.ComputedStyle&" });
+            var member = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean",
+                new[] { "System.Int64", "UnityEngine.UIElements.ComputedStyle" });
+
+            // Act
+            var resolved = (control.Resolve() != null, member.Resolve() != null);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AMethodDeclaredWithAnotherReturnType_When_Resolved_Then_NothingIsFound()
+        {
+            // Arrange
+            var control = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean",
+                new[] { "System.Int32", "UnityEngine.UIElements.StyleVariableContext&" });
+            var member = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Void",
+                new[] { "System.Int32", "UnityEngine.UIElements.StyleVariableContext&" });
+
+            // Act
+            var resolved = (control.Resolve() != null, member.Resolve() != null);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo((true, false)));
+        }
+
         // The factories are private so that no declaration can sit outside EngineMember; a test reaches them here.
         private static EngineMember Declare(string factory, params object[] arguments)
         {

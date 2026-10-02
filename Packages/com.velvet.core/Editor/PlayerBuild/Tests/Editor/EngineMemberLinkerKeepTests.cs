@@ -29,13 +29,13 @@ namespace Velvet.Tests
         public void Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(EngineMember member)
         {
             // Arrange
-            var kept = Kept(EngineMemberLinkerKeep.LinkXml());
+            var kept = Kept(EngineMemberLinkerKeep.LinkXml(EngineMember.Declared()));
 
             // Act
             var keeps = kept.Contains(Key(member.Assembly.GetName().Name, member.TypeName, member.Kind, member.Name));
 
             // Assert
-            Assert.That(keeps, Is.True, $"the link.xml does not keep {member}:\n{EngineMemberLinkerKeep.LinkXml()}");
+            Assert.That(keeps, Is.True, $"the link.xml does not keep {member}:\n{EngineMemberLinkerKeep.LinkXml(EngineMember.Declared())}");
         }
 
         [Test]
@@ -50,7 +50,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((Path.IsPathRooted(path), XDocument.Load(path).ToString()),
-                Is.EqualTo((true, EngineMemberLinkerKeep.LinkXml().ToString())));
+                Is.EqualTo((true, EngineMemberLinkerKeep.LinkXml(EngineMember.Declared()).ToString())));
+        }
+
+        [Test]
+        public void Given_ADeclaredMethod_When_TheLinkXmlIsRead_Then_ItKeepsThatMethod()
+        {
+            // Arrange — no method is declared on main yet, so this one is built here through the private factory.
+            var method = typeof(EngineMember).GetMethod("Method", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var member = (EngineMember)method.Invoke(null, new object[]
+            {
+                typeof(UnityEngine.UIElements.VisualElement).Assembly, "UnityEngine.UIElements.StyleCache", "TryGetValue",
+                "System.Boolean", new[] { "System.Int64", "UnityEngine.UIElements.ComputedStyle&" },
+            });
+
+            // Act
+            var kept = Kept(EngineMemberLinkerKeep.LinkXml(new[] { member }));
+
+            // Assert
+            Assert.That(kept.Contains(Key("UnityEngine.UIElementsModule", member.TypeName, MemberTypes.Method, "TryGetValue")),
+                Is.True);
         }
 
         // What each element keeps, keyed by the reflection names of what it resolves to in this editor; an element
@@ -75,6 +94,7 @@ namespace Velvet.Tests
                             "field" when type.GetField(name, Declared) != null => MemberTypes.Field,
                             "property" when type.GetProperty(name, Declared) != null => MemberTypes.Property,
                             "method" when name == ".ctor" && type.GetConstructor(Type.EmptyTypes) != null => MemberTypes.TypeInfo,
+                            "method" when name != ".ctor" && type.GetMethods(Declared).Any(m => m.Name == name) => MemberTypes.Method,
                             _ => (MemberTypes?)null,
                         };
                         if (kind is { } found)
