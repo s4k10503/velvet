@@ -1906,8 +1906,8 @@ namespace Velvet
             return false;
         }
 
-        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', or no suffix is
-        // pixel (bare numbers default to px, and rem is converted at the fixed 1rem = 16px scale because
+        // Parses a <length-percentage> token: a '%' suffix is percent; an absolute CSS unit, 'rem', or no suffix
+        // is pixel (bare numbers default to px, and rem is converted at the fixed 1rem = 16px scale because
         // UI Toolkit has no rem unit and no document root to resolve a relative font size against).
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
@@ -1915,53 +1915,35 @@ namespace Velvet
         {
             value = 0;
             unit = LengthUnit.Pixel;
-
-            bool parsed;
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
             {
                 unit = LengthUnit.Percent;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 1),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                return TryParseFloat(valueStr.Slice(0, valueStr.Length - 1), out value);
             }
-            else if (valueStr.Length > 3
-                     && valueStr[valueStr.Length - 3] == 'r'
-                     && valueStr[valueStr.Length - 2] == 'e'
-                     && valueStr[valueStr.Length - 1] == 'm')
+            foreach (var (suffix, pixels) in s_pixelsPerUnit)
             {
-                // 1rem resolves to a fixed 16px (UI Toolkit has no rem unit), so the parsed head is
-                // scaled and emitted as a pixel length rather than carried as a distinct unit.
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 3),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
-                value *= 16f;
+                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var parsed = TryParseFloat(valueStr.Slice(0, valueStr.Length - suffix.Length), out value);
+                    value *= pixels;
+                    return parsed && float.IsFinite(value);
+                }
             }
-            else if (valueStr.Length > 1
-                     && valueStr[valueStr.Length - 2] == 'p'
-                     && valueStr[valueStr.Length - 1] == 'x')
-            {
-                unit = LengthUnit.Pixel;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 2),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
-            }
-            else
-            {
-                parsed = float.TryParse(
-                    valueStr,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
-            }
-
-            return parsed && float.IsFinite(value);
+            return TryParseFloat(valueStr, out value);
         }
+
+        // CSS's absolute lengths at 96px to the inch, and rem at 16px. A CSS unit is case-insensitive.
+        private static readonly (string Suffix, float Pixels)[] s_pixelsPerUnit =
+        {
+            ("rem", 16f),
+            ("px", 1f),
+            ("pt", 96f / 72f),
+            ("pc", 16f),
+            ("in", 96f),
+            ("cm", 96f / 2.54f),
+            ("mm", 96f / 25.4f),
+            ("q", 96f / 101.6f),
+        };
 
         // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.
         // Internal so the extracted transform/filter parsers share the one float grammar.

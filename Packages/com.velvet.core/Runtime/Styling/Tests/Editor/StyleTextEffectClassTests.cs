@@ -409,6 +409,20 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.Null);
         }
 
+        [Test]
+        public void Given_ALeadingBracketInInches_When_ParsedAndApplied_Then_AnInchIsNinetySixPixels()
+        {
+            // Arrange
+            var classNames = new[] { "leading-[1in]" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("<line-height=96px>hi</line-height>"));
+        }
+
         [TestCase("leading-[1.5]", "<line-height=1.5em>hi</line-height>")]
         [TestCase("leading-[0]", "<line-height=0em>hi</line-height>")]
         [TestCase("leading-[1.5em]", "<line-height=1.5em>hi</line-height>")]

@@ -97,6 +97,23 @@ namespace Velvet.Tests
                 Is.EqualTo((true, ArbitraryProperty.MarginTop, -16f, LengthUnit.Pixel)));
         }
 
+        // Each value is 96px, which CSS fixes at one inch.
+        [TestCase("w-[1in]", TestName = "Given_AWidthInInches_When_Parsed_Then_AnInchIsNinetySixPixels")]
+        [TestCase("w-[72pt]", TestName = "Given_AWidthInPoints_When_Parsed_Then_SeventyTwoPointsAreAnInch")]
+        [TestCase("w-[6pc]", TestName = "Given_AWidthInPicas_When_Parsed_Then_SixPicasAreAnInch")]
+        [TestCase("w-[2.54cm]", TestName = "Given_AWidthInCentimetres_When_Parsed_Then_TwoPointFiveFourAreAnInch")]
+        [TestCase("w-[25.4mm]", TestName = "Given_AWidthInMillimetres_When_Parsed_Then_TwentyFivePointFourAreAnInch")]
+        [TestCase("w-[101.6Q]", TestName = "Given_AWidthInQuarterMillimetres_When_Parsed_Then_ANinetySixthOfThemIsAPixel")]
+        [TestCase("w-[96PX]", TestName = "Given_AnUppercaseUnit_When_Parsed_Then_ItReadsAsTheLowercaseOne")]
+        public void Given_AnAbsoluteCssLength_When_Parsed_Then_ItResolvesToPixels(string cls)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert — a value that does not parse, or parses to a percentage, reads as NaN.
+            Assert.That(ok && s.Unit == LengthUnit.Pixel ? s.Value : float.NaN, Is.EqualTo(96f).Within(1e-3f));
+        }
+
         [Test]
         public void Given_ViewportHeightClass_When_Parsed_Then_DeclinesAsUnsupportedUnit()
         {
