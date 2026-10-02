@@ -48,6 +48,18 @@ namespace Velvet
         public object[] Dependencies { get; init; }
     }
 
+    public sealed class TextNode : VNode
+    {
+        public required string Text { get; init; }
+    }
+
+    public sealed class FragmentNode : VNode
+    {
+        public required VNode[] Children { get; init; }
+    }
+
+    public sealed class ComponentNode : VNode { }
+
     public sealed class MutableRef<T>
     {
         public MutableRef(T initial) { Current = initial; }
@@ -82,6 +94,11 @@ namespace Velvet
             new MemoNode { Key = key, Factory = factory, Dependencies = null };
         public static MemoNode MemoizedWithKey(string key, global::System.Func<VNode> factory, params object[] deps) =>
             new MemoNode { Key = key, Factory = factory, Dependencies = deps };
+        public static TextNode Text(string text) => new TextNode { Text = text };
+        public static FragmentNode Fragment(VNode[] children, string key = null) =>
+            new FragmentNode { Key = key, Children = children };
+        public static FragmentNode Fragment(params VNode[] children) => Fragment(children, key: null);
+        public static ComponentNode Outlet(object context = null, string key = null) => new ComponentNode { Key = key };
     }
 
     public static class ComponentMethodRegistry

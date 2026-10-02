@@ -17,5 +17,7 @@ namespace Velvet.SourceGenerators.Diagnostics
         public const string Hooks = Prefix + nameof(Hooks);
 
         public const string Shape = Prefix + nameof(Shape);
+
+        public const string Keys = Prefix + nameof(Keys);
     }
 }

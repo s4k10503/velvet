@@ -248,7 +248,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 |-------|--------|------|
 | `{cond && <X/>}` | `cond ? V.X() : null` or `V.When(cond, () => V.X())` | `null` is the "render nothing" child, and it holds its slot — see [what a position is](#what-a-position-is). `V.When` takes a factory that runs only while `cond` holds |
 | `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | Gives each node the selector's key |
-| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index |
+| `items.map(x => <X/>)` | `items.Select(x => V.X()).ToArray()` | Unkeyed nodes, matched by index. Handed straight to a factory's children, it draws the analyzer warning VEL600 for each `V.*` call the selector returns that takes a `key:` and was given none, as React warns about a list child with no key |
 
 ### 2-3. Components
 

@@ -146,10 +146,12 @@ Generators~/
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table,
 │   │                                          VEL012 [MemoizeMethod] _Impl instance-read analyzer)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
+│   ├── Keys/                                 (VEL600 missing key in a mapped list)
 │   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count
 │   │                                          + VEL503 tolerance on a tuple comparison)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
 │   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape rules")
+│   ├── Diagnostics/KeyDiagnostics.cs         (the VEL600 descriptor)
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.Bootstrap/    (second compile of the sibling's sources — see "How this solution opts in")
