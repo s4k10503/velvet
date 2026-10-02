@@ -12,9 +12,8 @@ namespace Velvet.Tests
     /// marked an entry consumed, so a second new sibling with the same key re-resolved the entry the
     /// first occurrence had already claimed: two logical rows aliased one physical element and the
     /// reorder pass collapsed them into a single DOM slot — a row silently vanished and childCount no
-    /// longer matched the declared child array. The old-side duplicate guard warns loudly; the
-    /// new-side case must do the same and mount a fresh element for the repeated key so every
-    /// declared row commits. Covered on both the flat keyed fast path and the general expansion path
+    /// longer matched the declared child array. The repeated key must warn and mount a fresh element
+    /// so every declared row commits. Covered on both the flat keyed fast path and the general expansion path
     /// (forced by a Fragment sibling), which mirrored the same unguarded lookup.
     /// </summary>
     [TestFixture]
@@ -121,8 +120,10 @@ namespace Velvet.Tests
             Assert.That(LabelTextsOf(_root, "list"), Is.EqualTo(new[] { "Y1", "DupA", "DupB" }));
         }
 
+        // GREEN_ON_BASE(characterization): the base reported this repeat from the map pass it reaches.
+        // The report every render gives now keeps it.
         [Test]
-        public void Given_ANewSideDuplicateKey_When_Reconciled_Then_ItWarnsLikeTheOldSideGuard()
+        public void Given_ANewSideDuplicateKey_When_Reconciled_Then_TheRepeatIsReported()
         {
             // Arrange
             using var store = new PhaseStore();
@@ -136,10 +137,8 @@ namespace Velvet.Tests
             store.Set(1);
             scheduler.DrainImmediateForTest();
 
-            // Assert — every row still committed; the new-side warning itself is enforced by
-            // LogAssert at test end (an Assert.Pass would bypass that unmatched-expectation check),
-            // and its message is distinct from the old-side guard's so a later unmount diff cannot
-            // satisfy it.
+            // Assert — every row still committed; the warning itself is enforced by LogAssert at test
+            // end (an Assert.Pass would bypass that unmatched-expectation check).
             Assert.AreEqual(3, _root.Q<VisualElement>("list").childCount);
         }
 
