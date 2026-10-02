@@ -824,6 +824,7 @@ namespace Velvet
         public float Damping => _config.Damping;
         public float Mass => _config.Mass;
         public float DurationSec => _config.DurationSec;
+        public double? SpringSettleSec => _config.SpringSettleSec;
         public float DelaySec => Mathf.Max(_config.DelaySec, 0f);
 
         public static LayoutIdTiming From(StyleTransitionConfig? transition) => new(transition?.Layout ?? transition ?? s_default);
@@ -836,7 +837,7 @@ namespace Velvet
             // Not a switch naming each type: its catch-all would have to throw, where LayoutIdProgress, Ease and
             // StyleAnimationScheduler time a type neither a spring nor a bezier as a tween.
             return t.Type == TransitionType.Spring
-                ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
+                ? !t.SpringLandsAtOnce && StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
                 : t.Type == TransitionType.Bezier
                     ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
                     : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
@@ -878,7 +879,17 @@ namespace Velvet
             {
                 _spring.Step(Mathf.Min(dtSec, active), 0f, _timing.Stiffness, _timing.Damping, _timing.Mass);
                 Value = _spring.Value;
-                return _spring.IsSettled(0f, _rest, _rest);
+                if (_timing.SpringSettleSec is not { } settleSec)
+                {
+                    return _spring.IsSettled(0f, _rest, _rest);
+                }
+                // A spring its duration describes lands on the layout at that duration, as a variant play on it does.
+                if (active < settleSec)
+                {
+                    return false;
+                }
+                Value = 0f;
+                return true;
             }
             var t = active / _timing.DurationSec;
             Value = 1f - _timing.Ease(t);

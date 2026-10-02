@@ -109,6 +109,20 @@ namespace Velvet
         // duration instant before it reads the type.
         internal bool SpringLandsAtOnce => Type == TransitionType.Spring && _durationSec == 0f;
 
+        // The transition a sequence step plays this one on. Framer's sequence hands a spring's duration to the
+        // spring itself rather than landing it, and the spring holds a zero duration at 0.01 s, which a spring with
+        // physics knobs ignores as it ignores any duration but 0.
+        internal StyleTransitionConfig InSequence()
+        {
+            if (!SpringLandsAtOnce)
+            {
+                return this;
+            }
+            var played = With();
+            played._durationSec = 0.01f;
+            return played;
+        }
+
         /// <summary>
         /// First control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
         /// CSS <c>cubic-bezier(x1,y1,x2,y2)</c> parameter order. X must stay in [0,1] (a timing function must be

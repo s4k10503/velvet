@@ -202,7 +202,7 @@ namespace Velvet
             {
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
-                    _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
+                    _currentTransition = (step.Transition ?? _currentTransition ?? StyleTransition.Fade).InSequence();
                     _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
                     break;
                 case AnimationSequenceStepKind.Wait:

@@ -96,7 +96,12 @@ namespace Velvet
         /// <summary>The label of the most recently activated <see cref="AnimationSequenceStep"/> <c>To</c> step, or null before the first one runs.</summary>
         public string? CurrentLabel { get; }
 
-        /// <summary>The transition that accompanied <see cref="CurrentLabel"/>.</summary>
+        /// <summary>
+        /// The transition that accompanied <see cref="CurrentLabel"/>, except that a <see cref="TransitionType.Spring"/>
+        /// with a <see cref="StyleTransitionConfig.DurationSec"/> of exactly 0 arrives as the spring Framer Motion's
+        /// sequence plays it on: its own <see cref="StyleTransitionConfig.Stiffness"/>, <see cref="StyleTransitionConfig.Damping"/>
+        /// and <see cref="StyleTransitionConfig.Mass"/> where it sets any, else the spring a 0.01 s duration describes.
+        /// </summary>
         public StyleTransitionConfig? CurrentTransition { get; }
 
         /// <summary>Index into the authored <c>steps</c> array of the step currently holding the cursor.</summary>

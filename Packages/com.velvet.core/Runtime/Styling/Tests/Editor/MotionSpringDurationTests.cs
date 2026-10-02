@@ -398,5 +398,40 @@ namespace Velvet.Tests
             // Assert — moving before the retarget, at the same speed after it.
             Assert.That((velocityBefore != 0f, state.Opacity.Integrator.Velocity), Is.EqualTo((true, velocityBefore)));
         }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ASpringWithAZeroDuration_When_AskedWhetherALayoutIdMoveOnItAnimates_Then_ItDoesNot(bool physics)
+        {
+            // Arrange
+            var config = physics
+                ? new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 170f, DurationSec = 0f }
+                : new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
+
+            // Act
+            var animates = LayoutIdTiming.From(config).Animates();
+
+            // Assert
+            Assert.That(animates, Is.False);
+        }
+
+        [Test]
+        public void Given_ALayoutIdMoveOnASpringNamingADuration_When_SteppedPastThatDuration_Then_ItArrivesThenOnTheLayout()
+        {
+            // Arrange — its physics alone would leave this 100px move short of its rest threshold at 0.5s.
+            var progress = LayoutIdTiming.From(new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0.5f })
+                .Start(100f);
+
+            // Act — 29 steps is 0.483s and 30 steps 0.5s.
+            var arrivedEarly = false;
+            for (var i = 0; i < 29; i++)
+            {
+                arrivedEarly |= progress.Step(FixedDeltaSec);
+            }
+            var arrived = progress.Step(FixedDeltaSec) || progress.Step(FixedDeltaSec);
+
+            // Assert — on the layout once it arrives.
+            Assert.That((arrivedEarly, arrived, progress.Value), Is.EqualTo((false, true, 0f)));
+        }
     }
 }

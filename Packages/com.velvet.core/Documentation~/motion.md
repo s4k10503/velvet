@@ -203,17 +203,21 @@ new StyleTransitionConfig
 
 - Springs drive the channels of a variant delta (see *Driven channels* below) with a
   velocity-preserving integrator. A spring enter or label change that interrupts a running spring enter
-  starts each channel the two share from the value it is drawn at, a numeric one with its velocity too,
-  as Framer animates every value from the one it has; a color carries no velocity, as Framer tracks none
-  for one. An exit cancelled by its key returning heads back from its value and velocity. An exit whose
-  delta resolves no channel at all completes immediately.
+  starts each channel the two share from the value it is drawn at, as Framer animates every value from
+  the one it has. Whether a numeric channel also keeps its velocity is the incoming spring's to decide:
+  a spring its physics knobs describe keeps it, and one its `DurationSec` describes (below) starts with
+  none, whichever kind of spring it interrupts. A color carries no velocity, as Framer tracks none for one.
+  An exit cancelled by its key returning heads back from its value, with its velocity unless its
+  `DurationSec` describes it. An exit whose delta resolves no channel at all completes immediately.
 - A spring setting none of `Stiffness`, `Damping` and `Mass` can be described by `DurationSec` and
   `Bounce` instead, as Framer's spring `duration` and `bounce` describe one: `Bounce` is how far it
   overshoots (0 not at all, 0.3 when left null), and the play lands on its target once `DurationSec` has
-  passed, held between 0.01 and 10 seconds (0.8 when only `Bounce` is set). A `DurationSec` of exactly 0
-  lands the spring at once. Any of the three physics knobs takes precedence over both, and a spring setting
-  one ignores any `DurationSec` but 0. An interrupted spring that its duration describes starts its duration over
-  with no velocity, as Framer's does.
+  passed, held between 0.01 and 10 seconds (0.8 when only `Bounce` is set), a `layoutId` move on it
+  included. Any of the three physics knobs takes precedence over both, and a spring setting one ignores
+  any `DurationSec` but 0. A `DurationSec` of exactly 0 lands any spring at once, physics knobs or not, as
+  Framer makes any zero-duration transition instant: a presence removes a child whose exit is such a spring
+  at once, and a `layoutId` move on one lands at once. An exit on a spring its duration describes that is
+  cancelled by its key returning starts its duration over.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
@@ -449,7 +453,10 @@ A step is exactly one of:
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
   at most 20 seconds — or, for a spring its `DurationSec` and `Bounce` describe, the first 50ms sample
   at or past that duration. A label does not tell the sequence how far anything moves, and 100 is the travel
-  Framer takes when it cannot read the distance.
+  Framer takes when it cannot read the distance. Framer's sequence hands a spring's duration to the spring
+  rather than landing it, so a step whose spring has a `DurationSec` of exactly 0 plays and holds on its
+  physics knobs where it sets any, and otherwise on the spring a 0.01s duration describes, holding 50ms;
+  `AnimationSequenceState.CurrentTransition` carries that spring.
 - **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances

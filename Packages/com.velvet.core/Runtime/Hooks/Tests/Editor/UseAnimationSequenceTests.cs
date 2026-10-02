@@ -523,5 +523,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
         }
+
+        // GREEN_ON_BASE(characterization): the base never lands a spring, so its zero-duration step plays as well.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ASpringToStepWithAZeroDuration_When_TheWalkerArrivesAtIt_Then_ItsTransitionPlaysRatherThanLanding(
+            bool physics)
+        {
+            // Arrange
+            s_steps = SpringThenB(physics
+                ? new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 170f, DurationSec = 0f }
+                : new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f });
+
+            // Act
+            Mount();
+
+            // Assert
+            Assert.That(StyleAnimationScheduler.LandsAtOnce(s_state.CurrentTransition!), Is.False);
+        }
     }
 }
