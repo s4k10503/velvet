@@ -86,6 +86,7 @@ namespace Velvet.Tests
             s_setExitFailTick = null;
             s_exitFailCompletions = 0;
             s_exitFailChild = () => V.Label(text: "exiting", key: "exiting");
+            s_setAbortedEnterTick = null;
         }
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
@@ -1223,6 +1224,50 @@ namespace Velvet.Tests
             // Assert — the fallback is read with the count, since a boundary that never caught takes nothing back
             Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 1"));
         }
+
+        [Test]
+        public void Given_AnEnterWithNothingToPlayInAComponentsOwnUpdate_When_ABoundaryAboveItCatchesOnTheAbortingPath_Then_ItsCompletionNeverRuns()
+        {
+            // Arrange — the update is the component's own pass, so the boundary above it catches on the aborting path
+            using var mounted = V.Mount(_root, V.Component(AbortedEnterHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setAbortedEnterTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback is read with the count, since an update that commits completes the enter
+            Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 0"));
+        }
+
+        private static Action<int> s_setAbortedEnterTick;
+
+        [Component(Compiler = false)]
+        private static VNode AbortedEnterInnerRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setAbortedEnterTick = setTick;
+            if (tick == 0) return V.Label(text: "inner");
+            return V.Fragment(new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+                {
+                    V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_enterCompletions++),
+                }),
+                V.ScrollView(onCreated: _ => throw new InvalidOperationException("Element callback throw")),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode AbortedEnterBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(AbortedEnterInnerRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AbortedEnterHostRender()
+            => V.Div(children: new VNode[] { V.Component(AbortedEnterBoundaryRender, key: "boundary") });
 
         [Test]
         public void Given_AnInheritingEnterBlockedInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()

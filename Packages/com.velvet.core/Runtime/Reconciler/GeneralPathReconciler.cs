@@ -1758,7 +1758,7 @@ namespace Velvet
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                 state.Exiting.Remove(key);
                 pass.Tally.RemovedInstantThisRender = true;
-                if (HoldsAMotion(state, key, node)) pass.Tally.RemovedAMotionThisRender = true;
+                if (HoldsAMotion(state, key)) pass.Tally.RemovedAMotionThisRender = true;
                 // Same as the finished-exit drop above: leave the committed set, then retire.
                 RemovePresenceCommittedEntry(state.Committed, key);
                 // Same memoized-element retirement as the finished-exit drop above.
@@ -1794,13 +1794,14 @@ namespace Velvet
 
         // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
         // Motion under Framer Motion's PresenceChild registers for its exit whether or not it animates.
-        private bool HoldsAMotion(ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
+        private bool HoldsAMotion(ReconcilerContext.PresenceBoundaryState state, string key)
         {
-            if (FiberNodeFactory.FindFirstMotionDescendant(node) != null) return true;
-            if (!state.ChildRoots.TryGetValue(key, out var roots)) return false;
-            foreach (var root in roots)
+            if (state.ChildRoots.TryGetValue(key, out var roots))
             {
-                if (HoldsAMotionUnder(root, roots)) return true;
+                foreach (var root in roots)
+                {
+                    if (HoldsAMotionUnder(root, roots)) return true;
+                }
             }
             return false;
         }
