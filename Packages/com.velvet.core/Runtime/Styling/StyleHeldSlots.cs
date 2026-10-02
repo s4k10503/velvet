@@ -89,7 +89,7 @@ namespace Velvet
 
         public bool HoldsAny(int slots) => (_mask & slots) != 0;
 
-        // The gap part of a held, driven, unmasked slot, which a driver's pixel value adds to.
+        // The gap part of a held, driven, unmasked slot, which a driver's value adds to.
         public float DrivenGap(HeldSlot slot)
             => (_mask & _driven & ~_masks & Bit(slot)) != 0 && _gaps != null ? _gaps[(int)slot] : 0f;
 

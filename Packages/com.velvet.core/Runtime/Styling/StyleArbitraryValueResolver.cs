@@ -1061,7 +1061,7 @@ namespace Velvet
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value) => Hold(element, slot, value, 0f);
 
         // The form for a gap's margin, gap being the part of value the gap contributes rather than a space rule:
-        // CSS spaces a flex item by its gap and its own margin together, so a driver's pixel margin adds to that
+        // CSS spaces a flex item by its gap and its own margin together, so a driver's margin adds to that
         // part where it replaces the rest.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value, float gap)
         {
@@ -1163,19 +1163,28 @@ namespace Velvet
             }
             var slots = HeldSlotGroups.SlotsOf(driven.Property);
             holds.Reassert(element.style, slots);
-            if (driven.Unit != LengthUnit.Pixel)
-            {
-                return;
-            }
+            var pixels = DrivenPixels(element, driven);
             foreach (var slot in HeldSlotGroups.EverySlot)
             {
                 var gap = (slots & StyleHeldSlots.Bit(slot)) != 0 ? holds.DrivenGap(slot) : 0f;
-                if (gap != 0f)
+                if (gap != 0f && !float.IsNaN(pixels))
                 {
                     StyleHeldSlots.WriteLayered(element.style, slot,
-                        new ArbitraryStyle(driven.Property, driven.Value + gap, LengthUnit.Pixel));
+                        new ArbitraryStyle(driven.Property, pixels + gap, LengthUnit.Pixel));
                 }
             }
+        }
+
+        // A percentage is taken of the parent's content width, which CompositeWidgetSpacingDirectionPanelTests
+        // pins against the engine's own reading of a margin percentage. NaN until the parent is laid out.
+        private static float DrivenPixels(VisualElement element, in ArbitraryStyle driven)
+        {
+            if (driven.Unit == LengthUnit.Pixel)
+            {
+                return driven.Value;
+            }
+            var parent = element.hierarchy.parent;
+            return parent == null ? float.NaN : driven.Value / 100f * parent.contentRect.width;
         }
 
         internal static bool IsDriven(VisualElement element, HeldSlot slot)

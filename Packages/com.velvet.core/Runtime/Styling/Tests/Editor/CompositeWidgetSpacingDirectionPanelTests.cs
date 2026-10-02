@@ -69,6 +69,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGapRow_When_AMotionDriverWritesAPercentMarginOnAChild_Then_TheGapAddsToItInPixels()
+        {
+            // Arrange — the reference child resolves ml-[10%] the engine's way, in a row of the same width.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Div(className: "flex flex-row gap-x-4 w-[200px]", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                }),
+                V.Div(className: "flex flex-row w-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "ref", className: "w-[20px] h-[20px] ml-[10%]"),
+                }),
+            }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child,
+                new ArbitraryStyle(ArbitraryProperty.MarginLeft, 10f, LengthUnit.Percent));
+            ForcePanelUpdate(child.panel);
+
+            // Assert — the reference's margin is non-zero, so a percentage left unresolved could not pass.
+            var reference = _window.rootVisualElement.Q("ref").resolvedStyle.marginLeft;
+            Assert.That((reference > 0f, child.resolvedStyle.marginLeft),
+                Is.EqualTo((true, reference + Space4)));
+        }
+
+        [Test]
         public void Given_AScrollView_When_ADivideSeparatesItsContent_Then_TheBorderLandsOnTheContentChildren()
         {
             // Arrange / Act
