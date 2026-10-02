@@ -426,8 +426,8 @@ namespace Velvet
 
         // A boundary reconciling its own output catches a render error below it inside that reconcile, as the walk
         // catches one below a boundary it expands, and shows its fallback once the reconcile has returned
-        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an element
-        // callback's error — inside another component's pass, a VirtualList row mounting during that pass, the
+        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an error
+        // that is not a render error, such as a removed ref's cleanup — inside another component's pass, a VirtualList row mounting during that pass, the
         // abort it raises belongs to this reconcile alone: the
         // enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what tells that
         // abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of the body, so

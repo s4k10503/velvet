@@ -23,10 +23,9 @@ namespace Velvet.Tests
     /// effect.</item>
     /// <item>Where a boundary's catch aborts the pass, the row the keyed diff was building and the leaf the
     /// general walk had built both get no ref, and so does a row whose creation raised the abort in an
-    /// unkeyed append, or — an element callback's error being what its own boundary aborts on — in a
-    /// time-sliced keyed append or the rebuild of a range found shorter than the old side. A row holding its
-    /// own boundary, which catches a render inside it, is placed with its ref in those two, and a row the
-    /// keyed diff built and placed in a pass that completed gets its ref too.</item>
+    /// unkeyed append, a time-sliced keyed append or the rebuild of a range found shorter than the old side. A
+    /// row holding its own boundary, which catches a render inside it, is placed with its ref in the last two,
+    /// and a row the keyed diff built and placed in a pass that completed gets its ref too.</item>
     /// <item>A Portal or a z-layer child inside an element whose creation failed mounts nothing when the
     /// deferred mounts drain, and the pooled element of the z-layer child stays detached.</item>
     /// </list>

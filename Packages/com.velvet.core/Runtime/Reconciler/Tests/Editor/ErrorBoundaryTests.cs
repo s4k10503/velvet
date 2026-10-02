@@ -25,8 +25,8 @@ namespace Velvet.Tests
     /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
     /// <item>Where the pass that catches is itself re-placing the boundary, the rest of that pass commits and
     /// the fallback takes the rows it gives the boundary; where such a pass has already committed and a later
-    /// render of the thrower throws, the rows rewritten are the ones it placed. Where the catch is of an element
-    /// callback's error, which aborts that pass, the rows rewritten are the ones the container still holds.</item>
+    /// render of the thrower throws, the rows rewritten are the ones it placed. An element callback's error
+    /// raised while that pass creates an element is caught the same way.</item>
     /// <item>A catch inside its parent's render leaves the rest of that render to commit: a sibling behind the
     /// boundary, one inside a child that re-rendered in that render, and the fallback a Suspense behind the
     /// boundary is showing keep their state and their effect.</item>

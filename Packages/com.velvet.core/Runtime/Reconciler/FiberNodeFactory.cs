@@ -106,7 +106,7 @@ namespace Velvet
         {
             try
             {
-                ComponentBoundarySearch.PropagateException(_ctx.FiberStack.Current, exception, isRenderError: true);
+                ComponentBoundarySearch.PropagateFromOwner(_ctx.FiberStack.Current, exception, isRenderError: true);
             }
             catch (BoundaryCaughtSignal)
             {
@@ -392,7 +392,7 @@ namespace Velvet
                     else
                     {
                         var enterComplete =
-                            GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
+                            GeneralPathReconciler.ContainedEnterComplete(motionNode);
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,

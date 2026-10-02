@@ -222,7 +222,7 @@ namespace Velvet
                 _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
                 return null;
             }
-            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            var completionsBefore = _ctx.PendingCompletions.Count;
             catchingBoundary.CatchesInTheWalk = true;
             try
             {
@@ -233,8 +233,8 @@ namespace Velvet
             {
                 // React runs nothing for work that never committed. Counted rather than read off the parent
                 // chain, which the failed walk's disposal of what it mounted has already cut.
-                _ctx.PendingEnterCompletions.RemoveRange(
-                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
+                _ctx.PendingCompletions.RemoveRange(
+                    completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
                 return signal;
             }
             finally
@@ -316,7 +316,7 @@ namespace Velvet
                 // Which pass ends last is not this one's to know, so the call is unconditional and
                 // DrainRefAttaches asks each entry's own pass instead.
                 _ctx.DrainRefAttaches();
-                _ctx.RunPendingEnterCompletions();
+                _ctx.RunPendingCompletions();
             }
         }
 

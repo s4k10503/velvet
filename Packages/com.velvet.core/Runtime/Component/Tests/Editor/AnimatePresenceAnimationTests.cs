@@ -363,6 +363,30 @@ namespace Velvet.Tests
                 "The exited element is still removed from the DOM even though onExitComplete threw");
         }
 
+        [Component(IsErrorBoundary = true)]
+        private static VNode ThrowingOnExitCompleteBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "caught"));
+            return V.Component(ThrowingOnExitCompleteHostRender, key: "throwing-exit-host");
+        }
+
+        [Test]
+        public void Given_OnExitCompleteThrowsBelowABoundary_When_AnExitTransitionCompletes_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange — Framer Motion calls it from the exit's promise
+            s_throwingExitConfig = NewConfig();
+            using var mounted = V.Mount(Root, V.Component(ThrowingOnExitCompleteBoundaryRender, key: "boundary"));
+            AdvancePast(s_throwingExitConfig.DurationSec);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test onExitComplete error");
+
+            // Act
+            s_throwingExitShow.Invoke(false);
+            AdvancePast(s_throwingExitConfig.DurationSec);
+
+            // Assert
+            Assert.That(LabelTexts(), Is.Empty);
+        }
+
         // The other half of the presence-callback pair. The first two entrances below fire it inside the
         // expansion rather than handing it to StyleAnimationScheduler; the last three hand it over and the
         // scheduler fires it back inside the same call, because StyleTransitionConfig.None declares no

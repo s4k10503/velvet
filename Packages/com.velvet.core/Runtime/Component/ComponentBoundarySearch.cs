@@ -44,8 +44,23 @@ namespace Velvet
         // The search starts above from; the component stack a catch reports starts at throwingFiber.
         internal static void PropagateException(
             ComponentFiber? from, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
+            => PropagateFrom(from?.Parent, throwingFiber, exception, isRenderError);
+
+        // A callback of an element, or one a component hands the reconciler, belongs to the component that rendered
+        // it, and a boundary that is that component catches it, as React's capture of an element's error starts at
+        // the element's parent fiber. Once that boundary has caught, its output is its fallback, so the callback is
+        // the fallback's, and its error goes above it, as an error in a fallback's content does.
+        internal static void PropagateFromOwner(ComponentFiber? owner, Exception exception, bool isRenderError = false)
+            => PropagateFrom(owner?.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError);
+
+        // Where an error no boundary takes goes, and one Velvet hands no boundary, as Framer Motion's completion
+        // callbacks run in a promise no boundary sees.
+        internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);
+
+        private static void PropagateFrom(
+            ComponentFiber? first, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
         {
-            var current = from?.Parent;
+            var current = first;
             while (current != null)
             {
                 // Captured before TryCatch runs: a boundary whose own fallback content fails can cascade
@@ -72,7 +87,7 @@ namespace Velvet
                 current = next;
             }
 
-            Debug.LogException(exception);
+            ReportUncaught(exception);
         }
     }
 }

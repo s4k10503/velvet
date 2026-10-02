@@ -71,6 +71,11 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
+- `onExitComplete` runs once the render that removed the last child has ended. An error it throws goes to the
+  nearest error boundary at or above the component rendering the presence, as Framer's `PresenceChild` calls it
+  from an effect, except where an exit played or a `V.Motion` child was removed: Framer calls it from that
+  exit's promise, so no boundary takes it and it is logged. An error from a Motion's `onEnterComplete` is
+  logged the same way, as Framer's `onAnimationComplete` runs in a promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;

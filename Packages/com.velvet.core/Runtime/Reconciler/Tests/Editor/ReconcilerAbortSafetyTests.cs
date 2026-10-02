@@ -220,8 +220,7 @@ namespace Velvet.Tests
             return V.Component(ThrowingChildRender, key: "throwing-child");
         }
 
-        // An element callback's error, which the boundary catches on the aborting path, where the render error
-        // is caught in the walk of the boundary's own output.
+        // Either error the boundary catches in the walk of its own output: an element callback's, or a render's.
         [Component]
         private static VNode ThrowingChildRender()
         {
@@ -599,8 +598,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies which tree a fiber keeps as its diff baseline when a boundary below it catches during the walk
     /// of the pass the fiber rendered into: for a render error, the one that pass built, as React commits the
-    /// rest of a render around a boundary's fallback; for an element callback's error, which aborts that pass,
-    /// the pre-throw one — <c>FiberRenderer.RenderAndReconcile</c> owns why it is that one.
+    /// rest of a render around a boundary's fallback; for a catch that aborts that pass, the pre-throw one —
+    /// <c>FiberRenderer.RenderAndReconcile</c> owns why it is that one.
     /// <c>ElementCallbackFailureTests</c> holds a boundary catching during the ref-setup drain that ends the pass.
     /// </summary>
     [TestFixture]
@@ -623,12 +622,12 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the merge base drops an aborted pass's tree on the flag this pass raises.
-        // An AnimatePresence's onExitComplete failing in the walk still aborts, and this keeps that discard driven.
+        // A ref cleanup failing in the walk still aborts, and this keeps that discard driven.
         [Test]
         public void Given_ABoundaryBelowAFiberAbortingDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsThePreThrowTree()
         {
-            // Arrange — the host's pass removes the only child of a presence below the boundary, whose onExitComplete
-            // then fails in the walk, which the boundary catches on the aborting path.
+            // Arrange — the host's pass drops the ref of an element below the boundary, whose cleanup then fails in
+            // the walk, which the boundary catches on the aborting path.
             using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
@@ -692,25 +691,24 @@ namespace Velvet.Tests
             s_setFlipped = setFlipped;
             return V.Div(name: flipped ? "host-flipped" : "host-initial", children: new VNode[]
             {
-                V.Div(children: new VNode[] { V.Component(ExitFailingBoundary, flipped, key: "boundary") }),
+                V.Div(children: new VNode[] { V.Component(RefDroppingBoundary, flipped, key: "boundary") }),
             });
         }
 
         [Component(IsErrorBoundary = true)]
-        private static VNode ExitFailingBoundary(bool flipped)
+        private static VNode RefDroppingBoundary(bool flipped)
         {
             Hooks.UseFallback(_ =>
             {
                 s_fallbackShown = true;
                 return V.Label(name: "fallback", text: "caught");
             });
-            return V.Component(ExitFailingChild, flipped, key: "child");
+            return V.Component(RefDroppingChild, flipped, key: "child");
         }
 
-        // The presence's child has no exit animation, so the render that removes it completes the exit at once.
+        // A ref removed outright is cleaned up where the patch drops it — see ReconcilerContext.SyncRefCallback.
         [Component]
-        private static VNode ExitFailingChild(bool flipped)
-            => V.AnimatePresence(key: "exit", onExitComplete: () => throw new Exception(FailureMessage),
-                children: flipped ? Array.Empty<VNode>() : new VNode[] { V.Label(text: "child", key: "child") });
+        private static VNode RefDroppingChild(bool flipped)
+            => V.Label(text: "child", refCallback: flipped ? null : _ => () => throw new Exception(FailureMessage));
     }
 }

@@ -214,6 +214,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrowsInARenderWithALaterSibling_Then_ThatRenderStopsAtTheCatch()
+        {
+            // Arrange — the factory's failure is not a render error, so the boundary takes it on the aborting path
+            s_throwOnDispose = false;
+            var mounted = BoundedAppBeside(0);
+            _reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, BoundedAppBeside(1)));
+
+            // Assert — the sibling after the boundary keeps what the render before it gave it
+            Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
+                        Is.EqualTo((false, true, "after:0")));
+        }
+
+        [Test]
         public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillMounts()
         {
             // Arrange — the departing route's scope is disposed by the render that installs the incoming one.
@@ -391,6 +410,20 @@ namespace Velvet.Tests
                                 V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
                             },
                             key: "boundary"),
+        };
+
+        private VNode[] BoundedAppBeside(int render) => new VNode[]
+        {
+            V.Div(children: new VNode[]
+            {
+                V.ErrorBoundary(fallback: _ => V.Div(name: "fallback"),
+                                children: new VNode[]
+                                {
+                                    V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
+                                },
+                                key: "boundary"),
+                V.Label(text: "after:" + render),
+            }),
         };
 
         private VNode[] MountBoundedApp()

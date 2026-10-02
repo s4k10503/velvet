@@ -186,8 +186,8 @@ namespace Velvet
             if (isRenderError && fiber.CatchesInTheWalk) return CatchInTheWalk(fiber, throwingFiber, exception);
             var ctx = fiber.Reconciler.Context;
             // Taken before the fallback is shown, which detaches what the failed output created, so that the
-            // enters the fallback's own render queues stay out of it as well.
-            var failedEnters = ctx.EnterCompletionsBelow(fiber);
+            // completions the fallback's own render queues stay out of it as well.
+            var failedCompletions = ctx.CompletionsBelow(fiber);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
@@ -205,7 +205,7 @@ namespace Velvet
             if (result)
             {
                 // React runs nothing for work that never committed.
-                ctx.DropEnterCompletions(failedEnters);
+                ctx.DropCompletions(failedCompletions);
                 // Only a pass on the stack has sibling work left for the abort to stop. Set outside one, the flag
                 // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
                 // CommitPhaseCatchAbortLeakTests holds that.

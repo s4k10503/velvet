@@ -32,7 +32,11 @@ namespace Velvet.Tests
     /// of it, an enter it completed without playing reports no completion while one ahead of the boundary
     /// still reports its own, a Suspense fallback it showed is no longer recorded as shown, and a Portal target
     /// keeps none of the rows it inserted.</item>
-    /// <item>An element callback's error below a boundary leaves no effect set up under that element.</item>
+    /// <item>An element callback's error below a boundary leaves no effect set up under that element. A boundary
+    /// catches the error of an element it renders itself, an element callback's or a ref's, and leaves its
+    /// fallback's own element to the boundary above.</item>
+    /// <item>An AnimatePresence's onExitComplete that throws reaches a boundary once the render removing its child
+    /// has committed, and none where a V.Motion child completed it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -78,6 +82,10 @@ namespace Velvet.Tests
             s_siblingLayoutSetups = 0;
             s_siblingLayoutCleanups = 0;
             s_wrapRefSetups = 0;
+            s_setSelfCatchTick = null;
+            s_setExitFailTick = null;
+            s_exitFailCompletions = 0;
+            s_exitFailChild = () => V.Label(text: "exiting", key: "exiting");
         }
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
@@ -1515,6 +1523,256 @@ namespace Velvet.Tests
             Assert.That(Texts() + ", refs " + s_wrapRefSetups, Is.EqualTo("fallback, refs 0"));
         }
 
+        [Test]
+        public void Given_AnElementABoundaryRendersItselfWhoseCallbackFails_When_ItsParentsRenderCreatesIt_Then_ThatBoundaryCatchesIt()
+        {
+            // Arrange — the element is the inner boundary's own output, with no component between them
+            using var mounted = V.Mount(_root, V.Component(SelfCatchHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setSelfCatchTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("inner-fallback,inner-sib,after"));
+        }
+
+        [Test]
+        public void Given_AnElementABoundaryRendersItselfWhoseRefSetupFails_When_ItMounts_Then_ThatBoundaryCatchesIt()
+        {
+            // Act — the ref is set up once the mount's pass has ended
+            using var mounted = V.Mount(_root, V.Component(RefCatchOuterRender, key: "outer"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("inner-fallback,inner-sib"));
+        }
+
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsParentsRenderRemovesItsChild_Then_TheBoundaryCatchesOnceThatRenderHasCommitted()
+        {
+            // Arrange — the removed child is no V.Motion, so the error goes to a boundary
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            var rendered = TicksOfTheExitFailHost(mounted);
+
+            // Assert
+            Assert.That(rendered, Is.EqualTo("o-fallback,tail:1 | o-fallback,tail:2"));
+        }
+
+        [Test]
+        public void Given_APresenceBesideABoundaryWhoseOnExitCompleteFails_When_OneRenderRemovesBothChildren_Then_TheOtherPresencesChildLeavesAndItsExitCompletes()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, true, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            var rendered = TicksOfTheExitFailHost(mounted);
+
+            // Assert
+            Assert.That(rendered + ", exits " + s_exitFailCompletions, Is.EqualTo("o-fallback,tail:1 | o-fallback,tail:2, exits 1"));
+        }
+
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsMotionChildLeaves_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange — Framer Motion calls it from a Motion's exit promise
+            s_exitFailChild = () => V.Motion(key: "exiting", transition: StyleTransitionConfig.None,
+                children: new VNode[] { V.Label(text: "m") });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsAMotionInsideAnElement_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange — the Motion is no anchor of the child, which is a plain element
+            s_exitFailChild = () => V.Div(key: "exiting", children: new VNode[]
+            {
+                V.Motion(transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+            });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
+
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildIsAnElementHoldingNoMotion_Then_TheBoundaryCatches()
+        {
+            // Arrange — the element holds children of its own, none of them a Motion
+            s_exitFailChild = () => V.Div(key: "exiting", children: new VNode[] { V.Label(text: "plain") });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_ItsChildHoldsOnlyAnInnerPresencesMotion_Then_TheBoundaryCatches()
+        {
+            // Arrange — the Motion is the inner presence's child, whose exit is that presence's
+            s_exitFailChild = () => V.Div(key: "exiting", children: new VNode[]
+            {
+                V.AnimatePresence(key: "inner", children: new VNode[]
+                {
+                    V.Motion(key: "im", transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+                }),
+            });
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        private static Func<VNode> s_exitFailChild;
+        private static Action<int> s_setExitFailTick;
+        private static int s_exitFailCompletions;
+
+        private string TicksOfTheExitFailHost(MountedTree mounted)
+        {
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var first = Texts();
+            s_setExitFailTick.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            return first + " | " + Texts();
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ExitFailerRender(bool shown)
+            => V.AnimatePresence(key: "exit", onExitComplete: () => throw new InvalidOperationException("Exit complete throw"),
+                children: shown ? new VNode[] { s_exitFailChild() } : Array.Empty<VNode>());
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ExitFailBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "o-fallback"));
+            return V.Component(ExitFailerRender, tick == 0, key: "ef");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ExitFailHostRender(bool withPresence)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setExitFailTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(ExitFailBoundaryRender, tick, key: "o"),
+                withPresence
+                    ? V.AnimatePresence(key: "p", onExitComplete: () => s_exitFailCompletions++,
+                        children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>())
+                    : null,
+                V.Label(text: "tail:" + tick),
+            });
+        }
+
+        private static Action<int> s_setSelfCatchTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SelfCatchInnerRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "inner-fallback"));
+            return tick == 0
+                ? V.Label(text: "inner-child")
+                : V.ScrollView(onCreated: _ => throw new InvalidOperationException("Element callback throw"),
+                    children: new VNode[] { V.Label(text: "in-scroll") });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SelfCatchOuterRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Div(children: new VNode[]
+            {
+                V.Component(SelfCatchInnerRender, tick, key: "inner"),
+                V.Label(text: "inner-sib"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SelfCatchHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setSelfCatchTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(SelfCatchOuterRender, tick, key: "outer"),
+                V.Label(text: "after"),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RefCatchInnerRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "inner-fallback"));
+            return V.Label(text: "inner-child", refCallback: _ => throw new InvalidOperationException("Ref setup throw"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RefCatchOuterRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RefCatchInnerRender, key: "inner"),
+                V.Label(text: "inner-sib"),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base starts this search above the boundary, so the boundary above
+        // takes the error. What this pins is that starting at the boundary still leaves its fallback's own element
+        // to the boundary above, as a render error in the fallback's content goes there.
+        [Test]
+        public void Given_AnElementOfABoundarysFallbackWhoseCallbackFails_When_TheFallbackRenders_Then_TheBoundaryAboveCatchesIt()
+        {
+            // Act — the inner boundary's child throws while rendering, and the fallback that replaces it fails
+            using var mounted = V.Mount(_root, V.Component(FallbackCallbackOuterRender, key: "outer"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("outer-fallback"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RenderThrowingRender() => throw new InvalidOperationException("Render throw");
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode FallbackCallbackInnerRender()
+        {
+            Hooks.UseFallback(_ => V.ScrollView(onCreated: _ => throw new InvalidOperationException("Fallback callback throw"),
+                children: new VNode[] { V.Label(text: "inner-fallback") }));
+            return V.Component(RenderThrowingRender, key: "child");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode FallbackCallbackOuterRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Div(children: new VNode[] { V.Component(FallbackCallbackInnerRender, key: "inner") });
+        }
+
         private static int s_wrapRefSetups;
 
         [Component(Compiler = false)]
@@ -1540,7 +1798,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALayoutEffectBesideAnElementWhoseCallbackFails_When_TheBoundaryCatchesOnMount_Then_ItNeverRuns()
         {
-            // Act — the boundary catches the callback's error in the walk, so its children never commit
+            // Act — an onCreated is a read the element's render takes, so its error is a render error, and React
+            // commits nothing of a subtree whose render threw
             using var mounted = V.Mount(_root, V.Component(SiblingEffectCallbackHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
 
