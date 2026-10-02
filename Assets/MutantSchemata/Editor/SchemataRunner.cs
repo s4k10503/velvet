@@ -51,6 +51,19 @@ namespace Velvet.MutantSchemata.Editor
             public Item[] items = Array.Empty<Item>();
             public int start;
             public int end = -1;
+            // Files the package's sources name directly under Library, where git reports nothing; read with
+            // what git does report after every stage.
+            public string[] watch = Array.Empty<string>();
+        }
+
+        [Serializable]
+        private sealed class Leak
+        {
+            public int position;
+            // Whether this stage ended the item -- its last stage, or one that killed it -- so that what the
+            // item recorded is the reading it would have had without the leak.
+            public bool complete;
+            public string[] changed = Array.Empty<string>();
         }
 
         // `arm`: the next item's variable is not set yet. `start`: the domain the stage needs has been
@@ -164,6 +177,13 @@ namespace Velvet.MutantSchemata.Editor
             var state = ReadState();
             if (state.phase == "arm")
             {
+                // Read once a launch, before its first stage, after the harness put the tree back.
+                if (!File.Exists(ReferencePath))
+                {
+                    var reading = Reading();
+                    if (reading == null) return;
+                    File.WriteAllText(ReferencePath, reading);
+                }
                 if (state.position >= End)
                 {
                     Heartbeat(state);
@@ -400,6 +420,28 @@ namespace Velvet.MutantSchemata.Editor
             var recorded = Result(item.id).stages.Last();
             var killed = stage.stopAtFirstFailure && recorded.failures.Count > 0;
             state.guid = "";
+            // A stage that left the tree other than this launch found it ends the launch: the next stage
+            // would read what it left, and only a new editor over a tree the harness puts back drops what
+            // the stage left in memory as well as on disk.
+            var reading = Reading();
+            if (reading == null) return;
+            var reference = File.ReadAllText(ReferencePath);
+            if (reading != reference)
+            {
+                Heartbeat(state);
+                File.WriteAllText(Path.Combine(plan.output, "runner-leaked"), JsonUtility.ToJson(new Leak
+                {
+                    position = state.position,
+                    complete = killed || state.stage + 1 >= item.stages.Length,
+                    changed = reading.Split('\n').Except(reference.Split('\n'))
+                        .Union(reference.Split('\n').Except(reading.Split('\n')))
+                        .Where(line => line.Length > 0)
+                        .Select(line => line.Substring(0, line.LastIndexOf(' ')))
+                        .Distinct().ToArray(),
+                }));
+                EditorApplication.Exit(0);
+                return;
+            }
             if (!killed && state.stage + 1 < item.stages.Length)
             {
                 state.stage += 1;
@@ -416,6 +458,56 @@ namespace Velvet.MutantSchemata.Editor
             WriteState(state);
             Heartbeat(state);
             EditorApplication.delayCall += Step;
+        }
+
+        private static string ReferencePath => Path.Combine(plan.output, "runner-reference");
+
+        // Each file git reports and each watched one, with its content's hash, outside the plan's output.
+        // Null once the runner has failed for want of git, since without it no stage can be shown to
+        // have started from the tree the launch found.
+        private static string? Reading()
+        {
+            var root = Directory.GetCurrentDirectory();
+            var output = Path.GetFullPath(plan.output);
+            var paths = new SortedSet<string>(plan.watch, StringComparer.Ordinal);
+            string listed;
+            try
+            {
+                using var git = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "git", "status --porcelain=v1 -z --untracked-files=all --no-renames")
+                {
+                    WorkingDirectory = root,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                });
+                listed = git!.StandardOutput.ReadToEnd();
+                git.WaitForExit();
+                if (git.ExitCode != 0)
+                {
+                    Fail("git status exited " + git.ExitCode);
+                    return null;
+                }
+            }
+            catch (Exception failure)
+            {
+                Fail("git status did not run: " + failure.Message);
+                return null;
+            }
+            foreach (var entry in listed.Split('\0'))
+            {
+                if (entry.Length > 3) paths.Add(entry.Substring(3));
+            }
+            var lines = new List<string>();
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            foreach (var relative in paths)
+            {
+                var full = Path.GetFullPath(Path.Combine(root, relative));
+                if (full == output || full.StartsWith(output + Path.DirectorySeparatorChar, StringComparison.Ordinal)) continue;
+                lines.Add(relative + " " + (File.Exists(full)
+                    ? BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(full))).Replace("-", "")
+                    : "-"));
+            }
+            return string.Join("\n", lines);
         }
 
         private sealed class Callbacks : ICallbacks
