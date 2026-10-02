@@ -60,8 +60,7 @@ namespace Velvet.MutantSchemata.Editor
         private sealed class Leak
         {
             public int position;
-            // Whether this stage ended the item -- its last stage, or one that killed it -- so that what the
-            // item recorded is the reading it would have had without the leak.
+            // Whether this stage ended the item -- its last stage, or one that killed it.
             public bool complete;
             public string[] changed = Array.Empty<string>();
         }

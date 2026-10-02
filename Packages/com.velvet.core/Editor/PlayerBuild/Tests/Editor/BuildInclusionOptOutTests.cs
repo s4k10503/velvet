@@ -236,6 +236,10 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", _reported), Is.EqualTo("bare"));
         }
 
+        // GREEN_ON_BASE(construction): what this pins is the fixture's own TearDown, which the base run carries.
+        // Put back the TearDown that ran `foreach (var disposable in _disposables) disposable.Dispose();`
+        // ahead of its restores and outside any finally, and this reddens: the settings file is left
+        // excluding Velvet/FilterBrightness.
         [Test]
         public void Given_AMountWhoseDisposalThrows_When_TheTearDownRuns_Then_TheSettingsFileIsAsBefore()
         {

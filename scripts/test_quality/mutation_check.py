@@ -49,7 +49,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -1589,6 +1588,8 @@ class Holder:
             held = json.loads(self.sentinel.read_text())
             for entry in held_sources(held):
                 Path(entry["source"]).write_text(entry["original"])
+            if self.state is not None:
+                self.state.released([entry["source"] for entry in held_sources(held)])
         except (OSError, ValueError, KeyError, TypeError) as failure:
             # Leaving the record is the point: what it names is still on disk, and a run that removed
             # it would take the only thing saying so with it.
@@ -1679,9 +1680,10 @@ class TreeState:
     What is overwritten or removed is copied first, under a directory of this run's own inside `stash`:
     a stopped campaign is finished by running again over the same `--output`.
 
-    Only what a launch changed is put back. A file that changed between the end of one launch and the
-    start of the next changed while no editor of the campaign's was running, so somebody else changed it,
-    and the campaign stops rather than overwrite their edit.
+    A campaign owns its worktree. What changed while a launch ran cannot be told from what its tests
+    wrote, so it is put back like them, its copy kept. A file that changed between the end of one launch,
+    or the campaign's own release of a held source, and the start of the next changed while none of the
+    campaign's editors ran, and the campaign stops rather than overwrite it.
     """
 
     def __init__(self, project, files, outside, stash):
@@ -1693,7 +1695,6 @@ class TreeState:
         self.launches = 0
         self.put_back = []
         self.after = None
-        self.kept_after = set()
 
     @classmethod
     def capture(cls, project, outside, stash):
@@ -1724,24 +1725,67 @@ class TreeState:
                 continue
         return kept
 
-    def reading(self):
+    def reading(self, also=()):
         """Relative path -> its content's hash, or None where it is absent, for every file this state
-        answers for."""
+        answers for and each of `also`."""
         found = {}
-        for relative in set(reported_paths(self.project)) | set(self.files):
+        for relative in set(reported_paths(self.project)) | set(self.files) | set(also):
             if not self.excluded(self.project / relative):
                 content = file_bytes(self.project / relative)
                 found[relative] = None if content is None else hashlib.sha256(content).hexdigest()
         return found
 
     def settled(self, keep):
-        """Records the tree a launch ended on, which the next `restore` compares against."""
-        self.after, self.kept_after = self.reading(), self.relative_kept(keep)
+        """Records the tree a launch ended on, apart from what the campaign holds, which the next
+        `restore` compares against."""
+        kept = self.relative_kept(keep)
+        self.after = {relative: content for relative, content in self.reading().items() if relative not in kept}
+
+    def released(self, paths):
+        """Records `paths` as the campaign's release of them left them, so an edit made to one before
+        the next launch is compared rather than passed over as held."""
+        if self.after is None:
+            return
+        for relative in self.relative_kept(paths):
+            content = file_bytes(self.project / relative)
+            self.after[relative] = None if content is None else hashlib.sha256(content).hexdigest()
+
+    def stash_run(self):
+        """This run's own directory under `stash`, readable by others: CI makes it as root inside the
+        editor's container, and the artifact upload reads it from the host as another user."""
+        if self.run is None:
+            missing = [directory for directory in [self.stash, *self.stash.parents] if not directory.exists()]
+            self.stash.mkdir(parents=True, exist_ok=True)
+            for directory in missing:
+                os.chmod(str(directory), 0o755)
+            base = time.strftime("%Y%m%dT%H%M%S-") + str(os.getpid())
+            for attempt in range(1000):
+                candidate = self.stash / (base if not attempt else "{}-{}".format(base, attempt))
+                try:
+                    candidate.mkdir()
+                except FileExistsError:
+                    continue
+                os.chmod(str(candidate), 0o755)
+                self.run = candidate
+                break
+            else:
+                raise SystemExit("could not make a directory of this run's own under {}".format(self.stash))
+        return self.run
+
+    def keep_copy(self, relative, content):
+        copy = self.stash_run() / str(self.launches) / relative
+        missing = [parent for parent in copy.parents if not parent.exists()]
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        for directory in missing:
+            os.chmod(str(directory), 0o755)
+        copy.write_bytes(content)
+        os.chmod(str(copy), 0o644)
+        return copy
 
     def changed_since_last_launch(self, keep):
         if self.after is None:
             return []
-        now, kept = self.reading(), self.relative_kept(keep) | self.kept_after
+        now, kept = self.reading(self.after), self.relative_kept(keep)
         return sorted(relative for relative in set(now) | set(self.after)
                       if relative not in kept and now.get(relative) != self.after.get(relative))
 
@@ -1768,14 +1812,7 @@ class TreeState:
             want, have = self.wanted(relative, reported.get(relative, False)), file_bytes(path)
             if want == have:
                 continue
-            copy = None
-            if have is not None:
-                if self.run is None:
-                    self.stash.mkdir(parents=True, exist_ok=True)
-                    self.run = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%dT%H%M%S-"), dir=str(self.stash)))
-                copy = self.run / str(self.launches) / relative
-                copy.parent.mkdir(parents=True, exist_ok=True)
-                copy.write_bytes(have)
+            copy = None if have is None else self.keep_copy(relative, have)
             if want is None:
                 path.unlink()
                 for parent in path.parents:
@@ -3310,6 +3347,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             il_attempt = (attempt, ("the fixtures reading IL",), bound, counts["total"])
 
     originals = {path: path.read_text() for path in targets}
+    written = {}
     started = time.time()
     resumed = measured = 0
     try:
@@ -3341,9 +3379,17 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if not wait_for_quiet(args.busy_timeout):
                 raise SystemExit("another Unity test run is still in flight after {}s, so this "
                                  "mutant's failures would not all be its own".format(args.busy_timeout))
+            # The mutation is built from the text read before the baseline, so writing it over a file that
+            # has changed since would lose that change with nothing kept of it.
+            if mutant.path.read_text() != originals[mutant.path]:
+                raise SystemExit("{} changed since the campaign read it, and the next mutation would be "
+                                 "written over that change. A campaign owns its worktree while it runs; "
+                                 "finish the edit elsewhere and run the campaign again over the same "
+                                 "--output to measure what is left.".format(mutant.path))
             mutated = apply_mutation(originals[mutant.path], mutant)
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
+            written[mutant.path] = mutated
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
                 area_of(mutant.path, project), (None, (), 0, 0))
@@ -3485,8 +3531,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.verdict, mutant.detail or "-", wall, average * left, average))
     finally:
         holder.release()
+        # Only a file still holding the mutation written to it: anything else is the original already,
+        # or somebody's edit.
         for path, text in originals.items():
-            path.write_text(text)
+            if path.exists() and path.read_text() == written.get(path):
+                path.write_text(text)
 
     if resumed:
         print("\n{} of {} verdict(s) came from a previous run of this campaign, which is why the "
