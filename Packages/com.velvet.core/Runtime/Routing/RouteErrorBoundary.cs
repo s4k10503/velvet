@@ -19,7 +19,7 @@ namespace Velvet
         // object. The router publishes one on a navigation and when a Suspend loader of the current location
         // settles. The boundary itself stays mounted, as React Router's does, so the elements below it are not
         // remounted by a navigation that leaves no error.
-        [Component(Compiler = false, IsErrorBoundary = true)]
+        [Component(IsErrorBoundary = true)]
         public static VNode Render(Props p)
         {
             var shownAt = Hooks.UseRef<RouterLocation>();
