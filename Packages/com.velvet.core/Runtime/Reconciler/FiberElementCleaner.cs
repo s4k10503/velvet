@@ -263,10 +263,14 @@ namespace Velvet
                 }
                 if (stale != null)
                 {
+                    // Removed before detaching, and read by Remove: a detach closes its leaf through
+                    // GateStackedVariant, which can remove a key listed after it.
                     foreach (var key in stale)
                     {
-                        element.RemoveManipulator(_ctx.StackedVariantManipulators[key]);
-                        _ctx.StackedVariantManipulators.Remove(key);
+                        if (_ctx.StackedVariantManipulators.Remove(key, out var stacked))
+                        {
+                            element.RemoveManipulator(stacked);
+                        }
                     }
                 }
             }

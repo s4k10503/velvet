@@ -25,8 +25,8 @@ namespace Velvet
     {
         private string[] _checked;
         private string[] _focus;
-        // Each payload's position in the className, so a tie against the has-[.class]: side table — the other
-        // supplier at this layer — resolves by source order rather than by which signal fired first.
+        // Each payload's rule place (see VariantDeclarations), so a tie against the has-[.class]: side table — the
+        // other supplier at this rank — resolves by Tailwind's order rather than by which signal fired first.
         private int[] _checkedDeclarations;
         private int[] _focusDeclarations;
         private bool _isChecked;

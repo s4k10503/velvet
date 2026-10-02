@@ -110,19 +110,27 @@ namespace Velvet
         // [&>*]:mt-2 [&>*]:text-red-500 are two independent utilities that must both compose, not overwrite
         // each other. Returns false when no valid token is present.
         public static bool TryExtract(string[] classNames, out string[] payloads)
+            => TryExtract(classNames, out payloads, out _);
+
+        // As above, with each payload's rule place among the container's rules (StyleRuleOrder), aligned with
+        // payloads.
+        public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)
         {
             payloads = Array.Empty<string>();
+            declarations = Array.Empty<int>();
             if (classNames == null)
             {
                 return false;
             }
 
             List<string>? collected = null;
-            foreach (var cls in classNames)
+            List<int>? places = null;
+            for (var i = 0; i < classNames.Length; i++)
             {
-                if (TryParse(cls, out var payload))
+                if (TryParse(classNames[i], out var payload))
                 {
                     (collected ??= new List<string>()).Add(payload);
+                    (places ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
                 }
             }
 
@@ -131,6 +139,7 @@ namespace Velvet
                 return false;
             }
             payloads = collected.ToArray();
+            declarations = places!.ToArray();
             return true;
         }
     }
