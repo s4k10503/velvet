@@ -475,18 +475,19 @@ namespace Velvet.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_ANameUnregisteredAfterApply_When_ReorderedAndCleared_Then_TheFilterIsPreservedWithoutWarningUntilClear(bool reorder)
+        public void Given_ANameUnregisteredAfterApply_When_ReorderedAndCleared_Then_NoFilterIsDrawnUntilTheClearLeavesTheBlur(bool reorder)
         {
-            // Arrange — the clear must resolve the name syntactically: routing it through the registry
-            // would make an unregister-while-applied leave the layer composed forever (a ghost filter).
+            // Arrange — the clear has to remove the layer whatever the registry now holds under its name, or an
+            // unregister-while-applied leaves the chain dropped after the class is gone. The name is struck from
+            // the warned set the unregister filled, so a replay that parsed the token again would warn.
             using var reconciler = new Reconciler();
             var root = new VisualElement();
-            var definition = CreateDefinition(new FilterParameter(0f));
-            RegisterForTestRun("ghost-x", definition);
+            RegisterForTestRun("ghost-x", CreateDefinition(new FilterParameter(0f)));
             var oldTree = new VNode[] { V.Div("filter-[ghost-x:0.5] p-[8px] pt-[2px]") };
             reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
             var el = root.ElementAt(0);
             VelvetFilters.Unregister("ghost-x");
+            _warnedNames.Remove("ghost-x");
             var warnings = 0;
             void CountWarning(string message, string stack, LogType type)
             {
@@ -507,16 +508,14 @@ namespace Velvet.Tests
             {
                 Application.logMessageReceived -= CountWarning;
             }
-            var retained = el.style.filter.value;
-            var filterKept = retained.Count == 1 && retained[0].customDefinition == definition;
+            var drawnWhileMissing = el.style.filter.value?.Count ?? 0;
             var padding = el.style.paddingTop.value.value;
             StyleArbitraryValueResolver.ClearClassToken(el, "filter-[ghost-x:0.5]", StyleLayerPriority.Base);
             StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
 
             // Assert — only the blur remains; the unregistered name's layer is gone.
-            var f = el.style.filter.value;
-            Assert.That((filterKept, padding, warnings, f.Count, f[0].type),
-                Is.EqualTo((true, 2f, 0, 1, FilterFunctionType.Blur)));
+            var drawn = string.Join(",", el.style.filter.value?.Select(f => f.type) ?? Enumerable.Empty<FilterFunctionType>());
+            Assert.That((drawnWhileMissing, padding, warnings, drawn), Is.EqualTo((0, 2f, 0, "Blur")));
         }
 
         [Test]
@@ -556,6 +555,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(el.style.filter.value?.Count ?? 0, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never claimed the refused hover token, so the base layer drew
+        // on; the refused layer this branch keeps has to leave it drawing too.
+        [Test]
+        public void Given_ARefusedHoverLayerOverAResolvedBase_When_Composed_Then_TheBaseStillDraws()
+        {
+            // Arrange — CSS drops an invalid declaration at parse time, so the rule under it applies.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[dissolve:0.3]", StyleLayerPriority.Base);
+
+            // Act
+            StyleVariantPayload.Apply(el, new[] { "filter-[dissolve:0.5:0.6]" }, on: true, StyleLayerPriority.Hover,
+                declarations: new[] { 1 });
+
+            // Assert
+            var f = el.style.filter.value;
+            Assert.That(f?.Count == 1 ? f[0].GetParameter(0).floatValue : float.NaN, Is.EqualTo(0.3f));
         }
 
         #endregion
@@ -657,6 +674,50 @@ namespace Velvet.Tests
             // Assert
             var f = el.style.filter.value;
             Assert.That((drawnWhileRefused, f?.Count == 1 ? f[0].GetParameter(1).floatValue : float.NaN), Is.EqualTo((0, 2f)));
+        }
+
+        // The elements the registry would re-resolve for a name, or -1 where it keeps no such list.
+        private static int HostsListedFor(string name)
+        {
+            var field = typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (field?.GetValue(null) is not System.Collections.IDictionary hosts || !hosts.Contains(name))
+            {
+                return field == null ? -1 : 0;
+            }
+            var entry = hosts[name]!;
+            var list = entry.GetType().GetField("Item1")?.GetValue(entry) as System.Collections.IList;
+            return list?.Count ?? -1;
+        }
+
+        [Test]
+        public void Given_AnElementClearedForReuseAndStyledAgain_When_ItsNameIsRead_Then_ItIsListedOnce()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-reuse:1]", StyleLayerPriority.Base);
+            StyleArbitraryValueResolver.ClearAll(el);
+
+            // Act
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-reuse:1]", StyleLayerPriority.Base);
+
+            // Assert
+            Assert.That(HostsListedFor("fade-reuse"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnElementCleared_When_ItsNameIsRead_Then_ItIsNoLongerListed()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[fade-cleared:1]", StyleLayerPriority.Base);
+            var listedWhileStyled = HostsListedFor("fade-cleared");
+
+            // Act
+            StyleArbitraryValueResolver.ClearAll(el);
+
+            // Assert
+            Assert.That((listedWhileStyled, HostsListedFor("fade-cleared")), Is.EqualTo((1, 0)));
         }
 
         #endregion
