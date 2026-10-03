@@ -323,7 +323,8 @@ namespace Velvet
 
         // MotionSlotCascadeTests pins the ordering between inline, stylesheet and per-axis scale holders.
         private const long InlineRank = 1L << 40;
-        private const long AxisScaleRank = 2L << 40;
+        private const long ImportantRank = 1L << 45;
+        private const long AxisScaleRank = 1L << 50;
 
         // The token holding one slot on one side: its precedence, and what it reads as when a magnitude can be
         // read from it at all. An unreadable holder still holds the slot, so a token it outranks is not used.
@@ -394,10 +395,10 @@ namespace Velvet
             Array.Clear(claims, 0, claims.Length);
             if (classes != null)
             {
-                var important = CollectImportant(classes);
+                var importantClasses = CollectImportantClasses(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], i, claims, in important);
+                    Claim(classes[i], i, claims, in importantClasses);
                 }
             }
 
@@ -440,71 +441,30 @@ namespace Velvet
             return claim.Readable ? claim.Value.Value : null;
         }
 
-        private readonly struct ImportantClaims
+        private static StyleLonghandSet CollectImportantClasses(string[] classes)
         {
-            public StyleLonghandSet All { get; init; }
-            public StyleLonghandSet Classes { get; init; }
-            public HashSet<ArbitraryProperty>? InlineProperties { get; init; }
-        }
-
-        private static ImportantClaims CollectImportant(string[] classes)
-        {
-            var all = StyleLonghandSet.Empty;
-            var fromClasses = StyleLonghandSet.Empty;
-            HashSet<ArbitraryProperty>? inlineProperties = null;
+            var written = StyleLonghandSet.Empty;
             for (var i = 0; i < classes.Length; i++)
             {
-                if (string.IsNullOrEmpty(classes[i])
-                    || !TryRank(classes[i], i, out var token)
-                    || !token.Important)
+                if (string.IsNullOrEmpty(classes[i]) || !TryRank(classes[i], i, out var token)
+                    || !token.Important || token.Inline)
                 {
                     continue;
                 }
-                all = all.Union(token.Written);
-                if (token.InlineProperty is { } property)
-                {
-                    (inlineProperties ??= new HashSet<ArbitraryProperty>()).Add(property);
-                }
-                else
-                {
-                    fromClasses = fromClasses.Union(token.Written);
-                }
+                written = written.Union(token.Written);
             }
-            return new ImportantClaims { All = all, Classes = fromClasses, InlineProperties = inlineProperties };
+            return written;
         }
 
-        // An inline token covered across properties may be floored by an existing projection. The plan has
-        // no element to inspect, so a winning token with that ambiguity must leave its slot undriven.
-        private enum Standing { Stands, TakenOut, Undecided }
-
-        private static Standing StandingOf(bool isImportant, StyleLonghandSet written, ArbitraryProperty? inline,
-            in ImportantClaims important)
-        {
-            // MUTANT_SURVIVES(equivalent, clause removed): dropping All.IsEmpty leaves nonempty masks outside its subset;
-            // an empty mask can change standing but Claim writes no slot from it.
-            if (isImportant || important.All.IsEmpty || !IsSubset(written, important.All))
-            {
-                return Standing.Stands;
-            }
-            if (inline is not { } property || IsSubset(written, important.Classes)
-                // MUTANT_SURVIVES(equivalent, literal): changing the null default cannot change this answer. A null
-                // inline set means All == Classes, so the preceding subset clause already returns TakenOut.
-                || (important.InlineProperties?.Contains(property) ?? false))
-            {
-                return Standing.TakenOut;
-            }
-            return Standing.Undecided;
-        }
-
-        private static void Claim(string className, int index, SlotClaim[] claims, in ImportantClaims important)
+        private static void Claim(string className, int index, SlotClaim[] claims,
+            in StyleLonghandSet importantClasses)
         {
             if (string.IsNullOrEmpty(className)
                 || !TryRank(className, index, out var token))
             {
                 return;
             }
-            var standing = StandingOf(token.Important, token.Written, token.InlineProperty, in important);
-            if (standing == Standing.TakenOut)
+            if (!token.Important && IsSubset(token.Written, importantClasses))
             {
                 return;
             }
@@ -516,19 +476,11 @@ namespace Velvet
                 var slot = s_slots[i];
                 var slotLonghands = StyleArbitraryLonghands.Of(slot);
                 var writes = token.TranslateAxis is { } sole ? slot == sole : slotLonghands.Overlaps(token.Written);
-                // MUTANT_SURVIVES(equivalent, boundary): >= differs only on ties. Stylesheet positions come from
-                // the generator's growing entry count; inline bands add unique nonnegative int indices and
-                // are disjoint from that int count and one another. No rank is clamped. Ties are repeated
-                // stripped stylesheet names with the same read; a plain/important pair is taken out first.
                 if (!writes || (claims[i].Claimed && claims[i].Precedence > token.Precedence))
                 {
                     continue;
                 }
                 claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence };
-                if (standing == Standing.Undecided)
-                {
-                    continue;
-                }
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
                 // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
                 if (hasAxisValue && slot == AxisSlot(readAxis))
@@ -553,7 +505,7 @@ namespace Velvet
             public StyleLonghandSet Written { get; init; }
             public ArbitraryProperty? TranslateAxis { get; init; }
             public bool Important { get; init; }
-            public ArbitraryProperty? InlineProperty { get; init; }
+            public bool Inline { get; init; }
         }
 
         private static bool TryRank(string className, int index, out RankedToken token)
@@ -564,12 +516,12 @@ namespace Velvet
                 var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
-                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + index,
+                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0) + index,
                     Written = StyleArbitraryLonghands.Of(inline.Property),
                     TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY
                         ? inline.Property : null,
                     Important = important,
-                    InlineProperty = inline.Property,
+                    Inline = true,
                 };
                 return true;
             }
@@ -577,7 +529,7 @@ namespace Velvet
             {
                 token = new RankedToken
                 {
-                    Precedence = rule.CascadePosition,
+                    Precedence = rule.CascadePosition + (important ? ImportantRank : 0),
                     Written = rule.Properties,
                     Important = important,
                 };
@@ -585,7 +537,7 @@ namespace Velvet
             }
             token = default;
             // MUTANT_SURVIVES(equivalent, literal): true still returns an empty Written mask and no TranslateAxis.
-            // CollectImportant skips its false Important flag, and Claim cannot write any slot.
+            // Claim cannot write any slot from that empty mask.
             return false;
         }
 

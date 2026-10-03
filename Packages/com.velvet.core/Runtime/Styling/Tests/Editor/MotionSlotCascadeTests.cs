@@ -132,7 +132,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnImportantInlineLonghandBeforeAPlainShorthand_When_Resolved_Then_TheLaterShorthandHoldsTheTop()
+        public void Given_AnImportantInlineLonghandBeforeAPlainShorthand_When_Resolved_Then_TheImportantLonghandIsTheTarget()
         {
             // Arrange
             var to = new[] { "!pt-[2px]", "p-[8px]" };
@@ -142,12 +142,12 @@ namespace Velvet.Tests
             using var control = V.Mount(controlRoot, V.Div(name: "control", className: to[0] + " pt-[1px]"));
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
-            var plan = MotionSpringClassParser.Resolve(new[] { "pt-[0px]" }, to);
+            var plan = MotionSpringClassParser.Resolve(new[] { "p-[0px]" }, to);
 
             // Assert
             Assert.That((Lengths(plan), root.Q<VisualElement>("leaf").style.paddingTop.value.value,
                 controlRoot.Q<VisualElement>("control").style.paddingTop.value.value),
-                Is.EqualTo(("PaddingTop:0->8", 8f, 2f)));
+                Is.EqualTo(("PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->2", 2f, 2f)));
         }
 
         [Test]
@@ -163,11 +163,9 @@ namespace Velvet.Tests
             Assert.That(Lengths(plan), Is.EqualTo("PaddingTop:0->8"));
         }
 
-        // GREEN_ON_BASE(characterization): the overlap fallback already leaves this projection-dependent
-        // shorthand/longhand pair undriven; the expanded slot reading must preserve that fallback.
-        [TestCase(false, StyleKeyword.Undefined, 2f)]
-        [TestCase(true, StyleKeyword.Null, 0f)]
-        public void Given_AnImportantInlineShorthandBeforeAPlainLonghand_When_Resolved_Then_TheProjectionDependentTopIsNotDriven(bool withProjection, StyleKeyword keyword, float value)
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnImportantInlineShorthandBeforeAPlainLonghand_When_Resolved_Then_TheImportantTargetIsIndependentOfTheProjection(bool withProjection)
         {
             // Arrange
             var to = new[] { "!p-[8px]", "pt-[2px]" };
@@ -181,7 +179,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((Lengths(plan), settled.keyword, settled.value.value),
-                Is.EqualTo(("", keyword, value)));
+                Is.EqualTo(("PaddingTop:0->8", StyleKeyword.Undefined, 8f)));
         }
 
         // GREEN_ON_BASE(characterization): an x and a y translate on one side each drive their own axis.
@@ -250,6 +248,71 @@ namespace Velvet.Tests
             // Assert
             Assert.That((properties.Length > 0, string.Join(" ", empty), string.Join(" ", aliases)),
                 Is.EqualTo((true, string.Empty, string.Empty)));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnImportantTranslateAxisBesideAPlainOtherAxis_When_Resolved_Then_BothAxesMatchTheirMountedValues(bool reversed)
+        {
+            // Arrange
+            var to = reversed
+                ? new[] { "translate-y-[8px]", "!translate-x-[4px]", "translate-x-[2px]" }
+                : new[] { "!translate-x-[4px]", "translate-x-[2px]", "translate-y-[8px]" };
+            var root = new VisualElement();
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(
+                new[] { "translate-x-[0px]", "translate-y-[0px]" }, to);
+            var settled = root.Q<VisualElement>("leaf").style.translate.value;
+
+            // Assert
+            Assert.That((plan.TranslateX?.to, plan.TranslateY?.to, settled.x.value, settled.y.value),
+                Is.EqualTo(((float?)4f, (float?)8f, 4f, 8f)));
+        }
+
+        // GREEN_ON_BASE(characterization): per-axis scale composition remains nonuniform beside an important
+        // uniform declaration; adding important ranks must preserve its unreadable holder.
+        [TestCase("scale-x-[.5]", false)]
+        [TestCase("scale-x-[.5]", true)]
+        [TestCase("scale-x-50", false)]
+        [TestCase("scale-x-50", true)]
+        public void Given_AnImportantUniformScaleBesideAPlainPerAxisScale_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel(string axis, bool reversed)
+        {
+            // Arrange
+            var to = reversed ? new[] { axis, "!scale-[1.4]", "scale-[2]" } : new[] { "!scale-[1.4]", "scale-[2]", axis };
+            var root = new VisualElement();
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, new[] { "!scale-[1.4]" });
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+            var settled = root.Q<VisualElement>("leaf").style.scale.value.value;
+
+            // Assert
+            Assert.That((control.Scale?.to, plan.Scale.HasValue, settled.x, settled.y),
+                Is.EqualTo(((float?)1.4f, false, 0.5f, 1.4f)));
+        }
+
+        // GREEN_ON_BASE(characterization): an important stylesheet scale clears the plain inline axis;
+        // important ranking must preserve that projection boundary.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnImportantPresetScaleBesideAPlainPerAxisScale_When_Resolved_Then_TheUniformTargetMatchesTheProjection(bool reversed)
+        {
+            // Arrange
+            var to = reversed
+                ? new[] { "scale-x-[.5]", "!scale-150" }
+                : new[] { "!scale-150", "scale-x-[.5]" };
+            var root = new VisualElement();
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-100" }, to);
+            var settled = root.Q<VisualElement>("leaf").style.scale;
+
+            // Assert
+            Assert.That((plan.Scale?.to, settled.keyword), Is.EqualTo(((float?)1.5f, StyleKeyword.Null)));
         }
 
         private static string Lengths(MotionSpringClassParser.SpringPlan plan)
