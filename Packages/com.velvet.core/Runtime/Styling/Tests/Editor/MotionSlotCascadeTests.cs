@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
@@ -95,16 +96,92 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APerAxisScaleBeforeAUniformOne_When_Resolved_Then_TheUniformValueIsNotTheTarget()
+        public void Given_APerAxisScaleBeforeAUniformOne_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel()
         {
             // Arrange — the resolver composes a per-axis layer over the uniform one whichever comes first.
             var to = new[] { "scale-x-[.5]", "scale-[1.4]" };
 
             // Act
+            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" },
+                to.Where(cls => !cls.StartsWith("scale-x", System.StringComparison.Ordinal)).ToArray());
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
 
             // Assert
-            Assert.That(plan.Scale?.to, Is.Not.EqualTo(1.4f));
+            Assert.That((control.Scale?.to, plan.Scale.HasValue), Is.EqualTo(((float?)1.4f, false)));
+        }
+
+        [TestCase("!p-8", "pt-[2px]")]
+        [TestCase("pt-[2px]", "!p-8")]
+        public void Given_AnImportantPresetShorthandAndAPlainInlineLonghand_When_Resolved_Then_TheImportantShorthandHoldsTheTop(string first, string second)
+        {
+            // Arrange
+            var to = new[] { first, second };
+
+            // Act
+            var root = new VisualElement();
+            var controlRoot = new VisualElement();
+            using var control = V.Mount(controlRoot, V.Div(name: "control", className:
+                string.Join(" ", to.Where(cls => !cls.StartsWith("!", System.StringComparison.Ordinal)))));
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(new[] { "pt-[0px]" }, to);
+
+            // Assert
+            Assert.That((Lengths(plan), root.Q<VisualElement>("leaf").style.paddingTop.keyword,
+                controlRoot.Q<VisualElement>("control").style.paddingTop.value.value),
+                Is.EqualTo(("PaddingTop:0->32", StyleKeyword.Null, 2f)));
+        }
+
+        [Test]
+        public void Given_AnImportantInlineLonghandBeforeAPlainShorthand_When_Resolved_Then_TheLaterShorthandHoldsTheTop()
+        {
+            // Arrange
+            var to = new[] { "!pt-[2px]", "p-[8px]" };
+            var controlRoot = new VisualElement();
+
+            // Act
+            using var control = V.Mount(controlRoot, V.Div(name: "control", className: to[0] + " pt-[1px]"));
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(new[] { "pt-[0px]" }, to);
+
+            // Assert
+            Assert.That((Lengths(plan), root.Q<VisualElement>("leaf").style.paddingTop.value.value,
+                controlRoot.Q<VisualElement>("control").style.paddingTop.value.value),
+                Is.EqualTo(("PaddingTop:0->8", 8f, 2f)));
+        }
+
+        [Test]
+        public void Given_APlainInlineLonghandBeforeAnImportantShorthand_When_Resolved_Then_TheImportantShorthandHoldsTheTop()
+        {
+            // Arrange
+            var to = new[] { "pt-[2px]", "!p-[8px]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "pt-[0px]" }, to);
+
+            // Assert
+            Assert.That(Lengths(plan), Is.EqualTo("PaddingTop:0->8"));
+        }
+
+        // GREEN_ON_BASE(characterization): the overlap fallback already leaves this projection-dependent
+        // shorthand/longhand pair undriven; the expanded slot reading must preserve that fallback.
+        [TestCase(false, StyleKeyword.Undefined, 2f)]
+        [TestCase(true, StyleKeyword.Null, 0f)]
+        public void Given_AnImportantInlineShorthandBeforeAPlainLonghand_When_Resolved_Then_TheProjectionDependentTopIsNotDriven(bool withProjection, StyleKeyword keyword, float value)
+        {
+            // Arrange
+            var to = new[] { "!p-[8px]", "pt-[2px]" };
+            var root = new VisualElement();
+            var className = string.Join(" ", to) + (withProjection ? " !opacity-50" : "");
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: className));
+            var plan = MotionSpringClassParser.Resolve(new[] { "pt-[0px]" }, to);
+            var settled = root.Q<VisualElement>("leaf").style.paddingTop;
+
+            // Assert
+            Assert.That((Lengths(plan), settled.keyword, settled.value.value),
+                Is.EqualTo(("", keyword, value)));
         }
 
         // GREEN_ON_BASE(characterization): an x and a y translate on one side each drive their own axis.

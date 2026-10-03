@@ -321,13 +321,9 @@ namespace Velvet
         // clears this.
         private static readonly SlotClaim[] s_claims = new SlotClaim[s_slots.Length];
 
-        // Precedence ranks, highest wins. A stylesheet rule ranks below every inline-resolved token, which the
-        // resolver writes as inline style; an important inline token outranks a plain one; and a per-axis scale
-        // outranks every uniform one, because the resolver composes a per-axis layer over the uniform one on its
-        // own axis whichever came first in the class list.
+        // MotionSlotCascadeTests pins the ordering between inline, stylesheet and per-axis scale holders.
         private const long InlineRank = 1L << 40;
-        private const long ImportantInlineRank = 2L << 40;
-        private const long AxisScaleRank = 3L << 40;
+        private const long AxisScaleRank = 2L << 40;
 
         // The token holding one slot on one side: its precedence, and what it reads as when a magnitude can be
         // read from it at all. An unreadable holder still holds the slot, so a token it outranks is not used.
@@ -394,9 +390,10 @@ namespace Velvet
             Array.Clear(claims, 0, claims.Length);
             if (classes != null)
             {
+                var important = CollectImportant(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], i, claims);
+                    Claim(classes[i], i, claims, in important);
                 }
             }
 
@@ -437,18 +434,70 @@ namespace Velvet
             return claim.Readable ? claim.Value.Value : null;
         }
 
-        // Records the slots one token writes, over every claim it outranks. The cascade decides between two
-        // tokens writing one slot: an inline-resolved token over any stylesheet rule, an important inline token
-        // over a plain one, a later inline token over an earlier one, and of two rules the later-declared one,
-        // which for preset utilities is stylesheet order rather than class-list order.
-        private static void Claim(string className, int index, SlotClaim[] claims)
+        private readonly struct ImportantClaims
+        {
+            public StyleLonghandSet All { get; init; }
+            public StyleLonghandSet Classes { get; init; }
+            public HashSet<ArbitraryProperty>? InlineProperties { get; init; }
+        }
+
+        private static ImportantClaims CollectImportant(string[] classes)
+        {
+            var all = StyleLonghandSet.Empty;
+            var fromClasses = StyleLonghandSet.Empty;
+            HashSet<ArbitraryProperty>? inlineProperties = null;
+            for (var i = 0; i < classes.Length; i++)
+            {
+                if (string.IsNullOrEmpty(classes[i])
+                    || !TryRank(classes[i], i, out var token)
+                    || !token.Important)
+                {
+                    continue;
+                }
+                all = all.Union(token.Written);
+                if (token.InlineProperty is { } property)
+                {
+                    (inlineProperties ??= new HashSet<ArbitraryProperty>()).Add(property);
+                }
+                else
+                {
+                    fromClasses = fromClasses.Union(token.Written);
+                }
+            }
+            return new ImportantClaims { All = all, Classes = fromClasses, InlineProperties = inlineProperties };
+        }
+
+        // An inline token covered across properties may be floored by an existing projection. The plan has
+        // no element to inspect, so a winning token with that ambiguity must leave its slot undriven.
+        private enum Standing { Stands, TakenOut, Undecided }
+
+        private static Standing StandingOf(bool isImportant, StyleLonghandSet written, ArbitraryProperty? inline,
+            in ImportantClaims important)
+        {
+            if (isImportant || important.All.IsEmpty || !IsSubset(written, important.All))
+            {
+                return Standing.Stands;
+            }
+            if (inline is not { } property || IsSubset(written, important.Classes)
+                || (important.InlineProperties?.Contains(property) ?? false))
+            {
+                return Standing.TakenOut;
+            }
+            return Standing.Undecided;
+        }
+
+        private static void Claim(string className, int index, SlotClaim[] claims, in ImportantClaims important)
         {
             if (string.IsNullOrEmpty(className)
-                || !TryRank(className, index, out var precedence, out var written, out var translateAxis))
+                || !TryRank(className, index, out var token))
             {
                 return;
             }
-
+            var standing = StandingOf(token.Important, token.Written, token.InlineProperty, in important);
+            if (standing == Standing.TakenOut)
+            {
+                return;
+            }
             var hasAxisValue = TryParseAxisValue(className, out var readAxis, out var axisValue);
             var property = default(ArbitraryStyle);
             var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
@@ -456,12 +505,16 @@ namespace Velvet
             {
                 var slot = s_slots[i];
                 var slotLonghands = StyleArbitraryLonghands.Of(slot);
-                var writes = translateAxis is { } sole ? slot == sole : slotLonghands.Overlaps(written);
-                if (!writes || (claims[i].Claimed && claims[i].Precedence > precedence))
+                var writes = token.TranslateAxis is { } sole ? slot == sole : slotLonghands.Overlaps(token.Written);
+                if (!writes || (claims[i].Claimed && claims[i].Precedence > token.Precedence))
                 {
                     continue;
                 }
-                claims[i] = new SlotClaim { Claimed = true, Precedence = precedence };
+                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence };
+                if (standing == Standing.Undecided)
+                {
+                    continue;
+                }
                 if (hasAxisValue && slot == AxisSlot(readAxis))
                 {
                     claims[i].Readable = true;
@@ -478,34 +531,43 @@ namespace Velvet
             }
         }
 
-        // The precedence a token writes with and the longhands it writes, the way the reconciler routes it: an
-        // inline-resolved token the resolver claims becomes inline style, anything else a class whose bundled
-        // rule, if ungated, is what it writes. False for a token that writes nothing either way.
-        private static bool TryRank(string className, int index, out long precedence, out StyleLonghandSet written,
-            out ArbitraryProperty? translateAxis)
+        private readonly struct RankedToken
+        {
+            public long Precedence { get; init; }
+            public StyleLonghandSet Written { get; init; }
+            public ArbitraryProperty? TranslateAxis { get; init; }
+            public bool Important { get; init; }
+            public ArbitraryProperty? InlineProperty { get; init; }
+        }
+
+        private static bool TryRank(string className, int index, out RankedToken token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
-            translateAxis = null;
             if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParse(core, out var inline))
             {
                 var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
-                precedence = (perAxisScale ? AxisScaleRank : important ? ImportantInlineRank : InlineRank) + index;
-                written = StyleArbitraryLonghands.Of(inline.Property);
-                // The two translate axes share the translate longhand but compose rather than contend.
-                if (inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY)
+                token = new RankedToken
                 {
-                    translateAxis = inline.Property;
-                }
+                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + index,
+                    Written = StyleArbitraryLonghands.Of(inline.Property),
+                    TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY
+                        ? inline.Property : null,
+                    Important = important,
+                    InlineProperty = inline.Property,
+                };
                 return true;
             }
             if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
             {
-                precedence = rule.CascadePosition;
-                written = rule.Properties;
+                token = new RankedToken
+                {
+                    Precedence = rule.CascadePosition,
+                    Written = rule.Properties,
+                    Important = important,
+                };
                 return true;
             }
-            precedence = 0;
-            written = StyleLonghandSet.Empty;
+            token = default;
             return false;
         }
 

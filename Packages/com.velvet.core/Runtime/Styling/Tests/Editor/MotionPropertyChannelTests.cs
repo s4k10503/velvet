@@ -38,8 +38,6 @@ namespace Velvet.Tests
     {
         private const float FixedDeltaSec = 1f / 60f;
 
-        // Colors (3) + sizing/basis (8) + inset (7) + padding (7) + margin (7) + radius (9) + border width (5)
-        // + font size + letter spacing. Updated deliberately when the drivable set changes.
 
         // The linear identity curve: CubicBezierEvaluator returns t unchanged for x1==y1 && x2==y2, so a step
         // to half the duration lands the channel at exactly half its travel.

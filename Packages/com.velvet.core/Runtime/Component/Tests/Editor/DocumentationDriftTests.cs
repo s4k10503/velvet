@@ -65,7 +65,7 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
-            "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
+            "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS012",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "ForTest",
             "AllocatingGCMemory",
