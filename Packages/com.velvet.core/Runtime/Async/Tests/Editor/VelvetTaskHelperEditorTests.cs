@@ -17,6 +17,25 @@ namespace Velvet.Tests
             }
         }
 
+        static async VelvetTask ThrowAfter(VelvetTaskCompletionSource gate, Exception exception)
+        {
+            await gate.Task;
+            throw exception;
+        }
+
+        static Exception ThrownBy(Action action)
+        {
+            try
+            {
+                action();
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }
+
         static string ExceptionsLoggedDuring(Action action)
         {
             var logged = new List<string>();
@@ -164,20 +183,22 @@ namespace Velvet.Tests
                 Is.EqualTo(ownCts.Token));
         }
 
+        // GREEN_ON_BASE(characterization): the attached task already ended cancelled with that exception on the base.
         [Test]
-        public void Given_AnAttachedTask_When_TheTaskItWaitsForIsCancelledWithItsOwnException_Then_TheAttachedTaskThrowsThatException()
+        public void Given_AnAttachedTask_When_TheTaskItWaitsForIsCancelledWithItsOwnException_Then_TheAttachedTaskIsCancelledWithThatException()
         {
             // Arrange
             using var cts = new CancellationTokenSource();
-            var source = new VelvetTaskCompletionSource();
-            var attached = source.Task.AttachExternalCancellation(cts.Token);
+            var gate = new VelvetTaskCompletionSource();
             var cancellation = new UpstreamCanceledException("upstream");
+            var attached = ThrowAfter(gate, cancellation).AttachExternalCancellation(cts.Token);
 
             // Act
-            source.SetException(cancellation);
+            gate.SetResult();
+            var outcome = (attached.Status, ThrownBy(() => attached.GetAwaiter().GetResult()));
 
             // Assert
-            Assert.That(Assert.Catch(() => attached.GetAwaiter().GetResult()), Is.SameAs(cancellation));
+            Assert.That(outcome, Is.EqualTo((VelvetTaskStatus.Canceled, (Exception)cancellation)));
         }
 
         [Test]

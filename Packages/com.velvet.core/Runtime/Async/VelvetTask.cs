@@ -385,7 +385,9 @@ namespace Velvet
 
                 if (_exception != null)
                 {
-                    return (_task = VelvetTask.FromException(_exception)).Value;
+                    return (_task = _exception is OperationCanceledException canceled
+                        ? VelvetTaskExtensions.FromCanceled(canceled)
+                        : VelvetTask.FromException(_exception)).Value;
                 }
 
                 return VelvetTask.CompletedTask;
@@ -468,7 +470,9 @@ namespace Velvet
 
                 if (_exception != null)
                 {
-                    return (_task = VelvetTask.FromException<T>(_exception)).Value;
+                    return (_task = _exception is OperationCanceledException canceled
+                        ? VelvetTaskExtensions.FromCanceled<T>(canceled)
+                        : VelvetTask.FromException<T>(_exception)).Value;
                 }
 
                 return new VelvetTask<T>(_result);

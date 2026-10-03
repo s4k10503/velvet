@@ -130,7 +130,7 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
-- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()`, which logs it with `Debug.LogException`; an `OperationCanceledException` from the handler is not logged, since `.Forget()` reports no cancellation. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
 ### 1-3. State Management (React + Zustand)
 

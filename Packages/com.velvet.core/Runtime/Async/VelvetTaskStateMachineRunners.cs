@@ -73,7 +73,10 @@ namespace Velvet
 
         public void SetResult() => _core.TrySetResult(AsyncUnit.Default);
 
-        public void SetException(Exception exception) => _core.TrySetException(exception);
+        public void SetException(Exception exception) =>
+            _ = exception is OperationCanceledException canceled
+                ? _core.TrySetCanceled(canceled)
+                : _core.TrySetException(exception);
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 
@@ -157,7 +160,11 @@ namespace Velvet
 
         public void SetResult(T result) => _core.TrySetResult(result);
 
-        public void SetException(Exception exception) => _core.TrySetException(exception);
+        // Same cancellation rule as the non-generic AsyncVelvetTaskMethod.
+        public void SetException(Exception exception) =>
+            _ = exception is OperationCanceledException canceled
+                ? _core.TrySetCanceled(canceled)
+                : _core.TrySetException(exception);
 
         public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
 

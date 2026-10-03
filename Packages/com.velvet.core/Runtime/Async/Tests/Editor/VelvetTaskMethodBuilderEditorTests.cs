@@ -24,7 +24,7 @@ namespace Velvet.Tests
             throw own;
         }
 
-        static Exception? ThrownBy(Action action)
+        static Exception ThrownBy(Action action)
         {
             try
             {
@@ -53,31 +53,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAsyncMethodThatThrowsItsOwnCancellationBeforeSuspending_When_ItsTaskIsConsumed_Then_ThrowsThatException()
+        public void Given_AnAsyncMethodThatThrowsItsOwnCancellationBeforeSuspending_When_ItsTaskIsConsumed_Then_ItIsCanceledWithThatException()
         {
             // Arrange
             var own = new OperationCanceledException("own");
             var task = CancelBeforeSuspending(own);
 
             // Act
-            var thrown = ThrownBy(() => task.GetAwaiter().GetResult());
+            var outcome = (task.Status, ThrownBy(() => task.GetAwaiter().GetResult()));
 
             // Assert
-            Assert.That(thrown, Is.SameAs(own));
+            Assert.That(outcome, Is.EqualTo((VelvetTaskStatus.Canceled, (Exception)own)));
         }
 
         [Test]
-        public void Given_AnAsyncMethodWithAResultThatThrowsItsOwnCancellationBeforeSuspending_When_ItsTaskIsConsumed_Then_ThrowsThatException()
+        public void Given_AnAsyncMethodWithAResultThatThrowsItsOwnCancellationBeforeSuspending_When_ItsTaskIsConsumed_Then_ItIsCanceledWithThatException()
         {
             // Arrange
             var own = new OperationCanceledException("own");
             var task = CancelWithResultBeforeSuspending(own);
 
             // Act
-            var thrown = ThrownBy(() => task.GetAwaiter().GetResult());
+            var outcome = (task.Status, ThrownBy(() => task.GetAwaiter().GetResult()));
 
             // Assert
-            Assert.That(thrown, Is.SameAs(own));
+            Assert.That(outcome, Is.EqualTo((VelvetTaskStatus.Canceled, (Exception)own)));
         }
     }
 }

@@ -29,11 +29,8 @@ namespace Velvet
 
     internal static class VelvetTaskOutcome
     {
-        // The split the completion-source core makes: an OperationCanceledException is kept as the cancellation.
         internal static VelvetTaskOutcome<T> FromException<T>(Exception exception) =>
-            exception is OperationCanceledException canceled
-                ? new VelvetTaskOutcome<T>(default!, null, canceled)
-                : new VelvetTaskOutcome<T>(default!, new[] { ExceptionDispatchInfo.Capture(exception) }, null);
+            new(default!, new[] { ExceptionDispatchInfo.Capture(exception) }, null);
 
         // A settle runs on the thread that completes the task, as ValueTask.AsTask() and Preserve() do:
         // handed to the main thread instead, a caller blocking there on what it settles would never see it.
@@ -43,31 +40,36 @@ namespace Velvet
         internal static void OnSettled<T>(VelvetTask<T> task, Action<VelvetTaskOutcome<T>> settle) =>
             task.GetAwaiter().OnCompleted(() => settle(Consume(task)), resumeOnMainThread: false);
 
+        // ValueTask.AsTask() keeps a cancellation's own exception, which TaskCompletionSource.TrySetCanceled
+        // cannot carry. A cancelled async method's task does, and Unwrap hands it on.
         internal static Task AsTask(VelvetTask task)
         {
-            var completion = new TaskCompletionSource<AsyncUnit>();
-            OnSettled(task, outcome => Complete(completion, outcome));
-            return completion.Task;
+            var completion = new TaskCompletionSource<Task<AsyncUnit>>();
+            OnSettled(task, outcome => completion.TrySetResult(Settled(outcome)));
+            return completion.Task.Unwrap();
         }
 
         internal static Task<T> AsTask<T>(VelvetTask<T> task)
         {
-            var completion = new TaskCompletionSource<T>();
-            OnSettled(task, outcome => Complete(completion, outcome));
-            return completion.Task;
+            var completion = new TaskCompletionSource<Task<T>>();
+            OnSettled(task, outcome => completion.TrySetResult(Settled(outcome)));
+            return completion.Task.Unwrap();
         }
 
-        // The faults are read ahead of GetResult, which retires the version they are read under.
+        // The status and the faults are read ahead of GetResult, which retires the version they are read under.
+        // The status, not the exception's type, tells a cancellation from a fault that is an OperationCanceledException.
         internal static VelvetTaskOutcome<AsyncUnit> Consume(VelvetTask task)
         {
+            var status = VelvetTaskStatus.Pending;
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try
             {
+                status = task.Status;
                 faults = task.Faults;
                 task.GetAwaiter().GetResult();
                 return default;
             }
-            catch (OperationCanceledException canceled)
+            catch (OperationCanceledException canceled) when (status == VelvetTaskStatus.Canceled)
             {
                 return new VelvetTaskOutcome<AsyncUnit>(default, null, canceled);
             }
@@ -82,13 +84,15 @@ namespace Velvet
 
         internal static VelvetTaskOutcome<T> Consume<T>(VelvetTask<T> task)
         {
+            var status = VelvetTaskStatus.Pending;
             IReadOnlyList<ExceptionDispatchInfo>? faults = null;
             try
             {
+                status = task.Status;
                 faults = task.Faults;
                 return new VelvetTaskOutcome<T>(task.GetAwaiter().GetResult(), null, null);
             }
-            catch (OperationCanceledException canceled)
+            catch (OperationCanceledException canceled) when (status == VelvetTaskStatus.Canceled)
             {
                 return new VelvetTaskOutcome<T>(default!, null, canceled);
             }
@@ -101,7 +105,7 @@ namespace Velvet
             }
         }
 
-        static void Complete<T>(TaskCompletionSource<T> completion, VelvetTaskOutcome<T> outcome)
+        static Task<T> Settled<T>(VelvetTaskOutcome<T> outcome)
         {
             if (outcome.Faults != null)
             {
@@ -111,16 +115,20 @@ namespace Velvet
                     exceptions[i] = outcome.Faults[i].SourceException;
                 }
 
-                completion.TrySetException(exceptions);
+                var faulted = new TaskCompletionSource<T>();
+                faulted.TrySetException(exceptions);
+                return faulted.Task;
             }
-            else if (outcome.Cancellation != null)
-            {
-                completion.TrySetCanceled(outcome.Cancellation.CancellationToken);
-            }
-            else
-            {
-                completion.TrySetResult(outcome.Result);
-            }
+
+            return outcome.Cancellation != null
+                ? CanceledWith<T>(outcome.Cancellation)
+                : Task.FromResult(outcome.Result);
+        }
+
+        static async Task<T> CanceledWith<T>(OperationCanceledException cancellation)
+        {
+            await Task.CompletedTask;
+            throw cancellation;
         }
     }
 }

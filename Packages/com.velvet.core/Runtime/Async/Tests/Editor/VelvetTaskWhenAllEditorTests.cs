@@ -28,7 +28,7 @@ namespace Velvet.Tests
             throw own;
         }
 
-        static Exception? ThrownBy(Action action)
+        static Exception ThrownBy(Action action)
         {
             try
             {
