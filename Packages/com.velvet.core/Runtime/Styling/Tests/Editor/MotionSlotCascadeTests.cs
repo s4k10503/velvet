@@ -315,6 +315,50 @@ namespace Velvet.Tests
             Assert.That((plan.Scale?.to, settled.keyword), Is.EqualTo(((float?)1.5f, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(characterization): equal-importance inline writes already follow class order;
+        // adding important ranks must preserve that order within the band.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_TwoImportantInlineWidthWrites_When_Resolved_Then_TheLaterWriteMatchesTheMountedWidth(bool reversed)
+        {
+            // Arrange
+            var to = reversed
+                ? new[] { "!w-[20px]", "!w-[40px]" }
+                : new[] { "!w-[40px]", "!w-[20px]" };
+            var root = new VisualElement();
+            var target = reversed ? 40f : 20f;
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[0px]" }, to);
+            var settled = root.Q<VisualElement>("leaf").style.width.value.value;
+
+            // Assert
+            Assert.That((Lengths(plan), settled), Is.EqualTo((
+                $"Width:0->{target}", target)));
+        }
+
+        // GREEN_ON_BASE(characterization): an important preset longhand already wins a partially covered
+        // shorthand; the offset rank must preserve that slot while leaving the other edges readable.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnImportantPresetLonghandBesideAPlainShorthand_When_Resolved_Then_OnlyTheTopUsesTheImportantTarget(bool reversed)
+        {
+            // Arrange
+            var to = reversed
+                ? new[] { "pt-4", "p-8", "!pt-2" }
+                : new[] { "!pt-2", "p-8", "pt-4" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "p-0" }, to);
+            var plain = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8", "pt-4" });
+
+            // Assert
+            Assert.That((Lengths(plan), Lengths(plain)), Is.EqualTo((
+                "PaddingBottom:0->32 PaddingLeft:0->32 PaddingRight:0->32 PaddingTop:0->8",
+                "PaddingBottom:0->32 PaddingLeft:0->32 PaddingRight:0->32 PaddingTop:0->16")));
+        }
+
         private static string Lengths(MotionSpringClassParser.SpringPlan plan)
             => string.Join(" ", (plan.Lengths ?? new List<MotionSpringClassParser.LengthChannelPlan>())
                 .Select(channel => $"{channel.Property}:{channel.From}->{channel.To}")
