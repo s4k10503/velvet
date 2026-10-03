@@ -40,8 +40,6 @@ namespace Velvet
         internal static void OnSettled<T>(VelvetTask<T> task, Action<VelvetTaskOutcome<T>> settle) =>
             task.GetAwaiter().OnCompleted(() => settle(Consume(task)), resumeOnMainThread: false);
 
-        // ValueTask.AsTask() keeps a cancellation's own exception, which TaskCompletionSource.TrySetCanceled
-        // cannot carry. A cancelled async method's task does, and Unwrap hands it on.
         internal static Task AsTask(VelvetTask task)
         {
             var completion = new TaskCompletionSource<Task<AsyncUnit>>();
