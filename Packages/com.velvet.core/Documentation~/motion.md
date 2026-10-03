@@ -120,6 +120,13 @@ in their index math, so spacing recomputes as if the child were already gone. A 
 pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
 keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
 
+A negative `StyleTransitionConfig.DelaySec` starts the animation partway through its run. For
+example, `DurationSec = 1f` and `DelaySec = -0.5f` start a linear tween halfway to its target.
+Spring and bezier plays advance before their first scheduled tick and complete immediately if that
+offset reaches their end. A property's `StylePropertyTransition.DelaySec` overrides the tween's
+delay for that property. Additional orchestration delay combines with the configured delay: a
+negative total starts partway through the animation; a positive total postpones its start.
+
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
 
 A parent Motion whose transition declares orchestration knobs staggers its **inheriting**
@@ -458,7 +465,8 @@ A step is exactly one of:
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
   defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
-  `DelaySec` plus the duration Framer Motion's sequence gives the same spring: a travel of 100,
+  `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
+  the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
   at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
   Framer takes when it cannot read the distance.

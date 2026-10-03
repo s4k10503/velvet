@@ -214,12 +214,13 @@ namespace Velvet
             // Cancel any existing enter animation.
             CancelEnter(element);
 
-            var staggerDelayMs = (long)(play.AdditionalDelaySec * 1000);
+            var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(play.DelaySec, play.AdditionalDelaySec,
+                variantMode ? propertyOverrides : null);
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
             var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, play.DelaySec,
-                allProperties: variantMode, propertyOverrides: propertyOverrides);
+                allProperties: variantMode, propertyOverrides: propertyOverrides, delayOffsetSec: delayOffsetSec);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -433,9 +434,12 @@ namespace Velvet
             // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween
             // — the same condition that gates reading PropertyOverrides (a preset exit's own USS-declared
             // transition-property is untouched).
+            var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
+                restoreFromOnCancel ? config.PropertyOverrides : null);
             var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
                 config.DelaySec, allProperties: restoreFromOnCancel,
-                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null);
+                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null,
+                delayOffsetSec: delayOffsetSec);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -455,7 +459,6 @@ namespace Velvet
             RingCoFadeCoordinator.BindRing(element, pending, 1f);
             _pendingExits[element] = pending;
 
-            var staggerDelayMs = (long)(additionalDelaySec * 1000);
 
             // Schedule the exit's frame callbacks on a STABLE host (the panel root), not on the exiting
             // element itself. An element-bound scheduled item pauses while its element is off the panel and
@@ -661,12 +664,13 @@ namespace Velvet
                 {
                     return;
                 }
-                var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
-                if (totalDelayMs <= 0)
+                var totalDelaySec = delaySec + additionalDelaySec;
+                if (totalDelaySec <= 0f)
                 {
-                    StartSpringTick(element, pending);
+                    StartSpringTick(element, pending, -totalDelaySec);
                     return;
                 }
+                var totalDelayMs = (long)(totalDelaySec * 1000);
 
                 // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
                 // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
@@ -766,12 +770,13 @@ namespace Velvet
                 {
                     return;
                 }
-                var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
-                if (totalDelayMs <= 0)
+                var totalDelaySec = delaySec + additionalDelaySec;
+                if (totalDelaySec <= 0f)
                 {
-                    StartBezierTick(element, pending);
+                    StartBezierTick(element, pending, -totalDelaySec);
                     return;
                 }
+                var totalDelayMs = (long)(totalDelaySec * 1000);
 
                 // See StartSpringVariant for why a delayed start parks on the panel-root host (survives a
                 // transient reorder detach) rather than element.schedule.
@@ -813,7 +818,7 @@ namespace Velvet
         // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
         // clock this tick is scheduled against. No-op if there is no host (should not happen for the on-panel /
         // already-deferred-to-attach cases this is called from, but this guards rather than throws).
-        private void StartSpringTick(VisualElement element, PendingAnimation pending)
+        private void StartSpringTick(VisualElement element, PendingAnimation pending, float preRollSec = 0f)
         {
             var state = pending.Spring;
             if (state == null)
@@ -831,6 +836,16 @@ namespace Velvet
             // moment its CSS transition would have started firing.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
+            // Stepped a frame at a time, because the integrator clamps a longer step.
+            for (var remaining = preRollSec; remaining > 0f; remaining -= PreRollStepSec)
+            {
+                if (MotionSpringDriver.Step(element, state, Math.Min(remaining, PreRollStepSec)))
+                {
+                    FinishSpring(element, pending, state);
+                    return;
+                }
+            }
+
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
                 // TimerState.start is the previous callback's time for a repeating item (or the schedule time
@@ -842,36 +857,40 @@ namespace Velvet
                     return;
                 }
 
-                var settled = MotionSpringDriver.Step(element, state, dt);
-                if (!settled)
+                if (MotionSpringDriver.Step(element, state, dt))
                 {
-                    return;
+                    FinishSpring(element, pending, state);
                 }
-
-                state.Tick?.Pause();
-                state.Tick = null;
-                // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
-                // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
-                // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
-                // original one still holds it.
-                if (!RemoveIfCurrent(_pendingExits, element, pending))
-                {
-                    RemoveIfCurrent(_pendingEnters, element, pending);
-                }
-                // Target is at rest now — stop the co-fade and release the band's inline opacity (a no-op when
-                // this element carries none, the common case).
-                RingCoFadeCoordinator.EndRingCoFade(pending);
-                MotionSpringDriver.ClearInlineOverrides(element, state);
-                ReapplyMotionOwnedInlineValues(element);
-                state.OnSettled?.Invoke();
             }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        private const float PreRollStepSec = StyleAnimateDriver.TickMs / 1000f;
+
+        private void FinishSpring(VisualElement element, PendingAnimation pending, MotionSpringState state)
+        {
+            state.Tick?.Pause();
+            state.Tick = null;
+            // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
+            // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
+            // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
+            // original one still holds it.
+            if (!RemoveIfCurrent(_pendingExits, element, pending))
+            {
+                RemoveIfCurrent(_pendingEnters, element, pending);
+            }
+            // Target is at rest now — stop the co-fade and release the band's inline opacity (a no-op when
+            // this element carries none, the common case).
+            RingCoFadeCoordinator.EndRingCoFade(pending);
+            MotionSpringDriver.ClearInlineOverrides(element, state);
+            ReapplyMotionOwnedInlineValues(element);
+            state.OnSettled?.Invoke();
         }
 
         // The bezier sibling of StartSpringTick: identical panel-root recurring-tick shape (same stable-host and
         // same-clock deltaTime rationale — see StartSpringTick), stepping the fixed-duration bezier tween instead
         // of the spring's physics and finalizing once BezierTweenDriver.Step reports elapsed has reached the
         // duration rather than a dynamic settle. No-op if there is no host (guards rather than throws).
-        private void StartBezierTick(VisualElement element, PendingAnimation pending)
+        private void StartBezierTick(VisualElement element, PendingAnimation pending, float preRollSec = 0f)
         {
             var state = pending.Bezier;
             if (state == null)
@@ -886,6 +905,12 @@ namespace Velvet
 
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
+            if (preRollSec > 0f && BezierTweenDriver.Step(element, state, preRollSec))
+            {
+                FinishBezier(element, pending, state);
+                return;
+            }
+
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
                 var dt = ts.deltaTime / 1000f;
@@ -894,25 +919,27 @@ namespace Velvet
                     return;
                 }
 
-                var completed = BezierTweenDriver.Step(element, state, dt);
-                if (!completed)
+                if (BezierTweenDriver.Step(element, state, dt))
                 {
-                    return;
+                    FinishBezier(element, pending, state);
                 }
-
-                state.Tick?.Pause();
-                state.Tick = null;
-                // Probe both maps, not just the one this play started into: an exit-cancel reversal hand-off
-                // (CancelPending) can have MOVED it into _pendingEnters since then (same as the spring path).
-                if (!RemoveIfCurrent(_pendingExits, element, pending))
-                {
-                    RemoveIfCurrent(_pendingEnters, element, pending);
-                }
-                RingCoFadeCoordinator.EndRingCoFade(pending);
-                BezierTweenDriver.ClearInlineOverrides(element, state);
-                ReapplyMotionOwnedInlineValues(element);
-                state.OnSettled?.Invoke();
             }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        private void FinishBezier(VisualElement element, PendingAnimation pending, BezierTweenState state)
+        {
+            state.Tick?.Pause();
+            state.Tick = null;
+            // Probe both maps, not just the one this play started into: an exit-cancel reversal hand-off
+            // (CancelPending) can have MOVED it into _pendingEnters since then (same as the spring path).
+            if (!RemoveIfCurrent(_pendingExits, element, pending))
+            {
+                RemoveIfCurrent(_pendingEnters, element, pending);
+            }
+            RingCoFadeCoordinator.EndRingCoFade(pending);
+            BezierTweenDriver.ClearInlineOverrides(element, state);
+            ReapplyMotionOwnedInlineValues(element);
+            state.OnSettled?.Invoke();
         }
 
         // Removes element's entry from map, but only when it is STILL exactly pending (a later cancel/supersede
@@ -1290,9 +1317,24 @@ namespace Velvet
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
+        private static (long swapDelayMs, float transitionOffsetSec) SplitNativeDelay(float delaySec,
+            float additionalDelaySec, IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            var earliestDelaySec = Math.Min(0f, delaySec);
+            if (overrides != null)
+            {
+                foreach (var property in overrides)
+                {
+                    earliestDelaySec = Math.Min(earliestDelaySec, property.DelaySec ?? delaySec);
+                }
+            }
+            var swapDelaySec = Math.Max(0f, additionalDelaySec + earliestDelaySec);
+            return ((long)(swapDelaySec * 1000), additionalDelaySec - swapDelaySec);
+        }
+
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
             VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
         {
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
@@ -1300,7 +1342,7 @@ namespace Velvet
             // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
             if (allProperties && propertyOverrides is { Count: > 0 })
             {
-                return ApplyPropertyOverrideTransitionStyles(element, durationSec, easing, delaySec, propertyOverrides);
+                return ApplyPropertyOverrideTransitionStyles(element, durationSec, easing, delaySec, propertyOverrides, delayOffsetSec);
             }
 
             var durationMs = (int)(durationSec * 1000);
@@ -1317,9 +1359,9 @@ namespace Velvet
                 element.style.transitionProperty = s_allTransitionProperties;
             }
 
-            // When delaySec <= 0, transition-delay is not set (negative values are ignored, as documented in StyleTransitionConfig).
+            delaySec += delayOffsetSec;
             List<TimeValue>? delayList = null;
-            if (delaySec > 0f)
+            if (delaySec != 0f || delayOffsetSec != 0f)
             {
                 var delayMs = (int)(delaySec * 1000);
                 delayList = _listPool.RentDelayList(delayMs);
@@ -1356,7 +1398,7 @@ namespace Velvet
         // cache (GetOrCreateEasingList) rather than reallocated.
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
             VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
-            IReadOnlyList<StylePropertyTransition> overrides)
+            IReadOnlyList<StylePropertyTransition> overrides, float delayOffsetSec)
         {
             var count = overrides.Count;
             var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
@@ -1371,15 +1413,15 @@ namespace Velvet
             var easingList = new List<EasingFunction>(count);
             var durationList = _listPool.RentEmptyDurationList(count);
             var delayList = _listPool.RentEmptyDelayList(count);
-            var hasDelay = false;
+            var hasDelay = delayOffsetSec != 0f;
             // i = -1 is the leading "all" entry: an override with every field left null takes the top-level timing.
             for (var i = -1; i < count; i++)
             {
                 var o = i < 0 ? default : overrides[i];
                 easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
                 var durationMs = (int)((o.DurationSec ?? defaultDurationSec) * 1000);
-                var delaySec = o.DelaySec ?? defaultDelaySec;
-                if (delaySec > 0f)
+                var delaySec = (o.DelaySec ?? defaultDelaySec) + delayOffsetSec;
+                if (delaySec != 0f)
                 {
                     hasDelay = true;
                 }

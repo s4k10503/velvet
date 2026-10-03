@@ -225,7 +225,7 @@ namespace Velvet
         {
             if (transition.Type == TransitionType.Spring)
             {
-                return Math.Max(0f, transition.DelaySec)
+                return transition.DelaySec
                     + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
             }
 
