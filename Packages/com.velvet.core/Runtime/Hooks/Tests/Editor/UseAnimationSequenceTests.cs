@@ -471,17 +471,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASpringToStepWithANegativeDelay_When_TimeStopsShortOfFramersDuration_Then_TheStepIsStillCurrent()
+        public void Given_ASpringToStepWithANegativeDelay_When_TimePassesTheDurationLessTheDelay_Then_TheNextStepIsCurrent()
         {
-            // Arrange — a play starts a spring with a negative delay at once, so the hold is the spring's alone.
-            s_steps = SpringThenB(Spring(100f, 10f, 1f, delaySec: -1f));
+            // Arrange
+            s_steps = SpringThenB(Spring(100f, 10f, 1f, delaySec: -0.4f));
             Mount();
 
             // Act
-            AdvanceTicks(TicksIn(1.05f) - 3);
+            AdvanceTicks(TicksIn(0.65f) + 4);
 
             // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
         }
 
         // Each parameter at zero and at infinity: a play warns and completes at once, so the step holds nothing.
