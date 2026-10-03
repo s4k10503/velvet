@@ -56,7 +56,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADeclaredMethod_When_TheLinkXmlIsRead_Then_ItKeepsThatMethod()
         {
-            // Arrange — no method is declared on main yet, so this one is built here through the private factory.
+            // Arrange
             var method = typeof(EngineMember).GetMethod("Method", BindingFlags.NonPublic | BindingFlags.Static)!;
             var member = (EngineMember)method.Invoke(null, new object[]
             {

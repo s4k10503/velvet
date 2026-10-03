@@ -98,7 +98,8 @@ assume either has happened — a first-run failure there is worse than either nu
 
 Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
 focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
-flag, UI Toolkit's internal property-change event, and the `@import`s of a stylesheet. `EngineMember`
+flag, UI Toolkit's internal property-change event, the `@import`s of a stylesheet, and the cached opacity
+and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid). `EngineMember`
 declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

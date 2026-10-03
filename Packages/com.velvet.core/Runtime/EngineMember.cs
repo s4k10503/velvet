@@ -22,6 +22,7 @@ namespace Velvet
         private const string VisualElementType = "UnityEngine.UIElements.VisualElement";
         private const string FocusableType = "UnityEngine.UIElements.Focusable";
         private const string StyleSheetType = "UnityEngine.UIElements.StyleSheet";
+        private const string ComputedStyleType = "UnityEngine.UIElements.ComputedStyle";
         private const string PseudoStatesType = "UnityEngine.UIElements.PseudoStates";
         private const string PseudoStatesShape = "enum:" + PseudoStatesType;
 
@@ -61,6 +62,30 @@ namespace Velvet
 
         internal static readonly EngineMember ImportedStyleSheet =
             Field(UIElements, StyleSheetType + "+ImportStruct", "styleSheet", StyleSheetType);
+
+        internal static readonly EngineMember ElementComputedStyle =
+            Field(UIElements, VisualElementType, "m_Style", ComputedStyleType);
+
+        internal static readonly EngineMember ComputedStyleMatchingRulesHash =
+            Field(UIElements, ComputedStyleType, "matchingRulesHash", "System.Int64");
+
+        internal static readonly EngineMember TryGetComputedStyle = Method(UIElements,
+            "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean", "System.Int64", ComputedStyleType + "&");
+
+        internal static readonly EngineMember ComputedStyleOpacity =
+            ReadProperty(UIElements, ComputedStyleType, "opacity", "System.Single");
+
+        internal static readonly EngineMember ComputedStyleTransitionProperty = ReadProperty(UIElements,
+            ComputedStyleType, "transitionProperty", "System.Collections.Generic.List`1[UnityEngine.UIElements.StylePropertyName]");
+
+        internal static readonly EngineMember ComputedStyleTransitionDuration = ReadProperty(UIElements,
+            ComputedStyleType, "transitionDuration", "System.Collections.Generic.List`1[UnityEngine.UIElements.TimeValue]");
+
+        internal static readonly EngineMember ComputedStyleTransitionDelay = ReadProperty(UIElements,
+            ComputedStyleType, "transitionDelay", "System.Collections.Generic.List`1[UnityEngine.UIElements.TimeValue]");
+
+        internal static readonly EngineMember ComputedStyleTransitionTimingFunction = ReadProperty(UIElements,
+            ComputedStyleType, "transitionTimingFunction", "System.Collections.Generic.List`1[UnityEngine.UIElements.EasingFunction]");
 
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
@@ -126,6 +151,8 @@ namespace Velvet
         internal PropertyInfo? ResolveProperty() => Resolve() as PropertyInfo;
 
         internal Type? ResolveType() => Resolve() as Type;
+
+        internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;
 
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
