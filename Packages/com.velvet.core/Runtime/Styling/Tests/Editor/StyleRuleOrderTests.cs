@@ -323,6 +323,116 @@ namespace Velvet.Tests
             Assert.That(writers, Is.Null);
         }
 
+        private static List<(long Key, ArbitraryStyle Style)>? CollectWriters(ArbitraryProperty property,
+            params string[] tokens)
+        {
+            var type = typeof(StyleArbitraryValueResolver).GetNestedType("LayerMap", BindingFlags.NonPublic)!;
+            var map = (Dictionary<ArbitraryProperty, SortedList<long, ArbitraryStyle>>)Activator.CreateInstance(type)!;
+            for (var index = 0; index < tokens.Length; index++)
+            {
+                StyleArbitraryValueResolver.TryParse(tokens[index], out var style);
+                if (!map.TryGetValue(style.Property, out var layers))
+                {
+                    layers = new SortedList<long, ArbitraryStyle>();
+                    map.Add(style.Property, layers);
+                }
+                layers.Add(index + 1, style);
+            }
+            var method = typeof(StyleArbitraryValueResolver).GetMethod("ConnectedWriters", BindingFlags.Static | BindingFlags.NonPublic)!;
+            return (List<(long Key, ArbitraryStyle Style)>?)method.Invoke(null, new object[] { property, map });
+        }
+
+        // GREEN_ON_BASE(characterization): the connected component already includes reverse-order transitive writers.
+        [Test]
+        public void Given_AReverseOrderedPaddingChain_When_CollectingConnectedWriters_Then_TheTransitiveWritersAreIncluded()
+        {
+            // Arrange
+            var tokens = new[] { "pb-[40px]", "py-[30px]", "px-[10px]", "w-[50px]", "pt-[5px]" };
+
+            // Act
+            var writers = CollectWriters(ArbitraryProperty.PaddingTop, tokens);
+            var roster = writers!.ConvertAll(writer => $"{writer.Key}:{writer.Style.Property}");
+            roster.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(roster, Is.EqualTo(new[] { "1:PaddingBottom", "2:PaddingY", "5:PaddingTop" }));
+        }
+
+        // GREEN_ON_BASE(characterization): overlapping shorthands already contribute one writer per property.
+        [Test]
+        public void Given_ACycleOfOverlappingPaddingWriters_When_CollectingConnectedWriters_Then_EachWriterAppearsOnce()
+        {
+            // Arrange
+            var tokens = new[] { "p-[20px]", "px-[10px]", "py-[30px]", "pt-[5px]", "w-[50px]" };
+
+            // Act
+            var writers = CollectWriters(ArbitraryProperty.PaddingTop, tokens);
+            var roster = writers!.ConvertAll(writer => $"{writer.Key}:{writer.Style.Property}");
+            roster.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(roster, Is.EqualTo(new[] { "1:Padding", "2:PaddingX", "3:PaddingY", "4:PaddingTop" }));
+        }
+
+        // GREEN_ON_BASE(characterization): collection already returns the highest layer's key and value.
+        [Test]
+        public void Given_MultipleLayersOfAConnectedWriter_When_CollectingConnectedWriters_Then_TheHighestLayerIsReturned()
+        {
+            // Arrange
+            var tokens = new[] { "p-[20px]", "pt-[5px]", "p-[40px]" };
+
+            // Act
+            var writers = CollectWriters(ArbitraryProperty.PaddingTop, tokens);
+            var roster = writers!.ConvertAll(writer => $"{writer.Key}:{writer.Style.Property}:{writer.Style.Value}");
+            roster.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(roster, Is.EqualTo(new[] { "2:PaddingTop:5", "3:Padding:40" }));
+        }
+
+        // GREEN_ON_BASE(characterization): equal-key, equal-breadth corner writers retain their discovery order.
+        [Test]
+        public void Given_EqualKeyAdjacentRadiusWriters_When_ResolvingAConnectedCorner_Then_EagerDiscoveryKeepsTheBottomWriterLast()
+        {
+            // Arrange
+            var element = new VisualElement();
+            foreach (var token in new[] { "rounded-l-[40px]", "rounded-b-[30px]", "rounded-r-[20px]", "rounded-t-[10px]" })
+            {
+                StyleArbitraryValueResolver.TryParse(token, out var style);
+                StyleArbitraryValueResolver.Apply(element, style, 1);
+            }
+            var map = LayerMap(element);
+            var method = typeof(StyleArbitraryValueResolver).GetMethod("ResolveSharedLonghands", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+            // Act
+            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRightRadius, map });
+
+            // Assert
+            Assert.That(element.style.borderBottomLeftRadius.value.value, Is.EqualTo(30f));
+        }
+
+        // GREEN_ON_BASE(characterization): the radius root already wins its equal-key, equal-breadth tie.
+        [Test]
+        public void Given_AnEqualKeyRadiusRootInsertedFirst_When_ResolvingItsLonghands_Then_TheRootIsReplayedLast()
+        {
+            // Arrange
+            var element = new VisualElement();
+            foreach (var token in new[] { "rounded-t-[10px]", "rounded-l-[40px]", "rounded-r-[20px]" })
+            {
+                StyleArbitraryValueResolver.TryParse(token, out var style);
+                StyleArbitraryValueResolver.Apply(element, style, 1);
+            }
+            var before = element.style.borderTopLeftRadius.value.value;
+            var map = LayerMap(element);
+            var method = typeof(StyleArbitraryValueResolver).GetMethod("ResolveSharedLonghands", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+            // Act
+            method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRadius, map });
+
+            // Assert
+            Assert.That(new[] { before, element.style.borderTopLeftRadius.value.value }, Is.EqualTo(new[] { 40f, 10f }));
+        }
+
         [TestCase("w-[20px]", false)]
         [TestCase("mt-[30px]", true)]
         public void Given_AHigherWriter_When_CheckingMarginOwnership_Then_ItOutranksOnlyWhatItWrites(string token, bool expected)

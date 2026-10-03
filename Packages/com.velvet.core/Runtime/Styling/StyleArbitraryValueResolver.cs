@@ -1502,21 +1502,27 @@ namespace Velvet
             LayerMap map)
         {
             var reached = StyleArbitraryLonghands.Of(property);
+            var remaining = new HashSet<ArbitraryProperty>(map.Keys);
+            remaining.Remove(property);
             HashSet<ArbitraryProperty>? taken = null;
-            var grew = true;
-            while (grew)
+            // MUTANT_SURVIVES(equivalent, boundary): each productive pass consumes a candidate;
+            // an extra pass cannot add a writer after the map-sized closure has finished.
+            for (var pass = 0; pass < map.Count; pass++)
             {
-                grew = false;
+                var previousCount = remaining.Count;
                 foreach (var pair in map)
                 {
                     var longhands = StyleArbitraryLonghands.Of(pair.Key);
-                    if (pair.Key == property || taken?.Contains(pair.Key) == true || !longhands.Overlaps(reached))
+                    if (!longhands.Overlaps(reached) || !remaining.Remove(pair.Key))
                     {
                         continue;
                     }
                     (taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key);
                     reached = reached.Union(longhands);
-                    grew = true;
+                }
+                if (remaining.Count == previousCount)
+                {
+                    break;
                 }
             }
             if (taken == null)
