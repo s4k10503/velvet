@@ -127,8 +127,6 @@ namespace Velvet
 
         internal Type? ResolveType() => Resolve() as Type;
 
-        internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;
-
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
