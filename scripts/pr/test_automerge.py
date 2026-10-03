@@ -314,12 +314,25 @@ class PullRequestSkipTests(unittest.TestCase):
 
 
 class MergeInvocationTests(unittest.TestCase):
-    def test_Given_NoToken_When_Run_Then_NothingIsReadOrMerged(self):
+    def test_Given_NoToken_When_AStandaloneMergeOrSweepRuns_Then_ConfigurationFailsBeforeReadingOrMerging(self):
         # Act
-        ran = Invocation({7: pull()}, event=completed(completed_run()), token="")
+        outcomes = []
+        for argv in [[], ["--number", "7"]]:
+            ran = Invocation({7: pull()}, event=completed(completed_run()), argv=argv, token="")
+            outcomes.append((ran.code, "::error::" in ran.printed, ran.read, ran.merged))
 
         # Assert
-        self.assertEqual((ran.code, ran.read, ran.merged), (0, [], []))
+        self.assertEqual(outcomes, [(1, True, [], []), (1, True, [], [])])
+
+    # GREEN_ON_BASE(characterization): a hand-off without a token already warns without failing its head check.
+    # Returning a failure instead of the `args.hand_off` exception makes this case fail.
+    def test_Given_NoToken_When_HandingOff_Then_TheHeadCheckWarnsWithoutReadingOrMerging(self):
+        # Act
+        ran = Invocation({7: pull()}, event=completed(completed_run()), argv=HAND_OFF, token="")
+
+        # Assert
+        self.assertEqual((ran.code, "::warning::" in ran.printed, ran.read, ran.merged),
+                         (0, True, [], []))
 
     def test_Given_ACompletedRunForALabelledPullRequest_When_Run_Then_SettleMergesItForReal(self):
         # Act
