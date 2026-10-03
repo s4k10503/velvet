@@ -1764,6 +1764,7 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.Opacity:
                     MotionOpacity.WriteTransitioned(element, StyleKeyword.Null);
+                    // MUTANT_SURVIVES(equivalent): opacity has no entry in the fallback setter tables ClearInline reads.
                     return true;
                 case ArbitraryProperty.AspectRatio:
                     ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
