@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -28,10 +29,10 @@ namespace Velvet
     /// define plus their arbitrary-value/spacing-scale equivalents in <see cref="StyleArbitraryValueResolver"/>.
     /// The color- and length-valued properties are recognized by <see cref="MotionPropertyClassParser"/> and
     /// carried in the same plan (see <see cref="SpringPlan.Colors"/> / <see cref="SpringPlan.Lengths"/>). A class
-    /// neither parser recognizes (a percentage-based translate like <c>translate-x-1/2</c>/<c>translate-x-full</c>,
-    /// a per-axis <c>scale-x-</c>/<c>scale-y-</c>, or anything outside the property parser's own documented
-    /// scope) is simply skipped: it still applies as a plain class (untouched by the class-swap step), it just is
-    /// not animated by the spring.
+    /// neither parser reads a magnitude from (a percentage-based translate like <c>translate-x-1/2</c>, a per-axis
+    /// <c>scale-x-</c>, <c>rounded-full</c>, or anything outside the property parser's own documented scope) is
+    /// not animated, and where it is the token the cascade lets hold a slot, that slot is not animated from the
+    /// other tokens on its side either — see <see cref="Claim"/>.
     /// </remarks>
     internal static class MotionSpringClassParser
     {
@@ -206,21 +207,27 @@ namespace Velvet
 
             var plan = new SpringPlan();
             PairProperties(from.Properties, to.Properties, ref plan);
-            if (from.Opacity.HasValue || to.Opacity.HasValue)
+            if (Names(in from, in to, from.Opacity, to.Opacity, ArbitraryProperty.Opacity))
             {
                 plan.Opacity = (from.Opacity ?? 1f, to.Opacity ?? 1f);
             }
             PairTranslate(in from, in to, restingTranslateX, restingTranslateY, ref plan);
-            if (from.Scale.HasValue || to.Scale.HasValue)
+            if (Names(in from, in to, from.Scale, to.Scale, ArbitraryProperty.Scale))
             {
                 plan.Scale = (from.Scale ?? 1f, to.Scale ?? 1f);
             }
-            if (from.Rotate.HasValue || to.Rotate.HasValue)
+            if (Names(in from, in to, from.Rotate, to.Rotate, ArbitraryProperty.Rotate))
             {
                 plan.Rotate = (from.Rotate ?? 0f, to.Rotate ?? 0f);
             }
             return plan;
         }
+
+        // Whether an axis takes a channel: some side names it, and neither side's holder of it is a token no
+        // magnitude can be read from, whose value the identity fallback would only stand in for.
+        private static bool Names(in SideScan from, in SideScan to, float? fromValue, float? toValue,
+            ArbitraryProperty axis)
+            => (fromValue.HasValue || toValue.HasValue) && !from.HeldUnread(axis) && !to.HeldUnread(axis);
 
         // Resolve runs on every variant play, so this stays a struct passed by in: neither per-call scan may
         // reach the heap.
@@ -232,6 +239,11 @@ namespace Velvet
             public float? Scale { get; init; }
             public float? Rotate { get; init; }
             public Dictionary<ArbitraryProperty, ArbitraryStyle>? Properties { get; init; }
+
+            // One bit per axis, at the axis's position in s_slots, for an axis held by an unreadable token.
+            public int UnreadAxes { get; init; }
+
+            public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
         }
 
         // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
@@ -243,8 +255,8 @@ namespace Velvet
         private static void PairTranslate(in SideScan from, in SideScan to,
             float restingTranslateX, float restingTranslateY, ref SpringPlan plan)
         {
-            var xNamed = from.TranslateX.HasValue || to.TranslateX.HasValue;
-            var yNamed = from.TranslateY.HasValue || to.TranslateY.HasValue;
+            var xNamed = Names(in from, in to, from.TranslateX, to.TranslateX, ArbitraryProperty.TranslateX);
+            var yNamed = Names(in from, in to, from.TranslateY, to.TranslateY, ArbitraryProperty.TranslateY);
             if (!xNamed && !yNamed)
             {
                 return;
@@ -258,15 +270,13 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Turns the two sides' property tables into channels. A property BOTH sides name becomes a channel; a
-        /// property only one side names does not. Unlike the five fixed axes there is no identity value to
-        /// substitute for the silent side — "no background color declared" is not the same statement as
-        /// "transparent", and a length has no neutral magnitude at all — so a one-sided property falls back to
-        /// the plain class swap, which lands it instantly. A length pair whose two sides carry DIFFERENT units
-        /// falls back the same way: a percentage resolves against a laid-out parent this path cannot consult, so
-        /// there is no common space to interpolate a px↔% pair in.
-        /// A shorthand and one of its own longhands in the same delta drop BOTH — see
-        /// <see cref="DropOverlappingProperties"/>.
+        /// Turns the two sides' property tables into channels. A slot BOTH sides name becomes a channel; a slot
+        /// only one side names does not. Unlike the five fixed axes there is no identity value to substitute for
+        /// the silent side — "no background color declared" is not the same statement as "transparent", and a
+        /// length has no neutral magnitude at all — so a one-sided slot falls back to the plain class swap, which
+        /// lands it instantly. A length pair whose two sides carry DIFFERENT units falls back the same way: a
+        /// percentage resolves against a laid-out parent this path cannot consult, so there is no common space to
+        /// interpolate a px↔% pair in.
         /// </summary>
         private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
@@ -275,35 +285,20 @@ namespace Velvet
             {
                 return;
             }
-            HashSet<ArbitraryProperty>? paired = null;
             foreach (var (property, from) in fromProperties)
             {
                 if (!toProperties.TryGetValue(property, out var to))
                 {
                     continue;
                 }
-                // A length pair whose sides disagree on unit cannot animate, so it never counts as paired —
-                // which is also what makes an overlapping partner fall out below instead of half-driving a slot.
-                if (!MotionPropertyClassParser.IsColor(property) && from.Unit != to.Unit)
-                {
-                    continue;
-                }
-                (paired ??= new HashSet<ArbitraryProperty>()).Add(property);
-            }
-            if (paired == null)
-            {
-                return;
-            }
-            DropOverlappingProperties(paired, fromProperties, toProperties);
-
-            foreach (var property in paired)
-            {
-                var from = fromProperties[property];
-                var to = toProperties[property];
                 if (MotionPropertyClassParser.IsColor(property))
                 {
                     (plan.Colors ??= new List<ColorChannelPlan>())
                         .Add(new ColorChannelPlan(property, from.Color, to.Color));
+                    continue;
+                }
+                if (from.Unit != to.Unit)
+                {
                     continue;
                 }
                 (plan.Lengths ??= new List<LengthChannelPlan>())
@@ -311,105 +306,300 @@ namespace Velvet
             }
         }
 
-        /// <summary>
-        /// Removes from <paramref name="paired"/> every property sharing a style slot with another property the
-        /// delta names — a shorthand meeting one of its own longhands (<c>p-8</c> beside <c>pt-2</c>).
-        /// </summary>
-        /// <remarks>
-        /// Channels are keyed by property, so a shorthand and a longhand are otherwise independent, and both
-        /// would drive the slot they share: one side naming only the longhand leaves the shorthand animating
-        /// toward a value the cascade overrules at the end of every play, and both sides naming both leaves the
-        /// in-flight winner decided by the order the channels are visited.
-        /// <para>
-        /// Ordering the writes cannot fix this, because the winner they would have to agree with is not
-        /// derivable from the properties alone. For preset utilities it is stylesheet declaration order, which
-        /// the class strings do not carry. For bracket-form tokens it is not declaration order at all but class-array
-        /// position, since inline-resolved tokens apply in sequence and the last one holds the slot. And the
-        /// four radius half-shorthands write two slots each AND overlap pairwise, so a slot-count key cannot
-        /// even order them against each other. Reproducing all three rules means a hand-maintained declaration
-        /// table that would itself drift against the stylesheets.
-        /// </para>
-        /// <para>
-        /// The whole overlapping group is therefore dropped and lands with the class swap, which is always the
-        /// value the cascade resolves. Only properties this parser RECOGNIZES take part: a longhand it cannot
-        /// read a magnitude from (<c>rounded-tl-full</c> beside <c>rounded-3xl</c>) is invisible here, so the
-        /// shorthand still drives the slot the longhand owns at rest — documented in the motion guide rather
-        /// than guessed at.
-        /// </para>
-        /// </remarks>
-        private static void DropOverlappingProperties(HashSet<ArbitraryProperty> paired,
-            Dictionary<ArbitraryProperty, ArbitraryStyle> fromProperties,
-            Dictionary<ArbitraryProperty, ArbitraryStyle> toProperties)
+        #region Which token holds each slot
+
+        // The slots a side's tokens contend for: the five axes, and every drivable property no other drivable
+        // property writes a strict part of. A shorthand is spread over the longhand slots it writes, so a
+        // shorthand and its own longhand contend slot by slot rather than as two channels driving one slot.
+        private static readonly ArbitraryProperty[] s_slots = BuildSlots();
+
+        // The position of each property in s_slots, or -1 for a property that is not a slot.
+        private static readonly int[] s_slotIndex = BuildSlotIndex();
+
+        // The claims of the side being scanned, indexed like s_slots. Shared across calls, so Resolve must not run
+        // on two threads at once; it scans one side at a time and copies what it needs out before the next scan
+        // clears this.
+        private static readonly SlotClaim[] s_claims = new SlotClaim[s_slots.Length];
+
+        // MotionSlotCascadeTests pins the ordering between inline, stylesheet and per-axis scale holders.
+        private const long InlineRank = 1L << 40;
+        private const long AxisScaleRank = 2L << 40;
+
+        // The token holding one slot on one side: its precedence, and what it reads as when a magnitude can be
+        // read from it at all. An unreadable holder still holds the slot, so a token it outranks is not used.
+        private struct SlotClaim
         {
-            List<ArbitraryProperty>? overlapping = null;
-            foreach (var property in paired)
-            {
-                if (OverlapsAnotherNamedProperty(property, fromProperties)
-                    || OverlapsAnotherNamedProperty(property, toProperties))
-                {
-                    (overlapping ??= new List<ArbitraryProperty>()).Add(property);
-                }
-            }
-            if (overlapping == null)
-            {
-                return;
-            }
-            foreach (var property in overlapping)
-            {
-                paired.Remove(property);
-            }
+            public bool Claimed;
+            public long Precedence;
+            public bool Readable;
+            public ArbitraryStyle Value;
         }
 
-        private static bool OverlapsAnotherNamedProperty(ArbitraryProperty property,
-            Dictionary<ArbitraryProperty, ArbitraryStyle> named)
+        private static ArbitraryProperty[] BuildSlots()
         {
-            foreach (var other in named.Keys)
+            var slots = new List<ArbitraryProperty>
             {
-                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                ArbitraryProperty.Opacity, ArbitraryProperty.TranslateX, ArbitraryProperty.TranslateY,
+                ArbitraryProperty.Scale, ArbitraryProperty.Rotate,
+            };
+            var drivable = new List<ArbitraryProperty>();
+            foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
+            {
+                if (MotionPropertyClassParser.IsDrivable(property))
                 {
-                    return true;
+                    drivable.Add(property);
                 }
             }
-            return false;
+            foreach (var property in drivable)
+            {
+                var written = StyleArbitraryLonghands.Of(property);
+                var minimal = true;
+                foreach (var other in drivable)
+                {
+                    var part = StyleArbitraryLonghands.Of(other);
+                    // MUTANT_SURVIVES(equivalent, clause removed): removing part != written cannot admit an equal mask;
+                    // MotionSlotCascadeTests pins distinct nonempty masks for the drivable properties.
+                    if (other != property && part != written && IsSubset(part, written))
+                    {
+                        minimal = false;
+                        break;
+                    }
+                }
+                if (minimal)
+                {
+                    slots.Add(property);
+                }
+            }
+            return slots.ToArray();
         }
+
+        private static int[] BuildSlotIndex()
+        {
+            var index = new int[Enum.GetValues(typeof(ArbitraryProperty)).Length];
+            // MUTANT_SURVIVES(equivalent, line removed): deleting this fill changes only non-slot entries. Both readers
+            // (HeldUnread and AxisValue) receive the five axes, whose entries the loop overwrites.
+            Array.Fill(index, -1);
+            for (var i = 0; i < s_slots.Length; i++)
+            {
+                index[(int)s_slots[i]] = i;
+            }
+            return index;
+        }
+
+        private static bool IsSubset(StyleLonghandSet part, StyleLonghandSet whole) => part.Union(whole) == whole;
 
         private static SideScan Scan(string[]? classes)
         {
-            float? opacity = null, translateX = null, translateY = null, scale = null, rotate = null;
-            Dictionary<ArbitraryProperty, ArbitraryStyle>? properties = null;
+            var claims = s_claims;
+            Array.Clear(claims, 0, claims.Length);
             if (classes != null)
             {
-                foreach (var cls in classes)
+                var important = CollectImportant(classes);
+                for (var i = 0; i < classes.Length; i++)
                 {
-                    if (!TryParseAxisValue(cls, out var axis, out var value))
-                    {
-                        // Later classes win, mirroring the CSS cascade: two utilities on the same property in
-                        // one variant resolve to the last one, exactly as the class list itself would.
-                        if (MotionPropertyClassParser.TryParse(cls, out var style))
-                        {
-                            (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
-                        }
-                        continue;
-                    }
-                    switch (axis)
-                    {
-                        case SpringAxis.Opacity: opacity = value; break;
-                        case SpringAxis.TranslateX: translateX = value; break;
-                        case SpringAxis.TranslateY: translateY = value; break;
-                        case SpringAxis.Scale: scale = value; break;
-                        case SpringAxis.Rotate: rotate = value; break;
-                    }
+                    Claim(classes[i], i, claims, in important);
+                }
+            }
+
+            Dictionary<ArbitraryProperty, ArbitraryStyle>? properties = null;
+            for (var i = AxisSlotCount; i < claims.Length; i++)
+            {
+                if (claims[i].Readable)
+                {
+                    (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[s_slots[i]] = claims[i].Value;
+                }
+            }
+            var unreadAxes = 0;
+            // MUTANT_SURVIVES(equivalent, boundary): <= adds only bit 5, while HeldUnread reads axis bits 0..4.
+            // The nonempty drivable map has a minimal property after those axes, so claims[5] exists.
+            for (var i = 0; i < AxisSlotCount; i++)
+            {
+                if (claims[i].Claimed && !claims[i].Readable)
+                {
+                    unreadAxes |= 1 << i;
                 }
             }
             return new SideScan
             {
-                Opacity = opacity,
-                TranslateX = translateX,
-                TranslateY = translateY,
-                Scale = scale,
-                Rotate = rotate,
+                Opacity = AxisValue(claims, ArbitraryProperty.Opacity),
+                TranslateX = AxisValue(claims, ArbitraryProperty.TranslateX),
+                TranslateY = AxisValue(claims, ArbitraryProperty.TranslateY),
+                Scale = AxisValue(claims, ArbitraryProperty.Scale),
+                Rotate = AxisValue(claims, ArbitraryProperty.Rotate),
                 Properties = properties,
+                UnreadAxes = unreadAxes,
             };
         }
+
+        // The five axes lead s_slots.
+        private const int AxisSlotCount = 5;
+
+        private static float? AxisValue(SlotClaim[] claims, ArbitraryProperty axis)
+        {
+            var claim = claims[s_slotIndex[(int)axis]];
+            return claim.Readable ? claim.Value.Value : null;
+        }
+
+        private readonly struct ImportantClaims
+        {
+            public StyleLonghandSet All { get; init; }
+            public StyleLonghandSet Classes { get; init; }
+            public HashSet<ArbitraryProperty>? InlineProperties { get; init; }
+        }
+
+        private static ImportantClaims CollectImportant(string[] classes)
+        {
+            var all = StyleLonghandSet.Empty;
+            var fromClasses = StyleLonghandSet.Empty;
+            HashSet<ArbitraryProperty>? inlineProperties = null;
+            for (var i = 0; i < classes.Length; i++)
+            {
+                if (string.IsNullOrEmpty(classes[i])
+                    || !TryRank(classes[i], i, out var token)
+                    || !token.Important)
+                {
+                    continue;
+                }
+                all = all.Union(token.Written);
+                if (token.InlineProperty is { } property)
+                {
+                    (inlineProperties ??= new HashSet<ArbitraryProperty>()).Add(property);
+                }
+                else
+                {
+                    fromClasses = fromClasses.Union(token.Written);
+                }
+            }
+            return new ImportantClaims { All = all, Classes = fromClasses, InlineProperties = inlineProperties };
+        }
+
+        // An inline token covered across properties may be floored by an existing projection. The plan has
+        // no element to inspect, so a winning token with that ambiguity must leave its slot undriven.
+        private enum Standing { Stands, TakenOut, Undecided }
+
+        private static Standing StandingOf(bool isImportant, StyleLonghandSet written, ArbitraryProperty? inline,
+            in ImportantClaims important)
+        {
+            // MUTANT_SURVIVES(equivalent, clause removed): dropping All.IsEmpty leaves nonempty masks outside its subset;
+            // an empty mask can change standing but Claim writes no slot from it.
+            if (isImportant || important.All.IsEmpty || !IsSubset(written, important.All))
+            {
+                return Standing.Stands;
+            }
+            if (inline is not { } property || IsSubset(written, important.Classes)
+                // MUTANT_SURVIVES(equivalent, literal): changing the null default cannot change this answer. A null
+                // inline set means All == Classes, so the preceding subset clause already returns TakenOut.
+                || (important.InlineProperties?.Contains(property) ?? false))
+            {
+                return Standing.TakenOut;
+            }
+            return Standing.Undecided;
+        }
+
+        private static void Claim(string className, int index, SlotClaim[] claims, in ImportantClaims important)
+        {
+            if (string.IsNullOrEmpty(className)
+                || !TryRank(className, index, out var token))
+            {
+                return;
+            }
+            var standing = StandingOf(token.Important, token.Written, token.InlineProperty, in important);
+            if (standing == Standing.TakenOut)
+            {
+                return;
+            }
+            var hasAxisValue = TryParseAxisValue(className, out var readAxis, out var axisValue);
+            var property = default(ArbitraryStyle);
+            var hasProperty = !hasAxisValue && MotionPropertyClassParser.TryParse(className, out property);
+            for (var i = 0; i < claims.Length; i++)
+            {
+                var slot = s_slots[i];
+                var slotLonghands = StyleArbitraryLonghands.Of(slot);
+                var writes = token.TranslateAxis is { } sole ? slot == sole : slotLonghands.Overlaps(token.Written);
+                // MUTANT_SURVIVES(equivalent, boundary): >= differs only on ties. Stylesheet positions come from
+                // the generator's growing entry count; inline bands add unique nonnegative int indices and
+                // are disjoint from that int count and one another. No rank is clamped. Ties are repeated
+                // stripped stylesheet names with the same read; a plain/important pair is taken out first.
+                if (!writes || (claims[i].Claimed && claims[i].Precedence > token.Precedence))
+                {
+                    continue;
+                }
+                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence };
+                if (standing == Standing.Undecided)
+                {
+                    continue;
+                }
+                // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
+                // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
+                if (hasAxisValue && slot == AxisSlot(readAxis))
+                {
+                    claims[i].Readable = true;
+                    claims[i].Value = new ArbitraryStyle(slot, axisValue, LengthUnit.Pixel);
+                }
+                else if (hasProperty && i >= AxisSlotCount
+                    && IsSubset(slotLonghands, StyleArbitraryLonghands.Of(property.Property)))
+                {
+                    claims[i].Readable = true;
+                    claims[i].Value = MotionPropertyClassParser.IsColor(slot)
+                        ? new ArbitraryStyle(slot, property.Color)
+                        : new ArbitraryStyle(slot, property.Value, property.Unit);
+                }
+            }
+        }
+
+        private readonly struct RankedToken
+        {
+            public long Precedence { get; init; }
+            public StyleLonghandSet Written { get; init; }
+            public ArbitraryProperty? TranslateAxis { get; init; }
+            public bool Important { get; init; }
+            public ArbitraryProperty? InlineProperty { get; init; }
+        }
+
+        private static bool TryRank(string className, int index, out RankedToken token)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
+            if (StyleArbitraryValueResolver.IsInlineResolved(core) && StyleArbitraryValueResolver.TryParse(core, out var inline))
+            {
+                var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
+                token = new RankedToken
+                {
+                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + index,
+                    Written = StyleArbitraryLonghands.Of(inline.Property),
+                    TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY
+                        ? inline.Property : null,
+                    Important = important,
+                    InlineProperty = inline.Property,
+                };
+                return true;
+            }
+            if (StyleUtilityProperties.TryGet(core, out var rule) && rule.Gate == StyleUtilityGate.None)
+            {
+                token = new RankedToken
+                {
+                    Precedence = rule.CascadePosition,
+                    Written = rule.Properties,
+                    Important = important,
+                };
+                return true;
+            }
+            token = default;
+            // MUTANT_SURVIVES(equivalent, literal): true still returns an empty Written mask and no TranslateAxis.
+            // CollectImportant skips its false Important flag, and Claim cannot write any slot.
+            return false;
+        }
+
+#pragma warning disable CS8524 // no discard arm: a new axis has to name its slot
+        private static ArbitraryProperty AxisSlot(SpringAxis axis) => axis switch
+        {
+            SpringAxis.Opacity => ArbitraryProperty.Opacity,
+            SpringAxis.TranslateX => ArbitraryProperty.TranslateX,
+            SpringAxis.TranslateY => ArbitraryProperty.TranslateY,
+            SpringAxis.Scale => ArbitraryProperty.Scale,
+            SpringAxis.Rotate => ArbitraryProperty.Rotate,
+        };
+#pragma warning restore CS8524
+
+        #endregion
     }
 }

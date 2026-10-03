@@ -7,6 +7,7 @@ using Mono.Cecil.Cil;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -763,9 +764,8 @@ namespace Velvet.Tests
                 + "filter applied there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(characterization): the bundled sheets declare no member of these families but one.
-        // What shows the case can fail is adding a `divide-dashed` entry to StyleUtilityProperties.g.cs:
-        // measured, that token then joins the bare marker on the answering side.
+        // GREEN_ON_BASE(construction): the base reads its own generated table; adding a `divide-dashed`
+        // entry with a nonempty property set would make this guard fail.
         [Test]
         public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()
         {
@@ -776,12 +776,10 @@ namespace Velvet.Tests
             // member answers rather than only on the members a case happened to name. The bare grid marker
             // is the one that does declare a property; what keeps the append clear of the count it feeds is
             // the marker's own case above.
-            var byClassName = (Dictionary<string, int>)typeof(StyleUtilityProperties)
-                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!
-                .GetValue(null)!;
+            var classNames = StyleUtilityTableProbe.ClassNames();
 
             // Act
-            var declaring = byClassName.Keys
+            var declaring = classNames
                 .Where(cls => StyleClipPathClass.IsClipPathClass(cls)
                     || StyleGapClass.IsGapToken(cls)
                     || StyleGridClass.IsGridToken(cls)
