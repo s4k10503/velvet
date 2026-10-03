@@ -306,7 +306,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state)),
-            ("checks", lambda _project, sha, *_: by_sha[sha].results),
+            ("checks", lambda _project, sha, *_, **__: by_sha[sha].results),
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
                 run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
@@ -1026,7 +1026,7 @@ class RetirementTests(unittest.TestCase):
 
 
 @contextlib.contextmanager
-def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
+def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None):
     """A head read over REST: its check runs, its workflow runs, and nothing else blocking it.
 
     Patched at `rest_json`, so `checks` and `campaign_runs` both run.
@@ -1035,7 +1035,8 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
                                   merge_state="clean", fork=False, labels=frozenset(labels),
                                   state="open")
     answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
-               "/status": NO_STATUSES,
+               "/status": NO_STATUSES if statuses is None else statuses,
+               "/jobs": {"total_count": 0, "jobs": []},
                "/actions/runs": {"total_count": len(workflow_runs), "workflow_runs": workflow_runs}}
     with contextlib.ExitStack() as stack:
         for name, answer in (
@@ -1052,6 +1053,59 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,)):
 def check_run(name, conclusion, suite):
     return {"name": name, "status": "completed", "conclusion": conclusion,
             "check_suite": {"id": suite}}
+
+
+class CampaignDisplayMergeTests(unittest.TestCase):
+    def decide(self, runs, state, labels=(AUTOMERGE,), context="Mutation campaign", checks=()):
+        statuses = {"total_count": 1, "statuses": [{"context": context, "state": state}]}
+        with rest_readings([check_run("Required checks (Unity)", "success", 7), *checks],
+                           runs, labels=labels, statuses=statuses):
+            return settle.blocking_reasons(Path("."), 1).reasons
+
+    def test_Given_AuthoritativeCampaignSuccess_When_TheDisplayIsStalePendingOrError_Then_ItAddsNoMergeGate(self):
+        # Act
+        outcomes = [self.decide(CAMPAIGN_PASSED, state) for state in ["pending", "error"]]
+
+        # Assert
+        self.assertEqual(outcomes, [[], []])
+
+    def test_Given_NoCampaignIsRequired_When_TheDisplayIsStale_Then_ManualMergingIsNotDelayed(self):
+        # Act
+        outcomes = [self.decide(runs, "pending", labels=())
+                    for runs in [[], [campaign_run(1, "cancelled")]]]
+
+        # Assert
+        self.assertEqual(outcomes, [[], []])
+
+    # GREEN_ON_BASE(characterization): the base already reads campaign policy independently.
+    # Removing the `owed_campaign` argument from `reasons_from` shows these green displays cannot sign off a merge.
+    def test_Given_ARequiredCampaignMissingFailedOrRunning_When_TheDisplayIsGreen_Then_TheRawRunStillRefusesIt(self):
+        # Act
+        outcomes = [bool(self.decide(runs, "success")) for runs in
+                    [[], [campaign_run(1, "failure")], [campaign_run(1, None, status="in_progress")]]]
+
+        # Assert
+        self.assertEqual(outcomes, [True, True, True])
+
+    # GREEN_ON_BASE(characterization): the base refuses an unreadable campaign before deciding a merge.
+    # Replacing an unreadable `campaign_runs` reading with an empty list makes this case fail.
+    def test_Given_AnUnreadableCampaign_When_TheDisplayIsGreen_Then_NoMergeDecisionIsInvented(self):
+        # Arrange
+        statuses = {"total_count": 1, "statuses": [{"context": "Mutation campaign", "state": "success"}]}
+
+        # Act / Assert
+        with rest_readings([], [], statuses=statuses), mock.patch.object(settle, "campaign_runs", side_effect=RuntimeError):
+            self.assertRaises(RuntimeError, settle.blocking_reasons, Path("."), 1)
+
+    # GREEN_ON_BASE(characterization): real checks and unrelated statuses already gate merging.
+    # Filtering the display name out of both REST surfaces instead of only legacy statuses makes this case fail.
+    def test_Given_ARealCheckRunOrAnotherContext_When_TheCampaignPassed_Then_TheirFailureStillBlocksMerging(self):
+        # Act
+        other = self.decide(CAMPAIGN_PASSED, "pending", context="Other")
+        real = self.decide(CAMPAIGN_PASSED, "success", checks=[check_run("Mutation campaign", "failure", 1)])
+
+        # Assert
+        self.assertEqual((bool(other), bool(real)), (True, True))
 
 
 class CampaignMergeTests(unittest.TestCase):
@@ -1588,7 +1642,7 @@ class RedBaseMergeTests(unittest.TestCase):
             for name, answer in (
                 ("repository", lambda *_: "owner/name"),
                 ("pull_request", lambda *_: state),
-                ("checks", lambda *_: PASSING),
+                ("checks", lambda *_, **__: PASSING),
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),

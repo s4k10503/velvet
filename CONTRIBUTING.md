@@ -967,6 +967,15 @@ once review has settled, and remove it to hold the pull request. Labelling takes
 above, so only an account holding that can opt a pull request in. The workflow does not create the
 label; it has to exist in the repository.
 
+The `Mutation campaign` commit status shows pending while a labelled head awaits its campaign and
+while the newest campaign runs, including a re-run on the same commit. The default-branch
+`campaign-status.yml` publisher validates the current pull request head and newest run before
+reporting its result; an older completion cannot clear a newer pending run. This display does not
+replace the campaign run verdict that `settle.py` requires. After independently reading that verdict,
+`settle.py` ignores this legacy display status so reporting latency adds no merge gate; real check
+runs and other statuses still gate merging. Removing the label clears an unstarted
+or cancelled campaign's display requirement; a failed campaign still blocks that head.
+
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
 reopening a labelled pull request, pushing to one, and a `pull_request` run of `Test` passing on a
 labelled one's head. `scripts/pr/automerge.py` then reads the head's
