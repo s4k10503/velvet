@@ -315,7 +315,7 @@ namespace Velvet.Tests
             Assert.That((plan.Scale?.to, settled.keyword), Is.EqualTo(((float?)1.5f, StyleKeyword.Null)));
         }
 
-        // GREEN_ON_BASE(characterization): equal-importance inline writes already follow class order;
+        // GREEN_ON_BASE(characterization): same-property inline writes of equal importance follow class order;
         // adding important ranks must preserve that order within the band.
         [TestCase(false)]
         [TestCase(true)]
