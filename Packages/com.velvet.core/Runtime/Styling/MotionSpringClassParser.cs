@@ -357,6 +357,8 @@ namespace Velvet
                 foreach (var other in drivable)
                 {
                     var part = StyleArbitraryLonghands.Of(other);
+                    // MUTANT_SURVIVES(equivalent, clause removed): removing part != written cannot admit an equal mask;
+                    // MotionSlotCascadeTests pins distinct nonempty masks for the drivable properties.
                     if (other != property && part != written && IsSubset(part, written))
                     {
                         minimal = false;
@@ -374,6 +376,8 @@ namespace Velvet
         private static int[] BuildSlotIndex()
         {
             var index = new int[Enum.GetValues(typeof(ArbitraryProperty)).Length];
+            // MUTANT_SURVIVES(equivalent, line removed): deleting this fill changes only non-slot entries. Both readers
+            // (HeldUnread and AxisValue) receive the five axes, whose entries the loop overwrites.
             Array.Fill(index, -1);
             for (var i = 0; i < s_slots.Length; i++)
             {
@@ -406,6 +410,8 @@ namespace Velvet
                 }
             }
             var unreadAxes = 0;
+            // MUTANT_SURVIVES(equivalent, boundary): <= adds only bit 5, while HeldUnread reads axis bits 0..4.
+            // The nonempty drivable map has a minimal property after those axes, so claims[5] exists.
             for (var i = 0; i < AxisSlotCount; i++)
             {
                 if (claims[i].Claimed && !claims[i].Readable)
@@ -474,11 +480,15 @@ namespace Velvet
         private static Standing StandingOf(bool isImportant, StyleLonghandSet written, ArbitraryProperty? inline,
             in ImportantClaims important)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): dropping All.IsEmpty leaves nonempty masks outside its subset;
+            // an empty mask can change standing but Claim writes no slot from it.
             if (isImportant || important.All.IsEmpty || !IsSubset(written, important.All))
             {
                 return Standing.Stands;
             }
             if (inline is not { } property || IsSubset(written, important.Classes)
+                // MUTANT_SURVIVES(equivalent, literal): changing the null default cannot change this answer. A null
+                // inline set means All == Classes, so the preceding subset clause already returns TakenOut.
                 || (important.InlineProperties?.Contains(property) ?? false))
             {
                 return Standing.TakenOut;
@@ -506,6 +516,10 @@ namespace Velvet
                 var slot = s_slots[i];
                 var slotLonghands = StyleArbitraryLonghands.Of(slot);
                 var writes = token.TranslateAxis is { } sole ? slot == sole : slotLonghands.Overlaps(token.Written);
+                // MUTANT_SURVIVES(equivalent, boundary): >= differs only on ties. Stylesheet positions come from
+                // the generator's growing entry count; inline bands add unique nonnegative int indices and
+                // are disjoint from that int count and one another. No rank is clamped. Ties are repeated
+                // stripped stylesheet names with the same read; a plain/important pair is taken out first.
                 if (!writes || (claims[i].Claimed && claims[i].Precedence > token.Precedence))
                 {
                     continue;
@@ -515,6 +529,8 @@ namespace Velvet
                 {
                     continue;
                 }
+                // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
+                // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
                 if (hasAxisValue && slot == AxisSlot(readAxis))
                 {
                     claims[i].Readable = true;
@@ -568,6 +584,8 @@ namespace Velvet
                 return true;
             }
             token = default;
+            // MUTANT_SURVIVES(equivalent, literal): true still returns an empty Written mask and no TranslateAxis.
+            // CollectImportant skips its false Important flag, and Claim cannot write any slot.
             return false;
         }
 

@@ -199,6 +199,59 @@ namespace Velvet.Tests
             Assert.That((plan.TranslateX?.to, plan.TranslateY?.to), Is.EqualTo(((float?)16f, (float?)8f)));
         }
 
+        [TestCase("scale-x-[.5]")]
+        [TestCase("scale-y-[.5]")]
+        public void Given_APerAxisScaleOnTheLeavingSide_When_Resolved_Then_OnlyTheUniformControlHasAScaleChannel(string layer)
+        {
+            // Arrange
+            var from = new[] { "scale-[2]", layer };
+            var to = new[] { "scale-[1]" };
+
+            // Act
+            var control = MotionSpringClassParser.Resolve(new[] { "scale-[2]" }, to);
+            var plan = MotionSpringClassParser.Resolve(from, to);
+
+            // Assert
+            Assert.That((control.Scale?.to, plan.Scale.HasValue), Is.EqualTo(((float?)1f, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the old numeric reader ignores gated stylesheet classes;
+        // assigning cascade ranks must preserve that omission.
+        [Test]
+        public void Given_AGatedScaleRuleBesideAPlainOne_When_Resolved_Then_OnlyThePlainRuleSelectsTheTarget()
+        {
+            // Arrange
+            const string gatedClass = "active-scale-95";
+            var exists = StyleUtilityProperties.TryGet(gatedClass, out var rule);
+            var to = new[] { "scale-150", gatedClass };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-50" }, to);
+
+            // Assert
+            Assert.That((exists, rule.Gate, plan.Scale?.to),
+                Is.EqualTo((true, StyleUtilityGate.Active, (float?)1.5f)));
+        }
+
+        // GREEN_ON_BASE(construction): the base compares its own drivable map; replacing Height's
+        // mask with `StyleArbitraryLonghands.Of(ArbitraryProperty.Width)` would introduce an alias.
+        [Test]
+        public void Given_TheDrivableProperties_When_TheirLonghandMasksAreGrouped_Then_TheirMasksAreNonemptyAndDistinct()
+        {
+            // Arrange
+            var properties = System.Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>()
+                .Distinct().Where(MotionPropertyClassParser.IsDrivable).ToArray();
+
+            // Act
+            var empty = properties.Where(property => StyleArbitraryLonghands.Of(property).IsEmpty);
+            var aliases = properties.GroupBy(StyleArbitraryLonghands.Of).Where(group => group.Count() > 1)
+                .Select(group => string.Join(",", group));
+
+            // Assert
+            Assert.That((properties.Length > 0, string.Join(" ", empty), string.Join(" ", aliases)),
+                Is.EqualTo((true, string.Empty, string.Empty)));
+        }
+
         private static string Lengths(MotionSpringClassParser.SpringPlan plan)
             => string.Join(" ", (plan.Lengths ?? new List<MotionSpringClassParser.LengthChannelPlan>())
                 .Select(channel => $"{channel.Property}:{channel.From}->{channel.To}")
