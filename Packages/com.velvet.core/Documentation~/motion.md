@@ -251,7 +251,7 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
-  rest. Important tokens suppress plain tokens they fully cover; important inline tokens of the same
+  rest. Important stylesheet utilities suppress plain tokens they fully cover; important inline tokens of the same
   property outrank plain ones. Among the surviving inline-resolved tokens (bracket forms, `-mt-2`,
   `translate-x-4`), the later write holds the slot, including across a shorthand and its longhand.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities

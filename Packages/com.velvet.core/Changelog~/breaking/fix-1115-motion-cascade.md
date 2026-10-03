@@ -5,8 +5,9 @@
   longhands (`p-8 pt-2`, `size-8 w-20`, `rounded-3xl rounded-tl-lg`) animates each slot both sides name
   toward its own holder; both classes used to land instantly with the swap. Two stylesheet utilities on one slot
   (`opacity-50 opacity-20`) animate toward the one the stylesheet declares later rather than the later
-  one in the class string. Important tokens suppress fully covered plain tokens; surviving inline
-  tokens take their slots over stylesheet utilities, with later writes deciding across a shorthand
+  one in the class string. Important stylesheet utilities suppress fully covered plain tokens;
+  important inline tokens outrank plain tokens of the same property. Surviving inline tokens take
+  their slots over stylesheet utilities, with later writes deciding across a shorthand
   and its longhand. These conflicts used to animate
   toward the later class in the string and jump to the cascade's value when the play ended. A slot held
   by a class no magnitude is read from (`rounded-tl-full`, `scale-x-[.5]`) lands with the swap instead of
