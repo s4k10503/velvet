@@ -230,7 +230,7 @@ class CampaignStatusTests(unittest.TestCase):
 
 
 class PublisherMainTests(unittest.TestCase):
-    # GREEN_ON_BASE(characterization): the existing success hand-off still waits for this publisher run.
+    # GREEN_ON_BASE(characterization): an isolated event still binds the success hand-off to this publisher run.
     def test_Given_ThePublisherFinishes_When_OnlyASuccessfulCampaignIsReported_Then_TheMergeWakeWaitsForThisRun(self):
         # Arrange
         event = {"pull_request": {"number": 7}, "repository": {"default_branch": "main", "full_name": SLUG}}
@@ -243,7 +243,8 @@ class PublisherMainTests(unittest.TestCase):
                     mock.patch.object(status.settle, "rest_json", return_value={"full_name": SLUG, "default_branch": "main"}), \
                     mock.patch.object(status, "publish", return_value={"state": state}), \
                     mock.patch.object(status.automerge, "dispatch") as dispatch, \
-                    mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_RUN_ID": "44"}):
+                    mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "pull_request_target",
+                                                 "GITHUB_RUN_ID": "44"}, clear=True):
                 status.main([])
                 observed.append(dispatch.call_args)
 
@@ -252,6 +253,7 @@ class PublisherMainTests(unittest.TestCase):
                                    mock.call(Path(".").resolve(), status.automerge.MERGE_WORKFLOW,
                                              "main", number=7, after_run="44")])
 
+    # GREEN_ON_BASE(characterization): events from another workflow remain outside the campaign publisher.
     def test_Given_AnotherWorkflowCompletes_When_ThePublisherReceivesIt_Then_NoHeadStatusIsReadOrWritten(self):
         # Arrange
         event = {"workflow_run": {**run(), "path": ".github/workflows/other.yml"}}
@@ -260,13 +262,14 @@ class PublisherMainTests(unittest.TestCase):
         with mock.patch.object(Path, "read_text", return_value=json.dumps(event)), \
                 mock.patch.object(status.settle, "repository", return_value=SLUG), \
                 mock.patch.object(status, "publish") as publish, \
-                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event"}):
+                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "workflow_run",
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
             status.main([])
 
         # Assert
         self.assertFalse(publish.called)
 
-    # GREEN_ON_BASE(characterization): clearing the display after label removal does not request automerge.
+    # GREEN_ON_BASE(characterization): an isolated label-removal event still requests no merge hand-off.
     def test_Given_TheLabelIsRemoved_When_TheDisplayRequirementIsCleared_Then_NoAutomergeIsRequested(self):
         # Arrange
         event = {"pull_request": {"number": 7}, "action": "unlabeled", "label": {"name": "automerge"},
@@ -278,7 +281,8 @@ class PublisherMainTests(unittest.TestCase):
                 mock.patch.object(status.settle, "rest_json", return_value={"full_name": SLUG, "default_branch": "main"}), \
                     mock.patch.object(status, "publish", return_value={"state": "success"}), \
                 mock.patch.object(status.automerge, "dispatch") as dispatch, \
-                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event"}):
+                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "pull_request_target",
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
             status.main([])
 
         # Assert
@@ -316,7 +320,7 @@ class ReconciliationTests(unittest.TestCase):
                 mock.patch.object(status, "publish", side_effect=publish), \
                 mock.patch.object(status.automerge, "dispatch", side_effect=lambda *a, **kw: dispatched.append(kw)), \
                 mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": event_name,
-                                             "GITHUB_RUN_ID": "44"}):
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
             try:
                 status.main([])
                 error = None
