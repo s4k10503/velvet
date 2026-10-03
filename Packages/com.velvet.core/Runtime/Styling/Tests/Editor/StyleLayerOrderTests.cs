@@ -123,19 +123,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AKeyedRule_When_ItsRankIsRead_Then_ThePositionIsGone()
-        {
-            // Arrange
-            var key = StyleLayerPriority.WithRule(StyleLayerPriority.Data, 7);
-
-            // Act
-            var rank = StyleLayerPriority.RankOf(key);
-
-            // Assert
-            Assert.That(rank, Is.EqualTo(StyleLayerPriority.Data));
-        }
-
-        [Test]
         public void Given_AnImportantBaseAndTheHighestOrdinaryStack_When_Ranked_Then_TheImportantOneWins()
         {
             // Arrange

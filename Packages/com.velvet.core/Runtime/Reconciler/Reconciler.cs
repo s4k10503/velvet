@@ -784,9 +784,10 @@ namespace Velvet
             }
 
             _ctx.ChildVariantManipulators.Clear();
-            foreach (var kv in _ctx.StackedVariantManipulators)
+            // Over a copy: a detach closes its leaf through GateStackedVariant, which can remove from this table.
+            foreach (var stacked in new List<StyleStackedVariantManipulator>(_ctx.StackedVariantManipulators.Values))
             {
-                kv.Key.target.RemoveManipulator(kv.Value);
+                stacked.target?.RemoveManipulator(stacked);
             }
 
             _ctx.StackedVariantManipulators.Clear();

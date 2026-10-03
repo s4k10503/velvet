@@ -204,9 +204,9 @@ namespace Velvet
         // wanted. The projection decides which CLASSES may sit on the element; it cannot decide which of two
         // same-family tokens a class-driven pass reads, because that is settled by the order of the composed
         // array. This list carries that ranking.
-        // Declaration is where the applying rule sits in the className, kept per slot so a tie inside one
-        // priority resolves by source order. Two rules of one family asserting the same token share the slot
-        // and it holds the LAST of them, which is the one source order would let win.
+        // Priority is the layer key, which carries the applying rule's place among its element's rules
+        // (StyleLayerPriority.WithRule), so two rules asserting the same token hold a slot each, as they do in
+        // the projection. Declaration is that same place, kept per slot to break a tie inside one priority.
         private readonly List<(string Token, long Priority, int Declaration)> _entries = new();
 
         private readonly List<(string Token, long Priority, int Declaration)> _ranked = new();
@@ -231,9 +231,8 @@ namespace Velvet
             {
                 if (index >= 0)
                 {
-                    // A second rule of the same family claiming a token the slot already holds: source order
-                    // gives the tie to the later of the two, so the slot takes the later position and the
-                    // idempotent re-apply of the earlier one leaves it alone.
+                    // A slot the key already names: a re-apply keeps the later position and an idempotent one
+                    // leaves it alone.
                     if (declaration <= _entries[index].Declaration)
                     {
                         return false;
@@ -247,9 +246,9 @@ namespace Velvet
             }
             else
             {
-                // declaration is not consulted here: the slot is keyed by (token, priority), so an off-toggle
-                // drops whichever rule holds it regardless of where that rule sits. Callers pass it anyway,
-                // to keep their clear and evaluate loops the same call.
+                // declaration is not consulted here: the slot is keyed by (token, priority), and the priority
+                // already names the rule. Callers pass it anyway, to keep their clear and evaluate loops the
+                // same call.
                 if (index < 0)
                 {
                     return false;
@@ -267,8 +266,8 @@ namespace Velvet
         // Supports, Aria and Data have one side-table supplier each; the responsive ranks and Dark have the
         // conditional manipulator; the group/peer ranks have the relational one; the element-state ranks have
         // the state manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator;
-        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position except
-        // the last. The important band is those priorities with one more bit set, so it partitions identically.
+        // and ChildVariant has the child-combinator manipulator alone. All of those declare a position. The
+        // important band is those priorities with one more bit set, so it partitions identically.
         //
         // A stacked payload ranks at every part it carries (see StyleLayerPriority.Stack), so one gated by the
         // child-combinator manipulator keeps that variant in its rank and never ties a payload the child declares
@@ -566,6 +565,33 @@ namespace Velvet
         // separate manipulators resolving their own source.
         public Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
 
+        // Detaches and forgets every stacked manipulator owner gated, and every one those gated in turn, for an
+        // owner that is going away while its target stays: no call opens their gates again, and a retained one
+        // would otherwise stay on the element, hooked, until unmount.
+        internal void DropStackedVariants(object owner)
+        {
+            List<(VisualElement, object, long, StyleVariantKind, string, string?)>? owned = null;
+            foreach (var kv in StackedVariantManipulators)
+            {
+                if (ReferenceEquals(kv.Key.owner, owner))
+                {
+                    (owned ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
+                }
+            }
+            if (owned == null)
+            {
+                return;
+            }
+            foreach (var key in owned)
+            {
+                if (StackedVariantManipulators.Remove(key, out var dropped))
+                {
+                    key.Item1.RemoveManipulator(dropped);
+                    DropStackedVariants(dropped);
+                }
+            }
+        }
+
         // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
         // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A named inner
         // relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves the
@@ -595,6 +621,12 @@ namespace Velvet
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
+                else
+                {
+                    // A retained manipulator was built at an earlier render, and the rule's place moves with the
+                    // element's other rules; it takes the current one while its gate is still closed.
+                    m.Redeclare(declaration);
+                }
                 m.SetOuterGate(true);
             }
             else if (StackedVariantManipulators.TryGetValue(key, out var m))
@@ -613,6 +645,7 @@ namespace Velvet
                 {
                     target.RemoveManipulator(m);
                     StackedVariantManipulators.Remove(key);
+                    DropStackedVariants(m);
                 }
             }
         }
@@ -648,8 +681,8 @@ namespace Velvet
 
         // Records / drops one variant-applied gate token for target at the priority its payload was applied
         // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
-        // list rank and expire together — plus, for the rules that carry one, the className position that
-        // settles a tie inside that priority. Returns true when the composed order actually changed, so the
+        // list rank and expire together — plus, for the rules that carry one, the rule place (see
+        // VariantDeclarations) that settles a tie inside that priority. Returns true when the composed order actually changed, so the
         // caller signals a re-derive exactly once per real change: a manipulator may re-assert an
         // already-applied payload, and an off-toggle for a payload that was never on is a no-op, either of
         // which would drift a count.

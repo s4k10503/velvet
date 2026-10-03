@@ -233,7 +233,9 @@ namespace Velvet
                 return found;
             }
 
-            // Ties WITHIN the band are deliberately left alone: source order decides them, as it always has.
+            // Ties WITHIN the band are deliberately left alone. A band is one rule's key, so only a token written
+            // twice behind one variant, payloads carrying no rule place, or two base classes reach one; the
+            // stylesheet decides them.
             private void JudgeBand(long priority)
             {
                 for (var i = 0; i < _entries.Count; i++)
@@ -340,6 +342,23 @@ namespace Velvet
             }
 
             private bool Holds(string cls) => FirstIndexOf(cls) >= 0;
+
+            // The highest key of a class on the element that writes longhand unconditionally, or the lowest key
+            // when none does: what an inline writer of it has to outrank.
+            public long ClaimOf(StyleLonghand longhand)
+            {
+                var claim = long.MinValue;
+                foreach (var entry in _entries)
+                {
+                    // MUTANT_SURVIVES(equivalent): accepting an equal priority assigns the claim its existing value.
+                    if (!entry.Dead && entry.Gate == (int)StyleUtilityGate.None && entry.Priority > claim
+                        && entry.Properties.Contains(longhand))
+                    {
+                        claim = entry.Priority;
+                    }
+                }
+                return claim;
+            }
 
             // A payload's class is not the className's own, so only a base entry counts, important or not.
             public bool SuppressesDeclared(string cls)

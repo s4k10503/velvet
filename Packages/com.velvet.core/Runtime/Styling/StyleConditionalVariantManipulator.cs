@@ -21,9 +21,7 @@ namespace Velvet
         // Payload arrays aligned to Breakpoints (length 5) plus the dark payloads.
         private string[][] _responsive;
         private string[] _dark;
-        // Each payload's position in the className, aligned to the arrays above. Carried so a payload can be
-        // ranked against one another owner applied at the same layer — a dark:hover: leaf is gated from here
-        // but lands on the hover layer, where a plain hover: payload also sits.
+        // Each payload's rule place (see VariantDeclarations), aligned to the arrays above.
         private int[][] _responsiveDeclarations;
         private int[] _darkDeclarations;
 
@@ -166,8 +164,8 @@ namespace Velvet
             => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this,
                 DeclarationsFor(payloads));
 
-        // The className positions belonging to the payload array passed, paired the same way PriorityFor
-        // pairs the layer.
+        // The rule places belonging to the payload array passed, paired the same way PriorityFor pairs the
+        // layer.
         private int[] DeclarationsFor(string[] payloads)
         {
             if (ReferenceEquals(payloads, _dark)) return _darkDeclarations;

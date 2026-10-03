@@ -11,13 +11,13 @@ namespace Velvet
     //
     // A priority is the rank Tailwind's generated CSS gives the rule, packed so that comparing two longs
     // compares the ranks: an important flag, then the rule's specificity, then the set of variants it carries
-    // compared highest bit first — compile.ts's sort. Each bit is a variant's place in Tailwind's variant
+    // compared highest bit first — compile.ts's sort. Each bit is a variant family's place in Tailwind's variant
     // order among the ones Velvet supports; only the relative order of the bits matters to that comparison.
-    // The lowest bits are left clear here for the rule's own position in the className
-    // (StyleArbitraryValueResolver keys an arbitrary layer by both). StyleLayerOrderTests pins the order.
+    // The lowest bits are left clear here for the rule's place among its element's rules (WithRule), which a
+    // variant payload's key carries; a base layer's does not. StyleLayerOrderTests pins the order.
     internal static class StyleLayerPriority
     {
-        // The rule's position in the className, in an arbitrary layer's key (see WithRule).
+        // The rule's place among its element's rules, in a layer's key (see WithRule).
         private const int RuleBits = 12;
         private const long RuleMask = (1L << RuleBits) - 1;
         // The variant bit set: bit n is at 1L << (RuleBits + n).
@@ -80,18 +80,19 @@ namespace Velvet
 
         public static long AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
 
+        // The variant bit set a rank carries, without its specificity or important flag.
+        public static long VariantSetOf(long rank) => rank & SetMask;
+
         // A stacked variant (dark:hover:, hover:focus:) is one rule carrying every part: the selectors its parts
         // add sum, and its variant set is the union of theirs.
         public static long Stack(long outer, long inner)
             => ((outer >> ClassShift) + (inner >> ClassShift) << ClassShift) | ((outer | inner) & SetMask);
 
-        // The key of an arbitrary layer: the rank, then the rule's className position, so two rules at one rank
-        // hold separate slots and the one written later wins. A position past the field's range shares its top.
+        // The key of a layer: the rank, then the rule's place among its element's rules (StyleRuleOrder), so two
+        // rules at one rank hold separate slots and order as Tailwind orders them. A place past the field's range
+        // shares its top.
         public static long WithRule(long priority, int declaration)
             => priority | System.Math.Min(System.Math.Max(declaration + 1, 0), RuleMask);
-
-        // The rank an arbitrary layer's key carries, without its rule position.
-        public static long RankOf(long key) => key & ~RuleMask;
 
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-

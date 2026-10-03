@@ -235,5 +235,50 @@ namespace Velvet.Tests
             // Assert
             Assert.That((leaf.ClassListContains("bg-cold"), leaf.ClassListContains("bg-hot")), Is.EqualTo((true, false)));
         }
+
+        // GREEN_ON_BASE(characterization): the base keys every [&>*]: payload alike, so both classes stay
+        // and the stylesheet puts h-8 last; ordering the two by candidate alone would let size-4 cover h-8.
+        [Test]
+        public void Given_ChildSizeAndHeightClasses_When_TheChildIsMounted_Then_BothStay()
+        {
+            // Act
+            var (_, leaf) = MountUnderChildVariant("[&>*]:size-4 [&>*]:h-8", "");
+
+            // Assert
+            Assert.That((leaf.ClassListContains("size-4"), leaf.ClassListContains("h-8")), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): as the case above, with the className writing h-8 first.
+        [Test]
+        public void Given_ChildHeightAndSizeClassesWrittenHeightFirst_When_TheChildIsMounted_Then_BothStay()
+        {
+            // Act
+            var (_, leaf) = MountUnderChildVariant("[&>*]:h-8 [&>*]:size-4", "");
+
+            // Assert
+            Assert.That((leaf.ClassListContains("size-4"), leaf.ClassListContains("h-8")), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base applies the child's payloads in written order at one key, so
+        // the height written last wins here; ordering the two by candidate alone puts size-[20px] last.
+        [Test]
+        public void Given_ChildSizeAndHeightValues_When_TheChildIsMounted_Then_TheHeightValueWins()
+        {
+            // Act — size-[20px] is emitted before h-[10px], since width comes before height in property order.
+            var (_, leaf) = MountUnderChildVariant("[&>*]:size-[20px] [&>*]:h-[10px]", "");
+
+            // Assert
+            Assert.That((leaf.style.width.value.value, leaf.style.height.value.value), Is.EqualTo((20f, 10f)));
+        }
+
+        [Test]
+        public void Given_ChildHeightAndSizeValuesWrittenHeightFirst_When_TheChildIsMounted_Then_TheHeightValueWins()
+        {
+            // Act
+            var (_, leaf) = MountUnderChildVariant("[&>*]:h-[10px] [&>*]:size-[20px]", "");
+
+            // Assert
+            Assert.That((leaf.style.width.value.value, leaf.style.height.value.value), Is.EqualTo((20f, 10f)));
+        }
     }
 }
