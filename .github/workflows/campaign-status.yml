@@ -1,6 +1,14 @@
 name: Campaign status
 
 on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Optional pull request number to recover a single head
+        required: false
+        type: string
   workflow_run:
     workflows: [Mutation campaign]
     types: [requested, in_progress, completed]
@@ -23,7 +31,7 @@ jobs:
       pull-requests: read
       statuses: write
     concurrency:
-      group: campaign-status-${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
+      group: campaign-status-${{ github.repository }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
