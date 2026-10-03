@@ -362,7 +362,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(construction): the base compares its own V references and factories without the diagnostic allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own V references and factories; documenting `V.NoSuchFactory` would fail this check, independently of the diagnostic allowlist.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()
         {
@@ -383,7 +383,7 @@ namespace Velvet.Tests
                 "Documentation references V.* members that do not exist on typeof(V):\n" + string.Join("\n", unresolved));
         }
 
-        // GREEN_ON_BASE(construction): the base compares its own hook references and declarations without the diagnostic allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own hook references and declarations; documenting `UseNoSuchHook` would fail this check, independently of the diagnostic allowlist.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForBacktickedHookReferences_Then_EveryReferenceExistsOnHooks()
         {
@@ -411,7 +411,7 @@ namespace Velvet.Tests
                 "Documentation references Hooks.* members that do not exist on typeof(Hooks):\n" + string.Join("\n", unresolved));
         }
 
-        // GREEN_ON_BASE(construction): the base compares its own guide index and files; the diagnostic allowlist is not used.
+        // GREEN_ON_BASE(construction): the base compares its own guide index and files; removing the `motion.md` index link would fail this check, independently of the diagnostic allowlist.
         [Test]
         public void Given_DocumentationReadmeIndex_When_ComparedAgainstDirectoryContents_Then_LinksAndFilesMatchExactly()
         {
@@ -434,7 +434,7 @@ namespace Velvet.Tests
                 "Documentation~/README.md's index is out of sync with the directory's actual .md files:\n" + string.Join("\n", diff));
         }
 
-        // GREEN_ON_BASE(construction): the base compares its own DocFX index and guides without the diagnostic allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own DocFX index and guides; removing `guides/motion.md` from the table of contents would fail this check, independently of the diagnostic allowlist.
         [Test]
         public void Given_TheDocfxTableOfContents_When_ComparedAgainstTheGuideDirectory_Then_LinksAndFilesMatchExactly()
         {
@@ -457,7 +457,7 @@ namespace Velvet.Tests
                 "docs/toc.yml is out of sync with Documentation~'s actual .md files:\n" + string.Join("\n", diff));
         }
 
-        // GREEN_ON_BASE(construction): the base compares its own documented paths and files without the identifier allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own documented paths and files; documenting `Packages/com.velvet.core/Runtime/NoSuchFile.cs` would fail this check, independently of the identifier allowlist.
         [Test]
         public void Given_ProjectMarkdown_When_ScannedForBacktickedPaths_Then_EveryPathExistsInTheRepo()
         {
@@ -533,7 +533,7 @@ namespace Velvet.Tests
                     : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(span.Reference, " "))
                         .Select(token => (span.Path, span.Reference, Token: token.Value)));
 
-        // GREEN_ON_BASE(construction): the base compares its own script references and declarations without the identifier allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own script references and declarations; documenting `published_check.unpublished_reasonn` would fail this check, independently of the identifier allowlist.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
@@ -1505,7 +1505,7 @@ namespace Velvet.Tests
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
 
-        // GREEN_ON_BASE(construction): the base compares its own workflow paths and exclusions without the diagnostic allowlist.
+        // GREEN_ON_BASE(construction): the base compares its own workflow paths and generated directories; repeating `docs/_site` in a workflow would fail this check, independently of the diagnostic allowlist.
         [Test]
         public void Given_TheDocfxGeneratedDirectories_When_TheWorkflowsAreScanned_Then_NoneIsWrittenOutAgain()
         {
