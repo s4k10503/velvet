@@ -10,4 +10,4 @@
   ends cancelled, as an `async Task` method does.
 
 - The `Task` `AsTask()` returns for a cancelled `VelvetTask` throws that task's own
-  `OperationCanceledException`, as ValueTask.AsTask()'s does, where it threw a new `TaskCanceledException`.
+  `OperationCanceledException`, as ValueTask.AsTask()'s does, where it threw a new TaskCanceledException.

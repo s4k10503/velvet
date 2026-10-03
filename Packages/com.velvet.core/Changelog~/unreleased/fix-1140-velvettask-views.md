@@ -8,5 +8,5 @@
   carrying its token.
 
 - `VelvetTaskMethodBuilder.Task` and `VelvetTaskMethodBuilder<T>.Task` return the same task on every read
-  for one call, as `AsyncTaskMethodBuilder`'s does. A read after the task had been consumed returned a
+  for one call, as AsyncTaskMethodBuilder's does. A read after the task had been consumed returned a
   pending task, and once another call of the same method took the pooled state machine, that call's task.
