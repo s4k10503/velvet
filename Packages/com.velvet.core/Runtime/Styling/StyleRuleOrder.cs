@@ -286,6 +286,8 @@ namespace Velvet
             if (!inline && set.Contains(StyleLonghand.FontSize)
                 && core.StartsWith(NamedTextSizePrefix, StringComparison.Ordinal))
             {
+                // MUTANT_SURVIVES(equivalent): without this index, count still puts named sizes before a lone
+                // font-size. RuleOrderCascadeBoundaryTests pins the font-size-only sets and adjacent line-height index.
                 order.Add(s_lineHeightIndex);
                 count++;
             }
@@ -296,6 +298,9 @@ namespace Velvet
                     continue;
                 }
                 count++;
+                // MUTANT_SURVIVES(equivalent): removing the duplicate-index check leaves the object-fit sets
+                // equal to one another; comparisons with other sets resolve before the repeated index.
+                // RuleOrderCascadeBoundaryTests pins these property sets and the index aliases.
                 if (s_tailwindIndex[i] >= 0 && !order.Contains(s_tailwindIndex[i]))
                 {
                     order.Add(s_tailwindIndex[i]);

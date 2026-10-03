@@ -350,6 +350,7 @@ namespace Velvet
                 var claim = long.MinValue;
                 foreach (var entry in _entries)
                 {
+                    // MUTANT_SURVIVES(equivalent): accepting an equal priority assigns the claim its existing value.
                     if (!entry.Dead && entry.Gate == (int)StyleUtilityGate.None && entry.Priority > claim
                         && entry.Properties.Contains(longhand))
                     {

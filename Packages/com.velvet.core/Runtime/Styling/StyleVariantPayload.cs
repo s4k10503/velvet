@@ -144,8 +144,6 @@ namespace Velvet
             if (StyleFontClass.IsArbitraryFontClass(core)
                 || StyleTextEffectClass.IsArbitraryLeadingClass(core))
             {
-                // MUTANT_SURVIVES(equivalent): the re-sync this would add re-derives the passes from the composed
-                // source the tracked token set already describes, so it writes what is already there.
                 return (TrackVariantGate(ctx, target, payload, key, declaration, on), false);
             }
 
