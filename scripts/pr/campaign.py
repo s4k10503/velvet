@@ -11,6 +11,8 @@ API by its workflow file: a check of any other workflow carrying a campaign job'
 
 LABEL = "automerge"
 
+DISPLAY_CONTEXT = "Mutation campaign"
+
 WORKFLOW = "mutation.yml"
 
 PATH = ".github/workflows/" + WORKFLOW
