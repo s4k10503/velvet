@@ -976,7 +976,9 @@ sweep and a manual workflow dispatch reconcile open heads when event-driven repo
 The sweep refuses before publishing if its complete listing contains more than eight same-repository
 open pull requests; the optional `pull_request` dispatch input recovers one head at that capacity.
 All publisher jobs share repository-level serialization and re-read each head and its latest run before
-writing. An identical owned status causes neither another status write nor another merge wake. This display does not
+writing. Their concurrency block uses `queue: max` with `cancel-in-progress: false` to retain pending
+publishers during event bursts ([GitHub concurrency queue documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)).
+An identical owned status causes neither another status write nor another merge wake. This display does not
 replace the campaign run verdict that `settle.py` requires. After independently reading that verdict,
 `settle.py` ignores this legacy display status so reporting latency adds no merge gate; real check
 runs and other statuses still gate merging. Removing the label clears an unstarted

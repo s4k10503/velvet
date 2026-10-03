@@ -580,6 +580,18 @@ class PublisherWorkflowTests(unittest.TestCase):
         # Assert
         self.assertEqual(values, (True, True, True, True, True))
 
+    def test_Given_ThePublisherWorkflow_When_ItsConcurrencyPolicyIsRead_Then_ItUsesTheMaximumPendingQueueWithoutCancellingInProgress(self):
+        # Arrange
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/campaign-status.yml").read_text()
+
+        # Act
+        block = re.search(r"(?m)^    concurrency:\n((?:      .*\n)+)", text)
+        settings = dict(re.findall(r"(?m)^      ([\w-]+): ([^\n]+)$", block.group(1))) if block else {}
+
+        # Assert
+        self.assertEqual((settings.get("group"), settings.get("queue"), settings.get("cancel-in-progress")),
+                         ("campaign-status-${{ github.repository }}", "max", "false"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
