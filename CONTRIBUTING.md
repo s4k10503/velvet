@@ -468,7 +468,9 @@ The base tree is a checkout the machine has never imported, and that import is m
 costs; `--warm-library` copies an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
-`Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local
+On pull requests, each `Test ▸ unity-tests` platform runs the C# base-red lane on the same runner
+after its branch results have passed their provenance checks and been uploaded. It runs in at most
+four rounds where the local
 run takes up to `--max-rounds` of them: a base that cannot build one carried file writes no results
 for anything, so the workflow withdraws what the static comparison above proves before its first
 round, and what each round's own editor log blames before the next — every carried file the
@@ -893,7 +895,6 @@ on every platform.
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
-| `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
