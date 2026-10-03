@@ -1629,8 +1629,8 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
-    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base merges on both sides.
-    # The branch changed only its arrangement: the readings it answers and the pull request's state.
+    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
+    # The `checks` double now accepts the optional display-status argument; its arranged verdict is unchanged.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
