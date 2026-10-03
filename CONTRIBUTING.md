@@ -971,11 +971,20 @@ label; it has to exist in the repository.
 The `Mutation campaign` commit status shows pending while a labelled head awaits its campaign and
 while the newest campaign runs, including a re-run on the same commit. The default-branch
 `campaign-status.yml` publisher validates the current pull request head and newest run before
-reporting its result; an older completion cannot clear a newer pending run. This display does not
+reporting its result; an older completion cannot clear a newer pending run. A five-minute scheduled
+sweep and a manual workflow dispatch reconcile open heads when event-driven reporting has not arrived.
+The sweep refuses before publishing if its complete listing contains more than eight same-repository
+open pull requests; the optional `pull_request` dispatch input recovers one head at that capacity.
+All publisher jobs share repository-level serialization and re-read each head and its latest run before
+writing. Their concurrency block uses `queue: max` with `cancel-in-progress: false` to retain pending
+publishers during event bursts ([GitHub concurrency queue documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)).
+An identical owned status causes neither another status write nor another merge wake. This display does not
 replace the campaign run verdict that `settle.py` requires. After independently reading that verdict,
 `settle.py` ignores this legacy display status so reporting latency adds no merge gate; real check
 runs and other statuses still gate merging. Removing the label clears an unstarted
-or cancelled campaign's display requirement; a failed campaign still blocks that head.
+or cancelled campaign's display requirement; the sweep also recovers a missed removal when that head
+already carries this owned status, without creating one for an ordinary unlabelled head. A failed
+campaign still blocks that head.
 
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
 reopening a labelled pull request, pushing to one, and a `pull_request` run of `Test` passing on a

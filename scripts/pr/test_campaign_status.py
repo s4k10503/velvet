@@ -29,7 +29,12 @@ def run():
 def api_read(responses):
     pulls = iter(item for item in responses if "head" in item)
     runs = iter(item for item in responses if "workflow_runs" in item)
-    return lambda path: next(pulls if "/pulls/" in path else runs)
+    statuses = iter(item for item in responses if "statuses" in item)
+    def read(path):
+        if "/status?" in path:
+            return next(statuses, {"sha": SHA, "total_count": 0, "statuses": []})
+        return next(pulls if "/pulls/" in path else runs)
+    return read
 
 
 class CampaignStatusTests(unittest.TestCase):
@@ -225,18 +230,21 @@ class CampaignStatusTests(unittest.TestCase):
 
 
 class PublisherMainTests(unittest.TestCase):
+    # GREEN_ON_BASE(characterization): an isolated event still binds the success hand-off to this publisher run.
     def test_Given_ThePublisherFinishes_When_OnlyASuccessfulCampaignIsReported_Then_TheMergeWakeWaitsForThisRun(self):
         # Arrange
-        event = {"pull_request": {"number": 7}, "repository": {"default_branch": "main"}}
+        event = {"pull_request": {"number": 7}, "repository": {"default_branch": "main", "full_name": SLUG}}
         observed = []
 
         # Act
         for state in ["pending", "failure", "error", "success"]:
             with mock.patch.object(Path, "read_text", return_value=json.dumps(event)), \
                     mock.patch.object(status.settle, "repository", return_value=SLUG), \
+                    mock.patch.object(status.settle, "rest_json", return_value={"full_name": SLUG, "default_branch": "main"}), \
                     mock.patch.object(status, "publish", return_value={"state": state}), \
                     mock.patch.object(status.automerge, "dispatch") as dispatch, \
-                    mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_RUN_ID": "44"}):
+                    mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "pull_request_target",
+                                                 "GITHUB_RUN_ID": "44"}, clear=True):
                 status.main([])
                 observed.append(dispatch.call_args)
 
@@ -245,6 +253,7 @@ class PublisherMainTests(unittest.TestCase):
                                    mock.call(Path(".").resolve(), status.automerge.MERGE_WORKFLOW,
                                              "main", number=7, after_run="44")])
 
+    # GREEN_ON_BASE(characterization): events from another workflow remain outside the campaign publisher.
     def test_Given_AnotherWorkflowCompletes_When_ThePublisherReceivesIt_Then_NoHeadStatusIsReadOrWritten(self):
         # Arrange
         event = {"workflow_run": {**run(), "path": ".github/workflows/other.yml"}}
@@ -253,26 +262,297 @@ class PublisherMainTests(unittest.TestCase):
         with mock.patch.object(Path, "read_text", return_value=json.dumps(event)), \
                 mock.patch.object(status.settle, "repository", return_value=SLUG), \
                 mock.patch.object(status, "publish") as publish, \
-                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event"}):
+                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "workflow_run",
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
             status.main([])
 
         # Assert
         self.assertFalse(publish.called)
 
+    # GREEN_ON_BASE(characterization): an isolated label-removal event still requests no merge hand-off.
     def test_Given_TheLabelIsRemoved_When_TheDisplayRequirementIsCleared_Then_NoAutomergeIsRequested(self):
         # Arrange
-        event = {"pull_request": {"number": 7}, "action": "unlabeled", "label": {"name": "automerge"}}
+        event = {"pull_request": {"number": 7}, "action": "unlabeled", "label": {"name": "automerge"},
+                 "repository": {"default_branch": "main", "full_name": SLUG}}
 
         # Act
         with mock.patch.object(Path, "read_text", return_value=json.dumps(event)), \
                 mock.patch.object(status.settle, "repository", return_value=SLUG), \
-                mock.patch.object(status, "publish", return_value={"state": "success"}), \
+                mock.patch.object(status.settle, "rest_json", return_value={"full_name": SLUG, "default_branch": "main"}), \
+                    mock.patch.object(status, "publish", return_value={"state": "success"}), \
                 mock.patch.object(status.automerge, "dispatch") as dispatch, \
-                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event"}):
+                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": "pull_request_target",
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
             status.main([])
 
         # Assert
         self.assertFalse(dispatch.called)
+
+
+class ReconciliationTests(unittest.TestCase):
+    def execute(self, event_name, pulls, *, verdict="success", existing=None, selected="", metadata=None):
+        event = {"repository": {"full_name": SLUG, "default_branch": "main"},
+                 "inputs": {"pull_request": selected}}
+        if metadata is not None:
+            event["repository"] = metadata
+        posted, dispatched, paths = [], [], []
+        by_number = {item["number"]: item for item in pulls if isinstance(item, dict)}
+        finished = {**run(), "status": "completed", "conclusion": verdict}
+        def read(path):
+            paths.append(path)
+            if path == f"repos/{SLUG}":
+                return {"full_name": SLUG, "default_branch": "main"}
+            if "pulls?" in path:
+                return pulls
+            if "/pulls/" in path:
+                return by_number[int(path.rsplit("/", 1)[1])]
+            sha = re.search(r"(?:head_sha=|commits/)([0-9a-f]{40})", path).group(1)
+            if "/status?" in path:
+                entries = [] if existing is None else [{"context": status.CONTEXT, **existing}]
+                return {"sha": sha, "total_count": len(entries), "statuses": entries}
+            return {"workflow_runs": [{**finished, "head_sha": sha}]}
+        live_publish = status.publish
+        def publish(project, number, event_run=None, released=False):
+            return live_publish(project, number, event_run, read=read, post=posted.append, released=released)
+        with mock.patch.object(Path, "read_text", return_value=json.dumps(event)), \
+                mock.patch.object(status.settle, "repository", return_value=SLUG), \
+                mock.patch.object(status.settle, "rest_json", side_effect=read), \
+                mock.patch.object(status, "publish", side_effect=publish), \
+                mock.patch.object(status.automerge, "dispatch", side_effect=lambda *a, **kw: dispatched.append(kw)), \
+                mock.patch.dict(os.environ, {"GITHUB_EVENT_PATH": "event", "GITHUB_EVENT_NAME": event_name,
+                                             "GITHUB_RUN_ID": "44"}, clear=True):
+            try:
+                status.main([])
+                error = None
+            except RuntimeError as exc:
+                error = str(exc)
+        return posted, dispatched, paths, error
+
+    def test_Given_TwoOpenHeadsWithoutPublisherEvents_When_TheScheduleRuns_Then_BothCurrentVerdictsArePublishedAndWoken(self):
+        # Arrange
+        second = pull()
+        second["number"], second["head"]["sha"] = 8, "b" * 40
+
+        # Act
+        posted, wakes, paths, error = self.execute("schedule", [pull(), second])
+
+        # Assert
+        self.assertEqual(([p["sha"] for p in posted], [w["number"] for w in wakes], error),
+                         ([SHA, "b" * 40], [7, 8], None))
+
+    def test_Given_IdenticalPendingAndSuccessDisplays_When_Reconciled_Then_NeitherStatusesNorMergeWakesRepeat(self):
+        # Arrange
+        observed = []
+
+        # Act
+        for verdict in [None, "success"]:
+            state_run = {**run(), "status": "completed", "conclusion": verdict}
+            result = status.reading(pull(), [state_run], SLUG)
+            posted, wakes, paths, error = self.execute("schedule", [pull()], verdict=verdict, existing=result)
+            control, control_wakes, _, control_error = self.execute(
+                "schedule", [pull()], verdict=verdict, existing={**result, "target_url": "https://github.com/old/run"})
+            observed.append((posted, wakes, error, len(control), len(control_wakes), control_error))
+
+        # Assert
+        self.assertEqual(observed, [([], [], None, 1, 0, None), ([], [], None, 1, 1, None)])
+
+    def test_Given_EachOwnedDisplayFieldChanges_When_Reconciled_Then_AFreshSuccessIsPublishedAndWoken(self):
+        # Arrange
+        current = status.reading(pull(), [{**run(), "status": "completed", "conclusion": "success"}], SLUG)
+        observed = []
+
+        # Act
+        for field, changed in [("state", "failure"), ("description", "Old result"),
+                               ("target_url", f"https://github.com/{SLUG}/actions/runs/11")]:
+            posted, wakes, paths, error = self.execute("schedule", [pull()], existing={**current, field: changed})
+            observed.append((len(posted), len(wakes), error))
+
+        # Assert
+        self.assertEqual(observed, [(1, 1, None)] * 3)
+
+    def test_Given_AFailedCampaignBesideAnOldGreenDisplay_When_Reconciled_Then_FailureIsPublishedWithoutAMergeWake(self):
+        # Arrange
+        old = status.reading(pull(), [{**run(), "status": "completed", "conclusion": "success"}], SLUG)
+
+        # Act
+        posted, wakes, paths, error = self.execute("schedule", [pull()], verdict="failure", existing=old)
+
+        # Assert
+        self.assertEqual(([p["state"] for p in posted], wakes, error), (["failure"], [], None))
+
+    def test_Given_AForkBesideACurrentRepositoryHead_When_Reconciled_Then_OnlyTheCurrentRepositoryReceivesWrites(self):
+        # Arrange
+        foreign = pull()
+        foreign["number"], foreign["head"]["repo"]["full_name"] = 8, "fork/repo"
+
+        # Act
+        posted, wakes, paths, error = self.execute("schedule", [foreign, pull()])
+
+        # Assert
+        self.assertEqual(([p["sha"] for p in posted], [w["number"] for w in wakes],
+                          f"repos/{SLUG}/pulls/8" in paths, error), ([SHA], [7], False, None))
+
+    def test_Given_AFullOrMalformedOpenListing_When_Reconciled_Then_NoPartialHeadIsPublished(self):
+        # Arrange
+        malformed = {**pull(), "number": "7"}
+        observed = []
+
+        # Act
+        for listed, reason in [([pull()] * 100, "listing is incomplete"),
+                               ([pull(), malformed], "listing is malformed")]:
+            posted, wakes, paths, error = self.execute("schedule", listed)
+            observed.append((posted, wakes, reason in (error or "")))
+
+        # Assert
+        self.assertEqual(observed, [([], [], True), ([], [], True)])
+
+    def test_Given_MoreThanEightEligiblePulls_When_Reconciled_Then_TheBudgetRefusesBeforeAnyHeadIsReadOrWritten(self):
+        # Arrange
+        listed = [{**pull(), "number": n} for n in range(1, 10)]
+
+        # Act
+        posted, wakes, paths, error = self.execute("schedule", listed)
+
+        # Assert
+        self.assertEqual((posted, wakes, any("/pulls/" in p for p in paths),
+                          "API budget" in (error or "")), ([], [], False, True))
+
+    def test_Given_EightEligiblePulls_When_Reconciled_Then_TheCompleteBoundaryFitsTheReadAndWriteBudget(self):
+        # Arrange
+        listed = [{**pull(), "number": n} for n in range(1, 9)]
+
+        # Act
+        posted, wakes, paths, error = self.execute("schedule", listed)
+
+        # Assert
+        self.assertEqual((len(posted), len(wakes), len(paths) + len(posted) <= 50, error),
+                         (8, 8, True, None))
+
+    def test_Given_ASelectedManualRecoveryAboveSweepCapacity_When_Dispatched_Then_OnlyTheSelectedHeadUsesTheSamePublisher(self):
+        # Arrange
+        listed = [{**pull(), "number": n} for n in range(1, 10)]
+
+        # Act
+        posted, wakes, paths, error = self.execute("workflow_dispatch", listed, selected="7")
+
+        # Assert
+        self.assertEqual(([p["sha"] for p in posted], [w["number"] for w in wakes],
+                          any("pulls?" in p for p in paths), error), ([SHA], [7], False, None))
+
+    def test_Given_ManualRecoveryWithoutASelection_When_Dispatched_Then_ItReconcilesTheCompleteListing(self):
+        # Arrange
+        second = {**pull(), "number": 8}
+
+        # Act
+        posted, wakes, paths, error = self.execute("workflow_dispatch", [pull(), second])
+
+        # Assert
+        self.assertEqual((len(posted), [w["number"] for w in wakes], error), (2, [7, 8], None))
+
+    def test_Given_ForeignOrChangedDefaultBranchMetadata_When_Reconciled_Then_NoHeadIsReadOrPublished(self):
+        # Arrange
+        observed = []
+
+        # Act
+        for metadata in [{"full_name": "fork/repo", "default_branch": "main"},
+                         {"full_name": SLUG, "default_branch": "feature"}, {"full_name": SLUG}]:
+            posted, wakes, paths, error = self.execute("schedule", [pull()], metadata=metadata)
+            observed.append((posted, wakes, any("/pulls" in p for p in paths), bool(error)))
+
+        # Assert
+        self.assertEqual(observed, [([], [], False, True)] * 3)
+
+    def test_Given_AnInvalidManualNumber_When_Dispatched_Then_NoHeadIsReadOrPublished(self):
+        # Arrange
+        observed = []
+
+        # Act
+        for selected in ["0", "-7", "7/commits", " 7", 0]:
+            posted, wakes, paths, error = self.execute("workflow_dispatch", [pull()], selected=selected)
+            observed.append((posted, wakes, any("/pulls" in p for p in paths), bool(error)))
+
+        # Assert
+        self.assertEqual(observed, [([], [], False, True)] * 5)
+
+    def test_Given_AnIncompleteOrForeignStatusListing_When_Published_Then_DeduplicationCannotHideItsUnreadState(self):
+        # Arrange
+        observed = []
+        invalid = [{"sha": SHA, "statuses": [], "total_count": 1},
+                   {"sha": "b" * 40, "statuses": [], "total_count": 0},
+                   {"sha": SHA, "statuses": [{"context": status.CONTEXT}] * 2, "total_count": 2}]
+
+        # Act
+        for payload in invalid:
+            read = api_read([pull(), {"workflow_runs": [run()]}, payload,
+                             pull(), {"workflow_runs": [run()]}])
+            posted = []
+            with mock.patch.object(status.settle, "repository", return_value=SLUG):
+                try:
+                    status.publish(Path("."), 7, read=read, post=posted.append)
+                    refused = False
+                except RuntimeError:
+                    refused = True
+            observed.append((refused, posted))
+
+        # Assert
+        self.assertEqual(observed, [(True, [])] * 3)
+
+    # GREEN_ON_BASE(characterization): recovery keeps the newest live run authoritative over an older green display.
+    def test_Given_AnOldGreenDisplay_When_ANewerRunAppearsDuringRecovery_Then_TheLivePendingVerdictReplacesIt(self):
+        # Arrange
+        old = {**run(), "status": "completed", "conclusion": "success"}
+        newer = {**run(), "id": 13, "run_number": 9}
+        green = {"context": status.CONTEXT, **status.reading(pull(), [old], SLUG)}
+        read = api_read([pull(), {"workflow_runs": [old]}, {"sha": SHA, "statuses": [green], "total_count": 1},
+                         pull(), {"workflow_runs": [old, newer]}])
+        posted = []
+
+        # Act
+        with mock.patch.object(status.settle, "repository", return_value=SLUG):
+            status.publish(Path("."), 7, read=read, post=posted.append)
+
+        # Assert
+        self.assertEqual([item["state"] for item in posted], ["pending"])
+
+    def test_Given_AMissedLabelRemovalWithoutACampaign_When_Reconciled_Then_OnlyAnExistingOwnedPendingDisplayIsCleared(self):
+        # Arrange
+        unlabelled = pull()
+        unlabelled["labels"] = []
+        old = {"context": status.CONTEXT, "state": "pending", "description": "Awaiting mutation campaign",
+               "target_url": f"https://github.com/{SLUG}/pull/7"}
+        observed = []
+
+        # Act
+        for existing in [[], [old]]:
+            read = api_read([unlabelled, {"workflow_runs": []},
+                             {"sha": SHA, "statuses": existing, "total_count": len(existing)},
+                             unlabelled, {"workflow_runs": []}])
+            posted = []
+            with mock.patch.object(status.settle, "repository", return_value=SLUG):
+                result = status.publish(Path("."), 7, read=read, post=posted.append)
+            observed.append(([p["state"] for p in posted], result))
+
+        # Assert
+        self.assertEqual(observed, [([], None), (["success"], None)])
+
+    # GREEN_ON_BASE(characterization): removing the label does not make a failed campaign green.
+    def test_Given_AMissedLabelRemovalAfterAFailedCampaign_When_Reconciled_Then_TheExistingDisplayCannotBecomeGreen(self):
+        # Arrange
+        unlabelled = pull()
+        unlabelled["labels"] = []
+        failed = {**run(), "status": "completed", "conclusion": "failure"}
+        old = {"context": status.CONTEXT, "state": "pending"}
+        read = api_read([unlabelled, {"workflow_runs": [failed]},
+                         {"sha": SHA, "statuses": [old], "total_count": 1},
+                         unlabelled, {"workflow_runs": [failed]}])
+        posted = []
+
+        # Act
+        with mock.patch.object(status.settle, "repository", return_value=SLUG):
+            result = status.publish(Path("."), 7, read=read, post=posted.append)
+
+        # Assert
+        self.assertEqual([p["state"] for p in posted], ["failure"])
 
 
 class PublisherWorkflowTests(unittest.TestCase):
@@ -290,6 +570,31 @@ class PublisherWorkflowTests(unittest.TestCase):
         self.assertEqual((publishers, "types: [requested, in_progress, completed]" in text,
                           "statuses: write" in text, privileged_shard),
                          (["${{ github.event.repository.default_branch }}"], True, True, False))
+
+    def test_Given_TheRecoveryWorkflow_When_Read_Then_ScheduledAndManualJobsSerializeWithEventPublishers(self):
+        # Arrange
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/campaign-status.yml").read_text()
+
+        # Act
+        values = (bool(re.search(r'schedule:\s*\n\s*- cron: "\*/5 \* \* \* \*"', text)),
+                  "workflow_dispatch:" in text, "Optional pull request number" in text,
+                  "group: campaign-status-${{ github.repository }}" in text,
+                  "cancel-in-progress: false" in text)
+
+        # Assert
+        self.assertEqual(values, (True, True, True, True, True))
+
+    def test_Given_ThePublisherWorkflow_When_ItsConcurrencyPolicyIsRead_Then_ItUsesTheMaximumPendingQueueWithoutCancellingInProgress(self):
+        # Arrange
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/campaign-status.yml").read_text()
+
+        # Act
+        block = re.search(r"(?m)^    concurrency:\n((?:      .*\n)+)", text)
+        settings = dict(re.findall(r"(?m)^      ([\w-]+): ([^\n]+)$", block.group(1))) if block else {}
+
+        # Assert
+        self.assertEqual((settings.get("group"), settings.get("queue"), settings.get("cancel-in-progress")),
+                         ("campaign-status-${{ github.repository }}", "max", "false"))
 
 
 if __name__ == "__main__":
