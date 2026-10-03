@@ -142,8 +142,17 @@ namespace Velvet
         /// </param>
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
+            => ReconcileCatching(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit, catchingBoundary: null);
+
+        // As Reconcile, for an error boundary reconciling its own rows: a render error below it is caught inside
+        // this reconcile and handed back, for the boundary to show its fallback once the reconcile has returned.
+        // The catch sits in the try whose finally ends a top-level pass, ahead of that finally: it completes the enters
+        // the pass queued and drains the Portal mounts it deferred, and neither may run under the catch.
+        internal BoundaryCaughtSignal? ReconcileCatching(VisualElement? parent, VNode?[] oldChildren,
+            VNode?[] newChildren, double frameBudgetMs, int slotStart, int slotLimit,
+            ComponentFiber? catchingBoundary = null)
         {
-            if (_ctx.IsDisposed) { return; }
+            if (_ctx.IsDisposed) { return null; }
 
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
 
@@ -164,9 +173,11 @@ namespace Velvet
             var enclosingPass = _ctx.CurrentPass;
             _ctx.CurrentPass = this;
             _ctx.SharedReconcileDepth++;
+            BoundaryCaughtSignal? caught;
             try
             {
-                _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                caught = ReconcileChildren(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit,
+                    catchingBoundary);
             }
             finally
             {
@@ -198,6 +209,37 @@ namespace Velvet
                 {
                     _ctx.CurrentPass = enclosingPass;
                 }
+            }
+            return caught;
+        }
+
+        private BoundaryCaughtSignal? ReconcileChildren(VisualElement? parent, VNode?[] oldChildren,
+            VNode?[] newChildren, double frameBudgetMs, int slotStart, int slotLimit,
+            ComponentFiber? catchingBoundary = null)
+        {
+            if (catchingBoundary == null)
+            {
+                _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                return null;
+            }
+            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            catchingBoundary.CatchesInTheWalk = true;
+            try
+            {
+                _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                return null;
+            }
+            catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, catchingBoundary))
+            {
+                // React runs nothing for work that never committed. Counted rather than read off the parent
+                // chain, which the failed walk's disposal of what it mounted has already cut.
+                _ctx.PendingEnterCompletions.RemoveRange(
+                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
+                return signal;
+            }
+            finally
+            {
+                catchingBoundary.CatchesInTheWalk = false;
             }
         }
 

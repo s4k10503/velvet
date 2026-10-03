@@ -424,18 +424,22 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
-        // A boundary whose own reconcile runs inside another component's pass — a VirtualList row mounting
-        // during that pass — catches on the aborting path, and the abort it raises belongs to this reconcile
-        // alone: the enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what
-        // tells that abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of
-        // the body, so only a fallback this render swapped in has set it. A deferred render keeps its abort even
-        // so: it swaps one in only in the drain of a parked pass ahead of this call, into rows the walk around it
-        // is diffing, and that walk must stop.
+        // A boundary reconciling its own output catches a render error below it inside that reconcile, as the walk
+        // catches one below a boundary it expands, and shows its fallback once the reconcile has returned
+        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an element
+        // callback's error — inside another component's pass, a VirtualList row mounting during that pass, the
+        // abort it raises belongs to this reconcile alone: the
+        // enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what tells that
+        // abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of the body, so
+        // only a fallback this render swapped in has set it. A deferred render keeps its abort even so: it swaps
+        // one in only in the drain of a parked pass ahead of this call, into rows the walk around it is diffing,
+        // and that walk must stop.
         private static void ReconcileRenderedTree(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
-            FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+            if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
@@ -495,7 +499,7 @@ namespace Velvet
 
                 FiberBeginWork.CommitSettledHookDeps(fiber);
 
-                var newTree = FiberTreeReturn.NormalizeToArray(rendered);
+                var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
                 if (fiber.Reconciler?.HasPendingWork == true)
@@ -677,6 +681,8 @@ namespace Velvet
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
+            // A boundary showing the fallback it caught committed that fallback rather than its body's output.
+            if (fiber.CaughtError != null) return;
             // The mount root's Body is a constant passthrough closure over the caller-built tree
             // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
             // returns the SAME node graph the commit owns: there is no render purity to validate,

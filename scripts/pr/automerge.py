@@ -357,10 +357,14 @@ def main(argv=None, environ=None):
     environ = os.environ if environ is None else environ
 
     if not environ.get(TOKEN):
-        print(f"::warning::Not merging: {TOKEN} is empty. automerge.yml sets it from the "
-              f"AUTOMERGE_TOKEN secret; CONTRIBUTING.md's continuous-integration section says what "
-              f"that secret needs.")
-        return 0
+        if args.hand_off:
+            print(f"::warning::Not handing off: {TOKEN} is empty. automerge.yml supplies "
+                  "github.token for this invocation.")
+            return 0
+        print(f"::error::Not merging: {TOKEN} is empty. automerge.yml sets it from the "
+              "AUTOMERGE_TOKEN secret; CONTRIBUTING.md's continuous-integration section says what "
+              "that secret needs.")
+        return 1
 
     project = Path(args.project).resolve()
     if args.after_run and not wait_for_run(project, args.after_run):

@@ -104,18 +104,25 @@ namespace Velvet
         public static bool operator !=(StyleLonghandSet left, StyleLonghandSet right) => !left.Equals(right);
     }
 
-    /// <summary>What one bundled utility class sets, and under what condition it sets it.</summary>
+    /// <summary>What one bundled utility class sets, under what condition, and where its rule sits in the cascade.</summary>
     internal readonly struct StyleUtilityRule
     {
-        internal StyleUtilityRule(StyleLonghandSet properties, StyleUtilityGate gate)
+        internal StyleUtilityRule(StyleLonghandSet properties, StyleUtilityGate gate, int cascadePosition = -1)
         {
             Properties = properties;
             Gate = gate;
+            CascadePosition = cascadePosition;
         }
 
         public StyleLonghandSet Properties { get; }
 
         public StyleUtilityGate Gate { get; }
+
+        /// <summary>
+        /// How many classes the bundled stylesheets declare ahead of this one. Of two rules with the same gate
+        /// that write one property, the one with the greater position holds it.
+        /// </summary>
+        public int CascadePosition { get; }
     }
 
     /// <summary>Which longhand properties each bundled utility class writes.</summary>
@@ -147,8 +154,9 @@ namespace Velvet
 
         private const string AfterRules = @"        };
 
-        private static readonly Dictionary<string, int> ByClassName =
-            new Dictionary<string, int>({ENTRY_COUNT}, StringComparer.Ordinal)
+        // Each class's rule index and cascade position.
+        private static readonly Dictionary<string, (int Rule, int Position)> ByClassName =
+            new Dictionary<string, (int Rule, int Position)>({ENTRY_COUNT}, StringComparer.Ordinal)
         {
 ";
 
@@ -160,9 +168,10 @@ namespace Velvet
         /// <summary>The rule for <paramref name=""className""/>, if the bundled stylesheets define one.</summary>
         public static bool TryGet(string className, out StyleUtilityRule rule)
         {
-            if (className != null && ByClassName.TryGetValue(className, out var index))
+            if (className != null && ByClassName.TryGetValue(className, out var entry))
             {
-                rule = Rules[index];
+                var shape = Rules[entry.Rule];
+                rule = new StyleUtilityRule(shape.Properties, shape.Gate, entry.Position);
                 return true;
             }
             rule = default;
@@ -334,9 +343,11 @@ namespace Velvet
             {
                 sb.Append("            { \"")
                     .Append(table.Entries[i].ClassName)
-                    .Append("\", ")
+                    .Append("\", (")
                     .Append(Number(ruleOfEntry[i]))
-                    .Append(" },\n");
+                    .Append(", ")
+                    .Append(Number(table.Entries[i].CascadePosition))
+                    .Append(") },\n");
             }
         }
 

@@ -694,8 +694,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this primary by stopping the pass short of it.
-        // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_TheRenderItCaughtInRetries_Then_ItsStateSurvives()
         {
@@ -722,7 +720,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((committed, before, afterCatch, string.Join("|", _root.Query<Label>().ToList().Select(label => label.text))),
-                Is.EqualTo(("okay:0|primary:1|loaded:0:initial", "okay:1|loading", "error|loading", "okay:3|primary:1|loaded:3:value")));
+                Is.EqualTo(("okay:0|primary:1|loaded:0:initial", "okay:1|loading", "error|loading", "error|primary:1|loaded:3:value")));
         }
 
         // GREEN_ON_BASE(characterization): the merge base keeps this effect by stopping the pass short of it.

@@ -63,7 +63,7 @@ namespace Velvet.StyleTable
 
             var entries = accumulator.Entries.Values
                 .OrderBy(e => e.ClassName, StringComparer.Ordinal)
-                .Select(e => new StyleUtilityTableEntry(e.ClassName, e.Gate, e.Word0, e.Word1))
+                .Select(e => new StyleUtilityTableEntry(e.ClassName, e.Gate, e.Word0, e.Word1, e.CascadePosition))
                 .ToImmutableArray();
 
             return new StyleUtilityTableResult(
@@ -217,7 +217,7 @@ namespace Velvet.StyleTable
 
             if (!accumulator.Entries.TryGetValue(target.ClassName, out var entry))
             {
-                entry = new MutableEntry(target.ClassName, target.Gate);
+                entry = new MutableEntry(target.ClassName, target.Gate, accumulator.Entries.Count);
                 accumulator.Entries.Add(target.ClassName, entry);
             }
             else if (entry.Gate != target.Gate)
@@ -227,6 +227,16 @@ namespace Velvet.StyleTable
                     $"Utility class '{target.ClassName}' is defined under gate '{entry.Gate}' and again " +
                     $"under gate '{target.Gate}'. A gated and an ungated rule are different cascade layers " +
                     "and cannot share one property set.",
+                    rule.Offset));
+                return;
+            }
+            else
+            {
+                accumulator.Problems.Add(sheet.ProblemAt(
+                    UssProblemCode.ClassDeclaredByMoreThanOneRule,
+                    $"Utility class '{target.ClassName}' is declared by a second rule. The table records one " +
+                    "cascade position per class, which places every property the class writes; a second " +
+                    "rule would place some of them later than recorded.",
                     rule.Offset));
                 return;
             }
@@ -365,15 +375,19 @@ namespace Velvet.StyleTable
 
         private sealed class MutableEntry
         {
-            public MutableEntry(string className, UssGate gate)
+            public MutableEntry(string className, UssGate gate, int cascadePosition)
             {
                 ClassName = className;
                 Gate = gate;
+                CascadePosition = cascadePosition;
             }
 
             public string ClassName { get; }
 
             public UssGate Gate { get; }
+
+            /// <summary>How many classes the sheets declared ahead of this one.</summary>
+            public int CascadePosition { get; }
 
             public ulong Word0 { get; private set; }
 
@@ -409,12 +423,13 @@ namespace Velvet.StyleTable
 
     internal readonly struct StyleUtilityTableEntry
     {
-        public StyleUtilityTableEntry(string className, UssGate gate, ulong word0, ulong word1)
+        public StyleUtilityTableEntry(string className, UssGate gate, ulong word0, ulong word1, int cascadePosition)
         {
             ClassName = className;
             Gate = gate;
             Word0 = word0;
             Word1 = word1;
+            CascadePosition = cascadePosition;
         }
 
         public string ClassName { get; }
@@ -424,6 +439,8 @@ namespace Velvet.StyleTable
         public ulong Word0 { get; }
 
         public ulong Word1 { get; }
+
+        public int CascadePosition { get; }
     }
 
     /// <summary>One utility's <c>transition-property</c> declaration: the properties its value names.</summary>

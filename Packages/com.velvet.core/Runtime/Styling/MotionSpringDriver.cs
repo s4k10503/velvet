@@ -113,7 +113,7 @@ namespace Velvet
         // Rest epsilons, chosen per channel's natural scale (a 0.01 threshold is tuned for a roughly 0..1 range;
         // a channel in pixels or degrees needs a proportionally larger pair or it would spend many extra
         // (imperceptible) ticks converging on a threshold far tighter than the value's scale).
-        private const float NormalizedRestDelta = 0.001f; // opacity / uniform scale (~0..1 / ~1 range)
+        internal const float NormalizedRestDelta = 0.001f; // opacity / uniform scale (~0..1 / ~1 range)
         private const float NormalizedRestSpeed = 0.001f;
         private const float PixelRestDelta = 0.1f; // translate x/y (pixels)
         private const float PixelRestSpeed = 0.1f;
@@ -198,7 +198,7 @@ namespace Velvet
         {
             if (state.Opacity != null)
             {
-                element.style.opacity = state.Opacity.Integrator.Value;
+                MotionOpacity.Write(element, state.Opacity.Integrator.Value);
             }
             if (state.TranslateX != null || state.TranslateY != null)
             {
@@ -316,7 +316,7 @@ namespace Velvet
         /// </remarks>
         public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
         {
-            if (state.Opacity != null) element.style.opacity = StyleKeyword.Null;
+            if (state.Opacity != null) MotionOpacity.Write(element, StyleKeyword.Null);
             if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
@@ -343,7 +343,7 @@ namespace Velvet
             if (state.Opacity != null && named.Contains(StyleLonghand.Opacity))
             {
                 state.Opacity = null;
-                element.style.opacity = StyleKeyword.Null;
+                MotionOpacity.Write(element, StyleKeyword.Null);
             }
             // X and Y are created together, so they are dropped together.
             if (state.TranslateX != null && named.Contains(StyleLonghand.Translate))

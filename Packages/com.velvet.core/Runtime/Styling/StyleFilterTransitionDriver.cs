@@ -199,13 +199,23 @@ namespace Velvet
             out int durationMs, out int delayMs, out EasingMode easing)
         {
             var resolved = element.resolvedStyle;
-            var properties = AsList(resolved.transitionProperty);
-            var durations = AsList(resolved.transitionDuration);
-            var delays = AsList(resolved.transitionDelay);
-            var curves = AsList(resolved.transitionTimingFunction);
+            var lists = new TransitionLists(AsList(resolved.transitionProperty), AsList(resolved.transitionDuration),
+                AsList(resolved.transitionDelay), AsList(resolved.transitionTimingFunction));
+            return TryFindTransition(lists, property, shorthand, out durationMs, out delayMs, out easing);
+        }
+
+        // The same entry, read off lists given here: an element's inline lists or the ones its rules cascade to
+        // (MotionOpacity).
+        internal static bool TryFindTransition(TransitionLists lists, string property, string? shorthand,
+            out int durationMs, out int delayMs, out EasingMode easing)
+        {
+            var (properties, durations, delays, curves) = (lists.Properties, lists.Durations, lists.Delays, lists.Curves);
             for (var i = properties.Count - 1; i >= 0; i--)
             {
                 var name = properties[i].ToString();
+                // A name UI Toolkit does not know, `none` among them, reads back as null, which a null shorthand would
+                // otherwise match.
+                if (name == null) continue;
                 if (name != property && name != shorthand && name != "all")
                 {
                     continue;
@@ -547,5 +557,23 @@ namespace Velvet
                 : new FilterParameter(Mathf.Lerp(from.floatValue, to.floatValue, e));
 
         #endregion
+    }
+
+    // The four lists a transition is declared by, a missing one read as empty.
+    internal readonly struct TransitionLists
+    {
+        public TransitionLists(IList<StylePropertyName>? properties, IList<TimeValue>? durations, IList<TimeValue>? delays,
+            IList<EasingFunction>? curves)
+        {
+            Properties = properties ?? Array.Empty<StylePropertyName>();
+            Durations = durations ?? Array.Empty<TimeValue>();
+            Delays = delays ?? Array.Empty<TimeValue>();
+            Curves = curves ?? Array.Empty<EasingFunction>();
+        }
+
+        public IList<StylePropertyName> Properties { get; }
+        public IList<TimeValue> Durations { get; }
+        public IList<TimeValue> Delays { get; }
+        public IList<EasingFunction> Curves { get; }
     }
 }

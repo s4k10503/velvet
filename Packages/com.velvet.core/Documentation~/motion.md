@@ -248,15 +248,19 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   "transparent"), so a property only one side names is **not** animated: the swap lands it
   instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
   `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
-- **A shorthand and a longhand naming the same slot both snap.** `p-8` with `pt-2` — or `size-*`
-  with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
-  `border-t-*` — has two utilities claiming one slot, so neither animates and the swap lands them
-  both. Which of the two holds the shared slot at rest is not something the animation can derive:
-  for preset classes it is stylesheet declaration order, which the class strings do not carry, while
-  for bracket-form tokens it is class-array position instead. Use one or the other on a given axis.
-  One caveat: the rule only sees utilities whose value is readable, so an unreadable longhand beside
-  a readable shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still
-  drives the corner the longhand owns at rest.
+- **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
+  is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
+  corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
+  rest. Important stylesheet utilities suppress plain tokens they fully cover; important inline tokens of the same
+  property outrank plain ones. Among the surviving inline-resolved tokens (bracket forms, `-mt-2`,
+  `translate-x-4`), the later write holds the slot, including across a shorthand and its longhand.
+  Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
+  the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
+  other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
+  class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
+  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A plain inline token
+  fully covered across properties by important inline tokens can depend on the element's existing
+  class projection (`!p-[8px] pt-[2px]`); a slot it would hold is left undriven.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
@@ -350,12 +354,29 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   Motion that mounts under its id in a later batch appears in place.
 - Several Motions may hold one `layoutId` at once. The one that took the id last — by mounting under it
   or by changing to it — leads, and the others are hidden by an inline `visibility: hidden`; a render
-  that moves one of them does not make it the lead. When the lead leaves the tree, the holder of those
+  that moves one of them does not make it the lead. While a lead moves from a box it took from another
+  holder, each other holder on its panel is drawn over the lead's box. Where more than one holds the id
+  and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
+  it fades in on circOut over the first half of its move while they fade out linearly between halfway
+  and 95% of it. The fade is written as the element's inline opacity over the opacity its classes,
+  variants and drivers give it. While it is written, an element whose transitions cover opacity has them
+  suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
+  unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
+  opacity stands, with the duration, delay and easing the element declares for it, running one that
+  outlasts the move on to its end. The others fade from
+  the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
+  another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
+  lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
+  the same way. A move of
+  the lead's own that interrupts the crossfade holds the opacities it had reached until that move lands.
+  The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
   relegate hands it on, and the child is removed once both its exit has played and that lead has landed;
-  a holder whose key comes back mid-exit takes the lead again. A holder that takes the lead in any of
-  these ways tweens from the box of the lead before it, whether or not its own layout changed. A Motion
+  a holder whose key comes back mid-exit takes the lead again. A holder that takes the lead from another, in
+  any of these ways or by taking the id, tweens from the box of the lead before it whether or not that box
+  differs from its own. A Motion
   whose `layoutId` becomes null stops holding the id and is shown.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch

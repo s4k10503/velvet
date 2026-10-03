@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEditor;
 using UnityEditor.UIElements.TestFramework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -70,6 +71,10 @@ namespace Velvet.Tests
             s_store = null;
             s_bTransition = null;
             s_sharedClasses = null;
+            (s_cMounted, s_cTransition) = (false, null);
+            (s_aClasses, s_bClasses) = (null, null);
+            (s_aPose, s_aTransition) = (null, null);
+            (s_aField, s_looseField) = (false, false);
             (s_modalTransition, s_exitCompletions, s_presenceGone) = (null, 0, false);
             (s_modalLeft, s_moverLeft) = (300, -1);
             s_cardTransition = null;
@@ -2382,6 +2387,18 @@ namespace Velvet.Tests
         private static StyleTransitionConfig s_bTransition;
         private static string s_sharedClasses;
         private static int s_sharedRenders;
+        // "c" stands 600px right under "card" on s_cTransition while s_cMounted.
+        private static bool s_cMounted;
+        private static StyleTransitionConfig s_cTransition;
+        // Classes "a" and "b" carry of their own; "a" holds a plain child, "a-child".
+        private static string s_aClasses;
+        private static string s_bClasses;
+        // The pose "a" takes of s_fade, none while null, on s_aTransition in place of s_slowTween while set.
+        private static string s_aPose;
+        private static StyleTransitionConfig s_aTransition;
+        // A TextField "field" inside "a", and one "loose" outside every holder.
+        private static bool s_aField;
+        private static bool s_looseField;
 
         [Component]
         private static VNode SharedLiveIdRender()
@@ -2391,13 +2408,26 @@ namespace Velvet.Tests
             var children = new List<VNode>();
             if (s_aMounted)
             {
-                children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_slowTween,
-                    className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses}"));
+                children.Add(V.Motion(key: "a", name: "a", layoutId: s_aId, transition: s_aTransition ?? s_slowTween,
+                    variants: s_aPose != null ? s_fade : null, animate: s_aPose,
+                    className: $"absolute left-[{s_aLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses} {s_aClasses}",
+                    children: s_aField
+                        ? new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]"), V.TextField(key: "field", name: "field") }
+                        : new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]") }));
             }
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
-                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses}"));
+                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[100px] h-[100px] {s_sharedClasses} {s_bClasses}"));
+            }
+            if (s_cMounted)
+            {
+                children.Add(V.Motion(key: "c", name: "c", layoutId: "card", transition: s_cTransition,
+                    className: "absolute left-[600px] top-[0px] w-[100px] h-[100px]"));
+            }
+            if (s_looseField)
+            {
+                children.Add(V.TextField(key: "loose", name: "loose"));
             }
             return V.Div(children: children.ToArray());
         }
@@ -2429,6 +2459,12 @@ namespace Velvet.Tests
             Tick();
         }
 
+        // How far "b" is through its tween from "a", read off where it is drawn: the tween is linear over 300px.
+        private float BProgress() => 1f + TranslateX(Root.Q<VisualElement>("b")) / 300f;
+
+        // 1 where nothing writes the element's opacity inline.
+        private static float WrittenOpacity(VisualElement element) =>
+            element.style.opacity.keyword == StyleKeyword.Undefined ? element.style.opacity.value : 1f;
 
         [Test]
         public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderItAndItsTweenEnds_Then_TheFirstIsHidden()
@@ -2441,6 +2477,86 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionHoldingAnId_When_AnotherMountsUnderIt_Then_ItIsDrawnWhereTheOtherIsDrawn()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act — "b" some 50px on from "a".
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert
+            var b = DrawnBox(Root.Q<VisualElement>("b"));
+            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_AQuarterOfItsTweenHasPassed_Then_ItIsFadedInOnCircOut()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — Framer's easeCrossfadeIn: circOut over the first half of the move.
+            var progress = BProgress();
+            var expected = Mathf.Sin(Mathf.Acos(1f - progress / 0.5f));
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_ThreeQuartersOfItsTweenHavePassed_Then_TheOneBehindItIsFadingOut()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 45; i++) Tick();
+
+            // Assert — Framer's easeCrossfadeOut: linear from halfway to 95% of the move.
+            var progress = BProgress();
+            var expected = 1f - (progress - 0.5f) / 0.45f;
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatJoinedAnId_When_ItsTweenEnds_Then_ItsOpacityIsHandedBack()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            var b = Root.Q<VisualElement>("b");
+            var fading = b.style.opacity.keyword != StyleKeyword.Null;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((fading, b.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionJoiningAnId_When_ItIsPatchedAgainBeforeItsFirstLayout_Then_ItStillCrossfades()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_bMounted = true;
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+
+            // Act — a second render before any layout, then "b" some 50px on.
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 11; i++) Tick();
+
+            // Assert — "a" drawn where "b" is, fading behind it.
+            var b = DrawnBox(Root.Q<VisualElement>("b"));
+            Assert.That((b.x > 30f, Near(DrawnBox(Root.Q<VisualElement>("a")), b)), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -2617,6 +2733,25 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("a").style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base tweens a Motion that mounts as the only holder of the id a removed one held, and writes no opacity.
+        // A holder alone under its id does not crossfade: it mixes from the previous holder's opacity, here its own.
+        [Test]
+        public void Given_ALayoutIdMotionRemovedAsAnotherMountsUnderItsId_When_TheOtherTweens_Then_ItDoesNotFade()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+
+            // Act
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Assert — back over "a", at its own opacity.
+            var b = Root.Q<VisualElement>("b");
+            Assert.That((TranslateX(b) < -250f, WrittenOpacity(b)), Is.EqualTo((true, 1f)));
+        }
+
         [Test]
         public void Given_TwoLiveLayoutIdMotionsSharingAnId_When_TheLeadMovesOnItsOwn_Then_TheOtherStaysHidden()
         {
@@ -2630,6 +2765,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").resolvedStyle.visibility, Is.EqualTo(Visibility.Hidden));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionBehindANewLead_When_TheCrossfadeEnds_Then_ItsOpacityIsHandedBack()
+        {
+            // Arrange
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+            var a = Root.Q<VisualElement>("a");
+            var fading = a.style.opacity.keyword != StyleKeyword.Null;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((fading, a.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -2683,6 +2834,718 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.Q<VisualElement>("a").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hides every holder of an id but the lead, crossfading none of them.
+        // A lead that lands must end the crossfade of every member drawn behind it, the one superseded included.
+        [Test]
+        public void Given_ALeadSupersededMidCrossfade_When_ANewLeadOnAOneFrameTweenLands_Then_BothBehindItAreHidden()
+        {
+            // Arrange — "a" tweening a move of its own when "b" takes the id over, and "c" on a one-millisecond tween
+            // taking it from "b" five frames later.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_cTransition = new StyleTransitionConfig { DurationSec = 0.001f, Easing = EasingMode.Linear };
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Act
+            s_cMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Assert
+            Assert.That((Root.Q<VisualElement>("a").resolvedStyle.visibility, Root.Q<VisualElement>("b").resolvedStyle.visibility),
+                Is.EqualTo((Visibility.Hidden, Visibility.Hidden)));
+        }
+
+        [Test]
+        public void Given_ALeadCrossfading_When_AMoveOfItsOwnInterruptsIt_Then_TheCrossfadeHoldsWhereItWas()
+        {
+            // Arrange — "b" about a third of the way through its crossfade.
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 18; i++) Tick();
+            var reached = WrittenOpacity(Root.Q<VisualElement>("b"));
+
+            // Act
+            s_bLeft = 400;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — "b" still at the part-way opacity the crossfade reached, and "a" still drawn behind it.
+            var b = WrittenOpacity(Root.Q<VisualElement>("b"));
+            Assert.That((reached < 0.95f, Mathf.Abs(b - reached) < 0.06f, Root.Q<VisualElement>("a").resolvedStyle.visibility),
+                Is.EqualTo((true, true, Visibility.Visible)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base draws no crossfade, so a Motion taking an id is drawn at its own
+        // opacity. A crossfade with no tween to run must leave it there.
+        [Test]
+        public void Given_AMotionMidItsOwnTween_When_ItTakesAHeldIdOnAZeroDuration_Then_ItIsDrawnAtItsOwnOpacity()
+        {
+            // Arrange — "b" holds "card"; "a" holds an id of its own, some way through a tween of its own.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 0, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            using var mounted = MountAAlone();
+            s_aLeft = 100;
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Act — "a" moves and takes "card" on a zero-duration transition.
+            (s_aId, s_aLeft, s_aTransition) = ("card", 150, new StyleTransitionConfig { DurationSec = 0f });
+            RenderShared(mounted);
+
+            // Assert
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AHalfOpaqueHolderRemovedAsAnotherMountsAtItsBox_When_AQuarterOfTheTweenHasPassed_Then_TheOtherIsMixingFromItsOpacity()
+        {
+            // Arrange — the bundled sheet, and "a" at half opacity where "b" mounts.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (0, s_slowTween, "", "opacity-50");
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — part way from "a"'s half to its own whole, as Framer animates a node taking another's place
+            // however little it moves.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.InRange(0.55f, 0.8f));
+        }
+
+        [Test]
+        public void Given_TwoHoldersAtOneBoxOnASoftSpring_When_TheSecondHasTakenTheIdForTwoFrames_Then_ItIsStillFadingIn()
+        {
+            // Arrange — the bundled sheet; "b" mounts under "card" where "a" stands, on a spring that leaves its start
+            // slowly.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_sharedClasses) = (0, "");
+            s_bTransition = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 50f, Damping = 10f, Mass = 1f };
+            using var mounted = MountAAlone();
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.LessThan(0.9f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a Motion's own inline opacity alone as it takes an id.
+        // A crossfade must hand back the opacity the Motion held.
+        [Test]
+        public void Given_AMotionAtItsOwnInlineOpacityThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItHoldsItsOwnOpacityAgain()
+        {
+            // Arrange
+            s_bClasses = "opacity-[0.6]";
+            using var mounted = MountBOverA();
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            var b = Root.Q<VisualElement>("b");
+            Assert.That((b.style.opacity.keyword, b.style.opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0.6f)));
+        }
+
+        [Test]
+        public void Given_AMotionAtItsOwnInlineOpacityJoiningAnId_When_AQuarterOfItsTweenHasPassed_Then_ItsOwnIsFadedInOnCircOut()
+        {
+            // Arrange
+            s_bClasses = "opacity-[0.6]";
+            using var mounted = MountBOverA();
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert
+            var expected = 0.6f * Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition()
+        {
+            // Arrange — the bundled sheet; "b" transitions its opacity linearly over a second.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-opacity duration-1000 ease-linear";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — about a sixth of a second after "b" takes opacity-0.
+            s_bClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — its own opacity part-way down that second, under the crossfade's circOut.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(own, Is.InRange(0.7f, 0.95f));
+        }
+
+        [Test]
+        public void Given_ALeadCrossfadingInWithAnArbitraryTransitionDuration_When_AClassTakesItsOpacityToZero_Then_ItsOwnIsCarriedLinearlyOverThatDuration()
+        {
+            // Arrange — the bundled sheet; "b" transitions its opacity linearly over a second given by an arbitrary value.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-opacity duration-[1000ms] ease-linear";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — about a sixth of a second after "b" takes opacity-0.
+            s_bClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — its own opacity about a sixth of the way down that second, as UI Toolkit runs it, under the
+            // crossfade's circOut: not on the transition-property list the suspension writes, whose curve is Ease.
+            var own = WrittenOpacity(Root.Q<VisualElement>("b")) / Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(own, Is.InRange(0.78f, 0.92f));
+        }
+
+        [Test]
+        public void Given_AMemberHalfWayThroughItsOwnFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave()
+        {
+            // Arrange — the bundled sheet; "a" about half way through a linear second down to opacity-0 as "b" takes the
+            // id and starts drawing it.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aClasses = "transition-opacity duration-1000 ease-linear";
+            using var mounted = MountAAlone();
+            s_aClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Act — some 0.45 s on, before "a" starts fading out behind "b".
+            for (var i = 0; i < 27; i++) Tick();
+
+            // Assert — almost at nothing, where a fade begun a second earlier ends, rather than half way down another
+            // whole second begun as "b" took the id.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.InRange(0f, 0.12f));
+        }
+
+        [Test]
+        public void Given_AMemberPartWayThroughADelayedFade_When_ANewLeadTakesTheId_Then_TheFadeEndsWhenItWouldHave()
+        {
+            // Arrange — the bundled sheet, and the test's own giving "a" a linear second down to opacity-0 after a fifth
+            // of a second's delay; "a" some 0.3 s into that second as "b" takes the id and starts drawing it.
+            VelvetStyleUtilities.AttachTo(Root);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses) = (300, s_slowTween, "");
+            s_aClasses = "layout-id-test-fade-delayed";
+            using var mounted = MountAAlone();
+            s_aClasses += " opacity-0";
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+            s_bMounted = true;
+            RenderShared(mounted);
+
+            // Act — some 0.45 s on, before "a" starts fading out behind "b".
+            for (var i = 0; i < 27; i++) Tick();
+
+            // Assert — about a quarter, where the fade stands 0.75 s into its second, rather than near a half, where
+            // it would stand had it waited out its delay again as "b" took the id.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.InRange(0.15f, 0.35f));
+        }
+
+        [Test]
+        public void Given_AMotionBehindANewLead_When_ItsVariantSwapsToHiddenOnADelayedTransition_Then_ItsOwnIsCarriedOnThatTransition()
+        {
+            // Arrange — "a" visible on its variants, and "b" a little under halfway through taking the id from it.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aPose, s_aTransition) = ("visible", new StyleTransitionConfig { DurationSec = 1f, DelaySec = 0.1f, Easing = EasingMode.Linear });
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 27; i++) Tick();
+
+            // Act — about a quarter of a second after "a" swaps to its hidden pose.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 14; i++) Tick();
+
+            // Assert — its own opacity about a seventh of the way down after the delay, under the crossfade's fade out,
+            // and drawn at what is written rather than trailing it on the swap's transition.
+            var a = Root.Q<VisualElement>("a");
+            var written = WrittenOpacity(a);
+            var own = written / (1f - (BProgress() - 0.5f) / 0.45f);
+            Assert.That((own > 0.78f && own < 0.95f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a transition-all lead's transitions back once its move lands.
+        // The crossfade's suspension must be handed back with it.
+        [Test]
+        public void Given_ATransitionAllMotionThatJoinedAnId_When_ItsCrossfadeEnds_Then_ItsTransitionsAreHandedBack()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-all";
+            using var mounted = MountBOverA();
+            var b = Root.Q<VisualElement>("b");
+            var suspended = b.style.transitionProperty.keyword != StyleKeyword.Null;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((suspended, b.style.transitionProperty.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AHolderWhoseOwnOpacityChangedAfterItsCrossfade_When_ItLeavesAsAnotherMountsUnderItsId_Then_TheOtherMixesFromItsOpacityNow()
+        {
+            // Arrange — the bundled sheet; "b" at half opacity takes the id from "a" and lands, then drops to a quarter.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_cTransition) = ("opacity-50", s_slowTween);
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+            s_bClasses = "opacity-25";
+            RenderShared(mounted);
+
+            // Act — "a" and "b" leave as "c" mounts under the id; a quarter of the way through its tween.
+            (s_aMounted, s_bMounted, s_cMounted) = (false, false, true);
+            RenderShared(mounted);
+            for (var i = 0; i < 14; i++) Tick();
+
+            // Assert
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("c")), Is.EqualTo(Mathf.Lerp(0.25f, 1f, CProgress())).Within(0.02f));
+        }
+
+        // "a" holds "pool"; step 1 mounts a Label-typed "b" 300px right under it, step 2 removes "b", and step 3 rents
+        // a Label for an unrelated Motion fading in on a spring.
+        [Component]
+        private static VNode PooledCrossfadeRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var a = V.Motion(key: "a", name: "a", layoutId: "pool", transition: s_slowTween,
+                className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]");
+            return V.Div(children: step switch
+            {
+                1 => new[]
+                {
+                    a, V.Motion(key: "b", name: "b", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
+                        className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"),
+                },
+                3 => new[]
+                {
+                    a, V.Motion(key: "reused", name: "reused", elementType: typeof(Label), variants: s_fade, initial: "hidden",
+                        animate: "visible", transition: s_layoutSpring, className: "w-[50px] h-[50px]"),
+                },
+                _ => new[] { a },
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes no opacity over a lead crossfading in, so none follows it into the pool.
+        // What a crossfade keeps for an element must not follow it into the pool either.
+        [Test]
+        public void Given_ALeadRemovedMidCrossfade_When_ThePoolHandsItsElementToAMotionFadingInOnASpring_Then_ItsOpacityIsHandedBackAsItSettles()
+        {
+            // Arrange — "b" about a quarter of the way through crossfading in when it is removed.
+            using var mounted = V.Mount(Root, V.Component(PooledCrossfadeRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 15; i++) Tick();
+            var original = Root.Q<VisualElement>("b");
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Act
+            s_setStep.Invoke(3);
+            mounted.FlushStateForTest();
+            AdvancePast(2f);
+
+            // Assert
+            var reused = Root.Q<VisualElement>("reused");
+            Assert.That((ReferenceEquals(original, reused), reused.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a class's opacity transition to UI Toolkit, which runs it past any layoutId move.
+        // One the crossfade carried must run on past the crossfade as well.
+        [Test]
+        public void Given_ALeadCrossfadingIn_When_ItsOwnOpacityTransitionOutlastsTheMove_Then_ItRunsOnPastTheLanding()
+        {
+            // Arrange — the bundled sheet; "b" transitions its opacity linearly over a second, and takes opacity-0 some
+            // three quarters of the way through its move.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_bClasses = "transition-opacity duration-1000 ease-linear";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 47; i++) Tick();
+            s_bClasses += " opacity-0";
+            RenderShared(mounted);
+
+            // Act — a third of a second on, past the landing.
+            for (var i = 0; i < 20; i++) Tick();
+
+            // Assert — about a third of the way down.
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.opacity, Is.InRange(0.55f, 0.8f));
+        }
+
+        [Test]
+        public void Given_AThirdHolderTakingTheIdFromALeadMidCrossfade_When_TheCrossfadeOutIsUnderWay_Then_TheFirstIsDrawnAtWhatTheLeadWasDrawnAt()
+        {
+            // Arrange — "b" about a quarter of the way through crossfading in over "a", drawn part-way faded in, when "c"
+            // takes the id from it.
+            (s_bClasses, s_cTransition) = ("", s_slowTween);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            var (drawn, drawnLeft) = (WrittenOpacity(b), 300f + TranslateX(b));
+            s_cMounted = true;
+            RenderShared(mounted);
+
+            // Act — some three fifths of the way through "c"'s move.
+            for (var i = 0; i < 36; i++) Tick();
+
+            // Assert — at the opacity "b" was drawn at as "c" took the id, fading out: Framer's promote takes the
+            // previous lead's animationValues, which the new lead's animation stops. "c" tweens linearly from where
+            // "b" was drawn.
+            var progress = 1f + TranslateX(Root.Q<VisualElement>("c")) / (600f - drawnLeft);
+            var expected = drawn * (1f - (progress - 0.5f) / 0.45f);
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(expected).Within(0.04f));
+        }
+
+        [Test]
+        public void Given_ALeadAtItsOwnInlineOpacityCrossfadingIn_When_ItsClassesChangeThatOpacity_Then_TheNewOneIsDrawnFadedAtOnce()
+        {
+            // Arrange — "b" some way through crossfading in at its own 0.6.
+            s_bClasses = "opacity-[0.6]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Act — the render alone, before any frame.
+            s_bClasses = "opacity-[0.3]";
+            s_setStep.Invoke(++s_sharedRenders);
+            mounted.FlushStateForTest();
+
+            // Assert — the new 0.3 under the fade in reached so far, rather than 0.3 drawn whole.
+            var expected = 0.3f * Mathf.Sin(Mathf.Acos(1f - BProgress() / 0.5f));
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AMemberBehindANewLead_When_ItTakesAnOpacityTransitionMidCrossfade_Then_ItIsDrawnAtTheOpacityWritten()
+        {
+            // Arrange — the bundled sheet; "a" some way behind "b" before it takes a one-second opacity transition.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 20; i++) Tick();
+            s_aClasses = "transition-opacity duration-1000";
+            RenderShared(mounted);
+
+            // Act — some seven tenths of the way, where "a" is fading out.
+            for (var i = 0; i < 24; i++) Tick();
+
+            // Assert — within a frame's step of the opacity written, which a second-long transition of each write
+            // would trail far behind.
+            var a = Root.Q<VisualElement>("a");
+            var written = WrittenOpacity(a);
+            Assert.That((written < 0.9f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AMemberBehindALeadWhoseVariantSwapHasEnded_When_AClassChangesItsOpacity_Then_ItIsCarriedOnTheClassesTransition()
+        {
+            // Arrange — the bundled sheet; "b" on a three-second move, and "a", which carries its opacity over a second,
+            // swapping to its hidden pose on a tenth of a second a few frames in, a tween over well before the class
+            // below lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "transition-opacity duration-1000 ease-linear");
+            s_bTransition = new StyleTransitionConfig { DurationSec = 3f, Easing = EasingMode.Linear };
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 25; i++) Tick();
+
+            // Act — a tenth of a second or so after "a" takes opacity-50, before the fade out starts.
+            s_aClasses += " opacity-50";
+            RenderShared(mounted);
+            for (var i = 0; i < 9; i++) Tick();
+
+            // Assert — a tenth or so of the way up on the class's second, rather than landed on the swap's tenth.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.InRange(0.02f, 0.2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never turns off the picking of a layoutId Motion's subtree.
+        // A control a member drops while drawn behind a lead must take pointers again wherever the pool hands it next.
+        [Test]
+        public void Given_AMemberDroppingATextFieldWhileDrawnBehindALead_When_ThePoolHandsItOn_Then_ItsInputTakesPointers()
+        {
+            // Arrange — the field's input as it picks before "b" takes the id over "a", and "a" dropping it five
+            // frames into "b"'s move.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aField) = (300, s_slowTween, "", true);
+            using var mounted = MountAAlone();
+            var field = Root.Q<TextField>("field");
+            var own = field.Q(className: TextField.inputUssClassName).pickingMode;
+            s_bMounted = true;
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aField = false;
+            RenderShared(mounted);
+
+            // Act
+            s_looseField = true;
+            RenderShared(mounted);
+
+            // Assert
+            var loose = Root.Q<TextField>("loose");
+            Assert.That((ReferenceEquals(field, loose), loose.Q(className: TextField.inputUssClassName).pickingMode),
+                Is.EqualTo((true, own)));
+        }
+
+        private static TabStore s_holders;
+
+        // Two sibling components on one store, the first holding "a" under "pool" at half opacity while it is selected
+        // and the second "b" 300px right under the same id. Both are Labels, a pooled type: the first leaves in the
+        // flush before the second mounts, so the pool gives b a's element.
+        [Component]
+        private static VNode FirstHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 0
+            ? new VNode[]
+            {
+                V.Motion(key: "a", name: "a", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px] opacity-50"),
+            }
+            : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode SecondHolderRender() => V.Div(children: Hooks.UseStore(s_holders, s => s.Index) == 1
+            ? new VNode[]
+            {
+                V.Motion(key: "b", name: "b", layoutId: "pool", elementType: typeof(Label), transition: s_slowTween,
+                    className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]"),
+            }
+            : Array.Empty<VNode>());
+
+        [Component]
+        private static VNode PooledHolderRender() => V.Div(children: new VNode[]
+        {
+            V.Component(FirstHolderRender, key: "first"),
+            V.Component(SecondHolderRender, key: "second"),
+        });
+
+        [Test]
+        public void Given_AHalfOpaqueHolderWhoseElementThePoolGivesTheNextHolder_When_AQuarterOfTheTweenHasPassed_Then_TheNextIsMixingFromItsOpacity()
+        {
+            // Arrange — the bundled sheet, so opacity-50 resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_holders = new TabStore(0);
+            using var mounted = V.Mount(Root, V.Component(PooledHolderRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("a");
+            s_holders.Select(1);
+            Tick();
+
+            // Act
+            for (var i = 0; i < 14; i++) Tick();
+
+            // Assert — mixed from "a"'s half, rather than from "b"'s own whole because the element that held it is b's.
+            var b = Root.Q<VisualElement>("b");
+            Assert.That(ReferenceEquals(original, b) ? WrittenOpacity(b) : float.NaN,
+                Is.EqualTo(Mathf.Lerp(0.5f, 1f, BProgress())).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AMemberWhoseStylesheetTransitionsItsOpacityBehindANewLead_When_ItFadesOut_Then_ItIsDrawnAtTheOpacityWritten()
+        {
+            // Arrange — a stylesheet of the test's own giving "a" a one-second opacity transition through a class no
+            // bundled utility names.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(OpacityTransitionSheetPath));
+            s_aClasses = "layout-id-test-fade";
+            using var mounted = MountBOverA();
+
+            // Act — three quarters of the way, where "a" is fading out.
+            for (var i = 0; i < 45; i++) Tick();
+
+            // Assert — within a frame's step of the opacity written, which a second-long transition of each write
+            // would trail far behind.
+            var a = Root.Q<VisualElement>("a");
+            var written = WrittenOpacity(a);
+            Assert.That((written < 0.9f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+        }
+
+        private const string OpacityTransitionSheetPath =
+            "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdOpacityTransition.uss";
+
+        [Test]
+        public void Given_AnOpacityTransitioningMotionBehindANewLead_When_ItFadesOut_Then_ItIsDrawnAtTheOpacityWritten()
+        {
+            // Arrange — the bundled sheet, and "a" carrying its opacity on a one-second transition.
+            VelvetStyleUtilities.AttachTo(Root);
+            s_aClasses = "transition-opacity duration-1000";
+            using var mounted = MountBOverA();
+
+            // Act — three quarters of the way, where "a" is fading out.
+            for (var i = 0; i < 45; i++) Tick();
+
+            // Assert — within a frame's step of the opacity written, which a second-long transition of each write
+            // would trail far behind.
+            var a = Root.Q<VisualElement>("a");
+            var written = WrittenOpacity(a);
+            Assert.That((written < 0.9f, Mathf.Abs(a.resolvedStyle.opacity - written) < 0.1f), Is.EqualTo((true, true)));
+        }
+
+        // A card holding "card" with a title inside it holding "title", the first card's title at half opacity; at
+        // step 1 alone, a second card 300px right with its own title, under the same two ids.
+        [Component]
+        private static VNode NestedTitlesRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            VNode Card(string name, int left) => V.Motion(key: name, name: name, layoutId: "card", transition: s_slowTween,
+                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]",
+                children: new VNode[]
+                {
+                    V.Motion(key: "title", name: name + "-title", layoutId: "title", transition: s_slowTween,
+                        className: $"left-[10px] top-[10px] w-[50px] h-[20px] {(name == "a" ? "opacity-50" : "")}"),
+                });
+            return V.Div(children: step == 1 ? new[] { Card("a", 0), Card("b", 300) } : new[] { Card("a", 0) });
+        }
+
+        [Test]
+        public void Given_TwoCardsWithTitlesSharingIds_When_TheSecondCrossfadesOverTheFirst_Then_ItsTitleDoesNotFadeAgain()
+        {
+            // Arrange — the bundled sheet, so the first title's opacity-50 resolves.
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(NestedTitlesRender, key: "root"));
+            Tick();
+
+            // Act — past halfway, where the first card is fading out.
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 41; i++) Tick();
+
+            // Assert — the first card fading out behind the second, and neither title fading or mixing from the other's
+            // opacity: Framer's crossfade skips a node below one crossfading, and its opacity mix one not alone under
+            // its id.
+            Assert.That((WrittenOpacity(Root.Q<VisualElement>("a")) < 1f, WrittenOpacity(Root.Q<VisualElement>("b-title")), WrittenOpacity(Root.Q<VisualElement>("a-title"))),
+                Is.EqualTo((true, 1f, 1f)));
+        }
+
+        [Test]
+        public void Given_TwoCardsWithTitlesSharingIds_When_TheFirstLeadsAgain_Then_ItsTitleTakesPointers()
+        {
+            // Arrange — the second card crossfades over the first, its title taking no pointer while drawn, and lands.
+            using var mounted = V.Mount(Root, V.Component(NestedTitlesRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var title = Root.Q<VisualElement>("a-title");
+            var whileDrawn = title.pickingMode;
+            AdvancePast(1f);
+
+            // Act — the second card leaves, and the first tweens back from it.
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((whileDrawn, title.pickingMode), Is.EqualTo((PickingMode.Ignore, PickingMode.Position)));
+        }
+
+        // How far "c" is through its tween from "b", read off where it is drawn: the tween is linear over 300px.
+        private float CProgress() => 1f + TranslateX(Root.Q<VisualElement>("c")) / 300f;
+
+        [Test]
+        public void Given_AThirdHolderCrossfadingOverAHalfOpaqueLead_When_ThreeQuartersHavePassed_Then_TheFirstIsDrawnAtTheLeadsOpacityFadingOut()
+        {
+            // Arrange — the bundled sheet; "b" at half opacity takes the id from "a", then "c" from "b".
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_cTransition) = ("opacity-50", s_slowTween);
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+            s_cMounted = true;
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 45; i++) Tick();
+
+            // Assert — Framer draws every member behind the lead at the previous lead's opacity fading out, so "a",
+            // fully opaque of its own, is drawn at half of that.
+            var expected = 0.5f * (1f - (CProgress() - 0.5f) / 0.45f);
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AHalfOpaqueHolderRemovedAsAnotherMountsUnderItsId_When_AQuarterOfTheTweenHasPassed_Then_TheOtherIsMixingFromItsOpacity()
+        {
+            // Arrange — the bundled sheet, and "a" at half opacity.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_aClasses) = (300, s_slowTween, "", "opacity-50");
+            using var mounted = MountAAlone();
+            (s_aMounted, s_bMounted) = (false, true);
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 15; i++) Tick();
+
+            // Assert — mixed from "a"'s half to its own whole, as Framer mixes an only member's opacity.
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("b")), Is.EqualTo(Mathf.Lerp(0.5f, 1f, BProgress())).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AMemberFadingBehindANewLead_When_TheCrossfadeEnds_Then_ItsSubtreeTakesPointersAgain()
+        {
+            // Arrange — "a" part way through fading behind "b".
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+            var child = Root.Q<VisualElement>("a-child");
+            var whileFading = child.pickingMode;
+
+            // Act
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((whileFading, child.pickingMode), Is.EqualTo((PickingMode.Ignore, PickingMode.Position)));
+        }
+
+        [Test]
+        public void Given_AMemberFadingBehindANewLead_When_TheCrossfadeIsUnderWay_Then_ItTakesNoPointer()
+        {
+            // Arrange / Act
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("a").pickingMode, Is.EqualTo(PickingMode.Ignore));
+        }
+
+        [Test]
+        public void Given_AThirdHolderCrossfadingOverALead_When_TheLeadsOwnOpacityDropsMidCrossfade_Then_TheFirstFollowsItsOpacityNow()
+        {
+            // Arrange — the bundled sheet; "c" takes the id from "b", which then drops to a quarter opacity.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_cTransition) = ("opacity-50", s_slowTween);
+            using var mounted = MountBOverA();
+            AdvancePast(1f);
+            s_cMounted = true;
+            RenderShared(mounted);
+            s_bClasses = "opacity-25";
+            RenderShared(mounted);
+
+            // Act
+            for (var i = 0; i < 44; i++) Tick();
+
+            // Assert — at "b"'s quarter, as it is now, rather than the half it stood at when "c" took the id.
+            var expected = 0.25f * (1f - (CProgress() - 0.5f) / 0.45f);
+            Assert.That(WrittenOpacity(Root.Q<VisualElement>("a")), Is.EqualTo(expected).Within(0.02f));
         }
 
         // Set before each render of CardModalRender: whether the modal is open, and the card's transition when not
@@ -2949,22 +3812,20 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        // GREEN_ON_BASE(characterization): the base never hides a Motion that holds a layoutId.
-        // A title inside the relegated modal must hand its own id back with the modal's.
         [Test]
-        public void Given_ACardAndAModalWithTitlesSharingIds_When_TheModalStartsItsExit_Then_TheCardsTitleIsShown()
+        public void Given_ACardAndAModalWithTitlesSharingIds_When_TheModalStartsItsExit_Then_TheCardsTitleDoesNotFadeAgain()
         {
             // Arrange / Act
             using var mounted = CloseTheNestedModalFor(10);
 
-            // Assert — the title takes its id's lead back with the card, as the modal's title leaves.
-            Assert.That(Root.Q<VisualElement>("card-title").resolvedStyle.visibility, Is.EqualTo(Visibility.Visible));
+            // Assert — the card fading in, its title drawn under it at its own opacity.
+            var title = Root.Q<VisualElement>("card-title");
+            Assert.That((WrittenOpacity(Root.Q<VisualElement>("card")) < 1f, WrittenOpacity(title), title.resolvedStyle.visibility),
+                Is.EqualTo((true, 1f, Visibility.Visible)));
         }
 
-        // GREEN_ON_BASE(characterization): the base never hides a Motion that holds a layoutId.
-        // A title inside a modal coming back must take its own id back with the modal's.
         [Test]
-        public void Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleIsShownAgain()
+        public void Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleDoesNotFadeAgain()
         {
             // Arrange
             using var mounted = CloseTheNestedModalFor(1);
@@ -2974,8 +3835,10 @@ namespace Velvet.Tests
             RenderShared(mounted);
             for (var i = 0; i < 10; i++) Tick();
 
-            // Assert — the title takes its id's lead back with the modal.
-            Assert.That(Root.Q<VisualElement>("modal-title").resolvedStyle.visibility, Is.EqualTo(Visibility.Visible));
+            // Assert — the modal fading in again, its title drawn under it at its own opacity.
+            var title = Root.Q<VisualElement>("modal-title");
+            Assert.That((WrittenOpacity(Root.Q<VisualElement>("modal")) < 1f, WrittenOpacity(title), title.resolvedStyle.visibility),
+                Is.EqualTo((true, 1f, Visibility.Visible)));
         }
 
         [Test]

@@ -418,22 +418,23 @@ namespace Velvet.Tests
             "leading-loose",
         };
 
+        // GREEN_ON_BASE(construction): the base reads its own generated table; adding a `font-probe`
+        // entry would make this guard report a family rule.
         [Test]
         public void Given_TheDerivedUtilityTable_When_ItsFontRulesAreListed_Then_NoFamilyIsAmongThem()
         {
             // Arrange
-            var byClassName = (Dictionary<string, int>)typeof(StyleUtilityProperties)
-                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!
-                .GetValue(null)!;
+            var classNames = StyleUtilityTableProbe.ClassNames();
 
             // Act — anything font-prefixed that is not the weight scale or the italic alias is a family.
-            var families = byClassName.Keys
-                .Where(name => name.StartsWith("font-", StringComparison.Ordinal))
+            var fontRules = classNames
+                .Where(name => name.StartsWith("font-", StringComparison.Ordinal)).ToArray();
+            var families = fontRules
                 .Where(name => Array.IndexOf(DeclaredFontClasses, name) < 0)
                 .OrderBy(name => name, StringComparer.Ordinal);
 
             // Assert — joined rather than compared as a collection, so a mismatch names the offender.
-            Assert.That(string.Join(" ", families), Is.Empty);
+            Assert.That((fontRules.Length > 0, string.Join(" ", families)), Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
