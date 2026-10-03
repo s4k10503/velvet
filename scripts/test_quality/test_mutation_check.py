@@ -5699,9 +5699,65 @@ class NarrowableAreaTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.narrowed(25.0), {self.area: ["Velvet.Tests.A"]})
 
-    def test_Given_AnAreaTakingMoreThanAQuarter_When_Read_Then_ItIsLeftWhole(self):
-        # Act / Assert
-        self.assertEqual(self.narrowed(25.5), {})
+    def test_Given_AnAreaTakingJustOverAQuarter_When_Read_Then_ItIsNarrowed(self):
+        # Arrange
+        seconds = 25.5
+
+        # Act
+        narrowed = self.narrowed(seconds)
+
+        # Assert
+        self.assertEqual(narrowed, {self.area: ["Velvet.Tests.A"]})
+
+    def test_Given_AnAreaTakingTwentySevenPercent_When_Read_Then_ItIsNarrowed(self):
+        # Arrange
+        seconds = 27.0
+
+        # Act
+        narrowed = self.narrowed(seconds)
+
+        # Assert
+        self.assertEqual(narrowed, {self.area: ["Velvet.Tests.A"]})
+
+    def test_Given_AnAreaTakingAThird_When_Read_Then_ItIsNarrowed(self):
+        # Arrange
+        seconds = 100.0 / 3.0
+
+        # Act
+        narrowed = self.narrowed(seconds)
+
+        # Assert
+        self.assertEqual(narrowed, {self.area: ["Velvet.Tests.A"]})
+
+    # GREEN_ON_BASE(characterization): an area above a third also exceeds the base's quarter.
+    # What shows the guard can fail is changing `NARROW_SHARE` to `2`.
+    def test_Given_AnAreaTakingMoreThanAThird_When_Read_Then_ItIsLeftWhole(self):
+        # Arrange
+        seconds = 33.5
+
+        # Act
+        narrowed = self.narrowed(seconds)
+
+        # Assert
+        self.assertEqual(narrowed, {})
+
+    def test_Given_AnAreaTakingTwentySevenPercent_When_TheSessionIsPlanned_Then_ItsAreaPrecedesTheWholeStage(self):
+        # Arrange
+        self.area = self.root / mutation_check.PACKAGE / "Runtime" / "Reconciler"
+        (self.area / "Tests" / "Editor").mkdir(parents=True)
+        (self.area / "Tests" / "Editor" / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.A"}))
+        attempts = {area: ["-assemblyNames", ";".join(names)]
+                    for area, names in self.narrowed(27.0).items()}
+        mutant = mutation_check.Mutant(self.area / "Probe.cs", 1, 0, "<", "<=", "boundary")
+
+        # Act
+        plan, _ = mutation_check.session_plan(self.root, [mutant], [1], attempts, [], "EditMode",
+                                              100, 900, self.root / "session")
+        stages = next(item["stages"] for item in plan["items"] if item["id"] == 1)
+
+        # Assert
+        self.assertEqual([(stage["name"], stage["assemblyNames"]) for stage in stages],
+                         [("narrowed:Reconciler", ["Velvet.Tests.A"]), ("whole", [])])
 
     def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
         # Arrange — an assembly of the other platform sits under the same area.

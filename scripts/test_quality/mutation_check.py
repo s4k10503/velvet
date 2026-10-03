@@ -108,7 +108,7 @@ CEILING_REFUSAL = 4
 # time runs against those assemblies first, and a kill there is its verdict. Anything else is measured
 # again on the whole suite, so the narrowed run can end a mutant early and never decides that it
 # survived.
-NARROW_SHARE = 4
+NARROW_SHARE = 3
 # A platform absent here is not narrowed. PlayMode is absent: its pass measures only what the whole
 # EditMode suite left surviving, and no PlayMode area's own launch has been measured for
 # `ShardCeilingTests` to charge.
