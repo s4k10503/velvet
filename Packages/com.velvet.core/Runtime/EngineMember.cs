@@ -11,8 +11,8 @@ namespace Velvet
     /// An engine member Velvet reaches by name rather than by a compiled reference, with the shape every read of it
     /// depends on. The instances are this type's own static fields and nothing else can construct one, so the set
     /// the build's linker step keeps (<c>EngineMemberLinkerKeep</c>) and the set <c>EngineMemberResolutionTests</c>
-    /// resolves against the editor it runs in are the set the runtime reads. <c>EngineMemberRegistryTests</c> fails
-    /// on a lookup by name made anywhere else in the runtime.
+    /// resolves against the editor it runs in are the set the runtime reads. <c>EngineMemberRegistryTests</c>
+    /// checks the named-reflection source spellings documented in the player-builds guide.
     /// </summary>
     internal sealed class EngineMember
     {
@@ -23,6 +23,7 @@ namespace Velvet
         private const string FocusableType = "UnityEngine.UIElements.Focusable";
         private const string StyleSheetType = "UnityEngine.UIElements.StyleSheet";
         private const string PseudoStatesType = "UnityEngine.UIElements.PseudoStates";
+        private const string PseudoStatesShape = "enum:" + PseudoStatesType;
 
         // PanelFocusMemory's scrub.
         internal static readonly EngineMember LastFocusedElement =
@@ -41,9 +42,9 @@ namespace Velvet
             Field(UIElements, FocusControllerType + "+FocusedElement", "m_FocusedElement", VisualElementType);
 
         internal static readonly EngineMember PseudoStates =
-            WrittenProperty(UIElements, VisualElementType, "pseudoStates", PseudoStatesType);
+            WrittenProperty(UIElements, VisualElementType, "pseudoStates", PseudoStatesShape);
 
-        internal static readonly EngineMember FocusPseudoState = Field(UIElements, PseudoStatesType, "Focus", PseudoStatesType);
+        internal static readonly EngineMember FocusPseudoState = Field(UIElements, PseudoStatesType, "Focus", PseudoStatesShape);
 
         // FocusManager's composite-field scope.
         internal static readonly EngineMember IsCompositeRoot =
@@ -75,8 +76,8 @@ namespace Velvet
         internal readonly string Name;
 
         /// <summary>A field's or a property's type, a type's base type, or a method's return type followed by its
-        /// parameter types in parentheses, each as <see cref="Type.ToString"/> renders it: a by-ref or out parameter
-        /// ends in <c>&amp;</c>.</summary>
+        /// parameter types in parentheses. Names use <see cref="Type.FullName"/>, generic arguments use brackets,
+        /// arrays use <c>[]</c>, and by-ref parameters use <c>&amp;</c>. An <c>enum:</c> prefix requires an enum type.</summary>
         internal readonly string Shape;
 
         /// <summary>A property whose setter is called as well as its getter.</summary>
@@ -102,8 +103,7 @@ namespace Velvet
         private static EngineMember WrittenProperty(Assembly assembly, string typeName, string name, string propertyType)
             => new(assembly, typeName, MemberTypes.Property, name, propertyType, writable: true);
 
-        // Constructed through its parameterless constructor, which is kept with it.
-        // Matched on the whole signature, so an overload or a parameter turned by-ref is not taken for the one read.
+        // Return and parameter shapes distinguish overloads, including by-ref parameters.
         private static EngineMember Method(Assembly assembly, string typeName, string name, string returnType,
             params string[] parameterTypes)
             => new(assembly, typeName, MemberTypes.Method, name, Signature(returnType, parameterTypes));
@@ -140,25 +140,74 @@ namespace Velvet
 
             if (Kind == MemberTypes.TypeInfo)
             {
-                return type.BaseType?.ToString() == Shape && type.GetConstructor(Type.EmptyTypes) != null ? type : null;
+                return MatchesType(type.BaseType, Shape) && type.GetConstructor(Type.EmptyTypes) != null ? type : null;
             }
 
             if (Kind == MemberTypes.Method)
             {
-                return type.GetMethods(OwnMembers).FirstOrDefault(method => method.Name == Name && Signature(
-                    method.ReturnType.ToString(), method.GetParameters().Select(p => p.ParameterType.ToString())) == Shape);
+                return type.GetMethods(OwnMembers).FirstOrDefault(method => method.Name == Name && MatchesMethod(method, Shape));
             }
 
             if (Kind == MemberTypes.Field)
             {
-                return type.GetField(Name, OwnMembers) is { } field && field.FieldType.ToString() == Shape ? field : null;
+                return type.GetField(Name, OwnMembers) is { } field && MatchesType(field.FieldType, Shape) ? field : null;
             }
 
             return type.GetProperty(Name, OwnMembers) is { GetMethod: not null } property
-                   && property.PropertyType.ToString() == Shape
+                   && MatchesType(property.PropertyType, Shape)
                    && (!Writable || property.SetMethod != null)
                 ? property
                 : null;
+        }
+
+        private static bool MatchesMethod(MethodInfo method, string shape)
+        {
+            var opening = shape.IndexOf('(');
+            if (opening < 0 || !shape.EndsWith(")", StringComparison.Ordinal)
+                || !MatchesType(method.ReturnType, shape.Substring(0, opening))) return false;
+            var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
+            var actual = method.GetParameters();
+            return actual.Length == expected.Length
+                && actual.Select((parameter, index) => MatchesType(parameter.ParameterType, expected[index])).All(matches => matches);
+        }
+
+        private static bool MatchesType(Type? type, string shape)
+        {
+            if (type == null) return false;
+            if (shape.StartsWith("enum:", StringComparison.Ordinal))
+                return type.IsEnum && MatchesType(type, shape.Substring(5));
+            if (shape.EndsWith("&", StringComparison.Ordinal))
+                return type.IsByRef && MatchesType(type.GetElementType(), shape.Substring(0, shape.Length - 1));
+            if (shape.EndsWith("[]", StringComparison.Ordinal))
+                return type.IsSZArray
+                    && MatchesType(type.GetElementType(), shape.Substring(0, shape.Length - 2));
+            var opening = shape.IndexOf('[');
+            if (opening < 0)
+                return !type.HasElementType && !type.IsGenericType && type.FullName == shape;
+            if (!type.IsGenericType || !shape.EndsWith("]", StringComparison.Ordinal)
+                || type.GetGenericTypeDefinition().FullName != shape.Substring(0, opening)) return false;
+            var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
+            var actual = type.GetGenericArguments();
+            return actual.Length == expected.Length
+                && actual.Select((argument, index) => MatchesType(argument, expected[index])).All(matches => matches);
+        }
+
+        private static string[] SplitShapes(string shapes)
+        {
+            if (shapes.Length == 0) return Array.Empty<string>();
+            var parts = new List<string>();
+            var depth = 0;
+            var from = 0;
+            for (var i = 0; i < shapes.Length; i++)
+            {
+                if (shapes[i] == '[') depth++;
+                if (shapes[i] == ']') depth--;
+                if (shapes[i] != ',' || depth != 0) continue;
+                parts.Add(shapes.Substring(from, i - from));
+                from = i + 1;
+            }
+            parts.Add(shapes.Substring(from));
+            return parts.ToArray();
         }
     }
 }

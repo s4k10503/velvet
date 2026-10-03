@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -180,6 +181,79 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(resolved, Is.EqualTo((true, false)));
+        }
+
+        [TestCase(typeof(bool), "System.Boolean", false)]
+        [TestCase(typeof(List<int>), "System.Collections.Generic.List`1[System.Int32]", false)]
+        [TestCase(typeof(Dictionary<string, List<int>>), "System.Collections.Generic.Dictionary`2[System.String,System.Collections.Generic.List`1[System.Int32]]", false)]
+        [TestCase(typeof(int[]), "System.Int32[]", false)]
+        [TestCase(typeof(int), "System.Int32&", true)]
+        public void Given_ATypeWithAChangedDisplayString_When_TheDeclaredShapeIsChecked_Then_MetadataStillMatches(Type type, string shape, bool byRef)
+        {
+            // Arrange
+            var displayed = new ChangedDisplayType(byRef ? type.MakeByRefType() : type);
+
+            // Act
+            var matches = MatchesShape(displayed, shape);
+
+            // Assert
+            Assert.That((displayed.ToString() != shape, matches), Is.EqualTo((true, true)));
+        }
+
+        [TestCase(typeof(List<int>), "System.Collections.Generic.List`1[System.Int32]", "System.Collections.Generic.List`1[System.String]")]
+        [TestCase(typeof(Dictionary<string, List<int>>), "System.Collections.Generic.Dictionary`2[System.String,System.Collections.Generic.List`1[System.Int32]]", "System.Collections.Generic.Dictionary`2[System.String,System.Collections.Generic.List`1[System.String]]")]
+        [TestCase(typeof(Dictionary<string, int>), "System.Collections.Generic.Dictionary`2[System.String,System.Int32]", "System.Collections.Generic.Dictionary`2[System.String]")]
+        public void Given_AChangedGenericArgument_When_TheGenericShapeIsChecked_Then_OnlyTheControlMatches(Type type, string control, string changed)
+        {
+            // Arrange / Act
+            var matches = (MatchesShape(type, control), MatchesShape(type, changed));
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnArrayWithAnotherRank_When_TheDeclaredShapeIsChecked_Then_OnlyTheVectorMatches()
+        {
+            // Arrange
+            var shape = "System.Int32[]";
+
+            // Act
+            var matches = (MatchesShape(typeof(int[]), shape), MatchesShape(typeof(int[,]), shape),
+                MatchesShape(typeof(int).MakeArrayType(1), shape));
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false, false)));
+        }
+
+        [Test]
+        public void Given_ANonEnumWithTheDeclaredName_When_AnEnumShapeIsChecked_Then_OnlyTheEnumMatches()
+        {
+            // Arrange
+            var enumType = typeof(MemberTypes);
+            var nonEnumType = typeof(int);
+
+            // Act
+            var matches = (MatchesShape(enumType, "enum:" + enumType.FullName),
+                MatchesShape(nonEnumType, "enum:" + nonEnumType.FullName));
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        private static bool MatchesShape(Type type, string shape)
+            => typeof(EngineMember).GetMethod("MatchesType", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.Invoke(null, new object[] { type, shape }) is true;
+
+        private sealed class ChangedDisplayType : TypeDelegator
+        {
+            public ChangedDisplayType(Type type) : base(type) { }
+
+            public override string ToString() => "different display spelling";
+            public override bool IsGenericType => typeImpl.IsGenericType;
+            public override bool IsSZArray => typeImpl.IsSZArray;
+            public override Type GetGenericTypeDefinition() => typeImpl.GetGenericTypeDefinition();
+            public override Type[] GetGenericArguments() => typeImpl.GetGenericArguments();
         }
 
         // The factories are private so that no declaration can sit outside EngineMember; a test reaches them here.
