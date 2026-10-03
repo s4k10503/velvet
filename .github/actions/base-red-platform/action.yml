@@ -1,0 +1,86 @@
+name: Platform base-red check
+description: Run the base reading after this platform has validated and uploaded its branch reading.
+inputs:
+  testMode:
+    description: EditMode or PlayMode.
+    required: true
+  githubToken:
+    description: Token used by the Unity test reporter.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: base
+      shell: bash
+      run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+    - id: read
+      env:
+        BASE: ${{ steps.base.outputs.sha }}
+      shell: bash
+      run: |
+        python3 scripts/test_quality/base_red_check.py --lane csharp \
+          --platform "${{ inputs.testMode }}" --base "$BASE" \
+          --base-tree base-tree --emit plan.json | tee reading.txt
+        grep '^fixtures=' reading.txt >> "$GITHUB_OUTPUT" || true
+
+    # After the reading, not before: the tree is a worktree git refuses to create over a directory
+    # that already holds a Library.
+    #
+    # Keyed on the pull request rather than on the base commit. The base moves with main, so a commit
+    # key saves another entry per platform on each push with cases to carry after main moves --
+    # 1096 MB each, measured -- where this saves one per pull request. The price is a Library restored
+    # into a base tree it was not built from, which is the warm Library CARRIES_NOTHING in
+    # scripts/test_quality/base_red_check.py is written for: the step after this removes the
+    # directory it names.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.read.outputs.fixtures != ''
+      with:
+        path: base-tree/Library
+        key: BaseLibrary-${{ inputs.testMode }}-${{ github.event.pull_request.number }}
+        restore-keys: |
+          BaseLibrary-${{ inputs.testMode }}-
+
+    - if: steps.read.outputs.fixtures != ''
+      shell: bash
+      run: rm -rf base-tree/Library/ScriptAssemblies
+
+    # continue-on-error because a base that cannot build the branch's test file is the answer, not
+    # a broken job. Which of the two it was is settled by the step after this from the results file.
+    - uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+      if: steps.read.outputs.fixtures != ''
+      continue-on-error: true
+      with:
+        unityVersion: 6000.3.23f1
+        testMode: ${{ inputs.testMode }}
+        projectPath: base-tree
+        artifactsPath: base-results
+        githubToken: ${{ inputs.githubToken }}
+        customParameters: -testFilter "${{ steps.read.outputs.fixtures }}"
+
+    - id: round2
+      if: steps.read.outputs.fixtures != ''
+      uses: ./.github/actions/base-red-round
+      with:
+        testMode: ${{ inputs.testMode }}
+        githubToken: ${{ inputs.githubToken }}
+
+    - id: round3
+      if: steps.round2.outputs.fixtures != ''
+      uses: ./.github/actions/base-red-round
+      with:
+        testMode: ${{ inputs.testMode }}
+        githubToken: ${{ inputs.githubToken }}
+
+    - id: round4
+      if: steps.round3.outputs.fixtures != ''
+      uses: ./.github/actions/base-red-round
+      with:
+        testMode: ${{ inputs.testMode }}
+        githubToken: ${{ inputs.githubToken }}
+
+    - if: steps.read.outputs.fixtures != ''
+      shell: bash
+      run: |
+        python3 scripts/test_quality/base_red_check.py \
+          --verdict plan.json --results base-results
