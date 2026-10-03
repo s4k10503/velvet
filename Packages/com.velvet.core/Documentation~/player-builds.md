@@ -118,3 +118,16 @@ Shape matching checks type metadata, generic arguments, vector elements and by-r
 than a type's display string. Method declarations include their return and parameter types; focus
 pseudo-state declarations also require an enum.
 
+`ImportedStyleSheetPlayerTests` checks the `@import` lookup from a macOS IL2CPP player with High managed
+stripping. It mounts a target carrying an importing USS, then a bare control, and checks their warning
+phases separately alongside the imported utility's resolved style. Editor and in-editor PlayMode runs
+skip the player-only fixture.
+
+For a standalone scene that calls the same assertion directly, set `VELVET_IMPORT_PLAYER_OUTPUT` to the
+output `.app` path and `VELVET_IMPORT_PLAYER_EVIDENCE` to a log directory, then launch the editor with
+`-batchmode -debugCodeOptimization -quit -executeMethod Velvet.Tests.ImportedStyleSheetPlayerSetup.BuildProbe`.
+This requires the editor's Mac IL2CPP support. The scoped builder temporarily preloads the test assets,
+creates a test scene, and selects ARM64, IL2CPP and High stripping; cleanup restores those settings and removes
+the scene and assets. Run the built app's executable with `-batchmode` and `--velvet-import-result` followed by an absolute
+JSON output path. The probe writes its runtime platform, compiled backend, and assertion result, then
+exits with status zero on success.
