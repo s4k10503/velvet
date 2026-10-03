@@ -188,8 +188,8 @@ namespace Velvet
         private static bool MatchesMethod(MethodInfo method, string shape)
         {
             var opening = shape.IndexOf('(');
-            // MUTANT_SURVIVES(equivalent, boundary): an opening at zero feeds an empty return shape to MatchesType; its element, generic and FullName checks still refuse that shape.
-            // MUTANT_SURVIVES(equivalent, logic): Signature supplies an opening parenthesis and appends the closing one, so both leading checks are false.
+            // MUTANT_SURVIVES(equivalent): < -> <= feeds an empty return shape to MatchesType at opening zero; its element, generic and FullName checks still refuse that shape.
+            // The first || -> && leaves both leading checks false: Signature supplies an opening parenthesis and appends the closing one.
             if (opening < 0 || !shape.EndsWith(")", StringComparison.Ordinal)
                 || !MatchesType(method.ReturnType, shape.Substring(0, opening))) return false;
             var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
