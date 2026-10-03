@@ -468,7 +468,9 @@ The base tree is a checkout the machine has never imported, and that import is m
 costs; `--warm-library` copies an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
-`Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local
+On pull requests, each `Test ▸ unity-tests` platform runs the C# base-red lane on the same runner
+after its branch results have passed their provenance checks and been uploaded. It runs in at most
+four rounds where the local
 run takes up to `--max-rounds` of them: a base that cannot build one carried file writes no results
 for anything, so the workflow withdraws what the static comparison above proves before its first
 round, and what each round's own editor log blames before the next — every carried file the
@@ -893,7 +895,6 @@ on every platform.
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
-| `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
@@ -967,6 +968,24 @@ once review has settled, and remove it to hold the pull request. Labelling takes
 above, so only an account holding that can opt a pull request in. The workflow does not create the
 label; it has to exist in the repository.
 
+The `Mutation campaign` commit status shows pending while a labelled head awaits its campaign and
+while the newest campaign runs, including a re-run on the same commit. The default-branch
+`campaign-status.yml` publisher validates the current pull request head and newest run before
+reporting its result; an older completion cannot clear a newer pending run. A five-minute scheduled
+sweep and a manual workflow dispatch reconcile open heads when event-driven reporting has not arrived.
+The sweep refuses before publishing if its complete listing contains more than eight same-repository
+open pull requests; the optional `pull_request` dispatch input recovers one head at that capacity.
+All publisher jobs share repository-level serialization and re-read each head and its latest run before
+writing. Their concurrency block uses `queue: max` with `cancel-in-progress: false` to retain pending
+publishers during event bursts ([GitHub concurrency queue documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)).
+An identical owned status causes neither another status write nor another merge wake. This display does not
+replace the campaign run verdict that `settle.py` requires. After independently reading that verdict,
+`settle.py` ignores this legacy display status so reporting latency adds no merge gate; real check
+runs and other statuses still gate merging. Removing the label clears an unstarted
+or cancelled campaign's display requirement; the sweep also recovers a missed removal when that head
+already carries this owned status, without creating one for an ordinary unlabelled head. A failed
+campaign still blocks that head.
+
 Adding the label hands the pull request off, and so do marking a labelled draft ready for review,
 reopening a labelled pull request, pushing to one, and a `pull_request` run of `Test` passing on a
 labelled one's head. `scripts/pr/automerge.py` then reads the head's
@@ -1029,7 +1048,8 @@ The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's o
 merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the
 green-base precondition above reads the required workflows' push runs, so a break an automerged change
 carried would go unseen until some later push. The `upm` split would wait for that push too. Without
-the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
+the secret, standalone merge and sweep jobs report an error and fail before reading or merging.
+It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
 Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
 holds it as it holds anyone: it lists no bypass actor. A campaign those jobs dispatch goes out with

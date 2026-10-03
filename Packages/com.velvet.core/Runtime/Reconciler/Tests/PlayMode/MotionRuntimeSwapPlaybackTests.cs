@@ -165,6 +165,50 @@ namespace Velvet.Tests
             });
         }
 
+        [Component]
+        private static VNode EnterUnderIdHost()
+        {
+            return V.Div(name: "wrap", children: new VNode[]
+            {
+                V.Motion(key: "m", name: "m", layoutId: "card", variants: s_fade,
+                    initial: "hidden", animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = 0.4f }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base plays the variant enter of a Motion that mounts holding a layoutId.
+        // Framer blocks an initial animation only under a presence whose initial is false, never for a layoutId.
+        [UnityTest]
+        public IEnumerator Given_AVariantEnterOfAMotionMountingUnderALayoutIdOnARuntimePanel_When_FramesAdvance_Then_OpacityPassesThroughAnIntermediateValue()
+        {
+            // Arrange — a real UIDocument panel with the bundled utilities so opacity-0/100 resolve.
+            _go = new GameObject("EnterUnderIdPlayback");
+            var doc = _go.AddComponent<UIDocument>();
+            _settings = TestPanelSettings.Create();
+            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            doc.panelSettings = _settings;
+            yield return null;
+            VelvetStyleUtilities.AttachTo(doc.rootVisualElement);
+
+            // Act — mount the only holder of the id, then let the panel run past the whole 0.4s enter while sampling.
+            _mounted = V.Mount(doc.rootVisualElement, V.Component(EnterUnderIdHost, key: "root"));
+            var m = doc.rootVisualElement.Q<VisualElement>("m");
+            var sawIntermediate = false;
+            var deadline = Time.realtimeSinceStartupAsDouble + 1.0;
+            while (Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                var opacity = m.resolvedStyle.opacity;
+                if (opacity > 0.05f && opacity < 0.95f)
+                {
+                    sawIntermediate = true;
+                }
+                yield return null;
+            }
+
+            // Assert — the enter tweened through the middle: with no other holder, nothing of the id's draws its opacity.
+            Assert.That(sawIntermediate, Is.True);
+        }
+
         [UnityTest]
         public IEnumerator Given_AStandaloneVariantEnterOnARuntimePanel_When_FramesAdvance_Then_OpacityPassesThroughAnIntermediateValue()
         {

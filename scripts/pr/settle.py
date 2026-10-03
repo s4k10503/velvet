@@ -253,7 +253,7 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, sha, runs=()):
+def checks(project, sha, runs=(), ignore_campaign_display=False):
     """Check results for one head, or an empty list when no workflow ever ran for it.
 
     `runs` is `campaign_runs`' reading of the same head, whose superseded campaigns' checks are left
@@ -262,7 +262,7 @@ def checks(project, sha, runs=()):
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)),
-                         campaign.superseded_suites(runs))
+                         campaign.superseded_suites(runs), ignore_campaign_display)
 
 
 def campaign_runs(project, sha):
@@ -321,7 +321,7 @@ def whole_page(payload, listed, kind):
         raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
 
 
-def check_results(runs, statuses, superseded=frozenset()):
+def check_results(runs, statuses, superseded=frozenset(), ignore_campaign_display=False):
     """One bucket per check, from the check-runs payload and the legacy commit-status one.
 
     One commit carries two check surfaces, and the base can require a context from either, so
@@ -343,7 +343,8 @@ def check_results(runs, statuses, superseded=frozenset()):
                for run in listed]
     results.extend({"name": status.get("context", ""),
                     "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
-                   for status in reported)
+                   for status in reported
+                   if not ignore_campaign_display or status.get("context") != campaign.DISPLAY_CONTEXT)
     return results
 
 
@@ -529,10 +530,11 @@ def blocking_reasons(project, number, base=None, states=None):
         unpublished = published_check.unpublished_reason(
             project, f"origin/{target}", fetch=False, result=before.sha)
     runs = campaign_runs(project, before.sha)
-    results = checks(project, before.sha, runs)
     now = time.time()
     others = campaign.others(runs)
     jobs = run_jobs(project, runs, now)
+    owed_campaign = None if before.fork else campaign_reason(before.labels, runs, jobs, now, before.sha)
+    results = checks(project, before.sha, runs, ignore_campaign_display=not before.fork)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])
@@ -555,8 +557,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  runs_unfinished=expected_checks.unfinished(others, jobs, now),
                                  runs_failed=expected_checks.failed(others, jobs, now),
                                  required=state.required,
-                                 owed_campaign=None if before.fork else campaign_reason(
-                                     before.labels, runs, jobs, now, before.sha)),
+                                 owed_campaign=owed_campaign),
                     after, before.branch, results, target)
 
 

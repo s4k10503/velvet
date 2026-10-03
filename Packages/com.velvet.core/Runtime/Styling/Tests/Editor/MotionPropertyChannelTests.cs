@@ -38,9 +38,6 @@ namespace Velvet.Tests
     {
         private const float FixedDeltaSec = 1f / 60f;
 
-        // Colors (3) + sizing/basis (8) + inset (7) + padding (7) + margin (7) + radius (9) + border width (5)
-        // + font size + letter spacing. Updated deliberately when the drivable set changes.
-        private const int DrivablePropertyCount = 48;
 
         // The linear identity curve: CubicBezierEvaluator returns t unchanged for x1==y1 && x2==y2, so a step
         // to half the duration lands the channel at exactly half its travel.
@@ -461,51 +458,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AShorthandBesideAOneSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
-        {
-            // Arrange — the control is the SAME shorthand pair WITHOUT the longhand, so a wholesale loss of
-            // property recognition fails this case instead of passing it vacuously.
-            var control = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8" });
-
-            // Act — pt-2 is unpaired, so animating the p- shorthand alone would drive the top edge toward 32
-            // and then pop it to 8 at the end of every play.
-            var overlapping = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8", "pt-2" });
-
-            // Assert
-            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
-        }
-
-        [Test]
-        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
-        {
-            // Arrange — the control is the same shorthand pair without the longhand, so a wholesale loss of
-            // property recognition fails this case instead of passing it vacuously.
-            var control = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8" });
-
-            // Act — both utilities claim the top edge, and which of them holds it at rest is not derivable from
-            // the properties alone, so neither animates.
-            var overlapping = MotionSpringClassParser.Resolve(new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
-
-            // Assert
-            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
-        }
-
-        [Test]
-        public void Given_ASizeShorthandBesideAWidthLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
-        {
-            // Arrange — the control pins that size-* animates on its own.
-            var control = MotionSpringClassParser.Resolve(new[] { "size-4" }, new[] { "size-8" });
-
-            // Act — .size-* is declared BEFORE .w-*, so the single-axis longhand wins width at rest, as in
-            // every other shorthand/longhand family. A plan derived from the class strings alone cannot see
-            // which of the two holds the slot, so dropping both is what keeps the landing correct.
-            var overlapping = MotionSpringClassParser.Resolve(new[] { "w-4", "size-4" }, new[] { "w-20", "size-8" });
-
-            // Assert
-            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
-        }
-
-        [Test]
         public void Given_TwoLivePlaysOnOneElement_When_TheFirstIsReleased_Then_TheNativeTransitionStaysSuspended()
         {
             // Arrange — the patcher can start a scheduler play and a layoutId spring against one element, so an
@@ -642,105 +594,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_EveryDrivableProperty_When_ItsSlotFootprintIsComparedToWhatItWrites_Then_TheyAgree()
-        {
-            // Arrange — the slot mask is a second description of the resolver's setter tables with no
-            // mechanical link to them, and both directions of drift are silent: a mask that misses an overlap
-            // lets two channels fight over a slot, one that invents an overlap silently stops animating a pair
-            // that was fine. Probing what each property ACTUALLY writes onto a fresh element re-derives the
-            // truth from the setter tables themselves.
-            var drivable = new List<ArbitraryProperty>();
-            var written = new Dictionary<ArbitraryProperty, HashSet<string>>();
-            foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
-            {
-                if (!MotionPropertyClassParser.IsDrivable(property))
-                {
-                    continue;
-                }
-                drivable.Add(property);
-                var probe = new VisualElement();
-                StyleArbitraryValueResolver.ApplyInline(probe, MotionPropertyClassParser.IsColor(property)
-                    ? new ArbitraryStyle(property, Color.red)
-                    : new ArbitraryStyle(property, 7f, LengthUnit.Pixel));
-                written[property] = OccupiedSlots(probe);
-            }
-
-            // Act — every unordered pair, comparing the mask's verdict against the probed slot sets.
-            var disagreements = new List<string>();
-            for (var i = 0; i < drivable.Count; i++)
-            {
-                for (var j = i + 1; j < drivable.Count; j++)
-                {
-                    var a = drivable[i];
-                    var b = drivable[j];
-                    var observed = written[a].Overlaps(written[b]);
-                    if (observed != MotionPropertyClassParser.WritesOverlappingSlots(a, b))
-                    {
-                        disagreements.Add($"{a} vs {b}: mask says {!observed}, inline writes say {observed}");
-                    }
-                }
-            }
-
-            // Assert — the population count rides along so an IsDrivable that stopped matching anything cannot
-            // leave this green with nothing compared. The disagreements join into the message rather than being
-            // compared as a list, which a tuple would compare by reference.
-            Assert.That((drivable.Count, string.Join("; ", disagreements)),
-                Is.EqualTo((DrivablePropertyCount, string.Empty)));
-        }
-
-        // Every inline slot a drivable property can write, by name, for the drift guard above. Reading the
-        // keyword rather than the value is what distinguishes "this property set it" from "it happens to be
-        // zero"; a freshly constructed element has none of them set.
-        private static HashSet<string> OccupiedSlots(VisualElement e)
-        {
-            var s = e.style;
-            var occupied = new HashSet<string>();
-            void Probe(string name, StyleKeyword keyword)
-            {
-                if (keyword != StyleKeyword.Null)
-                {
-                    occupied.Add(name);
-                }
-            }
-            Probe("width", s.width.keyword);
-            Probe("height", s.height.keyword);
-            Probe("minWidth", s.minWidth.keyword);
-            Probe("minHeight", s.minHeight.keyword);
-            Probe("maxWidth", s.maxWidth.keyword);
-            Probe("maxHeight", s.maxHeight.keyword);
-            Probe("flexBasis", s.flexBasis.keyword);
-            Probe("top", s.top.keyword);
-            Probe("right", s.right.keyword);
-            Probe("bottom", s.bottom.keyword);
-            Probe("left", s.left.keyword);
-            Probe("paddingTop", s.paddingTop.keyword);
-            Probe("paddingRight", s.paddingRight.keyword);
-            Probe("paddingBottom", s.paddingBottom.keyword);
-            Probe("paddingLeft", s.paddingLeft.keyword);
-            Probe("marginTop", s.marginTop.keyword);
-            Probe("marginRight", s.marginRight.keyword);
-            Probe("marginBottom", s.marginBottom.keyword);
-            Probe("marginLeft", s.marginLeft.keyword);
-            Probe("borderTopLeftRadius", s.borderTopLeftRadius.keyword);
-            Probe("borderTopRightRadius", s.borderTopRightRadius.keyword);
-            Probe("borderBottomLeftRadius", s.borderBottomLeftRadius.keyword);
-            Probe("borderBottomRightRadius", s.borderBottomRightRadius.keyword);
-            Probe("borderTopWidth", s.borderTopWidth.keyword);
-            Probe("borderRightWidth", s.borderRightWidth.keyword);
-            Probe("borderBottomWidth", s.borderBottomWidth.keyword);
-            Probe("borderLeftWidth", s.borderLeftWidth.keyword);
-            Probe("fontSize", s.fontSize.keyword);
-            Probe("letterSpacing", s.letterSpacing.keyword);
-            Probe("color", s.color.keyword);
-            Probe("backgroundColor", s.backgroundColor.keyword);
-            Probe("borderTopColor", s.borderTopColor.keyword);
-            Probe("borderRightColor", s.borderRightColor.keyword);
-            Probe("borderBottomColor", s.borderBottomColor.keyword);
-            Probe("borderLeftColor", s.borderLeftColor.keyword);
-            return occupied;
-        }
-
-        [Test]
         public void Given_AnAnticipateCurveOnAWidthChannel_When_SteppedBelowZero_Then_TheEmittedWidthSaturates()
         {
             // Arrange — the same anticipate lobe the color clamp is pinned against, on a magnitude this time: a
@@ -791,7 +644,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoUtilitiesOnTheSamePropertyInOneVariant_When_Resolved_Then_TheLastOneWins()
         {
-            // Arrange / Act — mirrors the CSS cascade the class list itself would apply.
+            // Arrange / Act — .w-4 is declared after .w-0 as well as written after it.
             var plan = MotionSpringClassParser.Resolve(new[] { "w-0", "w-4" }, new[] { "w-8" });
 
             // Assert — w-4 is --space-4 (16px), so the later class is the one the channel starts from. A plan
@@ -802,7 +655,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheArbitraryPropertyEnum_When_Enumerated_Then_ItsValuesRunContiguouslyFromZero()
         {
-            // The slot-footprint and drivable tables are arrays indexed by (int)ArbitraryProperty and sized
+            // The drivable table and the parser's slot index are arrays indexed by (int)ArbitraryProperty and sized
             // from the member count, so a member given an explicit value would either index past the end at
             // static init or silently read another member's row.
             // Arrange
@@ -813,22 +666,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(actual, Is.EqualTo(Enumerable.Range(0, values.Count).ToList()));
-        }
-
-        [Test]
-        public void Given_TheSlotFamilyEnum_When_Read_Then_ItsNoFamilyMemberIsTheDefault()
-        {
-            // The slot-footprint table leaves every property that owns its slot alone unwritten, so those
-            // rows are default(SlotFamily) — which reports "no family" only while None is the zero value.
-            // Arrange
-            var slotFamily = typeof(MotionPropertyClassParser)
-                .GetNestedType("SlotFamily", BindingFlags.NonPublic)!;
-
-            // Act
-            var none = (int)Enum.Parse(slotFamily, "None");
-
-            // Assert
-            Assert.That(none, Is.Zero);
         }
     }
 }

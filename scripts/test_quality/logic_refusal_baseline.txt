@@ -31,8 +31,9 @@ Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs	2
 Packages/com.velvet.core/Runtime/Routing/RouteOutlet.cs	1
 Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
-Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	11
+Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs	10
 Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs	3
+Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	13

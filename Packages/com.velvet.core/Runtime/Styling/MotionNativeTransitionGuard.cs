@@ -130,11 +130,18 @@ namespace Velvet
         /// a swap before the class pass that calls this, so a swap started under a running motion is narrowed on
         /// the patch that starts it.
         /// </remarks>
-        public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots) =>
+            SyncSuspension(element, owner, drivenSlots,
+                (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) != MotionTransitionSlots.None);
+
+        /// <summary>
+        /// <see cref="SyncSuspension(VisualElement, object, MotionTransitionSlots)"/> with whether the element
+        /// transitions <paramref name="drivenSlots"/> decided by the caller, for one that reads more than the classes.
+        /// </summary>
+        public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots, bool intercepted)
         {
             ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
-            if (drivenSlots == MotionTransitionSlots.None
-                || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
+            if (!intercepted)
             {
                 Release(element, owner);
                 return;

@@ -43,7 +43,11 @@ namespace Velvet.StyleTable
         public const string UnknownTransitionProperty = "USS010";
 
         /// <summary>A gated rule declared <c>transition-property</c>.</summary>
-        public const string GatedTransitionProperty = "USS011";    }
+        public const string GatedTransitionProperty = "USS011";
+
+        /// <summary>One utility class was declared by two rules.</summary>
+        public const string ClassDeclaredByMoreThanOneRule = "USS012";
+    }
 
     /// <summary>One reason the table could not be derived, located in the stylesheet that caused it.</summary>
     internal readonly struct UssProblem
