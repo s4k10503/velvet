@@ -271,19 +271,14 @@ namespace Velvet
         // Then_ItsOwnIsCarriedOnThatTransition fails when the read stops giving the cascaded value.
         private static class Cascade
         {
-            private static readonly FieldInfo? s_style =
-                typeof(VisualElement).GetField("m_Style", BindingFlags.NonPublic | BindingFlags.Instance);
-            private static readonly Type? s_type = s_style?.FieldType;
-            private static readonly FieldInfo? s_hash = s_type?.GetField("matchingRulesHash");
-            private static readonly MethodInfo? s_tryGet = s_type == null ? null
-                : typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache")?.GetMethod("TryGetValue",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null,
-                    new[] { typeof(long), s_type.MakeByRefType() }, null);
-            private static readonly PropertyInfo? s_opacity = s_type?.GetProperty("opacity");
-            private static readonly PropertyInfo? s_property = s_type?.GetProperty("transitionProperty");
-            private static readonly PropertyInfo? s_duration = s_type?.GetProperty("transitionDuration");
-            private static readonly PropertyInfo? s_delay = s_type?.GetProperty("transitionDelay");
-            private static readonly PropertyInfo? s_curve = s_type?.GetProperty("transitionTimingFunction");
+            private static readonly FieldInfo? s_style = EngineMember.ElementComputedStyle.ResolveField();
+            private static readonly FieldInfo? s_hash = EngineMember.ComputedStyleMatchingRulesHash.ResolveField();
+            private static readonly MethodInfo? s_tryGet = EngineMember.TryGetComputedStyle.ResolveMethod();
+            private static readonly PropertyInfo? s_opacity = EngineMember.ComputedStyleOpacity.ResolveProperty();
+            private static readonly PropertyInfo? s_property = EngineMember.ComputedStyleTransitionProperty.ResolveProperty();
+            private static readonly PropertyInfo? s_duration = EngineMember.ComputedStyleTransitionDuration.ResolveProperty();
+            private static readonly PropertyInfo? s_delay = EngineMember.ComputedStyleTransitionDelay.ResolveProperty();
+            private static readonly PropertyInfo? s_curve = EngineMember.ComputedStyleTransitionTimingFunction.ResolveProperty();
             private static readonly bool s_readable = Array.TrueForAll(
                 new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
 

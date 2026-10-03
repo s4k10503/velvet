@@ -94,3 +94,27 @@ it measured at more than twice the added startup. **Why not Addressables**, whic
 replacement: it asks the consumer to create a group and run an Addressables build, and a package cannot
 assume either has happened — a first-run failure there is worse than either number here.
 
+## Engine members read by name
+
+Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
+focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
+flag, UI Toolkit's internal property-change event, the `@import`s of a stylesheet, and the cached opacity
+and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid). `EngineMember`
+declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
+and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
+creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole
+`nameof` arguments are allowed. The guard checks these source spellings; it does not follow aliases or
+values through variables.
+
+Managed code stripping can remove a member that only a lookup by name reaches, so the package hands the
+linker a link.xml keeping those members, from an `IUnityLinkerProcessor` step; a method is kept with every
+overload of its name. There is nothing to configure; the file is written under the project's Temp folder
+while the build runs.
+
+A member that no longer resolves leaves the feature reading it undone rather than throwing.
+`EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the
+editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
+Shape matching checks type metadata, generic arguments, vector elements and by-ref parameters rather
+than a type's display string. Method declarations include their return and parameter types; focus
+pseudo-state declarations also require an enum.
+
