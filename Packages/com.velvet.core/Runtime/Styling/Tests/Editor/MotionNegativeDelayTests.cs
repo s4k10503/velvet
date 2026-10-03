@@ -1,4 +1,8 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
+using UnityEngine;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -277,6 +281,163 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { waitingOpacity, element.resolvedStyle.opacity },
                 Is.EqualTo(new[] { 0f, 0.016f }).Within(0.003f));
+        }
+
+        [Test]
+        public void Given_ASpringEnterWithANegativeDelayAndAStaggerOffset_When_Started_Then_TheOffsetsAreCombined()
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DelaySec = -0.5f };
+            var expectedElement = new VisualElement();
+            var expected = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(
+                new[] { "opacity-0" }, new[] { "opacity-100" }), config.Stiffness, config.Damping, config.Mass);
+            for (var remaining = 0.3f; remaining > 0f; remaining -= 0.016f)
+                MotionSpringDriver.Step(expectedElement, expected, Math.Min(remaining, 0.016f));
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config,
+                additionalDelaySec: 0.2f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(expectedElement.style.opacity.value).Within(1e-5f));
+        }
+
+        // GREEN_ON_BASE(characterization): a zero combined delay starts the recurring tick without a delayed start.
+        [Test]
+        public void Given_ABezierEnterWithAZeroCombinedDelay_When_TheFirstFrameRuns_Then_ItAlreadyTicks()
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            StartNativeClock(element);
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = -0.2f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config,
+                additionalDelaySec: 0.2f);
+
+            // Act
+            NativeFrame(element, 0.016);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.016f).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): without pre-roll, even an already-resting spring completes on its tick.
+        [Test]
+        public void Given_ASpringEnterAlreadyAtRestWithNoPreRoll_When_Started_Then_CompletionWaitsForItsTick()
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            StartNativeClock(element);
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var completed = false;
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring };
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "opacity-100" }, new[] { "opacity-100" }, config,
+                onComplete: () => completed = true);
+            var completedSynchronously = completed;
+            NativeFrame(element, 0.016);
+
+            // Assert
+            Assert.That((completedSynchronously, completed), Is.EqualTo((false, true)));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AControllerEnterWhoseNegativeDelayFinishesIt_When_Started_Then_ItsPendingEntryIsReleased(
+            TransitionType type)
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig { Type = type, DurationSec = 0.3f, DelaySec = -30f };
+            var entries = (IDictionary)typeof(StyleAnimationScheduler).GetField("_pendingEnters",
+                BindingFlags.Instance | BindingFlags.NonPublic).GetValue(scheduler);
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Assert
+            Assert.That(entries.Contains(element), Is.False);
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_ARingedControllerEnterWhoseNegativeDelayFinishesIt_When_Started_Then_TheBandIsReleased(
+            TransitionType type)
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            var binding = RingOverlay.Attach(element, new RingSpec(2f, Color.red, 0f, false), Array.Empty<string>());
+            binding.Overlay.style.opacity = 0.77f;
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig { Type = type, DurationSec = 0.3f, DelaySec = -30f };
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Assert
+            Assert.That(binding.Overlay.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_APropertyOverrideWhoseEntriesAllHaveNegativeDelays_When_Started_Then_TheDelayListIsWritten()
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0f,
+                propertyOverrides: new[] { new StylePropertyTransition("opacity") });
+
+            // Assert
+            var delays = element.style.transitionDelay.value;
+            Assert.That(delays is { Count: 2 } ? delays[1].value : float.NaN, Is.EqualTo(-100f));
+        }
+
+        // GREEN_ON_BASE(characterization): scheduling a fresh bezier tick does not re-sample an unrelated loop.
+        [Test]
+        public void Given_AFresherSpinPhaseBesideADelayedBezierEnter_When_TheTickStartsWithoutPreRoll_Then_TheCachedLoopFrameStays()
+        {
+            // Arrange
+            var element = MountOnRealPanel();
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            var loop = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Spin, 10f), panVertical: false);
+            try
+            {
+                scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                    new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 1f });
+                var cachedRotation = element.style.rotate;
+                loop.StartTime -= 2.0;
+                StyleAnimateDriver.ReassertLoop(element);
+                var phaseMoved = Mathf.Abs(Mathf.DeltaAngle(cachedRotation.value.angle.value,
+                    element.style.rotate.value.angle.value)) > StyleAnimateDriver.SpinAngleDeg(0.1f);
+                element.style.rotate = cachedRotation;
+                var entries = (IDictionary)typeof(StyleAnimationScheduler).GetField("_pendingEnters",
+                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(scheduler);
+                var start = typeof(StyleAnimationScheduler).GetMethod("StartBezierTick",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+                // Act
+                start.Invoke(scheduler, start.GetParameters().Length == 3
+                    ? new object[] { element, entries[element], 0f }
+                    : new object[] { element, entries[element] });
+
+                // Assert
+                Assert.That((phaseMoved, element.style.rotate.Equals(cachedRotation)), Is.EqualTo((true, true)));
+            }
+            finally
+            {
+                StyleAnimateDriver.Detach(element, loop);
+            }
         }
     }
 }
