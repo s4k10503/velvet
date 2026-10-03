@@ -5,20 +5,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the duplicate-key warning and the element each repeat takes on the flat keyed diff — a container
-    /// of plain elements, which no Fragment, Provider or component sends through the walk — as React's
-    /// reconcileChildrenArray decides them.
-    /// <list type="bullet">
-    /// <item>A render whose new children repeat a key warns once per repeat: at mount, on a render keeping them
-    /// in the same order, on a time-sliced render, and on a render the map pass resolves.</item>
-    /// <item>A render whose new children are distinct warns nothing, whatever the previous render held.</item>
-    /// <item>Once a sibling before two repeats no longer matches, the first takes the last old element carrying
-    /// the key and the second mounts afresh.</item>
-    /// <item>A render adding a sibling before a key it now repeats gives the old element to the first repeat.</item>
-    /// <item>The key set the report rents goes back to the pool.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class FlatPathDuplicateKeyTests
     {
@@ -134,17 +120,17 @@ namespace Velvet.Tests
                 V.Label(key: "x", text: "A"), V.Label(key: "x", text: "B"), V.Label(key: "y", text: "Y"),
             };
             var newChildren = new VNode[] { V.Label(key: "y", text: "Y"), V.Label(key: "x", text: "A") };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+            var previousWarnings = DuplicateWarningsDuring(() => _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren));
 
             // Act
             var warnings = DuplicateWarningsDuring(() => _reconciler.Reconcile(_root, oldChildren, newChildren));
 
             // Assert — the render committed, beside the count
-            Assert.That((_root.childCount, warnings), Is.EqualTo((2, 0)));
+            Assert.That((previousWarnings, _root.childCount, warnings), Is.EqualTo((1, 2, 0)));
         }
 
         // GREEN_ON_BASE(characterization): the base's suffix trim already declined both sides holding a repeat.
-        // The map pass then decides this as React does. Let the trim take them (drop both uniqueness terms
+        // Let the trim take them (drop both uniqueness terms
         // from its gate) and each repeat keeps its own element: this reddens.
         [Test]
         public void Given_TwoSiblingsSharingAKeyAfterAnother_When_ThatOneIsDropped_Then_TheFirstTakesTheLastElementForTheKey()
@@ -169,7 +155,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's suffix trim already declined a new side holding a repeat.
-        // The map pass then gives the old element to the first repeat, as React does. Drop the new side's
+        // Drop the new side's
         // uniqueness term from the trim's gate and the old element goes to the last: this reddens.
         [Test]
         public void Given_AKeyRepeatedByARenderAddingASiblingBefore_When_Rendered_Then_TheFirstRepeatTakesTheOldElement()
@@ -203,6 +189,7 @@ namespace Velvet.Tests
             var borrowed = pool.RentKeySet();
             pool.ReturnKeySet(borrowed);
             borrowed.Add(ChildKey.Explicit("mark"));
+            var marked = borrowed.Count;
 
             // Act
             _reconciler.Reconcile(_root, oldChildren, newChildren);
@@ -210,8 +197,8 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (ReferenceEquals(pool.RentKeySet(), borrowed), left),
-                Is.EqualTo((true, 0)));
+                (marked, ReferenceEquals(pool.RentKeySet(), borrowed), left),
+                Is.EqualTo((1, true, 0)));
         }
     }
 }

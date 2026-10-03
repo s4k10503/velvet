@@ -1090,11 +1090,8 @@ namespace Velvet
             var suffix = CountTrimmableSuffix(oldNodes, newNodes, oldKeys, linearEnd);
             var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
             var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
-            // Take the fast path only when the middle collapses to a single insert OR remove AND every key is
-            // distinct on both sides. A repeated key goes to the remainder pass, whose key map decides which
-            // repeat takes an old element as React's mapRemainingChildren does. Unkeyed nodes carry
-            // Positional(index) keys, which are inherently distinct, so an unkeyed list is never rejected by
-            // this check.
+            // Repeated keys must reach the remainder map so suffix reuse cannot change which old element
+            // they claim; FlatPathDuplicateKeyTests pins both repeated-side shapes.
             if (suffix == 0 || (oldMidEnd != linearEnd && newMidEnd != linearEnd)
                 || !(oldKeys == null ? AllReconcileKeysUnique(oldNodes) : AllOldKeysUnique(oldKeys))
                 || !AllReconcileKeysUnique(newNodes))
@@ -1255,8 +1252,7 @@ namespace Velvet
         private ChildKey OldKey(ChildKey[]? keys, VNode?[] oldNodes, int i)
             => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
 
-        // Every render, mount included, as React's warnOnInvalidKey reads each new child. Not left to the map
-        // pass, which a repeat the linear prefix matched never reaches.
+        // Report before keyed shortcuts so a matched linear prefix cannot bypass the warning.
         private void ReportRepeatedKeys(VNode?[] newNodes)
         {
             var seen = _ctx.BufferPool.RentKeySet();
@@ -1277,8 +1273,6 @@ namespace Velvet
             }
         }
 
-        // The suffix trim's gate, which TrySuffixTrimFastPath explains. Uses a pooled key set (no allocation
-        // after warmup) and is only reached on the collapse-to-insert/remove shapes.
         private bool AllOldKeysUnique(List<ChildKey> keys)
         {
             var seen = _ctx.BufferPool.RentKeySet();
