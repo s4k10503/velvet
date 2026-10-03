@@ -314,12 +314,25 @@ class PullRequestSkipTests(unittest.TestCase):
 
 
 class MergeInvocationTests(unittest.TestCase):
-    def test_Given_NoToken_When_Run_Then_NothingIsReadOrMerged(self):
+    def test_Given_NoToken_When_AStandaloneMergeOrSweepRuns_Then_ConfigurationFailsBeforeReadingOrMerging(self):
         # Act
-        ran = Invocation({7: pull()}, event=completed(completed_run()), token="")
+        outcomes = []
+        for argv in [[], ["--number", "7"]]:
+            ran = Invocation({7: pull()}, event=completed(completed_run()), argv=argv, token="")
+            outcomes.append((ran.code, "::error::" in ran.printed,
+                             "AUTOMERGE_TOKEN secret" in ran.printed, ran.read, ran.merged))
 
         # Assert
-        self.assertEqual((ran.code, ran.read, ran.merged), (0, [], []))
+        self.assertEqual(outcomes, [(1, True, True, [], []), (1, True, True, [], [])])
+
+    def test_Given_NoToken_When_HandingOff_Then_TheHeadCheckWarnsWithoutReadingOrMerging(self):
+        # Act
+        ran = Invocation({7: pull()}, event=completed(completed_run()), argv=HAND_OFF, token="")
+
+        # Assert
+        self.assertEqual((ran.code, "::warning::" in ran.printed,
+                          "github.token" in ran.printed, "AUTOMERGE_TOKEN" in ran.printed,
+                          ran.read, ran.merged), (0, True, True, False, [], []))
 
     def test_Given_ACompletedRunForALabelledPullRequest_When_Run_Then_SettleMergesItForReal(self):
         # Act

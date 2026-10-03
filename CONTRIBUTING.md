@@ -1039,7 +1039,8 @@ The merge is made with the `AUTOMERGE_TOKEN` secret rather than the workflow's o
 merge made with `GITHUB_TOKEN` starts no workflow: `main` would get no push run for it, and the
 green-base precondition above reads the required workflows' push runs, so a break an automerged change
 carried would go unseen until some later push. The `upm` split would wait for that push too. Without
-the secret the workflow logs a warning and merges nothing. It is a fine-grained personal access token
+the secret, standalone merge and sweep jobs report an error and fail before reading or merging.
+It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
 Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
 holds it as it holds anyone: it lists no bypass actor. A campaign those jobs dispatch goes out with
