@@ -297,10 +297,11 @@ namespace Velvet.Tests
 
             // Act
             gate.SetResult();
+            var status = all.Status;
             var thrown = ThrownBy(() => all.GetAwaiter().GetResult());
 
             // Assert
-            Assert.That(thrown, Is.SameAs(own));
+            Assert.That((status, thrown), Is.EqualTo((VelvetTaskStatus.Canceled, (Exception)own)));
         }
 
         [Test]
