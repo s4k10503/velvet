@@ -241,6 +241,108 @@ namespace Velvet.Tests
             Assert.That(matches, Is.EqualTo((true, false)));
         }
 
+        [TestCase("Field", "UnityEngine.UIElements.PseudoStates", "Focus", "enum:UnityEngine.UIElements.PseudoStates", "enum:System.Reflection.MemberTypes")]
+        [TestCase("Field", "UnityEngine.UIElements.FocusController", "m_FocusedElements", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement]", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement)")]
+        [TestCase("Field", "UnityEngine.UIElements.FocusController", "m_FocusedElements", "System.Collections.Generic.List`1[UnityEngine.UIElements.FocusController+FocusedElement]", "System.Collections.Generic.HashSet`1[UnityEngine.UIElements.FocusController+FocusedElement]")]
+        [TestCase("ReadProperty", "UnityEngine.UIElements.VisualElement", "isCompositeRoot", "System.Boolean", "System.Boolean[System.Boolean]")]
+        public void Given_AChangedShapeDiscriminator_When_ADeclaredMemberIsResolved_Then_OnlyTheControlMatches(
+            string factory, string type, string name, string controlShape, string changedShape)
+        {
+            // Arrange
+            var control = Declare(factory, type, name, controlShape);
+            var changed = Declare(factory, type, name, changedShape);
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AByRefWithAnotherElementType_When_ADeclaredMethodIsResolved_Then_OnlyTheControlMatches()
+        {
+            // Arrange
+            var control = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean",
+                new[] { "System.Int64", "UnityEngine.UIElements.ComputedStyle&" });
+            var changed = Declare("Method", "UnityEngine.UIElements.StyleCache", "TryGetValue", "System.Boolean",
+                new[] { "System.Int64", "UnityEngine.UIElements.StyleVariableContext&" });
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ARootTypeDeclaredWithABaseShape_When_Resolved_Then_OnlyTheControlWithThatBaseMatches()
+        {
+            // Arrange
+            var constructible = typeof(ArgumentException);
+            var control = DeclareIn(constructible.Assembly, "ConstructedType", constructible.FullName,
+                constructible.BaseType.FullName);
+            var changed = DeclareIn(typeof(object).Assembly, "ConstructedType", typeof(object).FullName,
+                constructible.BaseType.FullName);
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AParameterlessMethod_When_ADeclaredMethodIsResolved_Then_OnlyTheEmptyParameterListMatches()
+        {
+            // Arrange
+            var control = Declare("Method", "UnityEngine.UIElements.VisualElement", "Clear", "System.Void", Array.Empty<string>());
+            var changed = Declare("Method", "UnityEngine.UIElements.VisualElement", "Clear", "System.Void", new[] { "System.Int32" });
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ANestedGenericParameter_When_ADeclaredMethodIsResolved_Then_ItsCommaStaysInsideTheArgument()
+        {
+            // Arrange
+            var type = typeof(List<Dictionary<string, int>>);
+            var parameters = new[] { "System.Int32", "System.Int32",
+                "System.Collections.Generic.Dictionary`2[System.String,System.Int32]",
+                "System.Collections.Generic.IComparer`1[System.Collections.Generic.Dictionary`2[System.String,System.Int32]]" };
+            var control = DeclareIn(type.Assembly, "Method", type.FullName, nameof(List<int>.BinarySearch), "System.Int32", parameters);
+            var changed = DeclareIn(type.Assembly, "Method", type.FullName, nameof(List<int>.BinarySearch), "System.Int32",
+                new[] { parameters[0], parameters[1], "System.Collections.Generic.Dictionary`2[System.String,System.String]", parameters[3] });
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnOpenGenericReturnType_When_ADeclaredMethodIsResolved_Then_OnlyTheClosedControlMatches()
+        {
+            // Arrange
+            var closed = typeof(List<int>);
+            var open = typeof(List<>);
+            var parameters = new[] { "System.Int32", "System.Int32" };
+            var control = DeclareIn(closed.Assembly, "Method", closed.FullName, nameof(List<int>.GetRange),
+                "System.Collections.Generic.List`1[System.Int32]", parameters);
+            var changed = DeclareIn(open.Assembly, "Method", open.FullName, nameof(List<int>.GetRange), open.FullName, parameters);
+
+            // Act
+            var matches = (control.Resolve() != null, changed.Resolve() != null);
+
+            // Assert
+            Assert.That(matches, Is.EqualTo((true, false)));
+        }
+
         private static bool MatchesShape(Type type, string shape)
             => typeof(EngineMember).GetMethod("MatchesType", BindingFlags.NonPublic | BindingFlags.Static)
                 ?.Invoke(null, new object[] { type, shape }) is true;
@@ -258,9 +360,12 @@ namespace Velvet.Tests
 
         // The factories are private so that no declaration can sit outside EngineMember; a test reaches them here.
         private static EngineMember Declare(string factory, params object[] arguments)
+            => DeclareIn(typeof(VisualElement).Assembly, factory, arguments);
+
+        private static EngineMember DeclareIn(Assembly assembly, string factory, params object[] arguments)
         {
             var method = typeof(EngineMember).GetMethod(factory, BindingFlags.NonPublic | BindingFlags.Static)!;
-            return (EngineMember)method.Invoke(null, new object[] { typeof(VisualElement).Assembly }.Concat(arguments).ToArray());
+            return (EngineMember)method.Invoke(null, new object[] { assembly }.Concat(arguments).ToArray());
         }
     }
 }

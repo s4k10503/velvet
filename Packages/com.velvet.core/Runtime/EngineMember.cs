@@ -161,6 +161,8 @@ namespace Velvet
         private static bool MatchesMethod(MethodInfo method, string shape)
         {
             var opening = shape.IndexOf('(');
+            // MUTANT_SURVIVES(equivalent, boundary): an opening at zero feeds an empty return shape to MatchesType; its element, generic and FullName checks still refuse that shape.
+            // MUTANT_SURVIVES(equivalent, logic): Signature supplies an opening parenthesis and appends the closing one, so both leading checks are false.
             if (opening < 0 || !shape.EndsWith(")", StringComparison.Ordinal)
                 || !MatchesType(method.ReturnType, shape.Substring(0, opening))) return false;
             var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
@@ -180,6 +182,7 @@ namespace Velvet
                 return type.IsSZArray
                     && MatchesType(type.GetElementType(), shape.Substring(0, shape.Length - 2));
             var opening = shape.IndexOf('[');
+            // MUTANT_SURVIVES(equivalent, boundary): an opening at zero still compares an empty prefix with the nonempty definition names required by the positive generic-resolution controls.
             if (opening < 0)
                 return !type.HasElementType && !type.IsGenericType && type.FullName == shape;
             if (!type.IsGenericType || !shape.EndsWith("]", StringComparison.Ordinal)
