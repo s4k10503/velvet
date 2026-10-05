@@ -69,7 +69,7 @@ namespace Velvet.Tests
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "ForTest",
             "AllocatingGCMemory",
-            "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
+            "UpdateForRepaint", "Alloc", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };

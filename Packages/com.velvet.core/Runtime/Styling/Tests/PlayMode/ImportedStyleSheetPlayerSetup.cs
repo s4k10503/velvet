@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -105,9 +106,35 @@ namespace Velvet.Tests
                 PlayerSettings.runInBackground = true;
                 EditorUserBuildSettings.SetPlatformSettings(
                     BuildPipeline.GetBuildTargetName(BuildTarget.StandaloneOSX), "Architecture", "arm64");
+                var shaderFiles = Directory.GetFiles("Packages/com.velvet.core/Runtime", "*.shader", SearchOption.AllDirectories);
+                carrier.ShaderNames = shaderFiles.Select(path =>
+                {
+                    var match = Regex.Match(File.ReadAllText(path), @"Shader\s+""([^""]+)""");
+                    if (!match.Success) throw new InvalidOperationException("Shader declaration missing: " + path);
+                    return match.Groups[1].Value;
+                }).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+                if (carrier.ShaderNames.Length == 0)
+                    throw new InvalidOperationException("No package shader declarations were found.");
+                File.WriteAllLines(Path.Combine(evidence, "shader-manifest.txt"), carrier.ShaderNames);
+                var carrierPath = state.AssetDirectory + "/ImportedStyleSheetPlayerAssets.asset";
+                AssetDatabase.CreateAsset(carrier, carrierPath);
+                AssetDatabase.SaveAssets();
+                var bundles = Path.Combine(evidence, "bundles");
+                Directory.CreateDirectory(bundles);
+                var manifest = BuildPipeline.BuildAssetBundles(bundles, new[]
+                {
+                    new AssetBundleBuild
+                    {
+                        assetBundleName = "utility-styles",
+                        assetNames = new[] { VelvetStyleUtilities.StyleSheetAssetPath },
+                    },
+                }, BuildAssetBundleOptions.ForceRebuildAssetBundle, BuildTarget.StandaloneOSX);
+                if (manifest == null) throw new InvalidOperationException("The stylesheet bundle build failed.");
+                carrier = AssetDatabase.LoadAssetAtPath<ImportedStyleSheetPlayerAssets>(carrierPath);
+                carrier.BundlePath = Path.Combine(bundles, "utility-styles");
                 carrier.ScriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.Standalone).ToString();
                 carrier.StrippingLevel = PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.Standalone).ToString();
-                AssetDatabase.CreateAsset(carrier, state.AssetDirectory + "/ImportedStyleSheetPlayerAssets.asset");
+                EditorUtility.SetDirty(carrier);
                 PlayerSettings.SetPreloadedAssets(PlayerSettings.GetPreloadedAssets().Concat(new Object[] { carrier }).ToArray());
                 AssetDatabase.SaveAssets();
                 File.WriteAllText(Path.Combine(evidence, "build-settings.json"),

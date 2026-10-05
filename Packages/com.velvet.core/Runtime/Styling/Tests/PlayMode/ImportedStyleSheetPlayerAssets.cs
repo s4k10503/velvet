@@ -9,5 +9,7 @@ namespace Velvet.Tests
         [SerializeField] internal PanelSettings PanelSettings;
         [SerializeField] internal string ScriptingBackend;
         [SerializeField] internal string StrippingLevel;
+        [SerializeField] internal string[] ShaderNames;
+        [SerializeField] internal string BundlePath;
     }
 }

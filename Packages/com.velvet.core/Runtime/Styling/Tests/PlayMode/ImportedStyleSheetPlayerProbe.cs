@@ -17,6 +17,7 @@ namespace Velvet.Tests
             public string Failure;
             public string Platform;
             public bool Il2Cpp;
+            public ImportedStyleSheetPlayerTests.Observation Observation;
         }
 
         private IEnumerator Start()
@@ -37,7 +38,7 @@ namespace Velvet.Tests
             File.WriteAllText(path, JsonUtility.ToJson(result, true));
             var fixture = new ImportedStyleSheetPlayerTests();
             fixture.SetUp();
-            var test = fixture.Given_AUtilitySheetReachedOnlyByImport_When_A_StrippedIl2CppPlayerMounts_Then_OnlyTheBarePhaseWarns();
+            var test = fixture.Given_TheBundledAssets_When_AStrippedIl2CppPlayerUsesThem_Then_ShadersAndCopiedSheetsRemainUsable();
             while (true)
             {
                 bool next;
@@ -48,6 +49,7 @@ namespace Velvet.Tests
             }
             var cleanup = fixture.TearDown();
             while (cleanup.MoveNext()) yield return cleanup.Current;
+            result.Observation = fixture.Snapshot;
             result.Phase = "completed";
             File.WriteAllText(path, JsonUtility.ToJson(result, true));
             Application.Quit(result.Passed ? 0 : 1);
