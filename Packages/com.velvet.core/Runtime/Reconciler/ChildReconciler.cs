@@ -254,6 +254,7 @@ namespace Velvet
                     if (_keying.HasAnyKey(newNodes)
                         || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.AnyKeyOffItsFlatIndex(scopedOldKeys)))
                     {
+                        ReportRepeatedKeys(newNodes);
                         ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
                     }
                     else
@@ -1089,13 +1090,8 @@ namespace Velvet
             var suffix = CountTrimmableSuffix(oldNodes, newNodes, oldKeys, linearEnd);
             var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
             var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
-            // Take the fast path only when the middle collapses to a single insert OR remove AND every key is
-            // distinct on both sides. The element ORDER the prepass commits is the new key order by
-            // construction, so a duplicate key never reorders — but Pass 2 de-duplicates a repeated key (one
-            // element for N occurrences) whereas inserting/patching positionally would not, so a duplicate must
-            // defer to the remainder pass to preserve that established behavior. Unkeyed nodes carry
-            // Positional(index) keys,
-            // which are inherently distinct, so an unkeyed list is never rejected by this check.
+            // Repeated keys must reach the remainder map so suffix reuse cannot change which old element
+            // they claim; FlatPathDuplicateKeyTests pins both repeated-side shapes.
             if (suffix == 0 || (oldMidEnd != linearEnd && newMidEnd != linearEnd)
                 || !(oldKeys == null ? AllReconcileKeysUnique(oldNodes) : AllOldKeysUnique(oldKeys))
                 || !AllReconcileKeysUnique(newNodes))
@@ -1256,11 +1252,27 @@ namespace Velvet
         private ChildKey OldKey(ChildKey[]? keys, VNode?[] oldNodes, int i)
             => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
 
-        // True when every key in the list is distinct. The suffix-trim fast path inserts /
-        // patches positionally and so would render N elements for a key repeated N times, whereas Pass 2
-        // de-duplicates it; the prepass therefore defers a duplicate-key list to Pass 2. Unkeyed nodes carry
-        // Positional(index) keys, which are inherently distinct, so an unkeyed list always passes. Uses a pooled
-        // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
+        // Report before keyed shortcuts so a matched linear prefix cannot bypass the warning.
+        private void ReportRepeatedKeys(VNode?[] newNodes)
+        {
+            var seen = _ctx.BufferPool.RentKeySet();
+            try
+            {
+                for (var i = 0; i < newNodes.Length; i++)
+                {
+                    var key = _keying.ReconcileKey(newNodes[i], i);
+                    if (seen.Add(key)) continue;
+                    FiberLogger.LogWarning("ChildReconciler",
+                        $"Duplicate key detected among new siblings: {key}. " +
+                        "Both siblings render; give each sibling a unique key.");
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnKeySet(seen);
+            }
+        }
+
         private bool AllOldKeysUnique(List<ChildKey> keys)
         {
             var seen = _ctx.BufferPool.RentKeySet();
@@ -1743,11 +1755,7 @@ namespace Velvet
                     // A second new-side sibling resolved the same old entry. Re-matching would alias
                     // two logical rows onto one element (the reorder pass then collapses them,
                     // silently dropping a row) or, on a type swap, retroactively remove the element
-                    // the first occurrence patched. Mirror the old-side duplicate guard: warn and
-                    // mount a fresh element so every declared row commits.
-                    FiberLogger.LogWarning("ChildReconciler",
-                        $"Duplicate key detected among new siblings: {key}. " +
-                        "The repeated sibling mounts a fresh element; give each sibling a unique key.");
+                    // the first occurrence patched. Mount a fresh element so every declared row commits.
                     var duplicateElement = _factory.CreateElement(newNode);
                     newElements.Add((duplicateElement, false));
                     if (_ctx.IsAborted) return true;

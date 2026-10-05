@@ -290,6 +290,8 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 >
 > Sibling **elements** are matched by position the same way, a `null` among them holding its slot: in `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper keeps its own element and the `Row` inside it keeps its own state, keyed or not.
 
+A container of direct plain elements warns once for each repeated sibling key, on mount and every update; both siblings render. An update with unique sibling keys produces no duplicate-key warning, even if the previous render repeated a key.
+
 ### 2-4. Context
 
 | React | Velvet | Notes |

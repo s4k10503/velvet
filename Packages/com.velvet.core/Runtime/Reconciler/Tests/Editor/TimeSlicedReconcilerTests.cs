@@ -499,6 +499,8 @@ namespace Velvet.Tests
                 "The reversed list parks and a sufficient-budget resume completes the keyed reorder in one step");
         }
 
+        // GREEN_ON_BASE(characterization): the base warned for these lists as well, from the update's map pass.
+        // What it pins is the order the park/resume reaches; FlatPathDuplicateKeyTests holds which render warns.
         [Test]
         public void Given_DuplicateKeys_When_TimeSliced_Then_WarnsAndProducesNewOrder()
         {
@@ -522,9 +524,9 @@ namespace Velvet.Tests
                 V.Label(key: "e", text: "E"),
                 V.Label(key: "c", text: "C"),
             };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
             UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
                 new System.Text.RegularExpressions.Regex("Duplicate key detected"));
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
 
             // Act
             _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
@@ -532,7 +534,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(LabelTexts(), Is.EqualTo(new[] { "F", "DupNew", "A", "E", "C" }),
-                "A duplicate-key keyed diff warns and still park/resumes to the new order");
+                "A keyed diff from an old side repeating a key still park/resumes to the new order");
         }
 
         #endregion
