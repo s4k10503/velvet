@@ -1,15 +1,7 @@
 name: Base-red round
 description: >-
-  One more round of the base-red check, prepared from the round before it. The editor runs only
-  where the previous round wrote nothing and its log blamed files the branch carried; the results
-  land where the verdict step reads.
-inputs:
-  testMode:
-    description: EditMode or PlayMode, the lane this job is.
-    required: true
-  githubToken:
-    description: What the test runner creates its check run with.
-    required: true
+  Prepare the next base-red round from the preceding compiler log. The workflow runs the editor
+  with its own action ID when this preparation returns a fixture filter.
 outputs:
   fixtures:
     description: What this round asked, or empty where no round was run.
@@ -23,14 +15,3 @@ runs:
         python3 scripts/test_quality/base_red_check.py \
           --replan plan.json --results base-results --base-tree base-tree | tee again.txt
         grep '^fixtures=' again.txt >> "$GITHUB_OUTPUT" || true
-
-    - uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
-      if: steps.replan.outputs.fixtures != ''
-      continue-on-error: true
-      with:
-        unityVersion: 6000.3.23f1
-        testMode: ${{ inputs.testMode }}
-        projectPath: base-tree
-        artifactsPath: base-results
-        githubToken: ${{ inputs.githubToken }}
-        customParameters: -testFilter "${{ steps.replan.outputs.fixtures }}"

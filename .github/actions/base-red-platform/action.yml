@@ -1,5 +1,5 @@
 name: Platform base-red check
-description: Run the base reading after this platform has validated and uploaded its branch reading.
+description: Prepare and run the first base reading after this platform has validated its branch reading.
 inputs:
   testMode:
     description: EditMode or PlayMode.
@@ -7,6 +7,10 @@ inputs:
   githubToken:
     description: Token used by the Unity test reporter.
     required: true
+outputs:
+  fixtures:
+    description: What the first round asked, or empty where no base run was needed.
+    value: ${{ steps.read.outputs.fixtures }}
 runs:
   using: composite
   steps:
@@ -57,30 +61,3 @@ runs:
         artifactsPath: base-results
         githubToken: ${{ inputs.githubToken }}
         customParameters: -testFilter "${{ steps.read.outputs.fixtures }}"
-
-    - id: round2
-      if: steps.read.outputs.fixtures != ''
-      uses: ./.github/actions/base-red-round
-      with:
-        testMode: ${{ inputs.testMode }}
-        githubToken: ${{ inputs.githubToken }}
-
-    - id: round3
-      if: steps.round2.outputs.fixtures != ''
-      uses: ./.github/actions/base-red-round
-      with:
-        testMode: ${{ inputs.testMode }}
-        githubToken: ${{ inputs.githubToken }}
-
-    - id: round4
-      if: steps.round3.outputs.fixtures != ''
-      uses: ./.github/actions/base-red-round
-      with:
-        testMode: ${{ inputs.testMode }}
-        githubToken: ${{ inputs.githubToken }}
-
-    - if: steps.read.outputs.fixtures != ''
-      shell: bash
-      run: |
-        python3 scripts/test_quality/base_red_check.py \
-          --verdict plan.json --results base-results

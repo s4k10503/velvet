@@ -153,10 +153,8 @@ namespace Velvet
             }
         }
 
-        // isCompositeRoot is internal. A later engine that drops it leaves every field's parts reachable
-        // rather than throwing.
-        private static readonly PropertyInfo? s_isCompositeRoot =
-            typeof(VisualElement).GetProperty("isCompositeRoot", BindingFlags.Instance | BindingFlags.NonPublic);
+        // A later engine that drops isCompositeRoot leaves every field's parts reachable.
+        private static readonly PropertyInfo? s_isCompositeRoot = EngineMember.IsCompositeRoot.ResolveProperty();
 
         private static bool IsCompositeRoot(VisualElement element)
             => s_isCompositeRoot?.GetValue(element) is true;

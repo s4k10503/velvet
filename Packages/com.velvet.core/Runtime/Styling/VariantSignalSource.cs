@@ -781,7 +781,7 @@ namespace Velvet
 
         private static IRegistrar? CreateRegistrar()
         {
-            var eventType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.PropertyChangedEvent");
+            var eventType = EngineMember.PropertyChangedEvent.ResolveType();
             return eventType == null
                 ? null
                 : (IRegistrar)Activator.CreateInstance(typeof(Registrar<>).MakeGenericType(eventType));

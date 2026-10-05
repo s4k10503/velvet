@@ -94,3 +94,42 @@ it measured at more than twice the added startup. **Why not Addressables**, whic
 replacement: it asks the consumer to create a group and run an Addressables build, and a package cannot
 assume either has happened — a first-run failure there is worse than either number here.
 
+## Engine members read by name
+
+Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
+focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
+flag, UI Toolkit's internal property-change event, the `@import`s of a stylesheet, and the cached opacity
+and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid). `EngineMember`
+declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
+and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
+creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole
+`nameof` arguments are allowed. The guard checks these source spellings; it does not follow aliases or
+values through variables.
+
+Managed code stripping can remove a member that only a lookup by name reaches, so the package hands the
+linker a link.xml keeping those members, from an `IUnityLinkerProcessor` step; a method is kept with every
+overload of its name. There is nothing to configure; the file is written under the project's Temp folder
+while the build runs.
+
+A member that no longer resolves leaves the feature reading it undone rather than throwing.
+`EngineMemberResolutionTests` resolves every declaration, with its member kind and type, against the
+editor running the suite, so a Unity upgrade that renames or retypes one fails there and names it.
+Shape matching checks type metadata, generic arguments, vector elements and by-ref parameters rather
+than a type's display string. Method declarations include their return and parameter types; focus
+pseudo-state declarations also require an enum.
+
+`ImportedStyleSheetPlayerTests` checks the `@import` lookup from a macOS IL2CPP player with High managed
+stripping. It mounts a target carrying an importing USS, then a real asset-bundle copy, then a bare control, and
+checks their warning phases alongside the USS-owned utility's resolved style. The bundle copy must be a
+distinct object with the original sheet's name and nonempty import names. Shader lookup and support are
+checked against names read from the package's shader files, without serialized shader references. Editor and in-editor PlayMode runs
+skip the player-only fixture.
+
+For a standalone scene that calls the same assertion directly, set VELVET_IMPORT_PLAYER_OUTPUT to the
+output `.app` path and VELVET_IMPORT_PLAYER_EVIDENCE to a log directory, then launch the editor with
+`-batchmode -debugCodeOptimization -quit -executeMethod Velvet.Tests.ImportedStyleSheetPlayerSetup.BuildProbe`.
+This requires the editor's Mac IL2CPP support. The scoped builder temporarily preloads the test assets,
+builds the stylesheet bundle, creates a test scene, and selects ARM64, IL2CPP and High stripping; cleanup restores those settings and removes
+the scene and assets. Run the built app's executable with `-batchmode` and `--velvet-import-result` followed by an absolute
+JSON output path. The probe writes its runtime platform, compiled backend, and assertion result, then
+exits with status zero on success.

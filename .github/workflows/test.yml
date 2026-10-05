@@ -168,7 +168,10 @@ jobs:
           name: Code coverage (${{ matrix.testMode }})
           path: ${{ steps.unity-tests.outputs.coveragePath }}
 
-      - name: Check this platform's base reading
+      # Embedded actions inherit this caller's GITHUB_ACTION. Retry runners use top-level IDs
+      # so game-ci gives their Docker cidfiles separate names.
+      - id: base-red-initial
+        name: Prepare and run this platform's first base reading
         timeout-minutes: 30
         if: success() && github.event_name == 'pull_request'
         uses: ./.github/actions/base-red-platform
@@ -179,6 +182,89 @@ jobs:
         with:
           testMode: ${{ matrix.testMode }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: base-red-prepare2
+        name: Prepare base reading round 2
+        if: success() && steps.base-red-initial.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+
+      - id: base-red-run2
+        name: Run base reading round 2
+        if: steps.base-red-prepare2.outputs.fixtures != ''
+        timeout-minutes: 10
+        continue-on-error: true
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.23f1
+          testMode: ${{ matrix.testMode }}
+          projectPath: base-tree
+          artifactsPath: base-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          customParameters: -testFilter "${{ steps.base-red-prepare2.outputs.fixtures }}"
+
+      - id: base-red-prepare3
+        name: Prepare base reading round 3
+        if: success() && steps.base-red-prepare2.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+
+      - id: base-red-run3
+        name: Run base reading round 3
+        if: steps.base-red-prepare3.outputs.fixtures != ''
+        timeout-minutes: 10
+        continue-on-error: true
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.23f1
+          testMode: ${{ matrix.testMode }}
+          projectPath: base-tree
+          artifactsPath: base-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          customParameters: -testFilter "${{ steps.base-red-prepare3.outputs.fixtures }}"
+
+      - id: base-red-prepare4
+        name: Prepare base reading round 4
+        if: success() && steps.base-red-prepare3.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+
+      - id: base-red-run4
+        name: Run base reading round 4
+        if: steps.base-red-prepare4.outputs.fixtures != ''
+        timeout-minutes: 10
+        continue-on-error: true
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.23f1
+          testMode: ${{ matrix.testMode }}
+          projectPath: base-tree
+          artifactsPath: base-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          customParameters: -testFilter "${{ steps.base-red-prepare4.outputs.fixtures }}"
+
+      - name: Decide this platform's base reading
+        if: success() && steps.base-red-initial.outputs.fixtures != ''
+        run: python3 scripts/test_quality/base_red_check.py --verdict plan.json --results base-results
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && github.event_name == 'pull_request' && steps.base-red-initial.outputs.fixtures != ''
+        with:
+          name: Base results (${{ matrix.testMode }})
+          path: |
+            base-results*
+            plan.json
+            reading.txt
+            again.txt
 
   # ---------------------------------------------------------------------------
   # The release note is assembled from the CHANGELOG at release time, by which point no pull

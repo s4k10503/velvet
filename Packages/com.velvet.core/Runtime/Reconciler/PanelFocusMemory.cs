@@ -13,50 +13,23 @@ namespace Velvet
     // about to take focus, and a panel the event system blurred keeps its last focused element with nothing
     // focused. Clearing that one publicly means switching the panel's focus, which would drop a focus change
     // a handler has pending.
-    //
-    // Each member is looked up with the type shape its read depends on (a reference field, a generic list, an
-    // enum), so that a later engine changing one leaves the scrub undone rather than throwing from the cleaner.
     internal static class PanelFocusMemory
     {
-        private const BindingFlags Instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static readonly FieldInfo? s_lastFocusedElement = EngineMember.LastFocusedElement.ResolveField();
 
-        // Reached through IPanel rather than named: naming the type would leave DocumentationDriftTests'
-        // identifier allowlist holding an entry it no longer needs, and editing that table alone puts every
-        // case of that fixture on trial against the merge base.
-        private static readonly Type s_controllerType =
-            typeof(IPanel).GetProperty(nameof(IPanel.focusController))!.PropertyType;
-
-        private static readonly FieldInfo? s_lastFocusedElement =
-            ReferenceField(s_controllerType, "m_LastFocusedElement", Instance);
-
-        private static readonly FieldInfo? s_pendingFocusedElement =
-            ReferenceField(s_controllerType, "m_LastPendingFocusedElement", Instance);
+        private static readonly FieldInfo? s_pendingFocusedElement = EngineMember.LastPendingFocusedElement.ResolveField();
 
         // Written through the property, as the engine's own writers are.
-        private static readonly PropertyInfo? s_selectedTextElement =
-            s_controllerType.GetProperty("selectedTextElement", Instance) is { CanWrite: true } selected
-                ? selected
-                : null;
+        private static readonly PropertyInfo? s_selectedTextElement = EngineMember.SelectedTextElement.ResolveProperty();
 
-        private static readonly FieldInfo? s_focusedElements =
-            s_controllerType.GetField("m_FocusedElements", Instance) is { FieldType: { IsGenericType: true } } list
-                ? list
-                : null;
+        private static readonly FieldInfo? s_focusedElements = EngineMember.FocusedElements.ResolveField();
 
-        private static readonly FieldInfo? s_entryFocusedElement = s_focusedElements == null
-            ? null
-            : ReferenceField(s_focusedElements.FieldType.GetGenericArguments()[0], "m_FocusedElement",
-                BindingFlags.Instance | BindingFlags.Public);
+        private static readonly FieldInfo? s_entryFocusedElement = EngineMember.FocusedElementEntry.ResolveField();
 
-        private static readonly PropertyInfo? s_pseudoStates =
-            typeof(VisualElement).GetProperty("pseudoStates", Instance) is { PropertyType: { IsEnum: true } } states
-                ? states
-                : null;
+        private static readonly PropertyInfo? s_pseudoStates = EngineMember.PseudoStates.ResolveProperty();
 
         private static readonly long s_focusPseudoState =
-            s_pseudoStates is { } pseudo && Enum.TryParse(pseudo.PropertyType, "Focus", out var focus)
-                ? Convert.ToInt64(focus)
-                : 0;
+            EngineMember.FocusPseudoState.ResolveField()?.GetValue(null) is { } focus ? Convert.ToInt64(focus) : 0;
 
         // A tree disposed after its root left its panel is released with no panel to scrub, so the scrub runs
         // when the root leaves instead.
@@ -132,9 +105,6 @@ namespace Velvet
 
         private static bool IsWithin(VisualElement element, VisualElement root)
             => ReferenceEquals(element, root) || root.Contains(element);
-
-        private static FieldInfo? ReferenceField(Type type, string name, BindingFlags flags)
-            => type.GetField(name, flags) is { FieldType: { IsValueType: false } } field ? field : null;
 
         private sealed class LeaveScrub : IDisposable
         {
