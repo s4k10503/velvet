@@ -60,22 +60,23 @@ namespace Velvet
                 return false;
             }
 
-            _error = exception is OperationCanceledException
-                ? exception
-                : ExceptionDispatchInfo.Capture(exception);
+            _error = ExceptionDispatchInfo.Capture(exception);
             Volatile.Write(ref _published, 1);
             InvokeContinuation();
             return true;
         }
 
-        public bool TrySetCanceled(CancellationToken cancellationToken = default)
+        public bool TrySetCanceled(CancellationToken cancellationToken = default) =>
+            TrySetCanceled(new OperationCanceledException(cancellationToken));
+
+        public bool TrySetCanceled(OperationCanceledException exception)
         {
             if (Interlocked.Increment(ref _completedCount) != 1)
             {
                 return false;
             }
 
-            _error = new OperationCanceledException(cancellationToken);
+            _error = exception;
             Volatile.Write(ref _published, 1);
             InvokeContinuation();
             return true;
