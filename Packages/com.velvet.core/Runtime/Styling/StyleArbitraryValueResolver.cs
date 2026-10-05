@@ -1313,7 +1313,9 @@ namespace Velvet
                 var layers = map[writer];
                 var priority = layers.Keys[layers.Count - 1];
                 var arrival = map.ArrivalOf(writer, priority);
-                if (priority > best || priority == best && arrival > latest)
+                // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
+                var isNewerArrival = arrival > latest;
+                if (priority > best || priority == best && isNewerArrival)
                 {
                     winner = style;
                     best = priority;
