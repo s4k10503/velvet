@@ -75,19 +75,25 @@ namespace Velvet
             return new ToCoroutineEnumerator<T>(task, resultHandler, exceptionHandler);
         }
 
-        internal static VelvetTask FromCanceled(CancellationToken cancellationToken = default)
+        internal static VelvetTask FromCanceled(CancellationToken cancellationToken = default) =>
+            FromCanceled(new OperationCanceledException(cancellationToken));
+
+        internal static VelvetTask FromCanceled(OperationCanceledException exception)
         {
             var source = VelvetTaskSourcePool.Rent();
             source.MarkReturnToPoolOnConsume();
-            source.TrySetCanceled(cancellationToken);
+            source.TrySetCanceled(exception);
             return new VelvetTask(source);
         }
 
-        internal static VelvetTask<T> FromCanceled<T>(CancellationToken cancellationToken = default)
+        internal static VelvetTask<T> FromCanceled<T>(CancellationToken cancellationToken = default) =>
+            FromCanceled<T>(new OperationCanceledException(cancellationToken));
+
+        internal static VelvetTask<T> FromCanceled<T>(OperationCanceledException exception)
         {
             var source = VelvetTaskSourcePool<T>.Rent();
             source.MarkReturnToPoolOnConsume();
-            source.TrySetCanceled(cancellationToken);
+            source.TrySetCanceled(exception);
             return new VelvetTask<T>(source);
         }
 

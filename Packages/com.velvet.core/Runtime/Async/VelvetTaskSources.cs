@@ -56,6 +56,8 @@ namespace Velvet
 
         public bool TrySetCanceled(CancellationToken cancellationToken = default) =>
             _core.TrySetCanceled(cancellationToken);
+
+        public bool TrySetCanceled(OperationCanceledException exception) => _core.TrySetCanceled(exception);
     }
 
     internal sealed class VelvetTaskSource<T> : IVelvetTaskSource<T>, IPoolableVelvetTaskSource
@@ -110,6 +112,8 @@ namespace Velvet
 
         public bool TrySetCanceled(CancellationToken cancellationToken = default) =>
             _core.TrySetCanceled(cancellationToken);
+
+        public bool TrySetCanceled(OperationCanceledException exception) => _core.TrySetCanceled(exception);
     }
 
     internal sealed class YieldVelvetTaskSource : IVelvetTaskSource, IPoolableVelvetTaskSource
@@ -267,7 +271,7 @@ namespace Velvet
                 }
                 else if (outcome.Cancellation != null)
                 {
-                    _source.TrySetException(outcome.Cancellation);
+                    _source.TrySetCanceled(outcome.Cancellation);
                 }
                 else
                 {
@@ -313,7 +317,7 @@ namespace Velvet
             }
         }
 
-        protected abstract void Publish(Exception? failure);
+        protected abstract void Publish(Exception? fault, OperationCanceledException? cancellation);
 
         // Task.WhenAll's order: every member's faults in argument order, and a cancellation only where no
         // member faulted -- the first cancelled member's in argument order.
@@ -331,7 +335,7 @@ namespace Velvet
                 cancellation ??= _cancellations[i];
             }
 
-            Publish(_allFaults?[0].SourceException ?? cancellation);
+            Publish(_allFaults?[0].SourceException, cancellation);
         }
     }
 
@@ -358,19 +362,19 @@ namespace Velvet
 
         public void GetResult(short version) => _source.GetResult(version);
 
-        protected override void Publish(Exception? failure)
+        protected override void Publish(Exception? fault, OperationCanceledException? cancellation)
         {
-            if (failure == null)
+            if (fault != null)
             {
-                _source.TrySetResult();
+                _source.TrySetException(fault);
             }
-            else if (failure is OperationCanceledException canceled)
+            else if (cancellation != null)
             {
-                _source.TrySetCanceled(canceled.CancellationToken);
+                _source.TrySetCanceled(cancellation);
             }
             else
             {
-                _source.TrySetException(failure);
+                _source.TrySetResult();
             }
         }
     }
@@ -406,19 +410,19 @@ namespace Velvet
 
         public T[] GetResult(short version) => _source.GetResult(version);
 
-        protected override void Publish(Exception? failure)
+        protected override void Publish(Exception? fault, OperationCanceledException? cancellation)
         {
-            if (failure == null)
+            if (fault != null)
             {
-                _source.TrySetResult(_results);
+                _source.TrySetException(fault);
             }
-            else if (failure is OperationCanceledException canceled)
+            else if (cancellation != null)
             {
-                _source.TrySetCanceled(canceled.CancellationToken);
+                _source.TrySetCanceled(cancellation);
             }
             else
             {
-                _source.TrySetException(failure);
+                _source.TrySetResult(_results);
             }
         }
     }

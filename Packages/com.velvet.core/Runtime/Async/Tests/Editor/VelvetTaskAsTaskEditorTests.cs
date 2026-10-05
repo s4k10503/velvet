@@ -15,6 +15,61 @@ namespace Velvet.Tests
             thread.Join();
         }
 
+        static async VelvetTask CancelAfter(VelvetTaskCompletionSource gate, OperationCanceledException own)
+        {
+            await gate.Task;
+            throw own;
+        }
+
+        static async VelvetTask<int> CancelWithResultAfter(VelvetTaskCompletionSource gate, OperationCanceledException own)
+        {
+            await gate.Task;
+            throw own;
+        }
+
+        static (TaskStatus, Exception) StatusAndThrown(Task task)
+        {
+            try
+            {
+                task.GetAwaiter().GetResult();
+                return (task.Status, null);
+            }
+            catch (Exception exception)
+            {
+                return (task.Status, exception);
+            }
+        }
+
+        [Test]
+        public void Given_ATaskTakenAsATask_When_ItIsCanceledWithItsOwnException_Then_TheTaskThrowsThatException()
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource();
+            var own = new OperationCanceledException("own");
+            var task = CancelAfter(gate, own).AsTask();
+
+            // Act
+            gate.SetResult();
+
+            // Assert
+            Assert.That(StatusAndThrown(task), Is.EqualTo((TaskStatus.Canceled, (Exception)own)));
+        }
+
+        [Test]
+        public void Given_AResultTaskTakenAsATask_When_ItIsCanceledWithItsOwnException_Then_TheTaskThrowsThatException()
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource();
+            var own = new OperationCanceledException("own");
+            var task = CancelWithResultAfter(gate, own).AsTask();
+
+            // Act
+            gate.SetResult();
+
+            // Assert
+            Assert.That(StatusAndThrown(task), Is.EqualTo((TaskStatus.Canceled, (Exception)own)));
+        }
+
         [Test]
         public void Given_APendingResultTask_When_TakenAsATaskAndItCompletes_Then_TheTaskCarriesItsResult()
         {

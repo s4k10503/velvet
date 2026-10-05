@@ -22,6 +22,25 @@ namespace Velvet.Tests
         static async VelvetTask<int> DoubledWhenSettled(VelvetTaskCompletionSource<int> source) =>
             await source.Task * 2;
 
+        static async VelvetTask<int> CanceledAfter(VelvetTaskCompletionSource gate, OperationCanceledException own)
+        {
+            await gate.Task;
+            throw own;
+        }
+
+        static Exception ThrownBy(Action action)
+        {
+            try
+            {
+                action();
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }
+
         static VelvetTaskSource<int[]> PublishingSourceOf(VelvetTask<int[]> task)
         {
             var composite = ResultTaskSourceField.GetValue(task)!;
@@ -250,6 +269,39 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(thrown!.CancellationToken, Is.EqualTo(cts.Token));
+        }
+
+        [Test]
+        public void Given_ACanceledTask_When_WhenAllIsConsumed_Then_ThrowsThatMembersOwnException()
+        {
+            // Arrange
+            var canceled = new VelvetTaskCompletionSource();
+            canceled.SetCanceled();
+            var own = ThrownBy(() => canceled.Task.GetAwaiter().GetResult());
+            var all = VelvetTask.WhenAll(canceled.Task, VelvetTask.CompletedTask);
+
+            // Act
+            var thrown = ThrownBy(() => all.GetAwaiter().GetResult());
+
+            // Assert
+            Assert.That(thrown, Is.InstanceOf<OperationCanceledException>().And.SameAs(own));
+        }
+
+        [Test]
+        public void Given_AResultMemberThatThrowsItsOwnCancellation_When_WhenAllIsConsumed_Then_ThrowsThatException()
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource();
+            var own = new OperationCanceledException("own");
+            var all = VelvetTask.WhenAll(CanceledAfter(gate, own), VelvetTask.FromResult(7));
+
+            // Act
+            gate.SetResult();
+            var status = all.Status;
+            var thrown = ThrownBy(() => all.GetAwaiter().GetResult());
+
+            // Assert
+            Assert.That((status, thrown), Is.EqualTo((VelvetTaskStatus.Canceled, (Exception)own)));
         }
 
         [Test]

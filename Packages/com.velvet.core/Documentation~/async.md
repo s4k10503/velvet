@@ -72,9 +72,9 @@ result.
 
 A member that fails does not end the wait — the others are still waited for, as `Task.WhenAll` waits.
 Awaiting the combination then throws what awaiting a `Task.WhenAll` throws: the first fault in argument
-order — the member's own exception — or, where no member faulted, an `OperationCanceledException`
-carrying the token of the first cancelled member in argument order, so a fault outranks a cancellation
-whichever arrived first. The combination keeps every member's fault in argument order, a member that is
+order — the member's own exception — or, where no member faulted, the first cancelled member's own
+`OperationCanceledException` in argument order, so a fault outranks a cancellation whichever arrived
+first. The combination keeps every member's fault in argument order, a member that is
 itself a faulted combination contributing all of its own, and a cancelled member contributing none.
 `AsTask()` hands them to the `Task`'s `Exception` as `Task.WhenAll` holds them, so await
 `VelvetTask.WhenAll(…).AsTask()` where each failure matters. `AttachExternalCancellation` keeps all of them,
@@ -98,11 +98,18 @@ await and read it, before and after it completes, as they may a TaskCompletionSo
 Where a task has to be consumed more than once, `Preserve()` — the counterpart of
 ValueTask.Preserve() — consumes it and returns one that any number of awaiters may await and read, a
 continuation registered on the main thread resuming there as any other does. `AsTask()` returns a
-`Task` or `Task<T>` instead. Each settles on the thread that completes the original task, whichever
+`Task` or `Task<T>` instead, a cancelled one throwing the task's own `OperationCanceledException`, as
+ValueTask.AsTask()'s does. Each settles on the thread that completes the original task, whichever
 thread asked for it, so a preserved task's status moves and an `AsTask()` result can be waited on from
 the main thread before Unity runs anything posted there. `VelvetTaskPreserveEditorTests` and `VelvetTaskAsTaskEditorTests` pin both.
 
 ## Declining a cancellation
+
+A task is cancelled where an `async VelvetTask` method throws an `OperationCanceledException`, keeping that
+exception, and where a completion source's `SetCanceled` settles it. `SetException` and
+`VelvetTask.FromException` handed an `OperationCanceledException` fault the task with it instead, as a
+TaskCompletionSource's `SetException` and Task.FromException do; awaiting it throws that exception either way,
+and `Status` tells the two apart.
 
 `await task.SuppressThrowing()` waits for the task and throws neither its fault nor its cancellation,
 the await ConfigureAwaitOptions.SuppressThrowing gives a `Task`. It returns the task's
