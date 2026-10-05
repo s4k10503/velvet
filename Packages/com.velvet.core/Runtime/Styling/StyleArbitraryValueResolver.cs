@@ -726,6 +726,18 @@ namespace Velvet
             // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
             public List<IChildClassWatcher>? Watchers;
 
+            private readonly Dictionary<(ArbitraryProperty Property, long Priority), long> _arrivals = new();
+            private long _nextArrival;
+
+            public void RecordArrival(ArbitraryProperty property, long priority)
+                => _arrivals[(property, priority)] = ++_nextArrival;
+
+            public long ArrivalOf(ArbitraryProperty property, long priority)
+                => _arrivals[(property, priority)];
+
+            public void RemoveArrival(ArbitraryProperty property, long priority)
+                => _arrivals.Remove((property, priority));
+
             public bool HasLayers => Count > 0;
 
             public void CollectLayers(List<StyleClassProjection.InlineLayer> into)
@@ -899,6 +911,7 @@ namespace Velvet
                     map[style.Property] = layers;
                 }
                 layers[priority] = style;
+                map.RecordArrival(style.Property, priority);
             }
             ResolveAndApply(element, style.Property, map);
             Reproject(element, map);
@@ -969,6 +982,7 @@ namespace Velvet
             if (map.TryGetValue(property, out var layers))
             {
                 layers.Remove(priority);
+                map.RemoveArrival(property, priority);
                 if (layers.Count == 0) map.Remove(property);
             }
             ResolveAndApply(element, property, map);
@@ -1270,12 +1284,11 @@ namespace Velvet
             return TryLayeredWinner(map, slot, out var winner) ? winner : null;
         }
 
-        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's place — and on
-        // an equal key the narrower property, the later one in WritersOf.
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
             winner = default;
             var best = long.MinValue;
+            var latest = long.MinValue;
             var found = false;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
@@ -1285,10 +1298,12 @@ namespace Velvet
                 }
                 var layers = map[writer];
                 var priority = layers.Keys[layers.Count - 1];
-                if (priority >= best)
+                var arrival = map.ArrivalOf(writer, priority);
+                if (priority > best || priority == best && arrival > latest)
                 {
                     winner = style;
                     best = priority;
+                    latest = arrival;
                     found = true;
                 }
             }
@@ -1473,12 +1488,11 @@ namespace Velvet
                 return 0;
             }
 
-            // Lowest key first, so each longhand ends on the highest-keyed writer it has; on one key the broader
-            // property first, so the narrower one keeps what it writes.
             writers.Sort((a, z) =>
             {
                 var byKey = a.Key.CompareTo(z.Key);
-                return byKey != 0 ? byKey : BreadthOf(z.Style.Property).CompareTo(BreadthOf(a.Style.Property));
+                return byKey != 0 ? byKey : map.ArrivalOf(a.Style.Property, a.Key)
+                    .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });
             var slots = 0;
             foreach (var (_, style) in writers)
@@ -1578,20 +1592,6 @@ namespace Velvet
         }
 
         private static readonly StyleLonghand[] s_longhands = (StyleLonghand[])Enum.GetValues(typeof(StyleLonghand));
-
-        private static int BreadthOf(ArbitraryProperty property)
-        {
-            var written = StyleArbitraryLonghands.Of(property);
-            var breadth = 0;
-            foreach (var longhand in s_longhands)
-            {
-                if (written.Contains(longhand))
-                {
-                    breadth++;
-                }
-            }
-            return breadth;
-        }
 
         // The property writing a longhand and nothing else, where one does: clearing that longhand alone goes
         // through it.

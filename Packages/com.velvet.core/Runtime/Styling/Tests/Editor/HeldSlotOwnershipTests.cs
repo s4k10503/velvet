@@ -27,6 +27,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALonghandThenAShorthandBehindAHold_When_TheSlotIsHandedBack_Then_TheLaterShorthandIsRestored()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.MarginTop, 2f, LengthUnit.Pixel));
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.Margin, 8f, LengthUnit.Pixel));
+            StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginTop, new StyleLength(12f));
+            var held = element.style.marginTop.value.value;
+
+            // Act
+            StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginTop);
+
+            // Assert
+            Assert.That((held, element.style.marginTop.value.value), Is.EqualTo((12f, 8f)));
+        }
+
+        [Test]
         public void Given_AnElementHoldingOneSlot_When_AnotherSlotIsHandedBackIfHeld_Then_ThatSlotsInlineValueStays()
         {
             // Arrange — a value nothing here wrote is not the hold layer's to clear.

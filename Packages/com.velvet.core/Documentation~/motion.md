@@ -261,6 +261,8 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   rest. Important declarations take priority for each longhand they write, including across a shorthand
   and its longhand. Among inline-resolved tokens in the same importance band (bracket forms, `-mt-2`,
   `translate-x-4`), the later write holds the slot, including across a shorthand and its longhand.
+  Thus `pt-[2px] p-[8px]` holds the top at 8px; reversing those tokens holds it at 2px,
+  including when an update reorders existing tokens.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a

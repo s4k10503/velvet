@@ -1083,6 +1083,160 @@ namespace Velvet.Tests
                 Is.EqualTo((16f, 24f)));
         }
 
+        [TestCase(StyleLayerPriority.Base)]
+        [TestCase(StyleLayerPriority.Important)]
+        public void Given_ALonghandBeforeAShorthandOnOneLayer_When_Applied_Then_TheLaterShorthandHoldsEveryEdge(long priority)
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.PaddingTop, 2f, LengthUnit.Pixel), priority);
+            var before = element.style.paddingTop.value.value;
+
+            // Act
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.Padding, 8f, LengthUnit.Pixel), priority);
+
+            // Assert
+            Assert.That((before, element.style.paddingTop.value.value, element.style.paddingBottom.value.value),
+                Is.EqualTo((2f, 8f, 8f)));
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Given_OverlappingInlineClasses_When_TheirSurvivorsAreReordered_Then_TheLaterShorthandHoldsTheTop(bool important, bool largeList)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var bang = important ? "!" : "";
+            var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
+            var oldTree = new VNode[] { V.Div($"w-[20px] {bang}p-[8px] {bang}pt-[2px]" + extra) };
+            var newTree = new VNode[] { V.Div($"w-[20px] {bang}pt-[2px] {bang}p-[8px]" + extra) };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            var before = root.ElementAt(0).style.paddingTop.value.value;
+            root.ElementAt(0).style.width = 99f;
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value, root.ElementAt(0).style.width.value.value),
+                Is.EqualTo((2f, 8f, 99f)));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheSurvivingShorthandStillHoldsTheTop(bool important)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var bang = important ? "!" : "";
+            var oldTree = new VNode[] { V.Div($"{bang}p-[8px]") };
+            var newTree = new VNode[] { V.Div($"{bang}pt-[2px] {bang}p-[8px]") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            var before = root.ElementAt(0).style.paddingTop.value.value;
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 8f)));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLaterShorthandHoldsTheTop(bool important)
+        {
+            // Arrange
+            var element = new VisualElement();
+            var bang = important ? "!" : "";
+            var payloads = new[] { bang + "pt-[2px]", bang + "p-[8px]" };
+
+            // Act
+            StyleVariantPayload.Apply(element, payloads, true, StyleLayerPriority.Hover);
+            var settled = element.style.paddingTop.value.value;
+            var priority = important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover) : StyleLayerPriority.Hover;
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Padding, priority);
+
+            // Assert
+            Assert.That((settled, element.style.paddingTop.value.value), Is.EqualTo((8f, 2f)));
+        }
+
+        [Test]
+        public void Given_AnOlderBaseLonghandAndLaterBaseShorthand_When_AnUpperLonghandClears_Then_TheBaseArrivalOrderIsRestored()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.PaddingTop, 2f, LengthUnit.Pixel));
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.Padding, 8f, LengthUnit.Pixel));
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(ArbitraryProperty.PaddingTop, 4f, LengthUnit.Pixel), StyleLayerPriority.Hover);
+            var upper = element.style.paddingTop.value.value;
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.PaddingTop, StyleLayerPriority.Hover);
+
+            // Assert
+            Assert.That((upper, element.style.paddingTop.value.value), Is.EqualTo((4f, 8f)));
+        }
+
+        // GREEN_ON_BASE(characterization): adding an unrelated class already leaves an unchanged inline token alone.
+        [TestCase("bg-red-500", 0f)]
+        [TestCase("h-[5px]", 5f)]
+        public void Given_AnUnchangedInlineTokenWithAForeignWrite_When_AnUnrelatedClassIsAdded_Then_TheForeignWriteIsPreserved(string addedClass, float height)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div("w-[20px]") };
+            var newTree = new VNode[] { V.Div("w-[20px] " + addedClass) };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            root.ElementAt(0).style.width = 99f;
+            var before = root.ElementAt(0).style.width.value.value;
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).style.width.value.value, root.ElementAt(0).style.height.value.value),
+                Is.EqualTo((99f, 99f, height)));
+        }
+
+        // GREEN_ON_BASE(characterization): active hover payloads already keep their rule priority after a class reorder.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ActiveOverlappingHoverPayloads_When_TheirClassesAreReordered_Then_TheLonghandKeepsItsRulePriority(bool important)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var bang = important ? "!" : "";
+            var oldTree = new VNode[] { V.Div($"p-[0px] hover:{bang}p-[8px] hover:{bang}pt-[2px]") };
+            var newTree = new VNode[] { V.Div($"p-[0px] hover:{bang}pt-[2px] hover:{bang}p-[8px]") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            var leaf = root.ElementAt(0);
+            using (var evt = PointerOverEvent.GetPooled())
+                Velvet.TestUtilities.VisualElementTestExtensions.SimulateEvent(leaf, evt);
+            var before = leaf.style.paddingTop.value.value;
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            var manipulator = reconciler.Context.VariantManipulators[root.ElementAt(0)];
+            var payloads = (string[])typeof(StyleVariantManipulator).GetField("_hover",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(manipulator)!;
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value, string.Join(" ", payloads)),
+                Is.EqualTo((2f, 2f, $"{bang}pt-[2px] {bang}p-[8px]")));
+        }
+
         #endregion
 
         #region Reconciler Integration
