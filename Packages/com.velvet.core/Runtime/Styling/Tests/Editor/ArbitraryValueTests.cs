@@ -1102,19 +1102,46 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, 8f, 8f)));
         }
 
-        [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        public void Given_OverlappingInlineClasses_When_TheirSurvivorsAreReordered_Then_TheLaterShorthandHoldsTheTop(bool important, bool largeList)
+        [TestCase(false, false, "leading")]
+        [TestCase(false, true, "leading")]
+        [TestCase(true, false, "leading")]
+        [TestCase(true, true, "leading")]
+        [TestCase(false, false, "crossing")]
+        [TestCase(false, true, "crossing")]
+        [TestCase(true, false, "crossing")]
+        [TestCase(true, true, "crossing")]
+        [TestCase(false, false, "duplicate-width")]
+        [TestCase(false, true, "duplicate-width")]
+        [TestCase(true, false, "duplicate-width")]
+        [TestCase(true, true, "duplicate-width")]
+        [TestCase(false, false, "remove-occurrence")]
+        [TestCase(false, true, "remove-occurrence")]
+        [TestCase(true, false, "remove-occurrence")]
+        [TestCase(true, true, "remove-occurrence")]
+        [TestCase(false, false, "append-occurrence")]
+        [TestCase(false, true, "append-occurrence")]
+        [TestCase(true, false, "append-occurrence")]
+        [TestCase(true, true, "append-occurrence")]
+        public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastOccurrenceHoldsTheTop(bool important, bool largeList, string change)
         {
             // Arrange
             using var reconciler = new Reconciler();
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            var oldTree = new VNode[] { V.Div($"w-[20px] {bang}p-[8px] {bang}pt-[2px]" + extra) };
-            var newTree = new VNode[] { V.Div($"w-[20px] {bang}pt-[2px] {bang}p-[8px]" + extra) };
+            var padding = bang + "p-[8px]";
+            var top = bang + "pt-[2px]";
+            var (oldClasses, newClasses, oldTop, newTop) = change switch
+            {
+                "leading" => ($"w-[20px] {padding} {top}", $"w-[20px] {top} {padding}", 2f, 8f),
+                "crossing" => ($"{padding} {top} w-[20px]", $"{top} w-[20px] {padding}", 2f, 8f),
+                "duplicate-width" => ($"w-[20px] w-[20px] {padding} {top}", $"w-[20px] w-[20px] {top} {padding}", 2f, 8f),
+                "remove-occurrence" => ($"w-[20px] {padding} {top} {padding}", $"w-[20px] {padding} {top}", 8f, 2f),
+                "append-occurrence" => ($"w-[20px] {padding} {top}", $"w-[20px] {padding} {top} {padding}", 2f, 8f),
+                _ => throw new System.ArgumentOutOfRangeException(nameof(change)),
+            };
+            var oldTree = new VNode[] { V.Div(oldClasses + extra) };
+            var newTree = new VNode[] { V.Div(newClasses + extra) };
             reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
             var before = root.ElementAt(0).style.paddingTop.value.value;
             root.ElementAt(0).style.width = 99f;
@@ -1124,7 +1151,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, root.ElementAt(0).style.paddingTop.value.value, root.ElementAt(0).style.width.value.value),
-                Is.EqualTo((2f, 8f, 99f)));
+                Is.EqualTo((oldTop, newTop, 99f)));
         }
 
         [TestCase(false)]

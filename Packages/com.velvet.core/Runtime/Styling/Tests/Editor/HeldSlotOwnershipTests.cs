@@ -26,15 +26,28 @@ namespace Velvet.Tests
             }
         }
 
-        [Test]
-        public void Given_ALonghandThenAShorthandBehindAHold_When_TheSlotIsHandedBack_Then_TheLaterShorthandIsRestored()
+        [TestCase(true, false, 8f)]
+        [TestCase(false, false, 2f)]
+        [TestCase(true, true, 2f)]
+        public void Given_OverlappingLayersBehindAHold_When_TheSlotIsHandedBack_Then_PriorityAndArrivalChooseTheRestoredValue(bool longhandFirst, bool importantLonghand, float restored)
         {
             // Arrange
             var element = new VisualElement();
-            StyleArbitraryValueResolver.Apply(element,
-                new ArbitraryStyle(ArbitraryProperty.MarginTop, 2f, LengthUnit.Pixel));
-            StyleArbitraryValueResolver.Apply(element,
-                new ArbitraryStyle(ArbitraryProperty.Margin, 8f, LengthUnit.Pixel));
+            var longhand = new ArbitraryStyle(ArbitraryProperty.MarginTop, 2f, LengthUnit.Pixel);
+            var shorthand = new ArbitraryStyle(ArbitraryProperty.Margin, 8f, LengthUnit.Pixel);
+            var priority = importantLonghand
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base;
+            if (longhandFirst)
+            {
+                StyleArbitraryValueResolver.Apply(element, longhand, priority);
+                StyleArbitraryValueResolver.Apply(element, shorthand);
+            }
+            else
+            {
+                StyleArbitraryValueResolver.Apply(element, shorthand);
+                StyleArbitraryValueResolver.Apply(element, longhand, priority);
+            }
             StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginTop, new StyleLength(12f));
             var held = element.style.marginTop.value.value;
 
@@ -42,7 +55,7 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginTop);
 
             // Assert
-            Assert.That((held, element.style.marginTop.value.value), Is.EqualTo((12f, 8f)));
+            Assert.That((held, element.style.marginTop.value.value), Is.EqualTo((12f, restored)));
         }
 
         [Test]
