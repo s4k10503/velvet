@@ -730,7 +730,21 @@ namespace Velvet
             private long _nextArrival;
 
             public void RecordArrival(ArbitraryProperty property, long priority)
-                => _arrivals[(property, priority)] = ++_nextArrival;
+            {
+                if (_nextArrival == long.MaxValue)
+                {
+                    // Keep every live layer's relative age, including layers hidden below a winner.
+                    // Compact only at the boundary so ordinary Apply never scans the other layers.
+                    var arrivals = new List<KeyValuePair<(ArbitraryProperty, long), long>>(_arrivals);
+                    arrivals.Sort((a, z) => a.Value.CompareTo(z.Value));
+                    _nextArrival = 0;
+                    foreach (var arrival in arrivals)
+                    {
+                        _arrivals[arrival.Key] = ++_nextArrival;
+                    }
+                }
+                _arrivals[(property, priority)] = ++_nextArrival;
+            }
 
             public long ArrivalOf(ArbitraryProperty property, long priority)
                 => _arrivals[(property, priority)];
