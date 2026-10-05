@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -16,6 +17,12 @@ namespace Velvet.Tests
     [PostBuildCleanup("Velvet.Tests.ImportedStyleSheetPlayerSetup")]
     internal sealed class ImportedStyleSheetPlayerTests
     {
+        private static readonly FieldInfo MissingReported = typeof(VelvetStyleUtilities)
+            .GetField("s_missingReported", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new MissingFieldException(typeof(VelvetStyleUtilities).FullName, "s_missingReported");
+
+        private bool _reportedBefore;
+        private bool _hasSavedReport;
         private readonly List<string> _warnings = new();
         private readonly List<GameObject> _documents = new();
         private readonly List<PanelSettings> _settings = new();
@@ -50,22 +57,48 @@ namespace Velvet.Tests
                 .ToArray();
 
         [SetUp]
-        public void SetUp() => Application.logMessageReceived += Record;
+        public void SetUp()
+        {
+            _reportedBefore = (bool)MissingReported.GetValue(null);
+            _hasSavedReport = true;
+            try
+            {
+                MissingReported.SetValue(null, false);
+                Application.logMessageReceived += Record;
+            }
+            catch
+            {
+                MissingReported.SetValue(null, _reportedBefore);
+                _hasSavedReport = false;
+                throw;
+            }
+        }
 
         [UnityTearDown]
         public IEnumerator TearDown()
         {
-            Application.logMessageReceived -= Record;
-            foreach (var mount in _mounts) mount.Dispose();
-            foreach (var document in _documents) Object.Destroy(document);
-            foreach (var settings in _settings) Object.Destroy(settings);
-            _mounts.Clear();
-            _documents.Clear();
-            _settings.Clear();
-            _warnings.Clear();
-            yield return null;
-            foreach (var bundle in _bundles) bundle.Unload(true);
-            _bundles.Clear();
+            try
+            {
+                Application.logMessageReceived -= Record;
+                foreach (var mount in _mounts) mount.Dispose();
+                foreach (var document in _documents) Object.Destroy(document);
+                foreach (var settings in _settings) Object.Destroy(settings);
+                _mounts.Clear();
+                _documents.Clear();
+                _settings.Clear();
+                _warnings.Clear();
+                yield return null;
+                foreach (var bundle in _bundles) bundle.Unload(true);
+                _bundles.Clear();
+            }
+            finally
+            {
+                if (_hasSavedReport)
+                {
+                    MissingReported.SetValue(null, _reportedBefore);
+                    _hasSavedReport = false;
+                }
+            }
         }
 
         private void Record(string message, string stackTrace, LogType type)
