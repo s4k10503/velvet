@@ -42,35 +42,66 @@ namespace Velvet.Tests
         private FilterFunctionDefinition _waveDef;
         private readonly List<Object> _spawned = new();
         private readonly List<string> _registered = new();
+        private readonly Dictionary<string, FilterFunctionDefinition> _definitions =
+            (Dictionary<string, FilterFunctionDefinition>)typeof(VelvetFilters).GetField("s_definitions",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        private readonly HashSet<string> _warnedNames =
+            (HashSet<string>)typeof(StyleFilterValueParser).GetField("s_warnedUnregistered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        private Dictionary<string, FilterFunctionDefinition> _definitionsBefore = null!;
+        private HashSet<string> _warnedBefore = null!;
 
         [SetUp]
         public void SetUp()
         {
-            // Declarations model real definitions: dissolve/fade/wave declare one float slot, glow
-            // declares a color slot then a float slot — argument parsing and padding are driven by them.
-            _dissolveDef = CreateDefinition(new FilterParameter(0.25f));
-            _glowDef = CreateDefinition(new FilterParameter(Color.white), new FilterParameter(1f));
-            _fadeDef = CreateDefinition(new FilterParameter(1f));
-            _waveDef = CreateDefinition(new FilterParameter(0f));
-            RegisterForTestRun("dissolve", _dissolveDef);
-            RegisterForTestRun("glow", _glowDef);
-            RegisterForTestRun("fade", _fadeDef);
-            RegisterForTestRun("wave", _waveDef);
+            _definitionsBefore = new Dictionary<string, FilterFunctionDefinition>(_definitions);
+            _warnedBefore = new HashSet<string>(_warnedNames);
+            _definitions.Clear();
+            _warnedNames.Clear();
+            try
+            {
+                // Declarations model real definitions: dissolve/fade/wave declare one float slot, glow
+                // declares a color slot then a float slot — argument parsing and padding are driven by them.
+                _dissolveDef = CreateDefinition(new FilterParameter(0.25f));
+                _glowDef = CreateDefinition(new FilterParameter(Color.white), new FilterParameter(1f));
+                _fadeDef = CreateDefinition(new FilterParameter(1f));
+                _waveDef = CreateDefinition(new FilterParameter(0f));
+                RegisterForTestRun("dissolve", _dissolveDef);
+                RegisterForTestRun("glow", _glowDef);
+                RegisterForTestRun("fade", _fadeDef);
+                RegisterForTestRun("wave", _waveDef);
+            }
+            catch
+            {
+                // NUnit need not run TearDown when this SetUp fails.
+                TearDown();
+                throw;
+            }
         }
 
         [TearDown]
         public void TearDown()
         {
-            foreach (var name in _registered)
+            try
             {
-                VelvetFilters.Unregister(name);
+                foreach (var name in _registered)
+                {
+                    VelvetFilters.Unregister(name);
+                }
+                _registered.Clear();
+                foreach (var obj in _spawned)
+                {
+                    if (obj != null) Object.DestroyImmediate(obj);
+                }
+                _spawned.Clear();
             }
-            _registered.Clear();
-            foreach (var obj in _spawned)
+            finally
             {
-                if (obj != null) Object.DestroyImmediate(obj);
+                _definitions.Clear();
+                foreach (var entry in _definitionsBefore) _definitions.Add(entry.Key, entry.Value);
+                _warnedNames.Clear();
+                _warnedNames.UnionWith(_warnedBefore);
             }
-            _spawned.Clear();
         }
 
         // Each parameterDefault becomes one declared parameter slot whose TYPE and padding default the
@@ -448,23 +479,50 @@ namespace Velvet.Tests
 
         #region Lifecycle
 
-        [Test]
-        public void Given_ANameUnregisteredAfterApply_When_TheTokenIsCleared_Then_TheLayerStillLeavesTheFilter()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ANameUnregisteredAfterApply_When_ReorderedAndCleared_Then_TheFilterIsPreservedWithoutWarningUntilClear(bool reorder)
         {
             // Arrange — the clear must resolve the name syntactically: routing it through the registry
             // would make an unregister-while-applied leave the layer composed forever (a ghost filter).
-            var el = new VisualElement();
-            RegisterForTestRun("ghost-x", CreateDefinition(new FilterParameter(0f)));
-            StyleArbitraryValueResolver.ApplyClassToken(el, "filter-[ghost-x:0.5]", StyleLayerPriority.Base);
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var definition = CreateDefinition(new FilterParameter(0f));
+            RegisterForTestRun("ghost-x", definition);
+            var oldTree = new VNode[] { V.Div("filter-[ghost-x:0.5] p-[8px] pt-[2px]") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+            var el = root.ElementAt(0);
             VelvetFilters.Unregister("ghost-x");
+            var warnings = 0;
+            void CountWarning(string message, string stack, LogType type)
+            {
+                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"ghost-x\" is not registered")) warnings++;
+            }
 
             // Act — clear the token, then force a full recompose through an unrelated filter utility.
+            Application.logMessageReceived += CountWarning;
+            try
+            {
+                if (reorder)
+                {
+                    var newTree = new VNode[] { V.Div("filter-[ghost-x:0.5] pt-[2px] p-[8px]") };
+                    reconciler.Reconcile(root, oldTree, newTree);
+                }
+            }
+            finally
+            {
+                Application.logMessageReceived -= CountWarning;
+            }
+            var retained = el.style.filter.value;
+            var filterKept = retained.Count == 1 && retained[0].customDefinition == definition;
+            var padding = el.style.paddingTop.value.value;
             StyleArbitraryValueResolver.ClearClassToken(el, "filter-[ghost-x:0.5]", StyleLayerPriority.Base);
             StyleArbitraryValueResolver.ApplyClassToken(el, "blur-[2px]", StyleLayerPriority.Base);
 
             // Assert — only the blur remains; the unregistered name's layer is gone.
             var f = el.style.filter.value;
-            Assert.That((f.Count, f[0].type), Is.EqualTo((1, FilterFunctionType.Blur)));
+            Assert.That((filterKept, padding, warnings, f.Count, f[0].type),
+                Is.EqualTo((true, reorder ? 8f : 2f, 0, 1, FilterFunctionType.Blur)));
         }
 
         // GREEN_ON_BASE(characterization): the base keyed the layer by rank alone, so its off-toggle matched; the

@@ -1449,6 +1449,7 @@ namespace Velvet
                 writers.Add((longhands, oldIndex));
             }
             // Rewriting a shorthand also reaches its other edges and their connected writers.
+            // MUTANT_SURVIVES(equivalent, boundary): each productive pass absorbs a previously unabsorbed writer; N passes close N writers, so one more pass cannot change the mask.
             for (var pass = 0; pass < writers.Count; pass++)
             {
                 var before = affected;
