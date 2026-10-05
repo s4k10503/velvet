@@ -130,7 +130,7 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
-- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()`, which logs it with `Debug.LogException`; an `OperationCanceledException` from the handler is not logged, since `.Forget()` reports no cancellation. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
 ### 1-3. State Management (React + Zustand)
 
@@ -289,6 +289,8 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 > A `V.Memoized`'s dependency-cache entry belongs to the same kind of position: the component whose output holds the memo, the `V.Portal` it is written under if there is one, the element the memo's output lands in, and its slot there — counted through the `V.Fragment`s, `V.Provider`s and other wrappers that enclose it inside that element and that output, so wrapping a memo in a `V.Fragment` gives it a new slot. Two containers each holding a memo at their first child cache separately, as do two components that each memoize their own first child into one container. An explicit `key:` stands in for the memo's own index and nothing above it: it keeps the entry across a reorder of the siblings it is written beside, and two `V.ListFragment`s keep apart the memos they each key alike. What the memo renders is placed the same way: under a keyed memo it keeps its state across that reorder, and under an unkeyed one it is placed by the memo's slot, so after a reorder a keyed component there remounts and an unkeyed one takes over the state of whatever held that slot. The entry goes when Velvet tears down that component, that Portal or that element — a Portal moving its children to another element included — so a memo written into a replaced container, or held by a component that remounts, computes again. When recomputation reuses a node from the prior result, the current cached tree keeps that node’s properties and children intact.
 >
 > Sibling **elements** are matched by position the same way, a `null` among them holding its slot: in `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper keeps its own element and the `Row` inside it keeps its own state, keyed or not.
+
+A container of direct plain elements warns once for each repeated sibling key, on mount and every update; both siblings render. An update with unique sibling keys produces no duplicate-key warning, even if the previous render repeated a key.
 
 ### 2-4. Context
 

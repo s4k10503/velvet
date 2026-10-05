@@ -364,6 +364,50 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_StructStateMachineOnTheVoidBuilderWhoseTaskWasConsumed_When_TheBuilderTaskIsReadAgain_Then_ItIsTheConsumedTask()
+        {
+            // Arrange
+            var gate = new ContinuationGate();
+            var stateMachine = new GatedVoidStructStateMachine
+            {
+                Builder = VelvetTaskMethodBuilder.Create(),
+                Gate = gate,
+                State = -1,
+            };
+            stateMachine.Builder.Start(ref stateMachine);
+            gate.Complete();
+            stateMachine.Builder.Task.GetAwaiter().GetResult();
+
+            // Act
+            var reread = stateMachine.Builder.Task;
+
+            // Assert
+            Assert.That(() => reread.Status, Throws.InvalidOperationException.With.Message.Contains("already been consumed"));
+        }
+
+        [Test]
+        public void Given_StructStateMachineOnTheValueBuilderWhoseTaskWasConsumed_When_TheBuilderTaskIsReadAgain_Then_ItIsTheConsumedTask()
+        {
+            // Arrange
+            var gate = new ContinuationGate();
+            var stateMachine = new GatedValueStructStateMachine
+            {
+                Builder = VelvetTaskMethodBuilder<int>.Create(),
+                Gate = gate,
+                State = -1,
+            };
+            stateMachine.Builder.Start(ref stateMachine);
+            gate.Complete();
+            stateMachine.Builder.Task.GetAwaiter().GetResult();
+
+            // Act
+            var reread = stateMachine.Builder.Task;
+
+            // Assert
+            Assert.That(() => reread.Status, Throws.InvalidOperationException.With.Message.Contains("already been consumed"));
+        }
+
+        [Test]
         public void Given_CompiledAsyncMethodWithTwoYields_When_EditorUpdateDrained_Then_PreservesLocalsAcrossSuspensions()
         {
             // Arrange
