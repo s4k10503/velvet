@@ -118,7 +118,7 @@ namespace Velvet
         /// <summary>
         /// Animation start delay (seconds). Applied as the inline CSS transition-delay style.
         /// Foundation for stagger (sequentially delayed animations). 0 means no delay (default).
-        /// Negative values are ignored (transition-delay is not set; behaves as no delay).
+        /// A negative value starts the animation that far into its run, as CSS and Framer Motion do.
         /// Note: currently a single delay shared between enter and exit. If a separate exit delay is
         /// needed, consider adding ExitDelaySec.
         /// </summary>

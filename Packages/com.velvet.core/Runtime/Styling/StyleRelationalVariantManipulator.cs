@@ -13,8 +13,7 @@ namespace Velvet
         public readonly bool IsPeer;
         public readonly string Name;
         public readonly VariantPayloads Payloads;
-        // Each payload's position in the className, aligned slot-for-slot with Payloads — see
-        // VariantDeclarations for why a payload has to carry one.
+        // Each payload's rule place, aligned slot-for-slot with Payloads — see VariantDeclarations.
         public readonly VariantDeclarations Declarations;
 
         public RelationalBindingConfig(bool isPeer, string name, VariantPayloads payloads,
@@ -91,6 +90,7 @@ namespace Velvet
             // (relation, name) set authoritative — a name that disappeared from the class list drops its binding.
             ResetApplied();
             UnhookAll();
+            DropStackedVariants();
             _bindings.Clear();
             BuildBindings(configs);
             if (target?.panel != null)
@@ -125,11 +125,22 @@ namespace Velvet
         {
             ResetApplied();
             UnhookAll();
+            DropStackedVariants();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
         }
 
         private void OnAttach(AttachToPanelEvent evt) => ResolveAll();
+
+        // A binding is the owner its stacked payloads are keyed by (see ApplyPayloads), so the ones its bindings
+        // gated go with them.
+        private void DropStackedVariants()
+        {
+            foreach (var b in _bindings)
+            {
+                _ctx.DropStackedVariants(b);
+            }
+        }
 
         private void OnDetach(DetachFromPanelEvent evt)
         {
@@ -274,7 +285,7 @@ namespace Velvet
             private readonly StyleRelationalVariantManipulator _owner;
             private readonly bool _isPeer;
             private readonly string _name; // "" = unnamed
-            // Payloads, their className positions and their applied flags, one slot per
+            // Payloads, their rule places and their applied flags, one slot per
             // StyleVariantClass.RelationalState (see RelationalStateCount) — so every state this binding can
             // hook for is reached by iterating rather than by naming each one at each of the sites below.
             private readonly string[][] _payloads;
@@ -379,7 +390,7 @@ namespace Velvet
                 => _owner.ApplyPayloads(this, _payloads[slot], _declarations[slot], on,
                     PriorityFor((StyleVariantClass.RelationalState)slot));
 
-            // Where a relational state's payloads and their className positions sit in the pair, which is
+            // Where a relational state's payloads and their rule places sit in the pair, which is
             // shared with the state-variant manipulator: that manipulator's third slot is focus-VISIBLE, a
             // state no relational source has, so relational focus-within rides it. These two switches and
             // PriorityFor below carry no discard arm — see the remarks on StyleVariantKind.

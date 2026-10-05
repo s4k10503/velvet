@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -290,6 +292,51 @@ namespace Velvet.Tests
 
                 // Assert — the inner is seeded from the control's current value, so the leaf applies.
                 Assert.IsTrue(leaf.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_AHoverDarkFocusLeafInTheDarkTheme_When_ItIsHoveredFourTimes_Then_TwoStackedManipulatorsStayAttached()
+            {
+                // Arrange — hover: gates a dark: manipulator, which gates a focus: one of its own.
+                VelvetTheme.IsDark = true;
+                var leaf = MountLeaf("hover:dark:focus:bg-hot");
+                var context = _mounted.Root.Reconciler.Context;
+                var built = new HashSet<StyleStackedVariantManipulator>();
+
+                // Act — each leave drops the dark: manipulator, and each hover builds a new one.
+                for (var i = 0; i < 3; i++)
+                {
+                    using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                    built.UnionWith(context.StackedVariantManipulators.Values);
+                    using (var leave = PointerOutEvent.GetPooled()) leaf.SimulateEvent(leave);
+                }
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                built.UnionWith(context.StackedVariantManipulators.Values);
+
+                // Assert
+                Assert.That(built.Count(manipulator => manipulator.target == leaf), Is.EqualTo(2));
+            }
+
+            // GREEN_ON_BASE(characterization): disposing a tree detaches every stacked manipulator, as the base
+            // already does for this chain.
+            [Test]
+            public void Given_AHoverFocusDarkChainHeldOpen_When_TheTreeIsDisposed_Then_EveryStackedManipulatorIsDetached()
+            {
+                // Arrange — hover: gates a focus: manipulator, which gates a dark: one that is dropped, not kept,
+                // when its own gate closes.
+                VelvetTheme.IsDark = true;
+                var leaf = MountLeaf("hover:focus:dark:bg-hot");
+                var context = _mounted.Root.Reconciler.Context;
+                using (var over = PointerOverEvent.GetPooled()) leaf.SimulateEvent(over);
+                using (var focus = FocusEvent.GetPooled()) leaf.SimulateEvent(focus);
+                var built = new List<StyleStackedVariantManipulator>(context.StackedVariantManipulators.Values);
+
+                // Act
+                _mounted.Dispose();
+                _mounted = null;
+
+                // Assert — the chain's size rides along, so a chain that was never built cannot read as detached.
+                Assert.That((built.Count, built.Count(manipulator => manipulator.target != null)), Is.EqualTo((2, 0)));
             }
         }
 

@@ -100,6 +100,47 @@ namespace Velvet.Tests
             Assert.That((widthAboveMd, leaf.style.width.value.value), Is.EqualTo((20f, 10f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the floored top and writes no shorthand back over it.
+        // What reddens it is dropping `ClearClaimedLonghands(element, map, style.Property, key, writers)` from
+        // ResolveSharedLonghands, which lets p-[12px] write the top again.
+        [Test]
+        public void Given_AnArbitraryPaddingShorthandAndLonghandBesideAnMdClass_When_WiderThanMd_Then_TheClassKeepsTheTop()
+        {
+            // Arrange / Act — md:pt-6 outranks both arbitrary paddings on padding-top, and p-[12px] keeps the rest.
+            var leaf = MountAndResolveAt(1000f, "p-[12px] pt-[4px] md:pt-6");
+
+            // Assert — no inline padding-top is left to hide the class.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.paddingTop.keyword,
+                    leaf.ClassListContains("pt-6"), leaf.style.paddingLeft.value.value),
+                Is.EqualTo((true, StyleKeyword.Null, true, 12f)));
+        }
+
+        [Test]
+        public void Given_AnArbitraryPaddingBesideAnMdTopClass_When_WiderThanMd_Then_TheClassKeepsTheTop()
+        {
+            // Arrange / Act — md:pt-6 claims one of the four sides p-[12px] writes, so no floor moves.
+            var leaf = MountAndResolveAt(1000f, "p-[12px] md:pt-6");
+
+            // Assert
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.style.paddingTop.keyword,
+                    leaf.ClassListContains("pt-6"), leaf.style.paddingLeft.value.value),
+                Is.EqualTo((true, StyleKeyword.Null, true, 12f)));
+        }
+
+        [Test]
+        public void Given_AnArbitraryPaddingBesideAnMdTopClass_When_NarrowedBelowMd_Then_TheArbitraryTopReturns()
+        {
+            // Arrange
+            var leaf = MountAndResolveAt(1000f, "p-[12px] md:pt-6");
+            var topAboveMd = leaf.style.paddingTop.keyword;
+
+            // Act
+            ResolveAt(700f, leaf);
+
+            // Assert
+            Assert.That((topAboveMd, leaf.style.paddingTop.value.value), Is.EqualTo((StyleKeyword.Null, 12f)));
+        }
+
         [Test]
         public void Given_AChildMdWidthUnderAParentChildVariant_When_TheRootIsWiderThanMd_Then_TheParentWidthWins()
         {

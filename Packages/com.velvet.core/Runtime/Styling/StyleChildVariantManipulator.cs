@@ -42,6 +42,8 @@ namespace Velvet
     {
         private readonly ReconcilerContext _ctx;
         private string[] _payloads;
+        // Each payload's rule place among the CONTAINER's rules, aligned with _payloads.
+        private int[] _declarations;
 
         // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked
         // element no longer a current child is offered for release; whether it loses the payload is the
@@ -54,8 +56,9 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
-        public StyleChildVariantManipulator(ReconcilerContext ctx, string[] payloads)
+        public StyleChildVariantManipulator(ReconcilerContext ctx, string[] payloads, int[]? declarations = null)
         {
+            _declarations = declarations ?? System.Array.Empty<int>();
             _ctx = ctx;
             _payloads = payloads ?? System.Array.Empty<string>();
         }
@@ -66,10 +69,11 @@ namespace Velvet
         // lets Apply re-derive against the live child set through its signature. Mirrors
         // StyleHasVariantManipulator.UpdatePayloads's pre-clear, NOT StyleGapManipulator.UpdateGap (gap never
         // needs it — it always overwrites the SAME fixed property with a new scalar, not a variable class set).
-        public void UpdatePayloads(string[] payloads)
+        public void UpdatePayloads(string[] payloads, int[]? declarations = null)
         {
             payloads ??= System.Array.Empty<string>();
-            if (SamePayloads(payloads))
+            declarations ??= System.Array.Empty<int>();
+            if (SamePayloads(payloads) && SameDeclarations(declarations))
             {
                 Apply();
                 return;
@@ -82,6 +86,7 @@ namespace Velvet
                 }
             }
             _payloads = payloads;
+            _declarations = declarations;
             _applied.Clear();
             _hasSignature = false;
             Apply();
@@ -199,17 +204,28 @@ namespace Velvet
         // state-variant payload defers to a per-child stacked manipulator gated by this walk, exactly as the
         // has- manipulator threads itself through for its own composed payloads.
         //
-        // Deliberately passes NO className positions, unlike every other supplier: these payloads are written
-        // on the PARENT, so a position would index a different class list from the one every payload the
-        // CHILD declares is indexed in, and the two would be compared as if they were the same.
-        //
-        // What makes that safe is that every payload applied from here carries the child-combinator variant in
-        // its rank, a stacked one included (see StyleLayerPriority.Stack), and no payload the child declares
-        // does, so the two never tie. Among themselves they tie and fall back to arrival (see
-        // StyleVariantPayload.NoDeclaration), which for one swept array is the parent's className order — their
-        // source order.
+        // Passes each payload's place among the CONTAINER's rules. Those places are only ever compared with each
+        // other: every payload applied from here carries the child-combinator variant in its rank, a stacked
+        // one included (see StyleLayerPriority.Stack), and no payload the child declares does.
         private void ApplyPayloads(VisualElement child, bool on)
-            => StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this);
+            => StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
+                _declarations);
+
+        private bool SameDeclarations(int[] declarations)
+        {
+            if (declarations.Length != _declarations.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < declarations.Length; i++)
+            {
+                if (declarations[i] != _declarations[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         private bool SamePayloads(string[] payloads)
         {

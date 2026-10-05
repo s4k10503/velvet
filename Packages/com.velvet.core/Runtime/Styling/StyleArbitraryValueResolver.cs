@@ -714,6 +714,10 @@ namespace Velvet
             // a bracket value with a variant-applied class ever gets one.
             public Dictionary<ArbitraryProperty, long>? Floors;
 
+            // Per property, the longhands its winning layer writes that a class claims at a key above the layer's.
+            // Absent means no class does.
+            public Dictionary<ArbitraryProperty, StyleLonghandSet>? Claims;
+
             // The slots a gap, grid or divide manipulator holds on this element — see Hold. Lazily
             // allocated: only an element one of them writes to gets one.
             public StyleHeldSlots? Holds;
@@ -755,7 +759,7 @@ namespace Velvet
                 var priorities = pair.Value.Keys;
                 for (var i = 0; i < priorities.Count; i++)
                 {
-                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, StyleLayerPriority.RankOf(priorities[i])));
+                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, priorities[i]));
                 }
             }
         }
@@ -767,16 +771,31 @@ namespace Velvet
             VisualElement element, LayerMap map, Dictionary<ArbitraryProperty, long> floors)
         {
             var previous = map.Floors;
-            if (SameFloors(previous, floors))
+            if (!SameFloors(previous, floors))
             {
-                return;
+                map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, long>(floors);
+                ResolveMoved(element, map, previous, map.Floors);
             }
-            map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, long>(floors);
-            foreach (var pair in floors)
+            // After the floors, which decide the winning layers the claims are measured against.
+            var previousClaims = map.Claims;
+            map.Claims = ClaimsAbove(map);
+            ResolveMoved(element, map, previousClaims, map.Claims);
+        }
+
+        // Re-resolves every property whose entry differs between previous and current, an absent map
+        // standing for an empty one.
+        private static void ResolveMoved<T>(VisualElement element, LayerMap map,
+            Dictionary<ArbitraryProperty, T>? previous, Dictionary<ArbitraryProperty, T>? current)
+            where T : IEquatable<T>
+        {
+            if (current != null)
             {
-                if (previous == null || !previous.TryGetValue(pair.Key, out var was) || was != pair.Value)
+                foreach (var pair in current)
                 {
-                    ResolveAndApply(element, pair.Key, map);
+                    if (previous == null || !previous.TryGetValue(pair.Key, out var was) || !was.Equals(pair.Value))
+                    {
+                        ResolveAndApply(element, pair.Key, map);
+                    }
                 }
             }
             if (previous == null)
@@ -785,11 +804,45 @@ namespace Velvet
             }
             foreach (var property in previous.Keys)
             {
-                if (!floors.ContainsKey(property))
+                if (current == null || !current.ContainsKey(property))
                 {
                     ResolveAndApply(element, property, map);
                 }
             }
+        }
+
+        // A class claiming only some of what a winning layer writes changes no floor, so the floors alone would
+        // never re-resolve that layer for ClearClaimedLonghands to give the class its longhands; a change in
+        // which longhands are claimed does. Null when no class claims anything above a winning layer.
+        private static Dictionary<ArbitraryProperty, StyleLonghandSet>? ClaimsAbove(LayerMap map)
+        {
+            if (map.Projection == null)
+            {
+                return null;
+            }
+            Dictionary<ArbitraryProperty, StyleLonghandSet>? claims = null;
+            foreach (var pair in map)
+            {
+                if (!TryWinningLayer(map, pair.Key, out _))
+                {
+                    continue;
+                }
+                var top = pair.Value.Keys[pair.Value.Count - 1];
+                var written = StyleArbitraryLonghands.Of(pair.Key);
+                var claimed = StyleLonghandSet.Empty;
+                foreach (var longhand in s_longhands)
+                {
+                    if (written.Contains(longhand) && map.Projection.ClaimOf(longhand) > top)
+                    {
+                        claimed = claimed.Union(StyleLonghandSet.Of(longhand));
+                    }
+                }
+                if (!claimed.IsEmpty)
+                {
+                    (claims ??= new Dictionary<ArbitraryProperty, StyleLonghandSet>())[pair.Key] = claimed;
+                }
+            }
+            return claims;
         }
 
         private static bool SameFloors(Dictionary<ArbitraryProperty, long>? previous, Dictionary<ArbitraryProperty, long> floors)
@@ -820,8 +873,7 @@ namespace Velvet
                 return false;
             }
             var top = layers.Count - 1;
-            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor)
-                && StyleLayerPriority.RankOf(layers.Keys[top]) <= floor)
+            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor) && layers.Keys[top] <= floor)
             {
                 return false;
             }
@@ -1027,21 +1079,10 @@ namespace Velvet
             ResolveAndApply(element, property, map);
         }
 
-        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back
-        // after borrowing it. Width first and Size second, because Size writes width and height together
-        // while re-resolving Width on an element with no Width layer CLEARS the slot — which would wipe a
-        // Size restore done first. Size is skipped when no Size layer exists, since clearing that one nulls
-        // the height too, and the height may have come from a layer of its own.
-        // An element carrying both layers ends up with the Size one, which cannot reproduce class-string
-        // order; that ambiguity belongs to the resolver and needs a pathological w-[..] size-[..] pair.
+        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back after
+        // borrowing it. Re-resolving Width settles the Size layer with it (see ResolveSharedLonghands).
         internal static void ReapplyWidthSlot(VisualElement element)
-        {
-            ReapplyLayeredValue(element, ArbitraryProperty.Width);
-            if (HasLayer(element, ArbitraryProperty.Size))
-            {
-                ReapplyLayeredValue(element, ArbitraryProperty.Size);
-            }
-        }
+            => ReapplyLayeredValue(element, ArbitraryProperty.Width);
 
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
@@ -1113,10 +1154,8 @@ namespace Velvet
 
         // Gives a slot back to the cascade: drops any hold on it and writes what the element's own layers
         // resolve to there, or nothing when none does. Gap, grid and divide stop owning a slot through here
-        // rather than by writing Null, which would erase a layer's value along with their own.
-        //
-        // Writes the slot alone rather than re-resolving the winner's property: a shorthand re-resolved here
-        // would rewrite edges the container never held, over layers of higher priority.
+        // rather than by writing Null, which would erase a layer's value along with their own. Writes the slot
+        // alone rather than re-resolving the winner's property.
         internal static void HandBack(VisualElement element, HeldSlot slot)
         {
             if (!s_layers.TryGetValue(element, out var map))
@@ -1231,8 +1270,8 @@ namespace Velvet
             return TryLayeredWinner(map, slot, out var winner) ? winner : null;
         }
 
-        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's className
-        // position — and on an equal key the narrower property, the later one in WritersOf.
+        // The highest-keyed layer among the properties writing slot — by rank, then by the rule's place — and on
+        // an equal key the narrower property, the later one in WritersOf.
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
         {
             winner = default;
@@ -1408,15 +1447,171 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
-            if (TryWinningLayer(map, property, out var winner))
-            {
-                ApplyInline(element, winner);
-            }
-            else
+            if (!TryWinningLayer(map, property, out _))
             {
                 ClearInline(element, property);
             }
-            ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property));
+            var rewritten = ResolveSharedLonghands(element, property, map);
+            ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
+        }
+
+        // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
+        // mx-[8px]): each ends on its highest-keyed writer, or on the class claiming it above that writer.
+        // Returns the held slots written, which the caller reasserts with its own.
+        private static int ResolveSharedLonghands(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            var writers = ConnectedWriters(property, map);
+            if (writers == null)
+            {
+                // Nothing else writes what this property writes, the common case: only its own winner is left.
+                if (!TryWinningLayer(map, property, out var own))
+                {
+                    return 0;
+                }
+                ApplyInline(element, own);
+                ClearClaimedLonghands(element, map, own.Property, map[property].Keys[map[property].Count - 1]);
+                return 0;
+            }
+
+            // Lowest key first, so each longhand ends on the highest-keyed writer it has; on one key the broader
+            // property first, so the narrower one keeps what it writes.
+            writers.Sort((a, z) =>
+            {
+                var byKey = a.Key.CompareTo(z.Key);
+                return byKey != 0 ? byKey : BreadthOf(z.Style.Property).CompareTo(BreadthOf(a.Style.Property));
+            });
+            var slots = 0;
+            foreach (var (_, style) in writers)
+            {
+                ApplyInline(element, style);
+                slots |= HeldSlotGroups.SlotsOf(style.Property);
+            }
+            foreach (var (key, style) in writers)
+            {
+                ClearClaimedLonghands(element, map, style.Property, key, writers);
+            }
+            return slots;
+        }
+
+        // The winning layer of every property connected to property through a shared longhand, however many
+        // steps away — a writer re-written can reach a longhand property never touches — with its key; null
+        // when nothing else shares one.
+        private static List<(long Key, ArbitraryStyle Style)>? ConnectedWriters(ArbitraryProperty property,
+            LayerMap map)
+        {
+            var reached = StyleArbitraryLonghands.Of(property);
+            var remaining = new HashSet<ArbitraryProperty>(map.Keys);
+            remaining.Remove(property);
+            HashSet<ArbitraryProperty>? taken = null;
+            // MUTANT_SURVIVES(equivalent, boundary): each productive pass consumes a candidate;
+            // an extra pass cannot add a writer after the map-sized closure has finished.
+            for (var pass = 0; pass < map.Count; pass++)
+            {
+                var previousCount = remaining.Count;
+                foreach (var pair in map)
+                {
+                    var longhands = StyleArbitraryLonghands.Of(pair.Key);
+                    if (!longhands.Overlaps(reached) || !remaining.Remove(pair.Key))
+                    {
+                        continue;
+                    }
+                    (taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key);
+                    reached = reached.Union(longhands);
+                }
+                if (remaining.Count == previousCount)
+                {
+                    break;
+                }
+            }
+            if (taken == null)
+            {
+                return null;
+            }
+            taken.Add(property);
+            var writers = new List<(long Key, ArbitraryStyle Style)>();
+            foreach (var connected in taken)
+            {
+                if (TryWinningLayer(map, connected, out var style))
+                {
+                    writers.Add((map[connected].Keys[map[connected].Count - 1], style));
+                }
+            }
+            return writers;
+        }
+
+        // A class the projection could not floor a writer under, because it claims only some of what the writer
+        // writes (md:pt-6 beside p-[12px]), still outranks that writer on the longhands it claims. Each such
+        // longhand the writer ended up owning is cleared, so the class shows through.
+        private static void ClearClaimedLonghands(VisualElement element, LayerMap map, ArbitraryProperty writer,
+            long key, List<(long Key, ArbitraryStyle Style)>? others = null)
+        {
+            if (map.Projection == null)
+            {
+                return;
+            }
+            var written = StyleArbitraryLonghands.Of(writer);
+            foreach (var longhand in s_longhands)
+            {
+                if (written.Contains(longhand) && map.Projection.ClaimOf(longhand) > key
+                    && !OutrankedOn(longhand, key, others) && s_soleWriters.TryGetValue(longhand, out var sole))
+                {
+                    ClearInline(element, sole);
+                }
+            }
+        }
+
+        // Whether another writer holds longhand above key, in which case the longhand is that one's to answer for.
+        private static bool OutrankedOn(StyleLonghand longhand, long key, List<(long Key, ArbitraryStyle Style)>? others)
+        {
+            if (others == null)
+            {
+                return false;
+            }
+            foreach (var (otherKey, style) in others)
+            {
+                if (otherKey > key && StyleArbitraryLonghands.Of(style.Property).Contains(longhand))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly StyleLonghand[] s_longhands = (StyleLonghand[])Enum.GetValues(typeof(StyleLonghand));
+
+        private static int BreadthOf(ArbitraryProperty property)
+        {
+            var written = StyleArbitraryLonghands.Of(property);
+            var breadth = 0;
+            foreach (var longhand in s_longhands)
+            {
+                if (written.Contains(longhand))
+                {
+                    breadth++;
+                }
+            }
+            return breadth;
+        }
+
+        // The property writing a longhand and nothing else, where one does: clearing that longhand alone goes
+        // through it.
+        private static readonly Dictionary<StyleLonghand, ArbitraryProperty> s_soleWriters = BuildSoleWriters();
+
+        private static Dictionary<StyleLonghand, ArbitraryProperty> BuildSoleWriters()
+        {
+            var sole = new Dictionary<StyleLonghand, ArbitraryProperty>();
+            foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
+            {
+                var longhands = StyleArbitraryLonghands.Of(property);
+                foreach (var longhand in s_longhands)
+                {
+                    if (longhands == StyleLonghandSet.Of(longhand) && !sole.ContainsKey(longhand))
+                    {
+                        sole.Add(longhand, property);
+                    }
+                }
+            }
+            return sole;
         }
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)

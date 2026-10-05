@@ -120,6 +120,13 @@ in their index math, so spacing recomputes as if the child were already gone. A 
 pinned and exits in flow, as under Framer's `popLayout`. Note the ghost
 keeps its original paint order: a survivor that reflows into the ghost's rect draws over it.
 
+A negative `StyleTransitionConfig.DelaySec` starts the animation partway through its run. For
+example, `DurationSec = 1f` and `DelaySec = -0.5f` start a linear tween halfway to its target.
+Spring and bezier plays advance before their first scheduled tick and complete immediately if that
+offset reaches their end. A property's `StylePropertyTransition.DelaySec` overrides the tween's
+delay for that property. Additional orchestration delay combines with the configured delay: a
+negative total starts partway through the animation; a positive total postpones its start.
+
 ## Orchestration (`staggerChildren` / `delayChildren` / `when`)
 
 A parent Motion whose transition declares orchestration knobs staggers its **inheriting**
@@ -251,16 +258,15 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
-  rest. Important stylesheet utilities suppress plain tokens they fully cover; important inline tokens of the same
-  property outrank plain ones. Among the surviving inline-resolved tokens (bracket forms, `-mt-2`,
+  rest. Important declarations take priority for each longhand they write, including across a shorthand
+  and its longhand. Among inline-resolved tokens in the same importance band (bracket forms, `-mt-2`,
   `translate-x-4`), the later write holds the slot, including across a shorthand and its longhand.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
   class no number is read from (`rounded-tl-full` beside `rounded-3xl`, `scale-x-[.5]` beside
-  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. A plain inline token
-  fully covered across properties by important inline tokens can depend on the element's existing
-  class projection (`!p-[8px] pt-[2px]`); a slot it would hold is left undriven.
+  `scale-[1.4]`) lands with the swap, and the classes it outranks do not drive it. Per-axis scale
+  composition remains undriven beside an important uniform inline scale declaration.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
@@ -458,7 +464,8 @@ A step is exactly one of:
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
   defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
-  `DelaySec` plus the duration Framer Motion's sequence gives the same spring: a travel of 100,
+  `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
+  the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
   at most 20 seconds. A label does not tell the sequence how far anything moves, and 100 is the travel
   Framer takes when it cannot read the distance.
