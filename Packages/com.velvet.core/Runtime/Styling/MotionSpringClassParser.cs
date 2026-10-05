@@ -536,8 +536,6 @@ namespace Velvet
                 return true;
             }
             token = default;
-            // MUTANT_SURVIVES(equivalent, literal): true still returns an empty Written mask and no TranslateAxis.
-            // Claim cannot write any slot from that empty mask.
             return false;
         }
 
