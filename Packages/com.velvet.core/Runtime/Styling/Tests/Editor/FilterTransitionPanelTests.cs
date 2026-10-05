@@ -154,6 +154,46 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveAnimationsOnce(panel);
         }
 
+        // Unity shares computed transition arrays by int hash alone. Keep this duration-order reading
+        // independent of earlier fixtures' entries, without clearing the other style caches.
+        private sealed class TransitionCacheScope : IDisposable
+        {
+            private readonly System.Collections.IDictionary _cache;
+            private readonly System.Collections.Hashtable _saved;
+
+            public TransitionCacheScope()
+            {
+                var type = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache", throwOnError: true)!;
+                var field = type.GetField("s_ComputedTransitionsCache", BindingFlags.Static | BindingFlags.NonPublic)
+                    ?? throw new MissingFieldException(type.FullName, "s_ComputedTransitionsCache");
+                _cache = (System.Collections.IDictionary)field.GetValue(null)!;
+                _saved = new System.Collections.Hashtable(_cache);
+                // Record the ambient entry for the requested final transition before isolating it.
+                var hash = 0;
+                foreach (var value in new object[] { new TimeValue(0f), new TimeValue(2f),
+                    new StylePropertyName("padding-top"), new EasingFunction(EasingMode.Linear) })
+                {
+                    hash = unchecked(hash * 397 ^ value.GetHashCode());
+                }
+                if (_cache.Contains(hash))
+                {
+                    var durations = ((Array)_cache[hash]!).Cast<object>()
+                        .Select(value => value.GetType().GetField("durationMs")!.GetValue(value));
+                    TestContext.WriteLine($"ambient final-transition hash={hash}; cached durations(ms)={string.Join(",", durations)}");
+                }
+                _cache.Clear();
+            }
+
+            public void Dispose()
+            {
+                _cache.Clear();
+                foreach (System.Collections.DictionaryEntry entry in _saved)
+                {
+                    _cache.Add(entry.Key, entry.Value);
+                }
+            }
+        }
+
         // The float parameter of the element's single PAINTED filter function.
         private static float PaintedFloat(VisualElement element)
             => element.resolvedStyle.filter.First().GetParameter(0).floatValue;
@@ -1064,6 +1104,7 @@ namespace Velvet.Tests
         {
             // Arrange — retain the whole-property filter engine control. The class-diff row starts with
             // a resolved native-only leaf and a one-second padding transition, before any inline tokens.
+            using var transitionCache = classDiff ? new TransitionCacheScope() : null;
             using var reconciler = new Reconciler();
             var root = _window.rootVisualElement;
             var oldTree = new[] { V.Div(name: "card", className: "relative") };
