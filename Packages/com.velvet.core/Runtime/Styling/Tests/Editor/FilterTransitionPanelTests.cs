@@ -33,6 +33,7 @@ namespace Velvet.Tests
         // Fake panel clock: the engine's animation phase reads elapsed time exclusively through the panel's
         // time function, so stepping this by hand makes every painted mid-animation value deterministic.
         private double _now;
+        private List<string>? _transitionProbe;
         private readonly List<Object> _spawned = new();
         private (VisualElement element, StyleAnimateBinding binding)? _hueLoop;
 
@@ -42,7 +43,12 @@ namespace Velvet.Tests
             Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
             _window.rootVisualElement.styleSheets.Add(sheet);
             _now = 100.0;
+            _transitionProbe = TestContext.CurrentContext.Test.Name
+                == nameof(Given_AnEngineTransition_When_AnInlineValueChanges_Then_ThePaintUsesTheDurationAtTheFinalWrite) + "(True)"
+                ? new List<string>() : null;
+            TracePanelClock("clock-before", _window.rootVisualElement.panel);
             EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, () => _now);
+            TracePanelClock("clock-after", _window.rootVisualElement.panel);
         }
 
         public override void TearDown()
@@ -154,44 +160,133 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveAnimationsOnce(panel);
         }
 
-        // Unity shares computed transition arrays by int hash alone. Keep this duration-order reading
-        // independent of earlier fixtures' entries, without clearing the other style caches.
-        private sealed class TransitionCacheScope : IDisposable
+        // Temporary read-only diagnosis of this one native class-replay row. It never ticks the panel,
+        // populates engine caches, creates a layer map, or changes an animation. Missing members are
+        // recorded explicitly so the original paint assertion still decides the test.
+        private static object? ProbeMember(object owner, string name)
         {
-            private readonly System.Collections.IDictionary _cache;
-            private readonly System.Collections.Hashtable _saved;
-
-            public TransitionCacheScope()
+            for (var type = owner.GetType(); type != null; type = type.BaseType)
             {
-                var type = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.StyleCache", throwOnError: true)!;
-                var field = type.GetField("s_ComputedTransitionsCache", BindingFlags.Static | BindingFlags.NonPublic)
-                    ?? throw new MissingFieldException(type.FullName, "s_ComputedTransitionsCache");
-                _cache = (System.Collections.IDictionary)field.GetValue(null)!;
-                _saved = new System.Collections.Hashtable(_cache);
-                // Record the ambient entry for the requested final transition before isolating it.
-                var hash = 0;
-                foreach (var value in new object[] { new TimeValue(0f), new TimeValue(2f),
-                    new StylePropertyName("padding-top"), new EasingFunction(EasingMode.Linear) })
-                {
-                    hash = unchecked(hash * 397 ^ value.GetHashCode());
-                }
-                if (_cache.Contains(hash))
-                {
-                    var durations = ((Array)_cache[hash]!).Cast<object>()
-                        .Select(value => value.GetType().GetField("durationMs")!.GetValue(value));
-                    TestContext.WriteLine($"ambient final-transition hash={hash}; cached durations(ms)={string.Join(",", durations)}");
-                }
-                _cache.Clear();
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public
+                    | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+                var field = type.GetField(name, flags);
+                if (field != null) return field.GetValue(owner);
+                var property = type.GetProperty(name, flags);
+                if (property != null) return property.GetValue(owner);
             }
+            throw new MissingMemberException(owner.GetType().FullName, name);
+        }
 
-            public void Dispose()
+        private static string ProbeRead(Func<string> read)
+        {
+            try { return read(); }
+            catch (Exception error) { return $"unavailable:{error.GetType().Name}"; }
+        }
+
+        private void TracePanelClock(string phase, IPanel panel)
+        {
+            if (_transitionProbe == null) return;
+            _transitionProbe.Add($"{phase}:now={_now:R}," + ProbeRead(() =>
             {
-                _cache.Clear();
-                foreach (System.Collections.DictionaryEntry entry in _saved)
-                {
-                    _cache.Add(entry.Key, entry.Value);
-                }
+                var system = ProbeMember(panel, "styleAnimationSystem")!;
+                var panelType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.Panel", true)!;
+                var staticClock = panelType.GetProperty("TimeSinceStartup", BindingFlags.Static
+                    | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(null);
+                return $"system={ProbeMember(system, "m_CurrentTime")},"
+                    + $"clockInstalled={ProbeMember(panel, "TimeSinceStartupFunc") != null},staticClock={staticClock != null},"
+                    + "hierarchy=" + ProbeRead(() => $"{ProbeMember(panel, "m_HierarchyVersion")}/{ProbeMember(panel, "m_LastTickedHierarchyVersion")}");
+            }));
+        }
+
+        private static string ProbeRunningLength(VisualElement element)
+        {
+            var system = ProbeMember(element.panel, "styleAnimationSystem")!;
+            var lengths = ProbeMember(system, "m_Lengths");
+            if (lengths == null) return "running=unallocated";
+            var running = ProbeMember(lengths, "running")!;
+            var elements = (Array)ProbeMember(running, "elements")!;
+            var properties = (Array)ProbeMember(running, "properties")!;
+            for (var i = 0; i < (int)ProbeMember(running, "count")!; i++)
+            {
+                if (!ReferenceEquals(elements.GetValue(i), element)
+                    || properties.GetValue(i)!.ToString() != "PaddingTop") continue;
+                var timing = ((Array)ProbeMember(running, "timing")!).GetValue(i)!;
+                var style = ((Array)ProbeMember(running, "style")!).GetValue(i)!;
+                return "running(s)=" + string.Join(",", new[] { "startTime", "duration", "delay",
+                    "easedProgress", "isStarted", "reversingShorteningFactor" }
+                    .Select(name => $"{name}:{ProbeMember(timing, name)}"))
+                    + ";values=" + string.Join(",", new[] { "startValue", "endValue", "currentValue",
+                    "reversingAdjustedStartValue" }.Select(name => $"{name}:{ProbeMember(style, name)}"));
             }
+            return "running=absent";
+        }
+
+        private static string ProbeArrivals(VisualElement element)
+        {
+            var table = typeof(StyleArbitraryValueResolver).GetField("s_layers",
+                BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            var args = new object[] { element, null! };
+            if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!) return "layers=absent";
+            var map = args[1];
+            var arrivals = (Dictionary<(ArbitraryProperty, long), long>)ProbeMember(map, "_arrivals")!;
+            return $"arrivalCounter={ProbeMember(map, "_nextArrival")};arrivals=" + string.Join(",",
+                arrivals.Where(pair => pair.Key.Item1 is ArbitraryProperty.Padding
+                    or ArbitraryProperty.PaddingTop or ArbitraryProperty.TransitionDuration)
+                    .OrderBy(pair => pair.Key.Item1).ThenBy(pair => pair.Key.Item2)
+                    .Select(pair => $"{pair.Key.Item1}@{pair.Key.Item2}:{pair.Value}"));
+        }
+
+        private void TraceNativeTransition(string phase, VisualElement element)
+        {
+            if (_transitionProbe == null) return;
+            TracePanelClock(phase, element.panel);
+            _transitionProbe.Add($"{phase}:" + ProbeRead(() =>
+            {
+                var computed = ProbeMember(element, "m_Style")!;
+                var transitions = (Array?)ProbeMember(computed, "computedTransitions");
+                var entries = transitions == null ? "null" : string.Join(",", transitions.Cast<object>()
+                    .Select(value => $"{ProbeMember(value, "id")}:{ProbeMember(value, "durationMs")}/{ProbeMember(value, "delayMs")}"));
+                return $"padding(inline/computed/resolved)={element.style.paddingTop.keyword}:"
+                    + $"{element.style.paddingTop.value}/{ProbeMember(computed, "paddingTop")}/{element.resolvedStyle.paddingTop};"
+                    + $"duration(inline/resolved)={string.Join(",", element.style.transitionDuration.value)}/"
+                    + $"{string.Join(",", element.resolvedStyle.transitionDuration)};"
+                    + $"delay(inline/resolved)={string.Join(",", element.style.transitionDelay.value)}/{string.Join(",", element.resolvedStyle.transitionDelay)};"
+                    + $"property={string.Join(",", element.resolvedStyle.transitionProperty)};easing={string.Join(",", element.resolvedStyle.transitionTimingFunction)};computed(ms)={entries}";
+            }) + $";{ProbeRead(() => ProbeRunningLength(element))};{ProbeRead(() => ProbeArrivals(element))}");
+        }
+
+        private void WriteTransitionProbe()
+        {
+            if (_transitionProbe == null) return;
+            var selector = int.TryParse(Environment.GetEnvironmentVariable("VELVET_MUTANT"), out var id)
+                ? id.ToString() : "unset/non-numeric";
+            var defines = new List<string>();
+#if UNITY_EDITOR_OSX
+            defines.Add("UNITY_EDITOR_OSX");
+#endif
+#if UNITY_EDITOR_LINUX
+            defines.Add("UNITY_EDITOR_LINUX");
+#endif
+#if UNITY_INCLUDE_TESTS
+            defines.Add("UNITY_INCLUDE_TESTS");
+#endif
+#if DEBUG
+            defines.Add("DEBUG");
+#endif
+#if ENABLE_MONO
+            defines.Add("ENABLE_MONO");
+#endif
+#if ENABLE_IL2CPP
+            defines.Add("ENABLE_IL2CPP");
+#endif
+#if ENABLE_CODE_COVERAGE
+            defines.Add("ENABLE_CODE_COVERAGE");
+#endif
+            TestContext.WriteLine($"native-transition-probe unity={Application.unityVersion};platform={Application.platform};"
+                + $"graphics={SystemInfo.graphicsDeviceType};pixelsPerPoint={EditorGUIUtility.pixelsPerPoint};"
+                + $"defines={string.Join(",", defines)};sessionMutation={selector};"
+                + "input=relative -> relative p-[8px] pt-[2px] duration-[2s]; "
+                + string.Join(" | ", _transitionProbe));
         }
 
         // The float parameter of the element's single PAINTED filter function.
@@ -1104,7 +1199,6 @@ namespace Velvet.Tests
         {
             // Arrange — retain the whole-property filter engine control. The class-diff row starts with
             // a resolved native-only leaf and a one-second padding transition, before any inline tokens.
-            using var transitionCache = classDiff ? new TransitionCacheScope() : null;
             using var reconciler = new Reconciler();
             var root = _window.rootVisualElement;
             var oldTree = new[] { V.Div(name: "card", className: "relative") };
@@ -1125,6 +1219,8 @@ namespace Velvet.Tests
             var wholeProperty = !element.resolvedStyle.transitionProperty
                 .Select(p => p.ToString()).Contains("filter");
 
+            TraceNativeTransition("initial/before-diff", element);
+
             // Act — AddClass writes padding before changing duration. The ordered replay then writes
             // padding again under the new duration; skipping it retains the earlier one-second run.
             if (classDiff)
@@ -1136,11 +1232,16 @@ namespace Velvet.Tests
             {
                 ApplyBlur(element, 12f);
             }
+            TraceNativeTransition("changed/before-tick", element);
             AdvanceAndPaint(element.panel, classDiff ? 0.5 : 0.15);
+            TraceNativeTransition("mid/after-tick", element);
             ForcePanelUpdate(element.panel);
+            TraceNativeTransition("mid/after-layout", element);
             var midpoint = classDiff ? element.resolvedStyle.paddingTop : PaintedFloat(element);
             AdvanceAndPaint(element.panel, 2.0);
+            TraceNativeTransition("end/after-tick", element);
             ForcePanelUpdate(element.panel);
+            TraceNativeTransition("end/after-layout", element);
             var end = classDiff ? element.resolvedStyle.paddingTop : PaintedFloat(element);
             var target = classDiff ? element.style.paddingTop.value.value
                 : element.style.filter.value[0].GetParameter(0).floatValue;
@@ -1148,6 +1249,8 @@ namespace Velvet.Tests
                 : element.resolvedStyle.transitionDuration.First().value;
             var actual = new[] { wholeProperty ? midpoint : float.NaN, end, target, duration };
             TestContext.WriteLine($"classDiff={classDiff}; midpoint={midpoint}; end={end}; target={target}; duration={duration}");
+
+            WriteTransitionProbe();
 
             // Assert — paint distinguishes the two runs while their inline target and settled paint agree.
             Assert.That(actual, Is.EqualTo(classDiff ? new[] { 0.5f, 2f, 2f, 2f }
