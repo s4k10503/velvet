@@ -1381,25 +1381,113 @@ namespace Velvet
                 ? DiffClassListLinear(element, oldClasses, newClasses, out var removedFilterFamily)
                 : DiffClassListWithHashSet(element, oldClasses, newClasses, out removedFilterFamily);
 
-            // Arbitrary values are cleared per property, so removing a value of the same property
-            // also clears any other values that should have remained.
-            // Reapply the arbitrary values from the new list only when a removal occurred to preserve
-            // consistency. Filter-family survivors are exempt unless a filter-family token itself was
-            // removed: other properties' clears never touch their per-name layers and every real filter
-            // mutation recomposes inline during the diff, so re-resolving survivors here would only
-            // repeat registry lookups to rebuild an identical composed list.
             if (removedArbitrary)
             {
                 ReapplyArbitraryValues(element, newClasses, skipFilterFamily: !removedFilterFamily);
             }
+            else if (!InlineValuesEqual(oldClasses, newClasses))
+            {
+                ReapplyOrderedInlineValues(element, oldClasses, newClasses);
+            }
             return true;
+        }
+
+        private static bool InlineValuesEqual(string[] oldClasses, string[] newClasses)
+        {
+            var oldIndex = 0;
+            var newIndex = 0;
+            while (true)
+            {
+                while (oldIndex < oldClasses.Length && !Participates(oldClasses[oldIndex])) oldIndex++;
+                while (newIndex < newClasses.Length && !Participates(newClasses[newIndex])) newIndex++;
+                if (oldIndex == oldClasses.Length || newIndex == newClasses.Length)
+                {
+                    return oldIndex == oldClasses.Length && newIndex == newClasses.Length;
+                }
+                if (oldClasses[oldIndex++] != newClasses[newIndex++])
+                {
+                    return false;
+                }
+            }
+
+            static bool Participates(string raw)
+                => TryGetInlineResolvedCore(raw, out var core, out _)
+                    && !StyleArbitraryValueResolver.IsFilterFamilyToken(core);
+        }
+
+        private static void ReapplyOrderedInlineValues(VisualElement element, string[] oldClasses, string[] newClasses)
+        {
+            var writers = new List<(StyleLonghandSet Longhands, int OldIndex)>();
+            var affected = StyleLonghandSet.Empty;
+            foreach (var raw in newClasses)
+            {
+                if (!TryGetInlineResolvedCore(raw, out var core, out _)
+                    || StyleArbitraryValueResolver.IsFilterFamilyToken(core))
+                {
+                    continue;
+                }
+                var longhands = InlineLonghandsOf(core);
+                if (longhands.IsEmpty)
+                {
+                    continue;
+                }
+                var oldIndex = Array.LastIndexOf(oldClasses, raw);
+                if (oldIndex < 0)
+                {
+                    affected = affected.Union(longhands);
+                }
+                else
+                {
+                    foreach (var earlier in writers)
+                    {
+                        if (earlier.OldIndex > oldIndex && earlier.Longhands.Overlaps(longhands))
+                        {
+                            affected = affected.Union(earlier.Longhands).Union(longhands);
+                        }
+                    }
+                }
+                writers.Add((longhands, oldIndex));
+            }
+            // Rewriting a shorthand also reaches its other edges and their connected writers.
+            // MUTANT_SURVIVES(equivalent, boundary): each productive pass absorbs a previously unabsorbed writer; N passes close N writers, so one more pass cannot change the mask.
+            for (var pass = 0; pass < writers.Count; pass++)
+            {
+                var before = affected;
+                foreach (var writer in writers)
+                {
+                    if (writer.Longhands.Overlaps(affected))
+                    {
+                        affected = affected.Union(writer.Longhands);
+                    }
+                }
+                if (before == affected)
+                {
+                    break;
+                }
+            }
+            if (!affected.IsEmpty)
+            {
+                ReapplyArbitraryValues(element, newClasses, skipFilterFamily: true, affectedLonghands: affected);
+            }
+        }
+
+        private static StyleLonghandSet InlineLonghandsOf(string core)
+        {
+            if (StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                return StyleArbitraryLonghands.Of(style.Property);
+            }
+            return StyleBackgroundImageResolver.TryParse(core, out _)
+                ? StyleLonghandSet.Of(StyleLonghand.BackgroundImage)
+                : StyleLonghandSet.Empty;
         }
 
         // Re-asserts the class list's inline-resolved (arbitrary / preset) values. Shared with the
         // wrapper element appliers, which call it after detaching a motion that owned a shared inline
         // slot. skipFilterFamily exempts composed-filter tokens for callers that know no filter layer
         // was disturbed (the class-diff reapply); full-scrub callers keep the default full pass.
-        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes, bool skipFilterFamily = false)
+        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes, bool skipFilterFamily = false,
+            StyleLonghandSet? affectedLonghands = null)
         {
             foreach (var rawCls in classes)
             {
@@ -1409,6 +1497,11 @@ namespace Velvet
                     continue;
                 }
                 if (skipFilterFamily && StyleArbitraryValueResolver.IsFilterFamilyToken(cls))
+                {
+                    continue;
+                }
+                if (affectedLonghands is { } affected
+                    && !InlineLonghandsOf(cls).Overlaps(affected))
                 {
                     continue;
                 }

@@ -154,6 +154,17 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveAnimationsOnce(panel);
         }
 
+        private static string ComputedPaddingForTrace(VisualElement element)
+        {
+            try
+            {
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                var computed = typeof(VisualElement).GetField("m_Style", flags)!.GetValue(element)!;
+                return computed.GetType().GetProperty("paddingTop", flags)!.GetValue(computed)?.ToString() ?? "null";
+            }
+            catch (Exception error) { return $"unavailable:{error.GetType().Name}"; }
+        }
+
         // The float parameter of the element's single PAINTED filter function.
         private static float PaintedFloat(VisualElement element)
             => element.resolvedStyle.filter.First().GetParameter(0).floatValue;
@@ -1058,26 +1069,62 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(12f));
         }
 
-        [Test]
-        public void Given_TransitionAll_When_FilterChanges_Then_TheEngineAnimatesThePaintedFilter()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnEngineTransition_When_AnInlineValueChanges_Then_ThePaintUsesTheDurationAtTheFinalWrite(bool classDiff)
         {
-            // CHARACTERIZATION PIN, not a requirement on Velvet: nothing in Velvet animates this, and the
-            // asserted midpoint is what THIS editor's inline-filter setter does with a whole-property
-            // transition. It is recorded because the whole design branches on it: the driver stands down where
-            // the setter animates a write by the entry that runs for filter, which is `all` here, and should
-            // that change, nothing would animate these writes at all.
-            //
-            // Arrange
-            var element = MountResolved("transition-all duration-300");
-            Assume.That(element.resolvedStyle.transitionProperty.Select(p => p.ToString()), Does.Not.Contain("filter"),
-                "Precondition: the resolved transition-property is the whole-property value, not filter");
+            // Arrange — retain the whole-property filter engine control. The class-diff row starts with
+            // a resolved native-only leaf and a one-second padding transition, before any inline tokens.
+            using var reconciler = new Reconciler();
+            var root = _window.rootVisualElement;
+            var oldTree = new[] { V.Div(name: "card", className: "relative") };
+            VisualElement element;
+            if (classDiff)
+            {
+                reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+                element = root.Q<VisualElement>("card");
+                element.style.paddingTop = 0f;
+                ForcePanelUpdate(element.panel);
+                SetInlineTransition(element, new[] { "padding-top" },
+                    new[] { new TimeValue(1f) }, new[] { new TimeValue(0f) });
+            }
+            else
+            {
+                element = MountResolved("transition-all duration-300");
+            }
+            var wholeProperty = !element.resolvedStyle.transitionProperty
+                .Select(p => p.ToString()).Contains("filter");
 
-            // Act — the change is written, then the panel paints a frame at the animation's midpoint.
-            ApplyBlur(element, 12f);
-            AdvanceAndPaint(element.panel, 0.15);
+            // Act — AddClass writes padding before changing duration. The ordered replay then writes
+            // padding again under the new duration; skipping it retains the earlier one-second run.
+            if (classDiff)
+            {
+                // Keep the half-second samples at whole pixels to distinguish the two durations.
+                var newTree = new[] { V.Div(name: "card", className: "relative p-[64px] pt-[16px] duration-[2s]") };
+                reconciler.Reconcile(root, oldTree, newTree);
+            }
+            else
+            {
+                ApplyBlur(element, 12f);
+            }
+            AdvanceAndPaint(element.panel, classDiff ? 0.5 : 0.15);
+            ForcePanelUpdate(element.panel);
+            var midpoint = classDiff ? element.resolvedStyle.paddingTop : PaintedFloat(element);
+            if (classDiff)
+                TestContext.WriteLine($"native midpoint: computed={ComputedPaddingForTrace(element)}; resolved={midpoint}; pixelsPerPoint={EditorGUIUtility.pixelsPerPoint}");
+            AdvanceAndPaint(element.panel, 2.0);
+            ForcePanelUpdate(element.panel);
+            var end = classDiff ? element.resolvedStyle.paddingTop : PaintedFloat(element);
+            var target = classDiff ? element.style.paddingTop.value.value
+                : element.style.filter.value[0].GetParameter(0).floatValue;
+            var duration = classDiff ? element.style.transitionDuration.value[0].value
+                : element.resolvedStyle.transitionDuration.First().value;
+            var actual = new[] { wholeProperty ? midpoint : float.NaN, end, target, duration };
+            TestContext.WriteLine($"classDiff={classDiff}; midpoint={midpoint}; end={end}; target={target}; duration={duration}");
 
-            // Assert — the paint is mid-flight, neither the old value nor the target.
-            Assert.That(PaintedFloat(element), Is.EqualTo(6f).Within(0.5f));
+            // Assert — paint distinguishes the two runs while their inline target and settled paint agree.
+            Assert.That(actual, Is.EqualTo(classDiff ? new[] { 4f, 16f, 16f, 2f }
+                : new[] { 6f, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
         }
 
         [Test]

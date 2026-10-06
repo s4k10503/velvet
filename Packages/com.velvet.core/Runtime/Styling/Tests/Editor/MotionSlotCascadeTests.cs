@@ -12,6 +12,28 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class MotionSlotCascadeTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnInlineLonghandBeforeAShorthand_When_Mounted_Then_TheMotionTargetMatchesTheLaterShorthand(bool important)
+        {
+            // Arrange
+            var bang = important ? "!" : "";
+            var to = new[] { bang + "pt-[2px]", bang + "p-[8px]" };
+            var root = new VisualElement();
+
+            // Act
+            using var mounted = V.Mount(root, V.Div(name: "leaf", className: string.Join(" ", to)));
+            var plan = MotionSpringClassParser.Resolve(new[] { "p-[0px]" }, to);
+            var element = root.Q<VisualElement>("leaf");
+            var top = element.style.paddingTop.value.value;
+            var priority = important ? StyleLayerPriority.Important : StyleLayerPriority.Base;
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Padding, priority);
+
+            // Assert
+            Assert.That((Lengths(plan), top, element.style.paddingTop.value.value), Is.EqualTo((
+                "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->8", 8f, 2f)));
+        }
+
         [Test]
         public void Given_TwoPresetOpacitiesInOneVariant_When_Resolved_Then_TheOneDeclaredLaterInTheStylesheetIsTheTarget()
         {

@@ -390,9 +390,9 @@ namespace Velvet.Tests
             Assert.That(roster, Is.EqualTo(new[] { "2:PaddingTop:5", "3:Padding:40" }));
         }
 
-        // GREEN_ON_BASE(characterization): equal-key, equal-breadth corner writers retain their discovery order.
+        // GREEN_ON_BASE(characterization): this adjacent-radius sequence already leaves the bottom writer on its corner.
         [Test]
-        public void Given_EqualKeyAdjacentRadiusWriters_When_ResolvingAConnectedCorner_Then_EagerDiscoveryKeepsTheBottomWriterLast()
+        public void Given_EqualKeyAdjacentRadiusWriters_When_ResolvingAConnectedCorner_Then_TheLaterBottomWriterKeepsItsCorner()
         {
             // Arrange
             var element = new VisualElement();
@@ -411,9 +411,8 @@ namespace Velvet.Tests
             Assert.That(element.style.borderBottomLeftRadius.value.value, Is.EqualTo(30f));
         }
 
-        // GREEN_ON_BASE(characterization): the radius root already wins its equal-key, equal-breadth tie.
         [Test]
-        public void Given_AnEqualKeyRadiusRootInsertedFirst_When_ResolvingItsLonghands_Then_TheRootIsReplayedLast()
+        public void Given_AnEqualKeyRadiusRootInsertedFirst_When_ResolvingItsLonghands_Then_TheLaterWritersStayInPlace()
         {
             // Arrange
             var element = new VisualElement();
@@ -422,7 +421,10 @@ namespace Velvet.Tests
                 StyleArbitraryValueResolver.TryParse(token, out var style);
                 StyleArbitraryValueResolver.Apply(element, style, 1);
             }
-            var before = element.style.borderTopLeftRadius.value.value;
+            StyleArbitraryValueResolver.TryParse("rounded-br-[7px]", out var higher);
+            StyleArbitraryValueResolver.Apply(element, higher, 2);
+            var before = new[] { element.style.borderTopLeftRadius.value.value,
+                element.style.borderTopRightRadius.value.value, element.style.borderBottomRightRadius.value.value };
             var map = LayerMap(element);
             var method = typeof(StyleArbitraryValueResolver).GetMethod("ResolveSharedLonghands", BindingFlags.Static | BindingFlags.NonPublic)!;
 
@@ -430,7 +432,9 @@ namespace Velvet.Tests
             method.Invoke(null, new object[] { element, ArbitraryProperty.BorderTopRadius, map });
 
             // Assert
-            Assert.That(new[] { before, element.style.borderTopLeftRadius.value.value }, Is.EqualTo(new[] { 40f, 10f }));
+            Assert.That(new[] { before[0], before[1], before[2], element.style.borderTopLeftRadius.value.value,
+                element.style.borderTopRightRadius.value.value, element.style.borderBottomRightRadius.value.value },
+                Is.EqualTo(new[] { 40f, 20f, 7f, 40f, 20f, 7f }));
         }
 
         [TestCase("w-[20px]", false)]
