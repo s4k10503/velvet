@@ -774,6 +774,33 @@ namespace Velvet
         internal static StyleClassProjection.Model? TryGetProjection(VisualElement element)
             => element != null && s_layers.TryGetValue(element, out var map) ? map.Projection : null;
 
+        internal static bool HasImportantInlineOutside(VisualElement element, StyleLonghandSet written,
+            HashSet<ArbitraryProperty> swapped)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            foreach (var pair in map)
+            {
+                if (!StyleArbitraryLonghands.Of(pair.Key).Overlaps(written))
+                {
+                    continue;
+                }
+                foreach (var priority in pair.Value.Keys)
+                {
+                    var swappedBase = swapped.Contains(pair.Key)
+                        && priority <= StyleLayerPriority.WithRule(
+                            StyleLayerPriority.ImportantOf(StyleLayerPriority.Base), int.MaxValue);
+                    if ((priority & StyleLayerPriority.Important) != 0 && !swappedBase)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         // Reports every registered layer as (property, priority) so the projection can rank inline layers
         // against USS classes. The name-keyed custom-filter stacks are not reported: a registered name is
         // not an ArbitraryProperty, and the whole filter family is held out of the comparison anyway (see

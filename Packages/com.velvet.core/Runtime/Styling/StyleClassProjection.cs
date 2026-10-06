@@ -360,6 +360,18 @@ namespace Velvet
                 return claim;
             }
 
+            public bool HasImportantClass(string cls)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && !entry.Dead && (entry.Priority & StyleLayerPriority.Important) != 0)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             // A payload's class is not the className's own, so only a base entry counts, important or not.
             public bool SuppressesDeclared(string cls)
                 => _suppressed?.Contains(cls) == true

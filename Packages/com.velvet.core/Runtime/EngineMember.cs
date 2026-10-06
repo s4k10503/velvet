@@ -87,6 +87,12 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleTransitionTimingFunction = ReadProperty(UIElements,
             ComputedStyleType, "transitionTimingFunction", "System.Collections.Generic.List`1[UnityEngine.UIElements.EasingFunction]");
 
+        internal static readonly EngineMember HasRunningStyleAnimation = Method(UIElements,
+            VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+
+        internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

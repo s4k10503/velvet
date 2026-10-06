@@ -1,6 +1,6 @@
 01e1bbb1900b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 023c497d58e8	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
-035c4cad19e4	Runtime/Component/ComponentPropsComparer.cs,Runtime/Component/ObjectIs.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleCompoundVariantMatcher.cs,Runtime/Styling/StyleFilterTransitionDriver.cs,Runtime/Styling/StyleRuleOrder.cs,Runtime/Styling/VelvetFilters.cs
+035c4cad19e4	Runtime/Component/ComponentPropsComparer.cs,Runtime/Component/ObjectIs.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/MotionSlotContext.cs,Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleCompoundVariantMatcher.cs,Runtime/Styling/StyleFilterTransitionDriver.cs,Runtime/Styling/StyleRuleOrder.cs,Runtime/Styling/VelvetFilters.cs
 03a68c44d3a7	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 03b91cdc184d	Runtime/Styling/StyleFilterValueParser.cs,Runtime/Styling/StyleGradientClass.cs
 045c8f345980	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
@@ -27,6 +27,7 @@
 1ce0f9ad1d05	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 1d21ef665b63	Runtime/Reconciler/DndActiveDrag.cs,Runtime/Reconciler/FiberFocusNavigator.cs
 1e4c7126accb	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
+1f25354289da	Runtime/Preview/VelvetPreviewRegistry.cs,Runtime/Styling/MotionSlotContext.cs
 2040fb9f384d	Runtime/Reconciler/ChildReconciler.cs,Runtime/Reconciler/GeneralPathReconciler.cs
 2041b99724a1	Editor/Preview/CheckerboardBackground.cs,Editor/Preview/PreviewInspectOverlay.cs
 21581b9ee0f5	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
@@ -245,6 +246,7 @@ f678a7c1d68f	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDr
 f7bf7010547c	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f8e5df703fca	Runtime/Reconciler/AnchoredDriver.cs,Runtime/Styling/StyleAnimationScheduler.cs
 f9789047d095	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
+fa1a44134bd5	Runtime/Preview/VelvetPreviewRegistry.cs,Runtime/Styling/MotionSlotContext.cs
 fbd45f19ece5	Runtime/Styling/GradientBackground.cs,Runtime/Styling/GradientSilhouetteBaker.cs
 fc1c0dd0f836	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 fd9552acc5de	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberGradientApplier.cs
