@@ -251,7 +251,7 @@ namespace Velvet
                 ArbitraryProperty.TranslateY => TranslateY,
                 ArbitraryProperty.Scale => Scale,
                 ArbitraryProperty.Rotate => Rotate,
-                _ => null,
+                _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, null),
             };
 
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;

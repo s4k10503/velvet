@@ -124,7 +124,10 @@ namespace Velvet
         internal static bool RunsOnSwap(StyleTransitionConfig config)
             => config.Type == TransitionType.Spring
                 || (config.Type == TransitionType.Bezier && config.DurationSec != 0f)
-                || (config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec));
+                || TweensOnSwap(config);
+
+        internal static bool TweensOnSwap(StyleTransitionConfig config)
+            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
         // A swap on such a config plays nothing: it lands the properties its pose names (LandNamedProperties) and
         // moves no classes. A bezier's zero duration is its None; a spring has no duration.
