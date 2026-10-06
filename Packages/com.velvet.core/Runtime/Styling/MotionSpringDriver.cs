@@ -85,6 +85,7 @@ namespace Velvet
         public SpringChannel? Rotate;
         public List<SpringColorChannel>? Colors;
         public List<SpringLengthChannel>? Lengths;
+        public VisualElement? NativeLayoutOwner;
 
         public float Stiffness;
         public float Damping;
@@ -177,6 +178,10 @@ namespace Velvet
             WriteChannelValues(element, state);
         }
 
+        private static void SyncLayoutOwner(VisualElement element, MotionSpringState state)
+            => state.NativeLayoutOwner = MotionNativeTransitionGuard.SyncLayoutOwner(element, state,
+                state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
+
         // The slot groups this play writes, for the guard's intersection against what the element's own
         // transition utilities declare.
         private static MotionTransitionSlots DrivenSlots(MotionSpringState state)
@@ -191,11 +196,9 @@ namespace Velvet
             return slots;
         }
 
-        // The style writes themselves, without the once-per-play transition suspension above: re-asserting the
-        // same inline transition-property on every tick would only re-dirty the element's computed transitions
-        // for a value it already holds.
         private static void WriteChannelValues(VisualElement element, MotionSpringState state)
         {
+            SyncLayoutOwner(element, state);
             if (state.Opacity != null)
             {
                 MotionOpacity.Write(element, state.Opacity.Integrator.Value);
@@ -332,6 +335,8 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
             StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
+            if (state.NativeLayoutOwner != null) MotionNativeTransitionGuard.Release(state.NativeLayoutOwner, state);
+            state.NativeLayoutOwner = null;
         }
 
         /// <summary>
@@ -367,6 +372,7 @@ namespace Velvet
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element);
+            SyncLayoutOwner(element, state);
         }
 
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)

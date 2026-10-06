@@ -433,6 +433,32 @@ namespace Velvet
             return set;
         }
 
+        internal static VisualElement? SyncLayoutOwner<TChannel>(VisualElement element, object owner,
+            VisualElement? previous, List<TChannel>? lengths, Func<TChannel, ArbitraryProperty> property,
+            MotionTransitionSlots drivenSlots)
+        {
+            var next = LayoutOwner(element, lengths, property);
+            if (ReferenceEquals(previous, next)) return previous;
+            if (previous != null) Release(previous, owner);
+            if (next != null) SuspendIfIntercepted(next, owner, MotionTransitionSlots.Length);
+            else if (previous != null) SuspendIfIntercepted(element, owner, drivenSlots);
+            return next;
+        }
+
+        private static VisualElement? LayoutOwner<TChannel>(VisualElement element, List<TChannel>? lengths,
+            Func<TChannel, ArbitraryProperty> property)
+        {
+            if (lengths == null) return null;
+            foreach (var channel in lengths)
+            {
+                if (!ReferenceEquals(ClipPathLayoutBox.StyleFor(element, property(channel)), element.style))
+                {
+                    return ClipPathLayoutBox.Of(element);
+                }
+            }
+            return null;
+        }
+
         /// <summary>Drops one owner, handing the element back to the cascade once the LAST owner has let go.</summary>
         public static void Release(VisualElement element, object owner)
         {

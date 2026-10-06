@@ -121,9 +121,10 @@ namespace Velvet
                 config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
         }
 
-        // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
         internal static bool RunsOnSwap(StyleTransitionConfig config)
-            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
+            => config.Type == TransitionType.Spring
+                || (config.Type == TransitionType.Bezier && config.DurationSec != 0f)
+                || (config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec));
 
         // A swap on such a config plays nothing: it lands the properties its pose names (LandNamedProperties) and
         // moves no classes. A bezier's zero duration is its None; a spring has no duration.
@@ -394,6 +395,7 @@ namespace Velvet
                 ToClasses = config.ExitToClasses,
                 RestingClasses = restoreFromOnCancel ? config.ExitFromClasses : null,
                 OnComplete = onComplete,
+                OnSwap = onSwap,
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
@@ -610,7 +612,8 @@ namespace Velvet
             // swap names on neither side (see Resolve's own doc).
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value);
+                restingTranslate.x.value, restingTranslate.y.value,
+                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
@@ -627,6 +630,7 @@ namespace Velvet
             // zero-duration tween).
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
+            play.OnSwap?.Invoke();
 
             if (state == null)
             {
@@ -730,7 +734,8 @@ namespace Velvet
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value);
+                restingTranslate.x.value, restingTranslate.y.value,
+                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
             // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
@@ -742,6 +747,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
+            play.OnSwap?.Invoke();
 
             if (state == null)
             {
@@ -941,6 +947,41 @@ namespace Velvet
             ReapplyMotionOwnedInlineValues(element);
             state.OnSettled?.Invoke();
         }
+
+        private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
+            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot);
+
+        private static bool Drives(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
+            ArbitraryProperty slot)
+        {
+            if (!map.TryGetValue(element, out var pending))
+            {
+                return false;
+            }
+            var longhands = StyleArbitraryLonghands.Of(slot);
+            if (pending.Spring is { } spring)
+            {
+                return DrivesAxis(slot, spring.Opacity, spring.TranslateX, spring.TranslateY, spring.Scale, spring.Rotate)
+                    || (spring.Colors?.Exists(c => StyleArbitraryLonghands.Of(c.Property).Overlaps(longhands)) ?? false)
+                    || (spring.Lengths?.Exists(l => StyleArbitraryLonghands.Of(l.Property).Overlaps(longhands)) ?? false);
+            }
+            if (pending.Bezier is { } bezier)
+            {
+                return DrivesAxis(slot, bezier.Opacity, bezier.TranslateX, bezier.TranslateY, bezier.Scale, bezier.Rotate)
+                    || (bezier.Colors?.Exists(c => StyleArbitraryLonghands.Of(c.Property).Overlaps(longhands)) ?? false)
+                    || (bezier.Lengths?.Exists(l => StyleArbitraryLonghands.Of(l.Property).Overlaps(longhands)) ?? false);
+            }
+            return false;
+        }
+
+        // Same ownership rule as MotionSpringClassParser.PairTranslate.
+        private static bool DrivesAxis(ArbitraryProperty slot, object? opacity, object? translateX, object? translateY,
+            object? scale, object? rotate)
+            => (slot == ArbitraryProperty.Opacity && opacity != null)
+                || ((slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+                    && (translateX != null || translateY != null))
+                || (slot == ArbitraryProperty.Scale && scale != null)
+                || (slot == ArbitraryProperty.Rotate && rotate != null);
 
         // Removes element's entry from map, but only when it is STILL exactly pending (a later cancel/supersede
         // may have already replaced or removed it) — the identity check a settled tick and a cancelled play both
