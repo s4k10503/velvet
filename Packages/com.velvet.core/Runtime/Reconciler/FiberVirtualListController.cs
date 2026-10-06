@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.UIElements.Experimental;
 
 namespace Velvet
 {
@@ -11,7 +12,7 @@ namespace Velvet
     internal sealed class FiberVirtualListController : IDisposable
     {
         private readonly ScrollView _scrollView;
-        private readonly VisualElement _totalHeightSpacer;
+        private readonly VisualElement _spacer;
         private readonly VisualElement _visibleContainer;
         private readonly IReconcilerBridge _reconciler;
         // The fiber that rendered V.VirtualList and the live context cursor, captured so item renders (which
@@ -34,11 +35,20 @@ namespace Velvet
         private int _bufferFirstItemIndex = -1;
         private int _firstRenderedIndex = -1;
         private int _lastRenderedIndex = -1;
+        // The viewport's extent along the scroll axis, as every offset and size below is: its width in a
+        // horizontal list.
         private float _viewportHeight;
+        // The axis the spacer, the container and the rows were last laid along.
+        private bool _horizontal;
         private bool _isDisposed;
         private readonly VirtualListHandle _handle;
         // A ScrollToItem target the scroller's range fell short of, applied again at the content's next layout.
         private float? _pendingScrollTarget;
+        // A Smooth ScrollToItem in flight. _writingSmoothStep is how OnScrollValueChanged tells its steps from a
+        // scroll that comes from anywhere else, which ends it, as CSSOM View's perform-a-scroll aborts a smooth
+        // scroll in flight.
+        private ValueAnimation<float>? _smoothScroll;
+        private bool _writingSmoothStep;
         // Where each item starts, and at [Items.Count] where the list ends, for a list whose items each take
         // the height ItemHeightAt gives; unread for a list of one height, whose offsets are a product.
         private double[] _offsets = { 0 };
@@ -80,34 +90,22 @@ namespace Velvet
             FiberElementFactory.ApplyClassNames(scrollView, node.ClassNames);
 
             MeasureItems();
-            _totalHeightSpacer = new VisualElement
-            {
-                style =
-                {
-                    height = (float)OffsetOf(node.Items.Count),
-                    flexShrink = 0
-                }
-            };
-
-            _visibleContainer = new VisualElement
-            {
-                style =
-                {
-                    position = Position.Absolute,
-                    left = 0,
-                    right = 0
-                }
-            };
+            _spacer = new VisualElement { style = { flexShrink = 0 } };
+            _visibleContainer = new VisualElement { style = { position = Position.Absolute } };
+            _horizontal = node.Horizontal;
+            _scrollView.mode = _horizontal ? ScrollViewMode.Horizontal : ScrollViewMode.Vertical;
+            SizeSpacer();
 
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
 
-            _scrollView.contentContainer.Add(_totalHeightSpacer);
+            _scrollView.contentContainer.Add(_spacer);
             _scrollView.contentContainer.Add(_visibleContainer);
 
             _scrollView.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            _scrollView.verticalScroller.valueChanged += OnScrollValueChanged;
+            _scrollView.verticalScroller.valueChanged += OnVerticalScrollValueChanged;
+            _scrollView.horizontalScroller.valueChanged += OnHorizontalScrollValueChanged;
             _scrollView.contentContainer.RegisterCallback<GeometryChangedEvent>(OnContentGeometryChanged);
 
             _handle = new VirtualListHandle(this, scrollView);
@@ -127,7 +125,8 @@ namespace Velvet
             ReleaseRef(previousRef);
             newNode.ListRef?.Set(_handle);
             MeasureItems();
-            _totalHeightSpacer.style.height = (float)OffsetOf(newNode.Items.Count);
+            if (_horizontal != newNode.Horizontal) FlipAxis();
+            SizeSpacer();
             // Update runs during the host's reconcile (PatchNode), so the cursor is correct here: refresh the
             // snapshot in case the enclosing Provider / MotionContext value changed since the last render.
             _enclosingContext = MotionContext.OutlivingPass(_contextStack?.SnapshotTops());
@@ -142,9 +141,11 @@ namespace Velvet
             }
 
             _isDisposed = true;
+            StopSmoothScroll();
 
             _scrollView.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            _scrollView.verticalScroller.valueChanged -= OnScrollValueChanged;
+            _scrollView.verticalScroller.valueChanged -= OnVerticalScrollValueChanged;
+            _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollValueChanged;
             _scrollView.contentContainer.UnregisterCallback<GeometryChangedEvent>(OnContentGeometryChanged);
             ReleaseRef(_node.ListRef);
 
@@ -163,24 +164,67 @@ namespace Velvet
             if (_pendingScrollTarget == null) return;
             var target = _pendingScrollTarget.Value;
             _pendingScrollTarget = null;
-            _scrollView.verticalScroller.value = target;
+            AxisScroller.value = target;
+        }
+
+        private Scroller AxisScroller => _horizontal ? _scrollView.horizontalScroller : _scrollView.verticalScroller;
+
+        private void MeasureViewport()
+        {
+            var viewport = _scrollView.contentViewport.resolvedStyle;
+            _viewportHeight = _horizontal ? viewport.width : viewport.height;
         }
 
         private void OnGeometryChanged(GeometryChangedEvent evt)
         {
-            _viewportHeight = _scrollView.contentViewport.resolvedStyle.height;
+            MeasureViewport();
             if (_viewportHeight > 0)
             {
-                UpdateVisibleRange(_scrollView.verticalScroller.value, _viewportHeight);
+                UpdateVisibleRange(AxisScroller.value, _viewportHeight);
             }
+        }
+
+        private void OnVerticalScrollValueChanged(float scrollValue)
+        {
+            if (!_horizontal) OnScrollValueChanged(scrollValue);
+        }
+
+        private void OnHorizontalScrollValueChanged(float scrollValue)
+        {
+            if (_horizontal) OnScrollValueChanged(scrollValue);
         }
 
         private void OnScrollValueChanged(float scrollValue)
         {
+            if (!_writingSmoothStep) StopSmoothScroll();
             if (_viewportHeight > 0)
             {
                 UpdateVisibleRange(scrollValue, _viewportHeight);
             }
+        }
+
+        private void SizeSpacer()
+        {
+            var length = (float)OffsetOf(_node.Items.Count);
+            _spacer.style.height = _horizontal ? StyleKeyword.Null : length;
+            _spacer.style.width = _horizontal ? length : StyleKeyword.Null;
+        }
+
+        // The rows keep the length the last rebuild wrote along the old axis, which nothing writes again.
+        private void FlipAxis()
+        {
+            StopSmoothScroll();
+            _pendingScrollTarget = null;
+            for (var i = 0; i < _renderedElements.Length; i++)
+            {
+                var row = _renderedElements[i];
+                if (row == null) continue;
+                if (_horizontal) row.style.width = StyleKeyword.Null;
+                else row.style.height = StyleKeyword.Null;
+            }
+            _horizontal = !_horizontal;
+            _scrollView.mode = _horizontal ? ScrollViewMode.Horizontal : ScrollViewMode.Vertical;
+            MeasureViewport();
         }
 
         internal void UpdateVisibleRange(float scrollY, float viewportHeight)
@@ -197,7 +241,8 @@ namespace Velvet
 
             var itemCount = _node.Items.Count;
             var firstVisible = ItemAt(scrollY);
-            var lastVisible = ItemAt(scrollY + viewportHeight);
+            // react-window's getStartStopIndices: an item starting at the viewport's bottom edge is not in view.
+            var lastVisible = Math.Max(firstVisible, LastItemBefore(scrollY + viewportHeight));
 
             var newFirst = Math.Max(0, firstVisible - _node.Overscan);
             var newLast = Math.Min(itemCount - 1, lastVisible + _node.Overscan);
@@ -505,13 +550,21 @@ namespace Velvet
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _visibleContainer.Clear();
-            _visibleContainer.style.top = (float)OffsetOf(newFirst);
+            var offset = (float)OffsetOf(newFirst);
+            var container = _visibleContainer.style;
+            container.flexDirection = _horizontal ? FlexDirection.Row : StyleKeyword.Null;
+            container.top = _horizontal ? 0 : offset;
+            container.left = _horizontal ? offset : 0;
+            container.bottom = _horizontal ? 0 : StyleKeyword.Null;
+            container.right = _horizontal ? StyleKeyword.Null : 0;
 
             for (var i = 0; i < newCount; i++)
             {
                 if (newElements[i] != null)
                 {
-                    newElements[i].style.height = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
+                    var length = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
+                    if (_horizontal) newElements[i].style.width = length;
+                    else newElements[i].style.height = length;
                     _visibleContainer.Add(newElements[i]);
                 }
             }
@@ -561,8 +614,21 @@ namespace Velvet
             return Math.Min(end >= 0 ? end : ~end - 1, last);
         }
 
+        // The last item starting before offset, clamped to the items.
+        private int LastItemBefore(double offset)
+        {
+            var last = _node.Items.Count - 1;
+            if (_node.ItemHeightAt == null)
+            {
+                return Math.Clamp((int)Math.Ceiling(offset / _node.ItemHeight) - 1, 0, last);
+            }
+            // An end equal to offset is the end of the last item starting before it.
+            var end = Array.BinarySearch(_offsets, 1, last + 1, offset);
+            return Math.Min((end >= 0 ? end : ~end) - 1, last);
+        }
+
         // react-window's getOffsetForIndex, against the viewport the last GeometryChangedEvent measured.
-        internal void ScrollToItem(int index, VirtualListAlign align)
+        internal void ScrollToItem(int index, VirtualListAlign align, VirtualListScrollBehavior behavior)
         {
             var count = _node.Items.Count;
             if (index < 0 || index >= count)
@@ -575,7 +641,7 @@ namespace Velvet
             var size = OffsetOf(index + 1) - start;
             var total = OffsetOf(count);
             var viewport = (double)_viewportHeight;
-            var current = (double)_scrollView.verticalScroller.value;
+            var current = (double)AxisScroller.value;
             var maxOffset = Math.Max(0, Math.Min(total - viewport, start));
             var minOffset = Math.Max(0, start - viewport + size);
             // An item taller than the viewport is in view while the viewport lies within it.
@@ -598,8 +664,55 @@ namespace Velvet
                 _ => throw new ArgumentOutOfRangeException(nameof(align), align, "not a VirtualListAlign member"),
             };
             var value = (float)target;
-            _scrollView.verticalScroller.value = value;
-            _pendingScrollTarget = _scrollView.verticalScroller.value < value ? value : null;
+            StopSmoothScroll();
+            if (behavior == VirtualListScrollBehavior.Smooth)
+            {
+                // A target an earlier call left for the next layout would end this animation when it landed.
+                _pendingScrollTarget = null;
+                _smoothScroll = _scrollView.experimental.animation
+                    .Start(AxisScroller.value, value, SmoothScrollDurationMs, (_, step) => WriteSmoothStep(step))
+                    .Ease(Easing.InOutQuad)
+                    .KeepAlive();
+                _smoothScroll.OnCompleted(() => EndSmoothScroll(value));
+                return;
+            }
+            ScrollTo(value);
+        }
+
+        private const int SmoothScrollDurationMs = 300;
+
+        private void ScrollTo(float value)
+        {
+            AxisScroller.value = value;
+            _pendingScrollTarget = AxisScroller.value < value ? value : null;
+        }
+
+        private void WriteSmoothStep(float step)
+        {
+            _writingSmoothStep = true;
+            try
+            {
+                AxisScroller.value = step;
+            }
+            finally
+            {
+                _writingSmoothStep = false;
+            }
+        }
+
+        // Only the animation still in flight lands its target; one a later scroll stopped lands nothing.
+        private void EndSmoothScroll(float target)
+        {
+            if (_smoothScroll == null) return;
+            _smoothScroll = null;
+            ScrollTo(target);
+        }
+
+        private void StopSmoothScroll()
+        {
+            var running = _smoothScroll;
+            _smoothScroll = null;
+            running?.Stop();
         }
 
         private void ForceRefresh()
@@ -609,7 +722,7 @@ namespace Velvet
 
             if (_viewportHeight > 0)
             {
-                UpdateVisibleRange(_scrollView.verticalScroller.value, _viewportHeight);
+                UpdateVisibleRange(AxisScroller.value, _viewportHeight);
             }
         }
     }

@@ -543,8 +543,11 @@ namespace Velvet
         /// <summary>The ref that holds the list's <see cref="VirtualListHandle"/> while the list is mounted.</summary>
         public Ref<VirtualListHandle>? ListRef { get; init; }
 
+        /// <summary>Whether the items lie in a row the list scrolls sideways, each <see cref="ItemHeight"/> wide.</summary>
+        public bool Horizontal { get; init; }
+
         /// <summary>
-        /// Creates a virtualized list of items of one height. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+        /// Creates a virtualized list of items of one height. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
         /// factory; this is the type-erased form it builds.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, or <paramref name="renderer"/> is null.</exception>
@@ -567,7 +570,7 @@ namespace Velvet
 
         /// <summary>
         /// Creates a virtualized list whose items each take the height <paramref name="itemHeight"/> gives for
-        /// their index. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+        /// their index. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
         /// factory; this is the type-erased form it builds.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, <paramref name="itemHeight"/> or <paramref name="renderer"/> is null.</exception>
@@ -624,7 +627,25 @@ namespace Velvet
     }
 
     /// <summary>
-    /// The imperative API of a mounted <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>,
+    /// How <see cref="VirtualListHandle.ScrollToItem"/> moves the list to its target: react-window's
+    /// <c>scrollToRow</c> <c>behavior</c>, which it hands to the DOM's <c>scrollTo</c>.
+    /// </summary>
+    public enum VirtualListScrollBehavior
+    {
+        /// <summary>The list's own scroll behavior, which is <see cref="Instant"/>: a ScrollView carries no
+        /// <c>scroll-behavior</c>.</summary>
+        Auto,
+
+        /// <summary>Jump to the target.</summary>
+        Instant,
+
+        /// <summary>Animate to the target over 300 ms, eased in and out. Any other scroll along the list's axis, a
+        /// further <see cref="VirtualListHandle.ScrollToItem"/> included, ends the animation where it stands.</summary>
+        Smooth,
+    }
+
+    /// <summary>
+    /// The imperative API of a mounted <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>,
     /// set on the list's <c>listRef</c> — the counterpart of react-window's <c>listRef</c>.
     /// </summary>
     public sealed class VirtualListHandle
@@ -646,9 +667,11 @@ namespace Velvet
         /// </summary>
         /// <param name="index">The item's index.</param>
         /// <param name="align">Where the item is placed in the viewport.</param>
+        /// <param name="behavior">Whether the list jumps or animates there.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the list's items.</exception>
-        public void ScrollToItem(int index, VirtualListAlign align = VirtualListAlign.Auto)
-            => _controller.ScrollToItem(index, align);
+        public void ScrollToItem(int index, VirtualListAlign align = VirtualListAlign.Auto,
+            VirtualListScrollBehavior behavior = VirtualListScrollBehavior.Auto)
+            => _controller.ScrollToItem(index, align, behavior);
     }
 
     /// <summary>

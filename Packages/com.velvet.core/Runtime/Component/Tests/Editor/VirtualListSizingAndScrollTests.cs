@@ -10,15 +10,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
     /// whose items each take their own height, and the <see cref="VirtualListHandle"/> a list sets on its
     /// <c>listRef</c>, against react-window's <c>List</c>.
     /// <list type="bullet">
     /// <item>The spacer is as tall as the items' heights added up, and follows them when the list renders
     /// again, whether its heights or its number of items changed.</item>
-    /// <item>The rendered range runs from the item at the scroll offset through the item at the viewport's
-    /// bottom edge — an item ending exactly at an edge being outside it — and is the last item alone past the
-    /// list's end, for a list of one height as well; its container sits where its first item starts, and
+    /// <item>The rendered range runs from the item at the scroll offset through the last item starting before the
+    /// viewport's bottom edge — an item ending exactly at the top edge, or starting exactly at the bottom one,
+    /// being outside it — and is the last item alone past the list's end, for a list of one height as well; its container sits where its first item starts, and
     /// each row takes its own item's height.</item>
     /// <item><c>ScrollToItem</c> places the item as react-window's <c>scrollToRow</c> does for each
     /// alignment, within the list's ends. Auto leaves an item already in view where it is, one whose start or
@@ -136,7 +136,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_HeightsByIndex_When_TheViewportEdgesFallOnItemEnds_Then_TheItemsStartingThereRender()
+        public void Given_HeightsByIndex_When_TheViewportEdgesFallOnItemEnds_Then_OnlyTheItemBetweenThemRenders()
         {
             // Arrange — the items end at 50, 100, 150 and so on.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
@@ -147,7 +147,7 @@ namespace Velvet.Tests
             controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 50f);
 
             // Assert — item 0 ends at the top edge; item 2 starts at the bottom one.
-            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1,item-2"));
+            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1"));
         }
 
         [Test]
