@@ -547,7 +547,7 @@ namespace Velvet
         public bool Horizontal { get; init; }
 
         /// <summary>
-        /// Creates a virtualized list of items of one height. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
+        /// Creates a virtualized list of items of one height. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
         /// factory; this is the type-erased form it builds.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, or <paramref name="renderer"/> is null.</exception>
@@ -570,7 +570,7 @@ namespace Velvet
 
         /// <summary>
         /// Creates a virtualized list whose items each take the height <paramref name="itemHeight"/> gives for
-        /// their index. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
+        /// their index. Prefer the <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
         /// factory; this is the type-erased form it builds.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, <paramref name="itemHeight"/> or <paramref name="renderer"/> is null.</exception>
@@ -645,7 +645,7 @@ namespace Velvet
     }
 
     /// <summary>
-    /// The imperative API of a mounted <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>,
+    /// The imperative API of a mounted <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>,
     /// set on the list's <c>listRef</c> — the counterpart of react-window's <c>listRef</c>.
     /// </summary>
     public sealed class VirtualListHandle
@@ -663,14 +663,20 @@ namespace Velvet
 
         /// <summary>
         /// Scrolls the list so the item at <paramref name="index"/> sits where <paramref name="align"/> puts it in
-        /// the viewport the list's last layout gave it.
+        /// the viewport the list's last layout gave it. A disposed handle does nothing.
         /// </summary>
         /// <param name="index">The item's index.</param>
         /// <param name="align">Where the item is placed in the viewport.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the mounted list's items.</exception>
+        public void ScrollToItem(int index, VirtualListAlign align = VirtualListAlign.Auto)
+            => ScrollToItem(index, align, VirtualListScrollBehavior.Auto);
+
+        /// <summary>Scrolls to an item using the requested movement behavior. A disposed handle does nothing.</summary>
+        /// <param name="index">The item's index.</param>
+        /// <param name="align">Where the item is placed in the viewport.</param>
         /// <param name="behavior">Whether the list jumps or animates there.</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the list's items.</exception>
-        public void ScrollToItem(int index, VirtualListAlign align = VirtualListAlign.Auto,
-            VirtualListScrollBehavior behavior = VirtualListScrollBehavior.Auto)
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the mounted list's items.</exception>
+        public void ScrollToItem(int index, VirtualListAlign align, VirtualListScrollBehavior behavior)
             => _controller.ScrollToItem(index, align, behavior);
     }
 

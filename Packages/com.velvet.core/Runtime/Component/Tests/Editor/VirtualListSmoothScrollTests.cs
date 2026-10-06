@@ -72,6 +72,10 @@ namespace Velvet.Tests
             scrollView.contentContainer.SimulateEvent(evt);
         }
 
+        private object ControllerState(ScrollView scrollView, string field)
+            => typeof(FiberVirtualListController).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(Reconciler.Context.VirtualListControllers[scrollView]);
+
         [Test]
         public void Given_ASmoothScroll_When_PartOfItsDurationHasPassed_Then_TheListIsOnItsWayToTheItem()
         {
@@ -182,6 +186,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scrollView.verticalScroller.value, Is.EqualTo(partway));
+        }
+
+        [Test]
+        public void Given_ARetainedHandleWithAPendingTarget_When_SmoothIsRequestedAfterDisposal_Then_NoScrollWorkIsCreated()
+        {
+            // Arrange
+            var (scrollView, handle) = MountScrollable();
+            scrollView.verticalScroller.highValue = 100f;
+            handle.ScrollToItem(10, VirtualListAlign.Start);
+            var pendingBefore = ControllerState(scrollView, "_pendingScrollTarget") != null;
+            Reconciler.Context.VirtualListControllers[scrollView].Dispose();
+
+            // Act
+            handle.ScrollToItem(10, VirtualListAlign.Start, VirtualListScrollBehavior.Smooth);
+            var pendingAfter = ControllerState(scrollView, "_pendingScrollTarget") != null;
+            var animationAfter = ControllerState(scrollView, "_smoothScroll") != null;
+            Advance(0.5);
+
+            // Assert
+            Assert.That((pendingBefore, pendingAfter, animationAfter, scrollView.verticalScroller.value),
+                Is.EqualTo((true, false, false, 100f)));
+        }
+
+        [TestCase(VirtualListScrollBehavior.Instant)]
+        [TestCase(VirtualListScrollBehavior.Smooth)]
+        public void Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(
+            VirtualListScrollBehavior behavior)
+        {
+            // Arrange
+            var (scrollView, handle) = MountScrollable();
+            scrollView.verticalScroller.highValue = 100f;
+            handle.ScrollToItem(10, VirtualListAlign.Start, behavior);
+            Advance(0.5);
+
+            // Act
+            scrollView.verticalScroller.value = 20f;
+            LayOutContent(scrollView, 4800f);
+
+            // Assert
+            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(20f));
+        }
+
+        // GREEN_ON_BASE(characterization): the existing deferred target survives a scroller range change.
+        [Test]
+        public void Given_APendingTarget_When_ARangeClampPrecedesLayout_Then_TheTargetStillApplies()
+        {
+            // Arrange
+            var (scrollView, handle) = MountScrollable();
+            scrollView.verticalScroller.highValue = 100f;
+            handle.ScrollToItem(10, VirtualListAlign.Start);
+
+            // Act
+            scrollView.verticalScroller.highValue = 50f;
+            var clamped = scrollView.verticalScroller.value;
+            LayOutContent(scrollView, 4800f);
+
+            // Assert
+            Assert.That(new[] { clamped, scrollView.verticalScroller.value }, Is.EqualTo(new[] { 50f, 500f }));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Given_AValueChangedHandlerIssuingANewerRequest_When_TheOuterScrollReturns_Then_OnlyTheNewTargetSurvives(
+            bool useHandle)
+        {
+            // Arrange
+            var (scrollView, handle) = MountScrollable();
+            scrollView.verticalScroller.highValue = 100f;
+            var requested = false;
+            scrollView.verticalScroller.valueChanged += _ =>
+            {
+                if (requested) return;
+                requested = true;
+                if (useHandle) handle.ScrollToItem(1, VirtualListAlign.Start);
+                else scrollView.verticalScroller.value = 50f;
+            };
+
+            // Act
+            handle.ScrollToItem(10, VirtualListAlign.Start);
+            LayOutContent(scrollView, 4800f);
+
+            // Assert
+            Assert.That((requested, scrollView.verticalScroller.value), Is.EqualTo((true, 50f)));
         }
     }
 }

@@ -48,7 +48,8 @@ does, against the viewport height the list's last layout measured:
 | `End` | Its end at the viewport's end |
 | `Start` | Its start at the viewport's start |
 
-`ScrollToItem`'s third argument is react-window's `behavior`:
+The existing `ScrollToItem(index, align)` overload keeps the default behavior. The three-argument
+overload requires an explicit `behavior`:
 
 | `behavior` | How the list gets there |
 |------------|-------------------------|
@@ -56,14 +57,18 @@ does, against the viewport height the list's last layout measured:
 | `Instant` | In one step |
 | `Smooth` | Animated over 300 ms, eased in and out |
 
-A smooth scroll ends where it stands when the list scrolls along its axis from anywhere else, a further
-`ScrollToItem` included, as a scroll in CSSOM View aborts a smooth scroll in flight.
+A change to the active scroller's value from outside the list cancels the current smooth scroll and
+any target awaiting content layout. A range change that clamps the current value preserves the target.
+A subsequent `ScrollToItem` replaces both the animation and deferred target, including when a
+value-change handler calls it before the earlier request returns. Changing orientation or disposing
+the list cancels them too.
 
 No alignment scrolls past either end of the list. An item a render has just added is reached once the
 list's content has been laid out for it. An item taller than the viewport counts as in view
 while the viewport lies within it. An index outside the items throws `ArgumentOutOfRangeException`.
 `listRef.Current.Element` is the list's `ScrollView`. The ref holds the handle from the list's mount to its
-unmount, and lets go of it when a render gives the list another ref.
+unmount, and lets go of it when a render gives the list another ref. A handle retained after disposal
+does nothing when `ScrollToItem` is called.
 
 ## Keys
 

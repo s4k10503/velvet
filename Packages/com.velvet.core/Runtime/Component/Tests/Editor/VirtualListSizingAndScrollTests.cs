@@ -10,7 +10,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>
+    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
     /// whose items each take their own height, and the <see cref="VirtualListHandle"/> a list sets on its
     /// <c>listRef</c>, against react-window's <c>List</c>.
     /// <list type="bullet">
@@ -233,6 +233,26 @@ namespace Velvet.Tests
         #endregion
 
         #region ScrollToItem
+
+        // GREEN_ON_BASE(characterization): the existing public signatures bind these delegate types.
+        [Test]
+        public void Given_TheExistingPublicSignatures_When_BoundAsMethodGroups_Then_TheirParameterCountsRemain()
+        {
+            // Arrange
+            Func<IReadOnlyList<string>, Func<string, string>, float, Func<string, VNode>, int,
+                string, string, string, Ref<VirtualListHandle>, VirtualListNode> fixedFactory = V.VirtualList;
+            Func<IReadOnlyList<string>, Func<string, string>, Func<int, float>, Func<string, VNode>, int,
+                string, string, string, Ref<VirtualListHandle>, VirtualListNode> variableFactory = V.VirtualList;
+            var (_, handle) = MountScrollable();
+            Action<int, VirtualListAlign> scroll = handle.ScrollToItem;
+
+            // Act
+            var parameterCounts = new[] { fixedFactory.Method.GetParameters().Length,
+                variableFactory.Method.GetParameters().Length, scroll.Method.GetParameters().Length };
+
+            // Assert
+            Assert.That(parameterCounts, Is.EqualTo(new[] { 9, 9, 2 }));
+        }
 
         [Test]
         public void Given_StartAlignment_When_ScrolledToAnItem_Then_ItsStartMeetsTheViewportsStart()

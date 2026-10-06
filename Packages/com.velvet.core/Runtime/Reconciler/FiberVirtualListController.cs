@@ -44,11 +44,11 @@ namespace Velvet
         private readonly VirtualListHandle _handle;
         // A ScrollToItem target the scroller's range fell short of, applied again at the content's next layout.
         private float? _pendingScrollTarget;
-        // A Smooth ScrollToItem in flight. _writingSmoothStep is how OnScrollValueChanged tells its steps from a
-        // scroll that comes from anywhere else, which ends it, as CSSOM View's perform-a-scroll aborts a smooth
-        // scroll in flight.
         private ValueAnimation<float>? _smoothScroll;
-        private bool _writingSmoothStep;
+        private bool _writingScroll;
+        private int _scrollRequestVersion;
+        private float _axisValue;
+        private (float low, float high) _axisRange;
         // Where each item starts, and at [Items.Count] where the list ends, for a list whose items each take
         // the height ItemHeightAt gives; unread for a list of one height, whose offsets are a product.
         private double[] _offsets = { 0 };
@@ -95,6 +95,7 @@ namespace Velvet
             _horizontal = node.Horizontal;
             _scrollView.mode = _horizontal ? ScrollViewMode.Horizontal : ScrollViewMode.Vertical;
             SizeSpacer();
+            RememberAxisState();
 
             _renderedNodes = Array.Empty<VNode>();
             _renderedKeys = Array.Empty<string?>();
@@ -141,7 +142,7 @@ namespace Velvet
             }
 
             _isDisposed = true;
-            StopSmoothScroll();
+            CancelScrollRequest();
 
             _scrollView.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             _scrollView.verticalScroller.valueChanged -= OnVerticalScrollValueChanged;
@@ -164,7 +165,7 @@ namespace Velvet
             if (_pendingScrollTarget == null) return;
             var target = _pendingScrollTarget.Value;
             _pendingScrollTarget = null;
-            AxisScroller.value = target;
+            WriteScrollValue(target, _scrollRequestVersion);
         }
 
         private Scroller AxisScroller => _horizontal ? _scrollView.horizontalScroller : _scrollView.verticalScroller;
@@ -196,7 +197,10 @@ namespace Velvet
 
         private void OnScrollValueChanged(float scrollValue)
         {
-            if (!_writingSmoothStep) StopSmoothScroll();
+            var ownScroll = _writingScroll;
+            _writingScroll = false;
+            var rangeClamp = ObserveAxisValue(scrollValue);
+            if (!ownScroll && !rangeClamp) CancelScrollRequest();
             if (_viewportHeight > 0)
             {
                 UpdateVisibleRange(scrollValue, _viewportHeight);
@@ -213,8 +217,7 @@ namespace Velvet
         // The rows keep the length the last rebuild wrote along the old axis, which nothing writes again.
         private void FlipAxis()
         {
-            StopSmoothScroll();
-            _pendingScrollTarget = null;
+            CancelScrollRequest();
             for (var i = 0; i < _renderedElements.Length; i++)
             {
                 var row = _renderedElements[i];
@@ -224,6 +227,7 @@ namespace Velvet
             }
             _horizontal = !_horizontal;
             _scrollView.mode = _horizontal ? ScrollViewMode.Horizontal : ScrollViewMode.Vertical;
+            RememberAxisState();
             MeasureViewport();
         }
 
@@ -630,6 +634,7 @@ namespace Velvet
         // react-window's getOffsetForIndex, against the viewport the last GeometryChangedEvent measured.
         internal void ScrollToItem(int index, VirtualListAlign align, VirtualListScrollBehavior behavior)
         {
+            if (_isDisposed) return;
             var count = _node.Items.Count;
             if (index < 0 || index >= count)
             {
@@ -664,55 +669,78 @@ namespace Velvet
                 _ => throw new ArgumentOutOfRangeException(nameof(align), align, "not a VirtualListAlign member"),
             };
             var value = (float)target;
-            StopSmoothScroll();
+            CancelScrollRequest();
+            var requestVersion = _scrollRequestVersion;
             if (behavior == VirtualListScrollBehavior.Smooth)
             {
-                // A target an earlier call left for the next layout would end this animation when it landed.
-                _pendingScrollTarget = null;
                 _smoothScroll = _scrollView.experimental.animation
-                    .Start(AxisScroller.value, value, SmoothScrollDurationMs, (_, step) => WriteSmoothStep(step))
+                    .Start(AxisScroller.value, value, SmoothScrollDurationMs, (_, step) => WriteScrollValue(step, requestVersion))
                     .Ease(Easing.InOutQuad)
                     .KeepAlive();
-                _smoothScroll.OnCompleted(() => EndSmoothScroll(value));
+                _smoothScroll.OnCompleted(() => EndSmoothScroll(value, requestVersion));
                 return;
             }
-            ScrollTo(value);
+            ScrollTo(value, requestVersion);
         }
 
         private const int SmoothScrollDurationMs = 300;
 
-        private void ScrollTo(float value)
+        private void ScrollTo(float value, int requestVersion)
         {
-            AxisScroller.value = value;
-            _pendingScrollTarget = AxisScroller.value < value ? value : null;
+            WriteScrollValue(value, requestVersion);
+            // A valueChanged handler may have issued a newer request before the write returns.
+            if (!_isDisposed && requestVersion == _scrollRequestVersion)
+            {
+                _pendingScrollTarget = AxisScroller.value < value ? value : null;
+            }
         }
 
-        private void WriteSmoothStep(float step)
+        private void WriteScrollValue(float value, int requestVersion)
         {
-            _writingSmoothStep = true;
+            if (_isDisposed || requestVersion != _scrollRequestVersion) return;
+            var wasWriting = _writingScroll;
+            _writingScroll = true;
             try
             {
-                AxisScroller.value = step;
+                AxisScroller.value = value;
             }
             finally
             {
-                _writingSmoothStep = false;
+                _writingScroll = wasWriting;
+                RememberAxisState();
             }
         }
 
-        // Only the animation still in flight lands its target; one a later scroll stopped lands nothing.
-        private void EndSmoothScroll(float target)
+        private void EndSmoothScroll(float target, int requestVersion)
         {
-            if (_smoothScroll == null) return;
+            if (_smoothScroll == null || requestVersion != _scrollRequestVersion) return;
             _smoothScroll = null;
-            ScrollTo(target);
+            ScrollTo(target, requestVersion);
         }
 
-        private void StopSmoothScroll()
+        private void CancelScrollRequest()
         {
+            _scrollRequestVersion++;
+            _pendingScrollTarget = null;
             var running = _smoothScroll;
             _smoothScroll = null;
             running?.Stop();
+        }
+
+        private void RememberAxisState()
+        {
+            _axisValue = AxisScroller.value;
+            _axisRange = (AxisScroller.lowValue, AxisScroller.highValue);
+        }
+
+        private bool ObserveAxisValue(float value)
+        {
+            var range = (low: AxisScroller.lowValue, high: AxisScroller.highValue);
+            var clamped = Math.Clamp(_axisValue, Math.Min(range.low, range.high), Math.Max(range.low, range.high));
+            var rangeClamp = !range.Equals(_axisRange) && value.Equals(clamped);
+            _axisRange = range;
+            _axisValue = value;
+            return rangeClamp;
         }
 
         private void ForceRefresh()

@@ -2367,6 +2367,29 @@ namespace Velvet
 
         #region Virtualized list
 
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            float itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+
         /// <summary>
         /// Virtualized list component for rendering large item collections.
         /// Renders a ScrollView of items of one height and only places the visible range in the DOM
@@ -2402,12 +2425,12 @@ namespace Velvet
             Func<T, string> keySelector,
             float itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null,
-            bool horizontal = false)
+            Ref<VirtualListHandle>? listRef = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
@@ -2425,10 +2448,33 @@ namespace Velvet
             };
         }
 
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels at an index.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            Func<int, float> itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+
         /// <summary>
         /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
         /// index — react-window's <c>rowHeight</c> function. Every other parameter is
-        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle}, bool)"/>'s.
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>'s.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
@@ -2450,12 +2496,12 @@ namespace Velvet
             Func<T, string> keySelector,
             Func<int, float> itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null,
-            bool horizontal = false)
+            Ref<VirtualListHandle>? listRef = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
