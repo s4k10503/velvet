@@ -290,45 +290,66 @@ namespace MyApp.Pages
             Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
         }
 
-        [Fact]
-        public void Reports_When_UseMemo_Factory_Captures_Local_Missing_From_Deps()
+        [Theory]
+        [InlineData("new Props { Count = x }")]
+        [InlineData("new Props { Child = new Props { Count = x } }")]
+        public void Given_AnObjectInitializer_When_DepsOmitItsRhsLocal_Then_OnlyThatLocalIsReported(string expression)
         {
-            // UseMemo is Velvet.Hooks's value-memoization primitive (factory + params deps). Exhaustive-deps
-            // covers it like the other deps-comparing Hooks methods; the descriptor binds to Velvet.Hooks.
-            const string source = @"
+            // Arrange
+            var source = @"
 namespace MyApp.Pages
 {
+    public sealed class Props : global::Velvet.VNode
+    {
+        public int Count { get; set; }
+        public Props Child;
+    }
     public static class HomePage
     {
         public static global::Velvet.VNode Render()
         {
-            var label = ""home"";
-            return global::Velvet.Hooks.UseMemo(() => { System.Console.WriteLine(label); return new global::Velvet.VNode(); }, new object[] { });
+            var x = 1;
+            return global::Velvet.Hooks.UseMemo(() => " + expression + @", new object[] { });
         }
     }
 }";
-            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
-            var vel100 = diagnostics.Where(d => d.Id == "VEL100").ToList();
-            Assert.Single(vel100);
-            Assert.Contains("label", vel100[0].GetMessage());
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "x" }, diagnostics.Where(d => d.Id == "VEL100")
+                .Select(d => source.Substring(d.Location.SourceSpan.Start, d.Location.SourceSpan.Length)));
         }
 
-        [Fact]
-        public void DoesNotReport_When_UseMemo_Factory_Captured_Local_Is_In_Deps()
+        [Theory]
+        [InlineData("new Props { Count = x }")]
+        [InlineData("new Props { Child = new Props { Count = x } }")]
+        public void Given_AnObjectInitializer_When_ItsRhsLocalIsInDeps_Then_NoMemberNameIsReported(string expression)
         {
-            const string source = @"
+            // Arrange
+            var source = @"
 namespace MyApp.Pages
 {
+    public sealed class Props : global::Velvet.VNode
+    {
+        public int Count { get; set; }
+        public Props Child;
+    }
     public static class HomePage
     {
         public static global::Velvet.VNode Render()
         {
-            var label = ""home"";
-            return global::Velvet.Hooks.UseMemo(() => { System.Console.WriteLine(label); return new global::Velvet.VNode(); }, new object[] { label });
+            var x = 1;
+            return global::Velvet.Hooks.UseMemo(() => " + expression + @", new object[] { x });
         }
     }
 }";
-            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
             Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
         }
 
@@ -1213,27 +1234,35 @@ namespace MyApp.Pages
             Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
         }
 
-        [Fact]
-        public void Reports_When_Lambda_Captures_ThisQualified_Instance_Field()
+        [Theory]
+        [InlineData("this.Count")]
+        [InlineData("Count")]
+        public void Given_AnInitializerReadingThisMember_When_DepsOmitIt_Then_OnlyTheRhsReadIsReported(string read)
         {
-            // A `this.`-qualified mutable instance field is a reactive value and must be flagged when absent
-            // from deps, exactly like its unqualified form.
-            const string source = @"
+            // Arrange
+            var source = @"
 namespace MyApp.Pages
 {
+    public sealed class Props
+    {
+        public int Count { get; set; }
+    }
     public sealed class HomePage
     {
-        private int _count = 0;
+        private int Count = 0;
         public void Render()
         {
-            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(this._count), new object[] { });
+            global::Velvet.Hooks.UseMemo(() => new Props { Count = " + read + @" }, new object[] { });
         }
     }
 }";
-            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
-            var vel100 = diagnostics.Where(d => d.Id == "VEL100").ToList();
-            Assert.Single(vel100);
-            Assert.Contains("_count", vel100[0].GetMessage());
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { source.LastIndexOf("Count", System.StringComparison.Ordinal) },
+                diagnostics.Where(d => d.Id == "VEL100").Select(d => d.Location.SourceSpan.Start));
         }
 
         [Fact]
