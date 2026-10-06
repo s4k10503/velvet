@@ -39,6 +39,8 @@ namespace Velvet.Tests
     {
         // The runtime assembly's own spelling of each reader, in the form Spelled builds: return type,
         // declaring type, method name with its generic arity, and full parameter type names.
+        private const string MotionRestingReader =
+            "System.Collections.Generic.IEnumerable`1<System.String> Velvet.MotionSlotContext.RestingClasses()";
         private const string LiveClassesReader =
             "System.String[] Velvet.FiberNodePatcher.LiveClasses(UnityEngine.UIElements.VisualElement)";
         private const string TransitionSlotsReader =
@@ -345,6 +347,34 @@ namespace Velvet.Tests
                 + "joining it takes the array the re-sync stands in with for an element carrying no "
                 + "reconciled array of its own, so whether that array's order decides its answer belongs in "
                 + "a case here and the reading belongs in this list; one leaving it takes its line with it");
+        }
+
+        [Test]
+        [ReaderVerdict(MotionRestingReader)]
+        public void Given_AnImportantRestingOpacityBesidePlainWidths_When_TheirClassOrderIsReversed_Then_BothPlansRetainTheImportantOpacity()
+        {
+            // Arrange
+            var added = Carrying("w-40", "w-80");
+            var reversed = Carrying("w-80", "w-40");
+            StyleClassProjection.Add(added, "opacity-50", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            StyleClassProjection.Add(reversed, "opacity-50", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var constructor = typeof(MotionSlotContext).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single();
+            var fromAdded = (MotionSlotContext)constructor.Invoke(new object[] { added, (Func<ArbitraryProperty, bool>)(_ => false) });
+            var fromReversed = (MotionSlotContext)constructor.Invoke(new object[] { reversed, (Func<ArbitraryProperty, bool>)(_ => false) });
+
+            // Act
+            var addedClasses = fromAdded.RestingClasses().ToArray();
+            var addedPlan = MotionSpringClassParser.Resolve(addedClasses.Append("opacity-[.2]").ToArray(),
+                addedClasses.Append("opacity-[.8]").ToArray());
+            var reversedClasses = fromReversed.RestingClasses().ToArray();
+            var reversedPlan = MotionSpringClassParser.Resolve(reversedClasses.Append("opacity-[.2]").ToArray(),
+                reversedClasses.Append("opacity-[.8]").ToArray());
+            var addedWidth = addedPlan.Lengths?.Find(channel => channel.Property == ArbitraryProperty.Width);
+            var reversedWidth = reversedPlan.Lengths?.Find(channel => channel.Property == ArbitraryProperty.Width);
+
+            // Assert
+            Assert.That((addedWidth?.From, reversedWidth?.From, addedPlan.Opacity?.to, reversedPlan.Opacity?.to),
+                Is.EqualTo(((float?)320f, (float?)320f, (float?)0.5f, (float?)0.5f)));
         }
 
         // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
