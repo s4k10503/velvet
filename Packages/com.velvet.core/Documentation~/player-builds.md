@@ -134,3 +134,8 @@ builds the stylesheet bundle, creates a test scene, and selects ARM64, IL2CPP an
 the scene and assets. Run the built app's executable with `-batchmode` and `--velvet-import-result` followed by an absolute
 JSON output path. The probe writes its runtime platform, compiled backend, and assertion result, then
 exits with status zero on success.
+
+Set VELVET_IMPORT_PLAYER_NATIVE_ONLY=1 to use the same builder for the native-transition current-value
+assertion without the shader and bundle checks. It checks idle, running and naturally completed native
+activity, then takes over from a displayed intermediate width and checks the custom start and next
+frame. The result includes those measurements and cleanup success.

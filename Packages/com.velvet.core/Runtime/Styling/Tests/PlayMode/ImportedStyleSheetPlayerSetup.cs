@@ -32,6 +32,9 @@ namespace Velvet.Tests
             public string[] Preloaded;
         }
 
+        private static bool NativeStartOnly
+            => Environment.GetEnvironmentVariable("VELVET_IMPORT_PLAYER_NATIVE_ONLY") == "1";
+
         public static void BuildProbe()
         {
             var output = Environment.GetEnvironmentVariable("VELVET_IMPORT_PLAYER_OUTPUT");
@@ -45,6 +48,7 @@ namespace Velvet.Tests
                 var state = JsonUtility.FromJson<BuildState>(File.ReadAllText(SessionState.GetString(RecordKey, string.Empty)));
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 var probe = new GameObject("Imported stylesheet player probe").AddComponent<ImportedStyleSheetPlayerProbe>();
+                probe.NativeStartOnly = NativeStartOnly;
                 probe.Assets = AssetDatabase.LoadAssetAtPath<ImportedStyleSheetPlayerAssets>(
                     state.AssetDirectory + "/ImportedStyleSheetPlayerAssets.asset");
                 var scenePath = state.AssetDirectory + "/Probe.unity";
@@ -96,9 +100,9 @@ namespace Velvet.Tests
             {
                 AssetDatabase.CreateFolder("Assets", Path.GetFileName(state.AssetDirectory));
                 var carrier = ScriptableObject.CreateInstance<ImportedStyleSheetPlayerAssets>();
-                carrier.ImportingSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(ImportingSheetPath);
+                if (!NativeStartOnly) carrier.ImportingSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(ImportingSheetPath);
                 carrier.PanelSettings = Object.Instantiate(AssetDatabase.LoadAssetAtPath<PanelSettings>(PanelSettingsPath));
-                if (carrier.ImportingSheet == null || carrier.PanelSettings == null)
+                if (carrier.PanelSettings == null || !NativeStartOnly && carrier.ImportingSheet == null)
                     throw new InvalidOperationException("The importing USS or serialized runtime panel settings is missing.");
                 AssetDatabase.CreateAsset(carrier.PanelSettings, state.AssetDirectory + "/PanelSettings.asset");
                 PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone, ScriptingImplementation.IL2CPP);
@@ -106,32 +110,10 @@ namespace Velvet.Tests
                 PlayerSettings.runInBackground = true;
                 EditorUserBuildSettings.SetPlatformSettings(
                     BuildPipeline.GetBuildTargetName(BuildTarget.StandaloneOSX), "Architecture", "arm64");
-                var shaderFiles = Directory.GetFiles("Packages/com.velvet.core/Runtime", "*.shader", SearchOption.AllDirectories);
-                carrier.ShaderNames = shaderFiles.Select(path =>
-                {
-                    var match = Regex.Match(File.ReadAllText(path), @"Shader\s+""([^""]+)""");
-                    if (!match.Success) throw new InvalidOperationException("Shader declaration missing: " + path);
-                    return match.Groups[1].Value;
-                }).OrderBy(name => name, StringComparer.Ordinal).ToArray();
-                if (carrier.ShaderNames.Length == 0)
-                    throw new InvalidOperationException("No package shader declarations were found.");
-                File.WriteAllLines(Path.Combine(evidence, "shader-manifest.txt"), carrier.ShaderNames);
                 var carrierPath = state.AssetDirectory + "/ImportedStyleSheetPlayerAssets.asset";
                 AssetDatabase.CreateAsset(carrier, carrierPath);
                 AssetDatabase.SaveAssets();
-                var bundles = Path.Combine(evidence, "bundles");
-                Directory.CreateDirectory(bundles);
-                var manifest = BuildPipeline.BuildAssetBundles(bundles, new[]
-                {
-                    new AssetBundleBuild
-                    {
-                        assetBundleName = "utility-styles",
-                        assetNames = new[] { VelvetStyleUtilities.StyleSheetAssetPath },
-                    },
-                }, BuildAssetBundleOptions.ForceRebuildAssetBundle, BuildTarget.StandaloneOSX);
-                if (manifest == null) throw new InvalidOperationException("The stylesheet bundle build failed.");
-                carrier = AssetDatabase.LoadAssetAtPath<ImportedStyleSheetPlayerAssets>(carrierPath);
-                carrier.BundlePath = Path.Combine(bundles, "utility-styles");
+                if (!NativeStartOnly) carrier = PrepareImportedAssets(carrier, carrierPath, evidence);
                 carrier.ScriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.Standalone).ToString();
                 carrier.StrippingLevel = PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.Standalone).ToString();
                 EditorUtility.SetDirty(carrier);
@@ -147,6 +129,37 @@ namespace Velvet.Tests
                 Cleanup();
                 throw;
             }
+        }
+
+        private static ImportedStyleSheetPlayerAssets PrepareImportedAssets(ImportedStyleSheetPlayerAssets carrier,
+            string carrierPath, string evidence)
+        {
+            var shaderFiles = Directory.GetFiles("Packages/com.velvet.core/Runtime", "*.shader", SearchOption.AllDirectories);
+            carrier.ShaderNames = shaderFiles.Select(path =>
+            {
+                var match = Regex.Match(File.ReadAllText(path), @"Shader\s+""([^""]+)""");
+                if (!match.Success) throw new InvalidOperationException("Shader declaration missing: " + path);
+                return match.Groups[1].Value;
+            }).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+            if (carrier.ShaderNames.Length == 0)
+                throw new InvalidOperationException("No package shader declarations were found.");
+            EditorUtility.SetDirty(carrier);
+            AssetDatabase.SaveAssets();
+            File.WriteAllLines(Path.Combine(evidence, "shader-manifest.txt"), carrier.ShaderNames);
+            var bundles = Path.Combine(evidence, "bundles");
+            Directory.CreateDirectory(bundles);
+            var manifest = BuildPipeline.BuildAssetBundles(bundles, new[]
+            {
+                new AssetBundleBuild
+                {
+                    assetBundleName = "utility-styles",
+                    assetNames = new[] { VelvetStyleUtilities.StyleSheetAssetPath },
+                },
+            }, BuildAssetBundleOptions.ForceRebuildAssetBundle, BuildTarget.StandaloneOSX);
+            if (manifest == null) throw new InvalidOperationException("The stylesheet bundle build failed.");
+            carrier = AssetDatabase.LoadAssetAtPath<ImportedStyleSheetPlayerAssets>(carrierPath);
+            carrier.BundlePath = Path.Combine(bundles, "utility-styles");
+            return carrier;
         }
 
         public void Cleanup()
