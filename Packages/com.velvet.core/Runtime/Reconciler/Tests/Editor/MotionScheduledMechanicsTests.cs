@@ -148,6 +148,82 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose on a tenth of a second's tween, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenWithAPropertyOverrideEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("visible", "duration-[400ms]");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+            };
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose, its opacity on an override of its own, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.4f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWritesItsDurationMidVariantTween_When_ASecondSwapStartsAndEnds_Then_ThatDurationIsItsOwn()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition) = ("visible", s_slowTween);
+            using var mounted = MountAAlone();
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDuration = new List<TimeValue> { new(0.4f, TimeUnit.Second) };
+            a.style.transitionDelay = new List<TimeValue> { new(0.02f, TimeUnit.Second) };
+            a.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseOut) };
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            a.style.transitionDuration = new List<TimeValue> { new(0.25f, TimeUnit.Second) };
+            a.style.transitionDelay = new List<TimeValue> { new(0.07f, TimeUnit.Second) };
+            a.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseIn) };
+
+            // Act — a swap back to its visible pose; past that tween's end.
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            var delays = a.style.transitionDelay;
+            var curves = a.style.transitionTimingFunction;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.25f),
+                    delays.keyword, delays.value?.Count == 1 && Mathf.Approximately(delays.value[0].value, 0.07f),
+                    curves.keyword, curves.value?.Count == 1 && curves.value[0].Equals(new EasingFunction(EasingMode.EaseIn))),
+                Is.EqualTo((StyleKeyword.Undefined, true, StyleKeyword.Undefined, true, StyleKeyword.Undefined, true)));
+        }
+
         // Where the replacement sits after the move across parents; the mounted element sits at left 200.
         private static int s_movedLeft;
 

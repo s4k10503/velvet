@@ -1166,12 +1166,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            element.style.transitionDuration = durations;
-            element.style.transitionTimingFunction = easings;
-            if (delays != null)
-            {
-                element.style.transitionDelay = delays;
-            }
+            MotionTweenTiming.Write(element, durations, easings, delays);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1336,6 +1331,7 @@ namespace Velvet
             VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
         {
+            MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
@@ -1347,8 +1343,7 @@ namespace Velvet
 
             var durationMs = (int)(durationSec * 1000);
             var durationList = _listPool.RentDurationList(durationMs);
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
+            MotionTweenTiming.Write(element, durationList, GetOrCreateEasingList(easing), null);
 
             // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
             // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
@@ -1365,7 +1360,7 @@ namespace Velvet
             {
                 var delayMs = (int)(delaySec * 1000);
                 delayList = _listPool.RentDelayList(delayMs);
-                element.style.transitionDelay = delayList;
+                MotionTweenTiming.Write(element, null, null, delayList);
             }
 
             return (durationList, delayList);
@@ -1439,8 +1434,7 @@ namespace Velvet
             }
 
             element.style.transitionProperty = propertyNames;
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = easingList;
+            MotionTweenTiming.Write(element, durationList, easingList, null);
 
             // Mirrors the single-entry path: transition-delay is set only when at least one property actually
             // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
@@ -1451,7 +1445,7 @@ namespace Velvet
                 _listPool.ReturnDelayList(delayList);
                 return (durationList, null);
             }
-            element.style.transitionDelay = delayList;
+            MotionTweenTiming.Write(element, null, null, delayList);
             return (durationList, delayList);
         }
 
@@ -1701,10 +1695,8 @@ namespace Velvet
 
         private void ClearTransitionStyles(VisualElement element)
         {
-            // Releases UIElements' internal list reference, making pool return safe.
-            element.style.transitionDuration = StyleKeyword.Null;
-            element.style.transitionTimingFunction = StyleKeyword.Null;
-            element.style.transitionDelay = StyleKeyword.Null;
+            // Restore before returning the tween's lists to the pool.
+            MotionTweenTiming.End(element);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
@@ -1714,7 +1706,7 @@ namespace Velvet
 
         // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
         // after creation.
-        // The reference is released when StyleKeyword.Null is assigned in ClearTransitionStyles, so it is safe.
+        // ClearTransitionStyles restores the element's timing before the play returns its rented lists.
         private static List<EasingFunction> GetOrCreateEasingList(EasingMode easing)
         {
             if (!s_easingCache.TryGetValue(easing, out var list))

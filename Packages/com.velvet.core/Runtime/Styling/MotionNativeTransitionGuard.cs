@@ -393,11 +393,11 @@ namespace Velvet
             var heldCount = held.Count;
             element.style.transitionProperty = names;
             WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
-                list => element.style.transitionDuration = list);
+                list => MotionTweenTiming.Write(element, list, null, null));
             WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
-                list => element.style.transitionTimingFunction = list);
+                list => MotionTweenTiming.Write(element, null, list, null));
             WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
-                list => element.style.transitionDelay = list);
+                list => MotionTweenTiming.Write(element, null, null, list));
         }
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
@@ -461,6 +461,7 @@ namespace Velvet
             if (element != null)
             {
                 s_suspensions.Remove(element);
+                MotionTweenTiming.Forget(element);
             }
         }
     }

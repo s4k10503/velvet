@@ -35,6 +35,10 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
+A tween temporarily replaces the element's inline transition duration, delay, and easing. When it
+finishes or is interrupted, it restores the element's own lists, including a `duration-[...]`
+value. Code that writes one of those lists during the tween replaces the value restored for that slot.
+
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with
 it. A Motion naming any of the three takes neither, as Framer treats a Motion naming any variant label
