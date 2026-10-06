@@ -132,6 +132,7 @@ namespace Velvet
             if (_drivenByRunningPlay(slot)) return false;
             var owner = Owner(slot);
             var longhands = StyleArbitraryLonghands.Of(slot);
+            // MUTANT_SURVIVES(equivalent, boundary): with 88 longhands, no mapped set claims the extra index, so the native query is never reached.
             for (var i = 0; i < s_nativePropertyIds.Length; i++)
             {
                 var longhand = (StyleLonghand)i;
@@ -320,6 +321,8 @@ namespace Velvet
         private static bool Length(ArbitraryProperty slot, StyleLength style, out ArbitraryStyle value)
         {
             value = new ArbitraryStyle(slot, style.value.value, style.value.unit);
+            // MUTANT_SURVIVES(equivalent, clause removed): the Auto/None exclusions are redundant on the current 25 mapped public getter paths;
+            // Given_FlaggedLengths_When_ReadInline_Then_TheGettersNormalizeNonNumericKeywords pins the keyword boundary.
             return style.keyword == StyleKeyword.Undefined && !style.value.IsAuto() && !style.value.IsNone();
         }
 

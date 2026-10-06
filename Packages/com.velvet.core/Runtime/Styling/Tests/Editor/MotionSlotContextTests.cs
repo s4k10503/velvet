@@ -111,7 +111,9 @@ namespace Velvet.Tests
 
         [TestCase("pt-[10%]", false)]
         [TestCase("w-[50%]", true)]
-        public void Given_AConversionWithoutASupportedBasis_When_TheProviderSamplesIt_Then_ItDeclinesTheValue(string token, bool zeroBasis)
+        [TestCase("w-[40px]", false, true)]
+        public void Given_AConversionWithoutASupportedBasis_When_TheProviderSamplesIt_Then_ItDeclinesTheValue(
+            string token, bool zeroBasis, bool infiniteBasis = false)
         {
             // Arrange
             var element = MountInFixedParent();
@@ -121,13 +123,52 @@ namespace Velvet.Tests
                 ForcePanelUpdate(element.panel);
             }
             StyleArbitraryValueResolver.ApplyClassToken(element, token, StyleLayerPriority.Base);
+            if (infiniteBasis)
+            {
+                element.parent.style.width = StyleKeyword.Auto;
+                element.parent.style.alignSelf = Align.FlexStart;
+                element.parent.style.flexDirection = FlexDirection.Row;
+                element.style.borderLeftWidth = float.PositiveInfinity;
+                ForcePanelUpdate(element.panel);
+            }
             var context = MotionSlotContext.Read(element, null, null, _ => false);
 
             // Act
-            var read = context.TryReadCurrent(zeroBasis ? ArbitraryProperty.Width : ArbitraryProperty.PaddingTop, LengthUnit.Pixel, out _);
+            var read = context.TryReadCurrent(zeroBasis || infiniteBasis ? ArbitraryProperty.Width : ArbitraryProperty.PaddingTop,
+                infiniteBasis ? LengthUnit.Percent : LengthUnit.Pixel, out _);
+            var basisPresent = !infiniteBasis || float.IsPositiveInfinity(element.parent.contentRect.width);
 
             // Assert
-            Assert.That(read, Is.False);
+            Assert.That((basisPresent, read), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_FlaggedLengths_When_ReadInline_Then_TheGettersNormalizeNonNumericKeywords()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var readers = (Dictionary<ArbitraryProperty, System.Func<IStyle, StyleLength>>)typeof(MotionSlotContext)
+                .GetField("s_inlineLengths", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .GetValue(null);
+            var properties = typeof(IStyle).GetProperties().Where(property => property.PropertyType == typeof(StyleLength)).ToArray();
+            var samples = new[] { (new Length(17f), StyleKeyword.Undefined),
+                (Length.Auto(), StyleKeyword.Auto), (Length.None(), StyleKeyword.None) };
+            var normalized = new List<bool>();
+
+            // Act
+            foreach (var sample in samples)
+            {
+                var input = new StyleLength(sample.Item1) { keyword = StyleKeyword.Undefined };
+                foreach (var property in properties) property.SetValue(element.style, input);
+                foreach (var read in readers.Values)
+                {
+                    var inline = read(element.style);
+                    normalized.Add(inline.keyword == sample.Item2 && inline.value.Equals(input.value));
+                }
+            }
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo(Enumerable.Repeat(true, 75)));
         }
 
         [TestCase(ArbitraryProperty.Width, 200f)]
@@ -136,18 +177,29 @@ namespace Velvet.Tests
         [TestCase(ArbitraryProperty.Rotate, 0f)]
         [TestCase(ArbitraryProperty.TranslateX, 0f)]
         [TestCase(ArbitraryProperty.TranslateY, 0f)]
-        public void Given_AComputedSlotWithoutAnInlineOverride_When_TheProviderSamplesIt_Then_ItReadsTheResolvedValue(ArbitraryProperty slot, float expected)
+        [TestCase(ArbitraryProperty.Opacity, 0.5f, true)]
+        [TestCase(ArbitraryProperty.Width, 100f, false, LengthUnit.Percent)]
+        public void Given_AComputedSlotWithoutAnInlineOverride_When_TheProviderSamplesIt_Then_ItReadsTheResolvedValue(
+            ArbitraryProperty slot, float expected, bool unrelatedInlineScale = false, LengthUnit unit = LengthUnit.Pixel)
         {
             // Arrange
             var element = MountInFixedParent();
+            if (unrelatedInlineScale)
+            {
+                element.AddToClassList("opacity-50");
+                element.style.scale = new Scale(new Vector3(2f, 2f, 1f));
+                ForcePanelUpdate(element.panel);
+            }
             var context = MotionSlotContext.Read(element, null, null, _ => false);
 
             // Act
-            var read = context.TryReadCurrent(slot, LengthUnit.Pixel, out var value);
+            var read = context.TryReadCurrent(slot, unit, out var value);
+            var scalePresent = !unrelatedInlineScale || element.style.scale.keyword == StyleKeyword.Undefined;
 
             // Assert
-            Assert.That(new[] { read && value.Property == slot ? value.Value : float.NaN, context.HoldsInlineOutsideSwap(slot) ? 1f : 0f },
-                Is.EqualTo(new[] { expected, 0f }).Within(0.02f));
+            Assert.That(new[] { read && value.Property == slot && value.Unit == unit && scalePresent ? value.Value : float.NaN,
+                    context.HoldsInlineOutsideSwap(slot) ? 1f : 0f, context.HasImportantInlineOutsideSwap(slot) ? 1f : 0f },
+                Is.EqualTo(new[] { expected, 0f, 0f }).Within(0.02f));
         }
 
         [TestCase(0.75f)]
@@ -251,6 +303,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(resting, Is.EqualTo("w-40"));
+        }
+
+        [Test]
+        public void Given_ASuppressedImportantClass_When_ItIsReaddedToTheLiveList_Then_TheProviderReadsItWithoutImportantPriority()
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            StyleClassProjection.Add(element, "w-40", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            StyleClassProjection.Add(element, "w-80", StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover));
+            var suppressed = !element.ClassListContains("w-40");
+
+            // Act
+            element.AddToClassList("w-40");
+            var resting = string.Join(" ", MotionSlotContext.Read(element, null, null, _ => false).RestingClasses()
+                .OrderBy(c => c, System.StringComparer.Ordinal));
+
+            // Assert
+            Assert.That((suppressed, resting), Is.EqualTo((true, "!w-80 w-40")));
         }
 
         [TestCase(false, false, true)]
@@ -434,6 +504,85 @@ namespace Velvet.Tests
             Assert.That((element.resolvedStyle.maxWidth.keyword, read), Is.EqualTo((StyleKeyword.None, false)));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ANativeOpacityFrame_When_TheProviderSamplesIt_Then_ItAcceptsOnlyTheFinitePaint(bool infinite)
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            element.style.opacity = 0.5f;
+            ForcePanelUpdate(element.panel);
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => now);
+            ConfigureNativeTransition(element, "opacity");
+            element.style.opacity = infinite ? float.PositiveInfinity : 0.25f;
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+            var paint = element.resolvedStyle.opacity;
+            var context = MotionSlotContext.Read(element, null, null, _ => false);
+
+            // Act
+            var read = context.TryReadCurrent(ArbitraryProperty.Opacity, LengthUnit.Pixel, out var value);
+
+            // Assert
+            Assert.That(new[] { infinite ? (float.IsPositiveInfinity(paint) ? 1f : 0f) : paint,
+                    read ? 1f : 0f, infinite ? 0f : value.Property == ArbitraryProperty.Opacity && value.Unit == LengthUnit.Pixel
+                        ? value.Value : float.NaN,
+                    context.HoldsInlineOutsideSwap(ArbitraryProperty.Opacity) ? 1f : 0f },
+                Is.EqualTo(new[] { infinite ? 1f : 0.4375f, infinite ? 0f : 1f,
+                    infinite ? 0f : 0.4375f, 0f }).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnUnavailableNativeBorderIdentity_When_TheProviderSamplesIt_Then_ItUsesTheInlineTarget()
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            for (var i = 0; i < 4; i++) SetBorderEdge(element, i, Color.red);
+            ForcePanelUpdate(element.panel);
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(element.panel, () => now);
+            ConfigureNativeTransition(element, "border-color");
+            for (var i = 0; i < 4; i++) SetBorderEdge(element, i, Color.blue);
+            ForcePanelUpdate(element.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+            ForcePanelUpdate(element.panel);
+            var paint = element.resolvedStyle.borderTopColor;
+            var ids = (object[])typeof(MotionSlotContext).GetField("s_nativePropertyIds",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).GetValue(null);
+            var saved = ids.ToArray();
+            var edges = new[] { StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor,
+                StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor };
+            var native = (bool)EngineMember.HasRunningStyleAnimation.ResolveMethod()
+                .Invoke(element, new[] { saved[(int)StyleLonghand.BorderTopColor] });
+            var context = MotionSlotContext.Read(element, null, null, _ => false);
+            bool read;
+            bool holder;
+            ArbitraryStyle value;
+
+            // Act
+            try
+            {
+                foreach (var edge in edges) ids[(int)edge] = null;
+                read = context.TryReadCurrent(ArbitraryProperty.BorderColor, LengthUnit.Pixel, out value);
+                holder = context.HoldsInlineOutsideSwap(ArbitraryProperty.BorderColor);
+            }
+            finally
+            {
+                System.Array.Copy(saved, ids, saved.Length);
+            }
+
+            // Assert
+            Assert.That(new[] { native ? 1f : 0f, paint.r, paint.b,
+                    read ? value.Color.r : float.NaN, read ? value.Color.b : float.NaN, holder ? 1f : 0f },
+                Is.EqualTo(new[] { 1f, 0.75f, 0.25f, 0f, 1f, 1f }).Within(0.02f));
+        }
+
         [TestCase(ArbitraryProperty.TextColor, "color")]
         [TestCase(ArbitraryProperty.BackgroundColor, "background-color")]
         public void Given_ARunningNativeColor_When_TheProviderSamplesIt_Then_ItReadsThePaintRegardlessOfLengthUnit(ArbitraryProperty slot, string property)
@@ -467,7 +616,9 @@ namespace Velvet.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_ANativeBorderFrameWithUniformPaint_When_TheProviderSamplesIt_Then_ItSeparatesTheSampleFromInactiveEdgeHolders(bool allEdges)
+        [TestCase(true, true)]
+        public void Given_ANativeBorderFrameWithUniformPaint_When_TheProviderSamplesIt_Then_ItSeparatesTheSampleFromInactiveEdgeHolders(
+            bool allEdges, bool drivenByPlay = false)
         {
             // Arrange
             var element = MountInFixedParent();
@@ -488,7 +639,7 @@ namespace Velvet.Tests
                 for (var i = 1; i < 4; i++) SetBorderEdge(element, i, paint);
                 ForcePanelUpdate(element.panel);
             }
-            var context = MotionSlotContext.Read(element, null, null, _ => false);
+            var context = MotionSlotContext.Read(element, null, null, slot => drivenByPlay && slot == ArbitraryProperty.BorderColor);
 
             // Act
             var read = context.TryReadCurrent(ArbitraryProperty.BorderColor, LengthUnit.Pixel, out var value);
@@ -496,7 +647,8 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { paint.r, paint.b, read ? value.Color.r : float.NaN, read ? value.Color.b : float.NaN,
                     context.HoldsInlineOutsideSwap(ArbitraryProperty.BorderColor) ? 1f : 0f },
-                Is.EqualTo(new[] { 0.75f, 0.25f, 0.75f, 0.25f, allEdges ? 0f : 1f }).Within(0.02f));
+                Is.EqualTo(new[] { 0.75f, 0.25f, drivenByPlay ? 0f : 0.75f, drivenByPlay ? 1f : 0.25f,
+                    allEdges ? 0f : 1f }).Within(0.02f));
         }
 
         [Test]
