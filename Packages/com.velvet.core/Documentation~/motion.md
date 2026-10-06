@@ -37,7 +37,9 @@ removed/added on swap, and anything not mentioned falls back to the element's ba
 
 A tween temporarily replaces the element's inline transition duration, delay, and easing. When it
 finishes or is interrupted, it restores the element's own lists, including a `duration-[...]`
-value. Code that writes one of those lists during the tween replaces the value restored for that slot.
+value. When Velvet next writes or releases the tween's timing, it preserves a slot whose keyword or
+list entries differ from its last temporary value. An identical reassignment, or a change undone
+before that observation, does not replace the saved timing.
 
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with

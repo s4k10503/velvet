@@ -148,23 +148,34 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        [Test]
-        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenEnds_Then_ItsDurationIsItsOwnAgain()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AMotionWithAnArbitraryDuration_When_CodeReassignsItsTweensDurationBeforeItIsObserved_Then_ItsOwnDurationReturns(
+            bool changeFirst)
         {
             // Arrange — "a" carrying duration-[400ms], visible on its variants.
             (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
             (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
             using var mounted = MountAAlone();
 
-            // Act — a swap to its hidden pose on a tenth of a second's tween, and past its end.
             s_aPose = "hidden";
             RenderShared(mounted);
+            var a = Root.Q<VisualElement>("a");
+            var temporary = a.style.transitionDuration;
+            var tweenHoldsItsDuration = temporary.keyword == StyleKeyword.Undefined
+                && temporary.value?.Count == 1 && temporary.value[0].unit == TimeUnit.Millisecond
+                && Mathf.Approximately(temporary.value[0].value, 100f);
+
+            // Act — reassign the temporary value, optionally after a change undone before timing is observed.
+            if (changeFirst) a.style.transitionDuration = new List<TimeValue> { new(200f, TimeUnit.Millisecond) };
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
             AdvancePast(0.3f);
 
-            // Assert — its own four tenths, rather than none.
-            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
-            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
-                Is.EqualTo((StyleKeyword.Undefined, true)));
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((tweenHoldsItsDuration, durations.keyword,
+                    durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((true, StyleKeyword.Undefined, true)));
         }
 
         [Test]
