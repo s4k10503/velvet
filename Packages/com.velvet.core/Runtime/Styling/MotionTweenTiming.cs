@@ -61,7 +61,7 @@ namespace Velvet
 
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
-        // A code write takes ownership of its slot; Velvet's temporary realignments do not.
+        // Only differences still observable from the last temporary value replace saved timing.
         private static void Adopt(IStyle style, Hold hold)
         {
             if (!Same(style.transitionDuration, hold.WrittenDuration)) hold.Duration = Copy(style.transitionDuration);
