@@ -142,7 +142,25 @@ namespace Velvet
 
         private static bool HasRunningNativeTransition(VisualElement owner, StyleLonghand longhand)
             => owner.panel != null && s_nativePropertyIds[(int)longhand] is { } id
-                && s_hasRunningNative?.Invoke(owner, new[] { id }) is true;
+                && ReadNativeMemberOrNull(s_hasRunningNative, owner, new[] { id }) is true;
+
+        private static object? ReadNativeMemberOrNull(MemberInfo? member, object owner, object[]? arguments = null)
+        {
+            try
+            {
+                return member switch
+                {
+                    MethodInfo method => method.Invoke(owner, arguments),
+                    PropertyInfo property => property.GetValue(owner),
+                    _ => null,
+                };
+            }
+            catch (Exception exception) when (exception is TargetInvocationException or TargetException
+                or ArgumentException or MemberAccessException or NotSupportedException)
+            {
+                return null;
+            }
+        }
 
         private static readonly MethodInfo? s_hasRunningNative = EngineMember.HasRunningStyleAnimation.ResolveMethod();
         private static readonly PropertyInfo? s_nativePropertyId = EngineMember.StylePropertyNameId.ResolveProperty();
@@ -153,7 +171,7 @@ namespace Velvet
             var ids = new object?[StyleUtilityProperties.LonghandCount];
             for (var i = 0; i < ids.Length; i++)
             {
-                ids[i] = s_nativePropertyId?.GetValue(new StylePropertyName(StyleUtilityProperties.UssName((StyleLonghand)i)));
+                ids[i] = ReadNativeMemberOrNull(s_nativePropertyId, new StylePropertyName(StyleUtilityProperties.UssName((StyleLonghand)i)));
             }
             return ids;
         }

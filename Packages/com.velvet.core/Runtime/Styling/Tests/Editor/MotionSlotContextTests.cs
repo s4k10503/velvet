@@ -12,6 +12,25 @@ namespace Velvet.Tests
     {
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AnUnusableNativeMemberReceiver_When_Read_Then_ItReturnsNull(bool method)
+        {
+            // Arrange
+            System.Reflection.MemberInfo member = method
+                ? EngineMember.HasRunningStyleAnimation.ResolveMethod()
+                : EngineMember.StylePropertyNameId.ResolveProperty();
+            var reader = typeof(MotionSlotContext).GetMethod("ReadNativeMemberOrNull",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var id = EngineMember.StylePropertyNameId.ResolveProperty()?.GetValue(new StylePropertyName("width"));
+
+            // Act
+            var value = reader.Invoke(null, new object[] { member, new object(), method ? new[] { id } : null });
+
+            // Assert
+            Assert.That((member != null, value), Is.EqualTo((true, (object)null)));
+        }
+
         private VisualElement MountInFixedParent()
         {
             var parent = new VisualElement();

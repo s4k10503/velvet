@@ -226,6 +226,8 @@ start. Otherwise, on a mounted element, the start is the current inline value, i
 Spring or Bezier frame, or the resolved value when no inline value is set. If a native transition is
 running on that same element and longhand, the play samples its displayed value before cancellation
 or the class swap. A transition on another property does not change this slot's starting value.
+If the native activity lookup is missing or cannot be invoked, the play uses the ordinary inline or
+resolved start described above.
 
 - **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
   utilities write. Naming one on one side of the delta is enough. When only the from-side names
