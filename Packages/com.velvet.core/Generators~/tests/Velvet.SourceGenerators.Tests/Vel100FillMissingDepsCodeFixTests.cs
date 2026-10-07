@@ -32,16 +32,25 @@ namespace MyApp.Pages
                 expectedDiagnosticId: "VEL100");
 
         [Fact]
-        public async Task Given_SingleLineDepsArray_When_Fixed_Then_TheLocalIsAppendedOnTheSameLine()
+        public async Task Given_AnObjectInitializerWithAMissingRhsDep_When_Fixed_Then_OnlyTheLocalIsAppended()
         {
             // Arrange
-            var source = Render(@"            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(a + b), new object[] { a });");
+            var source = Render(@"            global::Velvet.Hooks.UseMemo(() => new Props { Count = a + b }, new object[] { a });")
+                + @"
+namespace MyApp.Pages
+{
+    public sealed class Props
+    {
+        public int Count { get; set; }
+    }
+}";
 
             // Act
             var fixedText = await FixAsync(source);
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(fixedText, new UseEffectExhaustiveDepsAnalyzer());
 
             // Assert
-            Assert.Contains("new object[] { a, b });", fixedText);
+            Assert.Equal((true, 0), (fixedText.Contains("new object[] { a, b });"), diagnostics.Length));
         }
 
         [Fact]

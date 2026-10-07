@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using Velvet.SourceGenerators.Diagnostics;
 using Velvet.SourceGenerators.Shared;
@@ -178,6 +179,10 @@ namespace Velvet.SourceGenerators.AutoDeps
 
                 var symbol = semanticModel.GetSymbolInfo(idNode, ct).Symbol;
                 if (!IsCapturableSymbol(symbol, lambdaSpan)) continue;
+                if (semanticModel.GetOperation(idNode, ct) is IMemberReferenceOperation
+                    {
+                        Instance: IInstanceReferenceOperation { ReferenceKind: InstanceReferenceKind.ImplicitReceiver },
+                    }) continue;
 
                 var name = idNode.Identifier.ValueText;
                 if (!seen.Add(name)) continue;
