@@ -81,6 +81,7 @@ namespace Velvet
         public BezierTweenChannel? Rotate;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
+        public VisualElement? NativeLayoutOwner;
 
         // CSS-parameter order: cubic-bezier(X1,Y1,X2,Y2).
         public float X1;
@@ -174,6 +175,10 @@ namespace Velvet
             ApplyEased(element, state, CurrentEased(state));
         }
 
+        private static void SyncLayoutOwner(VisualElement element, BezierTweenState state)
+            => state.NativeLayoutOwner = MotionNativeTransitionGuard.SyncLayoutOwner(element, state,
+                state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
+
         // The slot groups this play writes — the bezier sibling of MotionSpringDriver's own.
         private static MotionTransitionSlots DrivenSlots(BezierTweenState state)
         {
@@ -226,6 +231,8 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
             StyleAnimateDriver.ReassertLoop(element);
             MotionNativeTransitionGuard.Release(element, state);
+            if (state.NativeLayoutOwner != null) MotionNativeTransitionGuard.Release(state.NativeLayoutOwner, state);
+            state.NativeLayoutOwner = null;
         }
 
         /// <summary>
@@ -260,6 +267,7 @@ namespace Velvet
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element);
+            SyncLayoutOwner(element, state);
         }
 
         /// <summary>
@@ -313,6 +321,7 @@ namespace Velvet
         // channel value must actually pass its target for that to be visible — clamping would silently flatten it.
         private static void ApplyEased(VisualElement element, BezierTweenState state, float eased)
         {
+            SyncLayoutOwner(element, state);
             if (state.Opacity != null)
             {
                 MotionOpacity.Write(element, Mathf.LerpUnclamped(state.Opacity.From, state.Opacity.To, eased));

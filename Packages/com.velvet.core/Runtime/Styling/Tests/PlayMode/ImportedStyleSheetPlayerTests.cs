@@ -17,7 +17,9 @@ namespace Velvet.Tests
     [PostBuildCleanup("Velvet.Tests.ImportedStyleSheetPlayerSetup")]
     internal sealed class ImportedStyleSheetPlayerTests
     {
-        private static readonly FieldInfo MissingReported = typeof(VelvetStyleUtilities)
+        private const float NativeTolerance = 0.02f;
+
+        private static FieldInfo MissingReported => typeof(VelvetStyleUtilities)
             .GetField("s_missingReported", BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new MissingFieldException(typeof(VelvetStyleUtilities).FullName, "s_missingReported");
 
@@ -50,6 +52,147 @@ namespace Velvet.Tests
         }
 
         internal Observation Snapshot;
+
+        [Serializable]
+        internal sealed class NativeObservation
+        {
+            public string TemplateScaleMode;
+            public float TemplateScale;
+            public float TemplatePixelsPerPoint;
+            public string PanelScaleMode;
+            public float PanelScale;
+            public float PanelPixelsPerPoint;
+            public int ScreenWidth;
+            public int ScreenHeight;
+            public Vector2 ReferenceResolution;
+            public bool MembersResolved;
+            public bool IdleRunning;
+            public bool NativeRunning;
+            public bool UnrelatedRunning;
+            public float InitialWidth;
+            public float NativePaint;
+            public bool CompletedRunning;
+            public float CompletedWidth;
+            public bool RestartedRunning;
+            public float TakeoverPaint;
+            public float InlineTarget;
+            public float CustomStart;
+            public float CustomInline;
+            public float CustomPaint;
+            public bool CustomNativeRunning;
+        }
+
+        internal NativeObservation NativeSnapshot;
+
+        private static bool NativeRunning(VisualElement element, MethodInfo method, object id)
+            => method.Invoke(element, new[] { id }) is true;
+
+        private static void ConfigureNativeWidth(VisualElement element, float duration)
+        {
+            element.style.transitionProperty = new List<StylePropertyName> { new("width") };
+            element.style.transitionDuration = new List<TimeValue> { new(duration, TimeUnit.Second) };
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ANativeTransition_When_AStrippedIl2CppPlayerTakesOver_Then_TheCustomStartMatchesTheDisplayedValue()
+        {
+            // Arrange
+            var assets = Resources.FindObjectsOfTypeAll<ImportedStyleSheetPlayerAssets>().Single();
+            var method = EngineMember.HasRunningStyleAnimation.ResolveMethod();
+            var property = EngineMember.StylePropertyNameId.ResolveProperty();
+            NativeSnapshot = new NativeObservation { MembersResolved = method != null && property != null };
+            var width = property.GetValue(new StylePropertyName("width"));
+            var height = property.GetValue(new StylePropertyName("height"));
+            var element = Target("native-start", assets.PanelSettings);
+            var settings = _settings.Single();
+            yield return null;
+            yield return null;
+            NativeSnapshot.TemplateScaleMode = settings.scaleMode.ToString();
+            NativeSnapshot.TemplateScale = settings.scale;
+            NativeSnapshot.TemplatePixelsPerPoint = element.panel.scaledPixelsPerPoint;
+            NativeSnapshot.ScreenWidth = Screen.width;
+            NativeSnapshot.ScreenHeight = Screen.height;
+            NativeSnapshot.ReferenceResolution = settings.referenceResolution;
+            settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            settings.scale = 1f;
+            element.style.width = 200f;
+            element.style.height = 20f;
+            yield return null;
+            yield return null;
+            NativeSnapshot.PanelScaleMode = settings.scaleMode.ToString();
+            NativeSnapshot.PanelScale = settings.scale;
+            NativeSnapshot.PanelPixelsPerPoint = element.panel.scaledPixelsPerPoint;
+            NativeSnapshot.InitialWidth = element.resolvedStyle.width;
+            NativeSnapshot.IdleRunning = NativeRunning(element, method, width);
+
+            // Act
+            ConfigureNativeWidth(element, 2f);
+            yield return null;
+            element.style.width = 40f;
+            yield return new WaitForSecondsRealtime(0.5f);
+            NativeSnapshot.NativeRunning = NativeRunning(element, method, width);
+            NativeSnapshot.UnrelatedRunning = NativeRunning(element, method, height);
+            NativeSnapshot.NativePaint = element.resolvedStyle.width;
+            yield return new WaitForSecondsRealtime(2.1f);
+            NativeSnapshot.CompletedRunning = NativeRunning(element, method, width);
+            NativeSnapshot.CompletedWidth = element.resolvedStyle.width;
+            ConfigureNativeWidth(element, 0f);
+            element.style.width = 200f;
+            yield return null;
+            yield return null;
+            ConfigureNativeWidth(element, 2f);
+            yield return null;
+            element.style.width = 40f;
+            yield return new WaitForSecondsRealtime(0.5f);
+            NativeSnapshot.RestartedRunning = NativeRunning(element, method, width);
+            NativeSnapshot.TakeoverPaint = element.resolvedStyle.width;
+            NativeSnapshot.InlineTarget = element.style.width.value.value;
+            var from = Array.Empty<string>();
+            var to = new[] { "w-[100px]" };
+            var context = MotionSlotContext.Read(element, from, to, _ => false);
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, context);
+            NativeSnapshot.CustomStart = plan.Lengths.Single(channel => channel.Property == ArbitraryProperty.Width).From;
+            var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, 1f);
+            try
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                NativeSnapshot.CustomInline = element.style.width.value.value;
+                yield return null;
+                yield return null;
+                NativeSnapshot.CustomPaint = element.resolvedStyle.width;
+                NativeSnapshot.CustomNativeRunning = NativeRunning(element, method, width);
+            }
+            finally { BezierTweenDriver.ClearInlineOverrides(element, state); }
+
+            // Assert
+            Assert.That(NativeActual(assets), Is.EqualTo(new[]
+            {
+                1f, 1f, 0f, 1f, 0f, 200f, 1f, 0f, 40f, 1f, 1f, 40f,
+                NativeSnapshot.TakeoverPaint, NativeSnapshot.TakeoverPaint, NativeSnapshot.TakeoverPaint, 0f,
+            }).Within(NativeTolerance));
+        }
+
+        private float[] NativeActual(ImportedStyleSheetPlayerAssets assets)
+        {
+#if ENABLE_IL2CPP
+            const bool il2Cpp = true;
+#else
+            const bool il2Cpp = false;
+#endif
+            var s = NativeSnapshot;
+            return new[]
+            {
+                Application.platform == RuntimePlatform.OSXPlayer && il2Cpp
+                    && assets.ScriptingBackend == "IL2CPP" && assets.StrippingLevel == "High" ? 1f : 0f,
+                s.MembersResolved ? 1f : 0f, s.IdleRunning ? 1f : 0f, s.NativeRunning ? 1f : 0f,
+                s.UnrelatedRunning ? 1f : 0f, s.InitialWidth, s.NativePaint > 40f && s.NativePaint < 200f ? 1f : 0f,
+                s.CompletedRunning ? 1f : 0f, s.CompletedWidth, s.RestartedRunning ? 1f : 0f,
+                s.TakeoverPaint > 40f && s.TakeoverPaint < 200f
+                    && Mathf.Abs(s.TakeoverPaint - s.InlineTarget) > NativeTolerance ? 1f : 0f, s.InlineTarget,
+                s.CustomStart, s.CustomInline, s.CustomPaint, s.CustomNativeRunning ? 1f : 0f,
+            };
+        }
 
         private static StyleSheet[] Imports(StyleSheet sheet)
             => (EngineMember.StyleSheetImports.ResolveField()?.GetValue(sheet) as Array ?? Array.Empty<object>())

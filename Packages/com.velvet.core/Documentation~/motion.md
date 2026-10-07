@@ -220,15 +220,20 @@ new StyleTransitionConfig
 
 ## Driven channels (Spring and Bezier)
 
-Both non-CSS drivers write inline styles every tick rather than handing the change to UI Toolkit's
-own transition system, so what they can animate is exactly what they can read a number for **out
-of the class strings themselves** — there is no resolved style to sample, since the class swap and
-the plan are built in one synchronous call, off-panel, before any style resolution.
+Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
+classes and the element's classes left in place. An explicit swapped-out value takes priority as the
+start. Otherwise, on a mounted element, the start is the current inline value, including a running
+Spring or Bezier frame, or the resolved value when no inline value is set. If a native transition is
+running on that same element and longhand, the play samples its displayed value before cancellation
+or the class swap. A transition on another property does not change this slot's starting value.
+If the native activity lookup is missing or cannot be invoked, the play uses the ordinary inline or
+resolved start described above.
 
 - **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio the transform
-  utilities write. Each of these has an identity value (opacity 1, scale 1, translate 0,
-  rotate 0deg), so naming it on **one** side of the delta is enough — the silent side falls back
-  to identity, matching the usual "declare only what changes" authoring style.
+  utilities write. Naming one on one side of the delta is enough. When only the from-side names
+  it and no resting class supplies a target, the target is its identity value (opacity 1, scale 1,
+  translate 0, rotate 0deg). When only the to-side names it, the play samples the current value;
+  on an off-panel element it starts at identity.
 - **Colors.** `background-color`, `color` and `border-color`, from palette utilities
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
@@ -250,11 +255,12 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   `tracking-wide` through a fixed named step, neither of which has a C# mirror to read a magnitude
   from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
   animates. Reach for the bracket form when you want the size to move.
-- **Both sides must name the property.** Unlike the quartet, a color or a length has no identity
-  value the silent side could stand in for ("no background color declared" is not the statement
-  "transparent"), so a property only one side names is **not** animated: the swap lands it
-  instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
-  `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
+- **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
+  the start; otherwise a mounted element supplies its current inline or displayed value. Width and
+  height, including their min/max forms, can convert between pixels and percentages through the
+  parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start,
+  land instantly. A color or length with no compatible effective to-side target lands instantly;
+  classes left in place can provide that target when the swap removes a from-side class.
 - **Classes on one side that write the same slot resolve as the cascade resolves them.** A shorthand
   is read slot by slot — `p-8` as four edges, `size-*` as a width and a height, `rounded-*` as four
   corners, `border-*` as four widths — and each slot animates toward whichever class holds it at
@@ -263,6 +269,11 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   `translate-x-4`), the later write holds the slot, including across a shorthand and its longhand.
   Thus `pt-[2px] p-[8px]` holds the top at 8px; reversing those tokens holds it at 2px,
   including when an update reorders existing tokens.
+  Classes left in place participate in the cascade of the slots named by the delta. A resting inline
+  value keeps its slot over a plain stylesheet utility, so `pt-[2px]` beside a `p-0` → `p-8` swap keeps its top edge. Running
+  custom frames and native targets supply current values instead of ordinary resting holders;
+  inactive inline border edges still block a uniform stylesheet border-color channel. Resting
+  important holders keep their priority, while an important inline holder the swap replaces can change.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
   other three toward `p-8`, and `opacity-50 opacity-20` animates toward `opacity-50`. A slot held by a
@@ -277,6 +288,8 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   gradients are baked silhouette paints; `filter-*` transitions by its own path
   ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.
+- A target-only uniform scale or border color lands instantly when the sampled x/y scale values
+  or border edge colors differ.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands

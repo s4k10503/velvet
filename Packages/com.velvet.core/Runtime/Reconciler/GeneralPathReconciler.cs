@@ -2127,7 +2127,7 @@ namespace Velvet
             // the enter's cancel put back do. The hold lands whether or not the anchor plays an exit, since the
             // enter StartPresenceExit cancelled never reaches the swap that would release it, and the descendants'
             // holds land on the same terms.
-            var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.RunsOnSwap(exitTransition);
+            var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.TweensOnSwap(exitTransition);
             var landsAfterExit = landsBeforeExit ? null : ghostMotionElement;
             if (landsBeforeExit && ghostMotionElement != null)
             {
@@ -2160,7 +2160,7 @@ namespace Velvet
             ReconcilerContext.PresenceExitWait wait, float staggerSec)
         {
             var element = exit.Element;
-            var landsBeforeExit = !StyleAnimationScheduler.RunsOnSwap(exit.Config);
+            var landsBeforeExit = !StyleAnimationScheduler.TweensOnSwap(exit.Config);
             if (landsBeforeExit)
             {
                 _patcher.LandInlineHold(element);
@@ -2532,7 +2532,7 @@ namespace Velvet
             {
                 // As for the variant enter above; of the classic enters, only a timed tween cancels it.
                 var target = ClassicTarget(anchor, motionElement);
-                if (motion.Transition != null && StyleAnimationScheduler.RunsOnSwap(motion.Transition))
+                if (motion.Transition != null && StyleAnimationScheduler.TweensOnSwap(motion.Transition))
                 {
                     _patcher.LandInlineHold(target);
                 }
