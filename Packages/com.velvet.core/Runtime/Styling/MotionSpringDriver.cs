@@ -173,7 +173,8 @@ namespace Velvet
         /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
         }

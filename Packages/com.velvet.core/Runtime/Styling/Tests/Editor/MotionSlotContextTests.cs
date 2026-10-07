@@ -1210,6 +1210,107 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { expectedPaint, expectedInline, expectedStart, expectedStart, expectedHeight, 0f }).Within(0.02f));
         }
 
+        [TestCase(TransitionType.Spring, false)]
+        [TestCase(TransitionType.Bezier, false)]
+        [TestCase(TransitionType.Spring, true)]
+        [TestCase(TransitionType.Bezier, true)]
+        public void Given_NativeWidthAndHeightAnimations_When_AWidthOnlyMotionStarts_Then_HeightContinuesAndWidthUsesTheCustomFrame(TransitionType type, bool clipped)
+        {
+            // Arrange
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, () => now);
+            var parent = new VisualElement();
+            parent.style.width = 200f;
+            parent.style.height = 100f;
+            parent.style.flexDirection = FlexDirection.Column;
+            _window.rootVisualElement.Add(parent);
+            _mounted = V.Mount(parent, V.Div(name: "computed-width", className: clipped ? "clip-path-[inset(0)]" : null));
+            var element = parent.Q<VisualElement>("computed-width");
+            var owner = ClipPathLayoutBox.Of(element);
+            var expectedOwner = ReferenceEquals(owner, element) == !clipped;
+            owner.style.flexShrink = 0f;
+            owner.style.alignSelf = Align.FlexStart;
+            owner.style.width = 200f;
+            owner.style.height = 100f;
+            var reference = new VisualElement();
+            reference.style.flexShrink = 0f;
+            reference.style.alignSelf = Align.FlexStart;
+            reference.style.height = 0f;
+            reference.style.width = 160f;
+            reference.style.transitionProperty = new List<StylePropertyName> { new("none") };
+            parent.Add(reference);
+            ForcePanelUpdate(owner.panel);
+            owner.style.transitionProperty = new List<StylePropertyName> { new("width"), new("height") };
+            owner.style.transitionDuration = new List<TimeValue> { new(2f, TimeUnit.Second) };
+            owner.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(owner.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(owner.panel);
+            owner.style.width = 40f;
+            owner.style.height = 20f;
+            ForcePanelUpdate(owner.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(owner.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(owner.panel);
+            ForcePanelUpdate(owner.panel);
+            var beforeWidth = owner.resolvedStyle.width;
+            var beforeHeight = owner.resolvedStyle.height;
+            var referenceBeforeInline = reference.style.width.value.value;
+            var referenceBeforePaint = reference.resolvedStyle.width;
+            var referenceBeforeIdle = !ProbeNativeRunning(reference, ArbitraryProperty.Width);
+            var sameBox = ReferenceEquals(owner.parent, reference.parent) && ReferenceEquals(owner.panel, reference.panel);
+            var nativeMethod = EngineMember.HasRunningStyleAnimation.ResolveMethod();
+            var heightId = EngineMember.StylePropertyNameId.ResolveProperty()?.GetValue(new StylePropertyName("height"));
+            bool NativeHeightRunning() => heightId != null && nativeMethod?.Invoke(owner, new[] { heightId }) is true;
+            var nativeWidthBefore = ProbeNativeRunning(owner, ArbitraryProperty.Width);
+            var nativeHeightBefore = NativeHeightRunning();
+            var scheduler = _mounted.Root.Reconciler.Context.StyleAnimationScheduler;
+
+            // Act
+            Play(scheduler, element, type, false, new string[0], new[] { "w-[100px]" });
+            ForcePanelUpdate(owner.panel);
+            var startInline = owner.style.width.value.value;
+            var startPaint = owner.resolvedStyle.width;
+            var startHeight = owner.resolvedStyle.height;
+            var held = owner.style.transitionProperty.value;
+            var keptOnlyHeight = held != null && held.Count == 1 && held[0] == new StylePropertyName("height");
+            var entries = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(scheduler);
+            var pending = entries[element];
+            now += 0.5;
+            if (type == TransitionType.Spring)
+            {
+                MotionSpringDriver.Step(element, (MotionSpringState)pending.GetType().GetField("Spring").GetValue(pending), 0.5f);
+            }
+            else
+            {
+                BezierTweenDriver.Step(element, (BezierTweenState)pending.GetType().GetField("Bezier").GetValue(pending), 0.5f);
+            }
+            reference.style.width = owner.style.width.value.value;
+            ForcePanelUpdate(owner.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(owner.panel);
+            ForcePanelUpdate(owner.panel);
+            var frameInline = owner.style.width.value.value;
+            var framePaint = owner.resolvedStyle.width;
+            var referenceFramePaint = reference.resolvedStyle.width;
+            var frameHeight = owner.resolvedStyle.height;
+            var referenceFrameMatches = reference.style.width.keyword == StyleKeyword.Undefined
+                && reference.style.width.value.unit == LengthUnit.Pixel && reference.style.width.value.value.Equals(frameInline);
+            var nativeWidthAfter = ProbeNativeRunning(owner, ArbitraryProperty.Width);
+            var nativeHeightAfter = NativeHeightRunning();
+            var referenceAfterIdle = !ProbeNativeRunning(reference, ArbitraryProperty.Width);
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(new[] { expectedOwner ? 1f : 0f, sameBox ? 1f : 0f, referenceBeforeInline, referenceBeforePaint,
+                    referenceBeforeIdle ? 1f : 0f, beforeWidth, beforeHeight, nativeWidthBefore ? 1f : 0f, nativeHeightBefore ? 1f : 0f,
+                    startInline, startPaint, startHeight, keptOnlyHeight ? 1f : 0f, framePaint, frameHeight,
+                    Mathf.Approximately(frameInline, startInline) ? 0f : 1f, nativeWidthAfter ? 1f : 0f, nativeHeightAfter ? 1f : 0f,
+                    referenceFrameMatches ? 1f : 0f, referenceAfterIdle ? 1f : 0f },
+                Is.EqualTo(new[] { 1f, 1f, 160f, 160f, 1f, 160f, 80f, 1f, 1f, 160f, 160f, 80f, 1f,
+                    referenceFramePaint, 60f, 1f, 0f, 1f, 1f, 1f }).Within(0.02f));
+        }
+
         private static string RestingWidthClass(bool nativeTransition, string phase)
             => phase == "unrelated" ? "h-10" : nativeTransition && phase == "running" ? "w-10" : null;
 
