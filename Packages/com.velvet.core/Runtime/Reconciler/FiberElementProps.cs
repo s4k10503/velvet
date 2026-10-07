@@ -86,8 +86,8 @@ namespace Velvet
         private DragOverlaySettings? _dragOverlay;
 
         /// <summary>
-        /// When true, a press that starts on this element or inside it never arms a draggable enclosing
-        /// it, so a control inside a draggable keeps its own pointer gesture (a slider's thumb, a text
+        /// When true, a press that starts on this element or inside it never arms this element's own
+        /// draggable or an enclosing one, so a control keeps its own pointer gesture (a slider's thumb, a text
         /// field's selection). A draggable inside this element still arms.
         /// </summary>
         public bool NoDrag { get => _noDrag; set { ThrowIfReadOnly(); _noDrag = value; } }

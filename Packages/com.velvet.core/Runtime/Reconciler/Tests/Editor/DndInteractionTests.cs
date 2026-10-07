@@ -35,6 +35,7 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setFlag;
         private static StateUpdater<int> s_setStage;
         private static bool s_innerDisabled;
+        private static bool s_outerNoDrag;
 
         [SetUp]
         public void SetUp()
@@ -50,6 +51,7 @@ namespace Velvet.Tests
             s_setFlag = default;
             s_setStage = default;
             s_innerDisabled = false;
+            s_outerNoDrag = false;
         }
 
         [TearDown]
@@ -686,6 +688,7 @@ namespace Velvet.Tests
             {
                 V.Draggable("outer", name: "outer",
                     className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                    props: new FiberElementProps { NoDrag = s_outerNoDrag },
                     children: new VNode[]
                     {
                         V.Draggable("inner", name: "inner", disabled: s_innerDisabled,
@@ -718,6 +721,57 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_started, Is.EqualTo(new[] { "outer" }));
+        }
+
+        // GREEN_ON_BASE(characterization): NoDrag on an ancestor must still leave an inner draggable armed.
+        [Test]
+        public void Given_ADraggableInsideOneMarkedNoDrag_When_APressLandsOnTheInnerOne_Then_OnlyTheInnerOneDrags()
+        {
+            // Arrange
+            s_outerNoDrag = true;
+            Mount(NestedDraggablesScene);
+
+            // Act
+            SendPointerDown(Q("inner"), new Vector2(10, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "inner" }));
+        }
+
+        [Component]
+        private static VNode NoDragSourceScene()
+        {
+            var (flag, setFlag) = Hooks.UseState(true);
+            s_setFlag = setFlag;
+            return V.DndContext(
+                onDragStart: e => s_started.Add(e.Active.Id),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                        props: new FiberElementProps { NoDrag = flag },
+                        children: new VNode[] { V.Div(name: "thumb", className: "w-[20px] h-[20px]") }),
+                });
+        }
+
+        [TestCase("item")]
+        [TestCase("thumb")]
+        public void Given_ADraggableMarkedNoDrag_When_PressedBeforeAndAfterClearingTheMarker_Then_OnlyTheLaterPressStartsADrag(string targetName)
+        {
+            // Arrange
+            Mount(NoDragSourceScene);
+
+            // Act
+            SendPointerDown(Q(targetName), new Vector2(10, 10));
+            var startsBeforeClearing = s_started.Count;
+            SendPointerUp(Q(targetName), new Vector2(10, 10));
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+            SendPointerDown(Q(targetName), new Vector2(10, 10));
+
+            // Assert
+            Assert.That((startsBeforeClearing, string.Join(",", s_started)), Is.EqualTo((0, "item")));
         }
 
         // A draggable holding a plain wrapper, inside it an element whose NoDrag the flag sets, and inside
@@ -826,8 +880,9 @@ namespace Velvet.Tests
             Assert.That((ReferenceEquals(marked, plain), s_started.Count), Is.EqualTo((true, 1)));
         }
 
+        // GREEN_ON_BASE(characterization): disabling an active source must also block its next press.
         [Test]
-        public void Given_ADragPressedOnADescendantCarryingWhileTap_When_ARenderDisablesTheDraggableMidDrag_Then_TheDescendantsTapClassIsSettled()
+        public void Given_ADragPressedOnADescendantCarryingWhileTap_When_ARenderDisablesTheDraggableMidDrag_Then_TheTapSettlesAndALaterPressCannotDrag()
         {
             // Arrange — disabling the active source cancels its session teardown-flavored.
             Mount(TappedGripScene);
@@ -839,9 +894,15 @@ namespace Velvet.Tests
             // Act
             s_setFlag.Invoke(true);
             _mounted.FlushStateForTest();
+            var pressedAfterDisabling = grip.ClassListContains("pressed");
+            SendPointerUp(grip, new Vector2(20, 10));
+            SendPointerDown(grip, new Vector2(10, 10));
+            SendPointerMove(grip, new Vector2(20, 10));
+            SendPointerMove(grip, new Vector2(30, 10));
 
             // Assert
-            Assert.That((pressedDuringTheDrag, grip.ClassListContains("pressed")), Is.EqualTo((true, false)));
+            Assert.That((pressedDuringTheDrag, pressedAfterDisabling,
+                Q("item").style.translate.keyword != StyleKeyword.Undefined), Is.EqualTo((true, false, true)));
         }
 
         // GREEN_ON_BASE(characterization): a pending session the base already discards on a pointer cancel, which its root and source
