@@ -170,7 +170,8 @@ namespace Velvet
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state, CurrentEased(state));
         }

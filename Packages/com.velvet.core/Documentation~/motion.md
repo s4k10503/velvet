@@ -316,7 +316,9 @@ resolved start described above.
   suspends. One blind spot: the check runs once at play start, so a variant turning on
   `transition-all` mid-play is not picked up until the next play. A play starting while a variant
   tween holds the inline `transition-property` takes what it drives out of that list rather than
-  writing over it.
+  writing over it. At play start, spring and bezier length channels remove only their own longhands
+  from a held inline list on each style owner; a width-only play keeps that list's height entry,
+  including on a clip wrapper.
   When it does suspend, the suspension is **element-wide**: the element's *other* transitions
   land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
   element is already parked at its from-pose over that window. This is **narrower than Framer

@@ -90,6 +90,10 @@ namespace Velvet
         /// transitions leaves the element alone.
         /// </summary>
         public static void SuspendIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+            => SuspendIfIntercepted(element, owner, drivenSlots, LonghandsOf(drivenSlots & MotionTransitionSlots.Length));
+
+        internal static void SuspendIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots,
+            StyleLonghandSet drivenLengths)
         {
             if (drivenSlots == MotionTransitionSlots.None)
             {
@@ -101,7 +105,7 @@ namespace Velvet
             var held = HoldsAForeignValue(element) && element.style.transitionProperty.value != null;
             if (held)
             {
-                ExcludeFromHeldList(element, LonghandsOf(drivenSlots));
+                ExcludeFromHeldList(element, LonghandsOf(drivenSlots & ~MotionTransitionSlots.Length).Union(drivenLengths));
             }
             if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -120,8 +124,8 @@ namespace Velvet
         /// <paramref name="drivenSlots"/> and releases once they stop.
         /// </summary>
         /// <remarks>
-        /// Two departures from <see cref="SuspendIfIntercepted"/>, both because this runs on a patch rather than
-        /// at a play's start. The inline transition-duration is not read (see
+        /// Two departures from <see cref="SuspendIfIntercepted(VisualElement, object, MotionTransitionSlots)"/>,
+        /// both because this runs on a patch rather than at a play's start. The inline transition-duration is not read (see
         /// <see cref="DeclaredSlots(VisualElement, bool)"/>), and the suspension is written only on the patch
         /// that ADDS this owner, and then only over a slot this class still holds (see
         /// <see cref="HoldsAForeignValue"/>) — a patch is not a new play, so re-asserting would overwrite
@@ -440,9 +444,27 @@ namespace Velvet
             var next = LayoutOwner(element, lengths, property);
             if (ReferenceEquals(previous, next)) return previous;
             if (previous != null) Release(previous, owner);
-            if (next != null) SuspendIfIntercepted(next, owner, MotionTransitionSlots.Length);
-            else if (previous != null) SuspendIfIntercepted(element, owner, drivenSlots);
+            if (next != null) SuspendIfIntercepted(next, owner, MotionTransitionSlots.Length,
+                LengthLonghands(element, next, lengths, property));
+            else if (previous != null) SuspendIfIntercepted(element, owner, drivenSlots,
+                LengthLonghands(element, element, lengths, property));
             return next;
+        }
+
+        internal static StyleLonghandSet LengthLonghands<TChannel>(VisualElement element, VisualElement styleOwner,
+            List<TChannel>? lengths, Func<TChannel, ArbitraryProperty> property)
+        {
+            var longhands = StyleLonghandSet.Empty;
+            if (lengths == null) return longhands;
+            foreach (var channel in lengths)
+            {
+                var name = property(channel);
+                if (ReferenceEquals(ClipPathLayoutBox.StyleFor(element, name), styleOwner.style))
+                {
+                    longhands = longhands.Union(StyleArbitraryLonghands.Of(name));
+                }
+            }
+            return longhands;
         }
 
         private static VisualElement? LayoutOwner<TChannel>(VisualElement element, List<TChannel>? lengths,
