@@ -172,10 +172,9 @@ namespace Velvet
         // a toggle on this element ever change what a class-driven pass builds", which the reconciler asks so
         // it can put the array aside for a re-sync that will have none of its own.
         //
-        // The peel is the last ':' rather than each family's own parser: every variant syntax spells its
-        // payload after a colon, no gate token contains one, and this only ever opens an entry — so a token
-        // shape it reads too generously costs one dictionary slot, while one it failed to recognize would
-        // cost the payload its effect.
+        // Peel recognized variant layers with their own parsers, which preserve colons inside bracketed
+        // payloads such as font-[weight:700] and font-[addr:Fonts/Body]. A bare arbitrary utility has no
+        // variant layer, so its internal colon must not open a variant source entry.
         public static bool DeclaresGatePayload(string[] classNames)
         {
             if (classNames == null)
@@ -188,14 +187,20 @@ namespace Velvet
                 {
                     continue;
                 }
-                var colon = cls.LastIndexOf(':');
-                if (colon < 0 || colon == cls.Length - 1)
+                var payload = cls;
+                var variant = false;
+                while (StyleVariantClass.TryParse(payload, out _, out var next)
+                    || StyleHasVariantClass.TryParse(payload, out _, out _, out next)
+                    || StyleAttributeVariantClass.TryParse(payload, out _, out _, out _, out next)
+                    || StyleStructuralVariantClass.TryParse(payload, out _, out _, out next)
+                    || StyleSupportsVariantClass.TryParse(payload, out _, out _, out next)
+                    || StyleChildVariantClass.TryParse(payload, out next))
                 {
-                    continue;
+                    variant = true;
+                    payload = next ?? string.Empty;
                 }
-                var payload = StyleArbitraryValueResolver.StripImportant(
-                    cls.Substring(colon + 1), out _);
-                if (IsVariantGateToken(payload))
+                var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
+                if (variant && IsVariantGateToken(core))
                 {
                     return true;
                 }
