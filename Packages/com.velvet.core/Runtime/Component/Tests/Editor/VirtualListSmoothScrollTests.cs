@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.UIElements.Experimental;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -28,6 +29,15 @@ namespace Velvet.Tests
 
         private HeadlessEditorPanelHost _host;
         private double _now;
+        private VNode[] _tree;
+
+        internal enum ScrollInterruption
+        {
+            BetweenTicks,
+            DuringTick,
+            BeforeFirstTick,
+            AxisFlip,
+        }
 
         public override void SetUp()
         {
@@ -50,12 +60,30 @@ namespace Velvet.Tests
             var listRef = new Ref<VirtualListHandle>();
             var node = V.VirtualList(Items, item => item, itemHeight: 50f, renderer: item => V.Label(text: item),
                 overscan: 0, listRef: listRef);
-            Reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[] { node });
+            _tree = new VNode[] { node };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), _tree);
             var scrollView = (ScrollView)Root.ElementAt(0);
+            SetViewportLength(scrollView);
+            return (scrollView, listRef.Current);
+        }
+
+        // The headless panel has no layout phase; its next geometry event would measure this length.
+        private void SetViewportLength(ScrollView scrollView)
+        {
             typeof(FiberVirtualListController)
                 .GetField("_viewportHeight", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(Reconciler.Context.VirtualListControllers[scrollView], 200f);
-            return (scrollView, listRef.Current);
+        }
+
+        private void TurnHorizontal()
+        {
+            var next = new VNode[]
+            {
+                V.VirtualList(Items, item => item, itemHeight: 50f, renderer: item => V.Label(text: item),
+                    horizontal: true, overscan: 0),
+            };
+            Reconciler.Reconcile(Root, _tree, next);
+            _tree = next;
         }
 
         private void Advance(double seconds)
@@ -65,9 +93,10 @@ namespace Velvet.Tests
         }
 
         // The scroller's range as the content's last layout left it, as VirtualListSizingAndScrollTests lays it out.
-        private static void LayOutContent(ScrollView scrollView, float scrollableHeight)
+        private static void LayOutContent(ScrollView scrollView, float scrollableHeight, bool horizontal = false)
         {
-            scrollView.verticalScroller.highValue = scrollableHeight;
+            var scroller = horizontal ? scrollView.horizontalScroller : scrollView.verticalScroller;
+            scroller.highValue = scrollableHeight;
             using var evt = GeometryChangedEvent.GetPooled(Rect.zero, Rect.zero);
             scrollView.contentContainer.SimulateEvent(evt);
         }
@@ -90,19 +119,34 @@ namespace Velvet.Tests
             Assert.That(scrollView.verticalScroller.value, Is.GreaterThan(0f).And.LessThan(500f));
         }
 
-        [Test]
-        public void Given_ASmoothScrollThatHasStepped_When_ItsDurationHasPassed_Then_TheListIsAtTheItem()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ASmoothScrollThatHasStepped_When_ItsDurationHasPassed_Then_TheListIsAtTheItem(
+            bool flipAndClamp)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
+            if (flipAndClamp)
+            {
+                scrollView.verticalScroller.highValue = 100f;
+                scrollView.verticalScroller.value = 20f;
+                scrollView.horizontalScroller.highValue = 100f;
+                scrollView.horizontalScroller.value = 100f;
+                TurnHorizontal();
+                SetViewportLength(scrollView);
+            }
+            var scroller = flipAndClamp ? scrollView.horizontalScroller : scrollView.verticalScroller;
             handle.ScrollToItem(10, VirtualListAlign.Start, VirtualListScrollBehavior.Smooth);
+            if (flipAndClamp) scroller.highValue = 50f;
+            var clampedBeforeTick = scroller.value;
             Advance(0.1);
 
             // Act
             Advance(0.5);
+            if (flipAndClamp) LayOutContent(scrollView, 4800f, horizontal: true);
 
             // Assert
-            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(500f));
+            Assert.That((!flipAndClamp || clampedBeforeTick == 50f, scroller.value), Is.EqualTo((true, 500f)));
         }
 
         [Test]
@@ -138,20 +182,90 @@ namespace Velvet.Tests
             Assert.That(scrollView.verticalScroller.value, Is.EqualTo(50f));
         }
 
-        [Test]
-        public void Given_ASmoothScrollInFlight_When_TheListIsScrolledFromElsewhere_Then_TheAnimationLeavesItThere()
+        [TestCase(ScrollInterruption.BetweenTicks)]
+        [TestCase(ScrollInterruption.DuringTick)]
+        [TestCase(ScrollInterruption.BeforeFirstTick)]
+        [TestCase(ScrollInterruption.AxisFlip)]
+        public void Given_ASmoothScrollInFlight_When_AnExternalChangeInterruptsIt_Then_TheOldAnimationLeavesTheListThere(
+            ScrollInterruption interruption)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
-            handle.ScrollToItem(10, VirtualListAlign.Start, VirtualListScrollBehavior.Smooth);
-            Advance(0.1);
+            var initialRange = (scrollView.verticalScroller.lowValue, scrollView.verticalScroller.highValue);
+            var initialValue = 0f;
+            if (interruption == ScrollInterruption.BeforeFirstTick)
+            {
+                scrollView.verticalScroller.slider.SetValueWithoutNotify(50f);
+                initialValue = scrollView.verticalScroller.value;
+            }
+            var interrupted = false;
+            var stoppingEarlierAnimation = false;
+            var earlierCompletions = 0;
+            var earlierCompletionDuringStop = false;
+            ValueAnimation<float> earlierAnimation = null;
+            if (interruption == ScrollInterruption.DuringTick)
+            {
+                // Unity ticks a snapshot: this earlier animation stops the list's animation before its tick.
+                earlierAnimation = scrollView.experimental.animation.Start(0f, 1f, 1000, (_, _) =>
+                {
+                    if (interrupted) return;
+                    interrupted = true;
+                    scrollView.verticalScroller.value = 20f;
+                }).KeepAlive();
+                earlierAnimation.OnCompleted(() =>
+                {
+                    earlierCompletions++;
+                    earlierCompletionDuringStop = stoppingEarlierAnimation;
+                });
+            }
 
-            // Act
-            scrollView.verticalScroller.value = 20f;
-            Advance(0.5);
+            try
+            {
+                handle.ScrollToItem(10, VirtualListAlign.Start, VirtualListScrollBehavior.Smooth);
+                if (interruption == ScrollInterruption.BetweenTicks) Advance(0.1);
 
-            // Assert
-            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(20f));
+                // Act
+                switch (interruption)
+                {
+                    case ScrollInterruption.BetweenTicks:
+                        scrollView.verticalScroller.value = 20f;
+                        break;
+                    case ScrollInterruption.BeforeFirstTick:
+                        scrollView.verticalScroller.value = 0f;
+                        break;
+                    case ScrollInterruption.AxisFlip:
+                        TurnHorizontal();
+                        break;
+                }
+                Advance(0.5);
+                var stopCompletedInline = true;
+                if (earlierAnimation != null)
+                {
+                    var completionsBeforeStop = earlierCompletions;
+                    stoppingEarlierAnimation = true;
+                    earlierAnimation.Stop();
+                    stoppingEarlierAnimation = false;
+                    var completedInline = completionsBeforeStop == 0 && earlierCompletions == 1 && earlierCompletionDuringStop;
+                    earlierAnimation.Stop();
+                    stopCompletedInline = completedInline && earlierCompletions == 1;
+                }
+
+                // Assert
+                var unchangedRange = initialRange.Equals(
+                    (scrollView.verticalScroller.lowValue, scrollView.verticalScroller.highValue));
+                var setupHeld = interruption != ScrollInterruption.BeforeFirstTick
+                    || initialValue == 50f && initialRange.Item2 > 50f && unchangedRange;
+                var expectedVertical = interruption is ScrollInterruption.BeforeFirstTick or ScrollInterruption.AxisFlip
+                    ? 0f : 20f;
+                Assert.That((setupHeld, interruption != ScrollInterruption.DuringTick || interrupted, stopCompletedInline,
+                        scrollView.verticalScroller.value, scrollView.horizontalScroller.value),
+                    Is.EqualTo((true, true, true, expectedVertical, 0f)));
+            }
+            finally
+            {
+                stoppingEarlierAnimation = false;
+                earlierAnimation?.Stop();
+            }
         }
 
         [Test]
@@ -209,23 +323,38 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false, false, 100f)));
         }
 
-        [TestCase(VirtualListScrollBehavior.Instant)]
-        [TestCase(VirtualListScrollBehavior.Smooth)]
+        [TestCase(VirtualListScrollBehavior.Instant, false)]
+        [TestCase(VirtualListScrollBehavior.Smooth, false)]
+        [TestCase(VirtualListScrollBehavior.Instant, true)]
         public void Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(
-            VirtualListScrollBehavior behavior)
+            VirtualListScrollBehavior behavior, bool silentValueChange)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
             scrollView.verticalScroller.highValue = 100f;
+            var changedSilently = false;
+            if (silentValueChange)
+            {
+                scrollView.verticalScroller.valueChanged += _ =>
+                {
+                    if (changedSilently) return;
+                    changedSilently = true;
+                    scrollView.verticalScroller.slider.SetValueWithoutNotify(0f);
+                };
+            }
             handle.ScrollToItem(10, VirtualListAlign.Start, behavior);
             Advance(0.5);
+            var pendingBefore = ControllerState(scrollView, "_pendingScrollTarget") != null;
+            var externalValue = silentValueChange ? 50f : 20f;
 
             // Act
-            scrollView.verticalScroller.value = 20f;
+            if (silentValueChange) scrollView.verticalScroller.highValue = 50f;
+            scrollView.verticalScroller.value = externalValue;
             LayOutContent(scrollView, 4800f);
 
             // Assert
-            Assert.That(scrollView.verticalScroller.value, Is.EqualTo(20f));
+            Assert.That((pendingBefore, !silentValueChange || changedSilently, scrollView.verticalScroller.value),
+                Is.EqualTo((true, true, externalValue)));
         }
 
         // GREEN_ON_BASE(characterization): the existing deferred target survives a scroller range change.

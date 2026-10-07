@@ -628,6 +628,7 @@ namespace Velvet
             }
             // An end equal to offset is the end of the last item starting before it.
             var end = Array.BinarySearch(_offsets, 1, last + 1, offset);
+            // MUTANT_SURVIVES(equivalent, boundary): a search beginning at absolute index 1 cannot return index 0.
             return Math.Min((end >= 0 ? end : ~end) - 1, last);
         }
 
@@ -713,7 +714,11 @@ namespace Velvet
 
         private void EndSmoothScroll(float target, int requestVersion)
         {
-            if (_smoothScroll == null || requestVersion != _scrollRequestVersion) return;
+            // MUTANT_SURVIVES(equivalent, guard removed): cancellation advances the request version before completion; the following guard rejects that old callback.
+            if (_smoothScroll == null) return;
+            // MUTANT_SURVIVES(equivalent, guard removed): cancellation clears the stored animation; the preceding guard covers its callback under the Stop ordering pinned by
+            // VirtualListSmoothScrollTests.Given_ASmoothScrollInFlight_When_AnExternalChangeInterruptsIt_Then_TheOldAnimationLeavesTheListThere(DuringTick).
+            if (requestVersion != _scrollRequestVersion) return;
             _smoothScroll = null;
             ScrollTo(target, requestVersion);
         }

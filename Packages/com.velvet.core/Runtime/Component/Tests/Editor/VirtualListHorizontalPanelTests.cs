@@ -20,23 +20,49 @@ namespace Velvet.Tests
     internal sealed class VirtualListHorizontalPanelTests : PanelTestBase
     {
         private const float ItemWidth = 40f;
+        private static readonly string[] Items = Enumerable.Range(0, 100).Select(i => "item-" + i).ToArray();
+        private StateUpdater<bool> _setHorizontal;
 
-        private ScrollView MountAndLayOut()
+        private static VirtualListNode List(bool horizontal)
+            => V.VirtualList(Items, item => item, itemHeight: ItemWidth,
+                renderer: item => V.Div(name: item), overscan: 0,
+                name: "hlist", className: "w-[200px] h-[100px]", horizontal: horizontal);
+
+        private VNode RenderAxisList()
         {
-            var items = Enumerable.Range(0, 100).Select(i => "item-" + i).ToList();
-            _mounted = V.Mount(_window.rootVisualElement,
-                V.VirtualList(items, item => item, itemHeight: ItemWidth,
-                    renderer: item => V.Div(name: item), overscan: 0,
-                    name: "hlist", className: "w-[200px] h-[100px]", horizontal: true));
-            ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement.Q<ScrollView>("hlist");
+            var (horizontal, setHorizontal) = Hooks.UseState(false);
+            _setHorizontal = setHorizontal;
+            return List(horizontal);
         }
 
-        [Test]
-        public void Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth()
+        private ScrollView MountAndLayOut(bool reRenderFromVertical = false)
         {
+            var tree = reRenderFromVertical ? V.Component(RenderAxisList) : (VNode)List(horizontal: true);
+            _mounted = V.Mount(_window.rootVisualElement, tree);
+            var scrollView = _window.rootVisualElement.Q<ScrollView>("hlist");
+            if (reRenderFromVertical)
+            {
+                scrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+                scrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            return scrollView;
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AHorizontalList_When_ItIsLaidOut_Then_ItsRangeCoversTheViewportsWidth(bool reRenderFromVertical)
+        {
+            // Arrange
+            var scrollView = MountAndLayOut(reRenderFromVertical);
+
             // Act
-            var scrollView = MountAndLayOut();
+            if (reRenderFromVertical)
+            {
+                _setHorizontal.Invoke(true);
+                // Read the immediate re-render before another geometry phase can repair an old-axis measurement.
+                _mounted.FlushStateForTest();
+            }
 
             // Assert — the viewport is read beside the count, since a viewport the theme sized otherwise
             // would change the count with nothing about the axis measured.

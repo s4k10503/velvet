@@ -39,8 +39,10 @@ namespace Velvet.Tests
             _host.Dispose();
         }
 
-        private static VirtualListNode List(bool horizontal = true, Ref<VirtualListHandle> listRef = null)
-            => V.VirtualList(Items, item => item, itemHeight: 50f, renderer: item => V.Label(text: item),
+        private static VirtualListNode List(
+            bool horizontal = true, Ref<VirtualListHandle> listRef = null, bool emptyFirstRow = false)
+            => V.VirtualList(Items, item => item, itemHeight: 50f,
+                renderer: item => emptyFirstRow && item == Items[0] ? null : V.Label(text: item),
                 overscan: 0, listRef: listRef, horizontal: horizontal);
 
         private static string RowTexts(ScrollView scrollView)
@@ -148,11 +150,13 @@ namespace Velvet.Tests
                 Is.EqualTo((500f, 0f)));
         }
 
-        [Test]
-        public void Given_AVerticalListShowingRows_When_ARenderTurnsItHorizontal_Then_TheRowsKeepNoHeightOfItsWriting()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AVerticalListShowingRows_When_ARenderTurnsItHorizontal_Then_TheRowsKeepNoHeightOfItsWriting(
+            bool emptyFirstRow)
         {
             // Arrange
-            var vertical = new VNode[] { List(horizontal: false) };
+            var vertical = new VNode[] { List(horizontal: false, emptyFirstRow: emptyFirstRow) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), vertical);
             var scrollView = (ScrollView)Root.ElementAt(0);
             var controller = Reconciler.Context.VirtualListControllers[scrollView];
@@ -160,7 +164,7 @@ namespace Velvet.Tests
             var row = scrollView.contentContainer.ElementAt(1).ElementAt(0);
 
             // Act
-            Reconciler.Reconcile(Root, vertical, new VNode[] { List() });
+            Reconciler.Reconcile(Root, vertical, new VNode[] { List(emptyFirstRow: emptyFirstRow) });
 
             // Assert — the row is read as still mounted, since a row the render replaced holds no height either.
             Assert.That((row.parent == scrollView.contentContainer.ElementAt(1), row.style.height.keyword),

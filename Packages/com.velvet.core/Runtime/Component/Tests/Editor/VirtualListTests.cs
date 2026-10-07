@@ -670,8 +670,7 @@ namespace Velvet.Tests
                 Is.EqualTo("[typed] typed, [] shown on return"));
         }
 
-        // GREEN_ON_BASE(characterization): the second of two items sharing a key renders where the first
-        // renders nothing.
+        // GREEN_ON_BASE(characterization): an empty item still leaves its sibling visible with the wider viewport.
         [Test]
         public void Given_TwoItemsSharingAKeyWhoseFirstRendersNothing_When_TheRangeIsRendered_Then_TheSecondRenders()
         {
@@ -718,6 +717,7 @@ namespace Velvet.Tests
             UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
         }
 
+        // GREEN_ON_BASE(characterization): the viewport adjustment must preserve the base's duplicate-key rendering.
         [Test]
         public void Given_TwoItemsSharingAKey_When_TheRangeIsRendered_Then_BothRender()
         {
@@ -1019,9 +1019,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets an item renderer's throw out of the update.
-        // The unwind the cases below pin must not turn it into a silent skip, and the last two of them
-        // share this arrangement exactly, so it is also what says their Act reached the renderer at all.
+        // GREEN_ON_BASE(characterization): renderer exceptions still reach the caller with the wider viewport.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ARangeChangeReachesIt_Then_TheThrowReachesTheCaller()
         {
@@ -1194,6 +1192,7 @@ namespace Velvet.Tests
                 Is.EqualTo("[constructor refused] thrown, item-2 released 1 time(s)"));
         }
 
+        // GREEN_ON_BASE(characterization): failed ranges keep the base's invalid indices after the viewport adjustment.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheControllerNamesNoRenderedRange()
         {
@@ -1221,6 +1220,7 @@ namespace Velvet.Tests
                 Is.EqualTo("-1..-1"));
         }
 
+        // GREEN_ON_BASE(characterization): failed ranges still clear the base's visible rows with the wider viewport.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows()
         {
@@ -1629,6 +1629,7 @@ namespace Velvet.Tests
                     : V.Div(),
                 overscan: 0);
 
+        // GREEN_ON_BASE(characterization): the wider range must preserve the base's cleanup of a half-built row's child.
         [Test]
         public void Given_ARowThatFailsHalfBuiltAfterMountingAComponent_When_ItsEffectsFlush_Then_ThatComponentIsNotLeftMounted()
         {

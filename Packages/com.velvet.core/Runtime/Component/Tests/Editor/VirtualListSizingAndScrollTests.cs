@@ -120,19 +120,23 @@ namespace Velvet.Tests
             Assert.That(spacer.style.height.value.value, Is.EqualTo(210f).Within(0.01f));
         }
 
-        [Test]
-        public void Given_HeightsByIndex_When_TheRangeIsRendered_Then_ItRunsFromTheItemAtTheOffsetToTheItemAtTheBottomEdge()
+        // GREEN_ON_BASE(characterization): interior variable-height ranges, including one short item, already render these rows; the separate exact-edge case asks the exclusive viewport contract.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_HeightsByIndex_When_TheRangeIsRendered_Then_ItRunsFromTheItemAtTheOffsetToTheItemAtTheBottomEdge(
+            bool singleItem)
         {
-            // Arrange — the items end at 100, 110, 130, 160, 260 and 360.
+            // Arrange — the ordinary items end at 100, 110, 130, 160, 260 and 360; the single item ends at 40.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            var heights = singleItem ? new[] { 40f } : new[] { 100f, 10f, 20f, 30f, 100f, 100f };
             using var controller = new FiberVirtualListController(
-                scrollView, VariableList(new[] { 100f, 10f, 20f, 30f, 100f, 100f }), Reconciler);
+                scrollView, VariableList(heights), Reconciler);
 
-            // Act — the viewport runs from 105 to 155.
-            controller.UpdateVisibleRange(scrollY: 105f, viewportHeight: 50f);
+            // Act — the ordinary viewport runs from 105 to 155; the short list's runs from 5 to 25.
+            controller.UpdateVisibleRange(scrollY: singleItem ? 5f : 105f, viewportHeight: singleItem ? 20f : 50f);
 
             // Assert
-            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1,item-2,item-3"));
+            Assert.That(RowTexts(scrollView), Is.EqualTo(singleItem ? "item-0" : "item-1,item-2,item-3"));
         }
 
         [Test]
