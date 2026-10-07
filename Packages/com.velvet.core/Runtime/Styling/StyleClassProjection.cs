@@ -35,8 +35,9 @@ namespace Velvet
         // nothing.
         public static void Add(VisualElement element, string cls, long priority)
         {
+            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
             AddToModel(element, cls, priority);
-            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
         private static void AddToModel(VisualElement element, string cls, long priority)
@@ -58,8 +59,9 @@ namespace Velvet
 
         public static void Remove(VisualElement element, string cls, long priority)
         {
+            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
             RemoveFromModel(element, cls, priority);
-            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
         private static void RemoveFromModel(VisualElement element, string cls, long priority)

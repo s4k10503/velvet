@@ -62,6 +62,9 @@ namespace Velvet.Tests
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
+        private const string UniformScaleReader =
+            "System.Single Velvet.StyleArbitraryValueResolver.UniformScaleFromClasses("
+            + "UnityEngine.UIElements.VisualElement)";
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
@@ -650,6 +653,36 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
+        }
+
+        [Test]
+        [ReaderVerdict(UniformScaleReader)]
+        public void Given_TwoUniformScalePresets_When_TheirOrderAndTheAxisPriorityChange_Then_TheFallbackFollowsTheVisibleCascadeBothWays()
+        {
+            // Arrange
+            var added = Carrying("scale-90", "scale-50");
+            var reversed = Carrying("scale-50", "scale-90");
+            var axis = new ArbitraryStyle(ArbitraryProperty.ScaleX, 0.75f, LengthUnit.Pixel);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(added, in axis);
+            StyleArbitraryValueResolver.Apply(reversed, in axis);
+            var fromAdded = added.style.scale.value.value;
+            var fromReversed = reversed.style.scale.value.value;
+
+            foreach (var element in new[] { added, reversed })
+            {
+                StyleArbitraryValueResolver.Clear(element, in axis);
+                StyleClassProjection.Add(element, "opacity-50", StyleLayerPriority.Hover);
+                StyleArbitraryValueResolver.Apply(element, in axis, StyleLayerPriority.Hover);
+            }
+            var higherFromAdded = added.style.scale.value.value;
+            var higherFromReversed = reversed.style.scale.value.value;
+
+            // Assert
+            Assert.That(new[] { fromAdded.x, fromAdded.y, fromReversed.x, fromReversed.y,
+                    higherFromAdded.x, higherFromAdded.y, higherFromReversed.x, higherFromReversed.y },
+                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f }).Within(0.0001f));
         }
 
         [Test]

@@ -966,7 +966,9 @@ namespace Velvet
         {
             if (map.Projection != null)
             {
+                var previousUniform = UniformScaleClassFallback(element);
                 StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
+                RefreshScaleClassFallback(element, map, previousUniform);
             }
         }
 
@@ -1276,11 +1278,23 @@ namespace Velvet
             map?.Watchers?.Remove(watcher);
         }
 
+        internal static float? UniformScaleClassFallback(VisualElement element)
+        {
+            return s_layers.TryGetValue(element, out var map)
+                && (map.ContainsKey(ArbitraryProperty.ScaleX) || map.ContainsKey(ArbitraryProperty.ScaleY))
+                ? UniformScaleFromClasses(element)
+                : null;
+        }
+
         // Re-applies every container watching element after its class list changed. A copy is walked, because a
         // re-apply can claim or release the element and so edit the list.
-        internal static void NotifyClassesChanged(VisualElement element)
+        internal static void NotifyClassesChanged(VisualElement element, float? previousUniform = null)
         {
             s_layers.TryGetValue(element, out var map);
+            if (map != null)
+            {
+                RefreshScaleClassFallback(element, map, previousUniform);
+            }
             var watchers = map?.Watchers;
             if (watchers == null)
             {
@@ -1480,8 +1494,7 @@ namespace Velvet
         }
 
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
-        // one inline `translate` / `scale`, so they are resolved and composed (a missing translate axis is 0;
-        // a missing scale axis falls back to the uniform scale-[..], else 1, the identity).
+        // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
             if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY)
@@ -1681,12 +1694,43 @@ namespace Velvet
                 element.style.scale = StyleKeyword.Null;
                 return;
             }
-            // A per-axis value wins for its axis; the uniform scale-[v] is the fallback for an axis not set
-            // explicitly; a wholly-missing axis defaults to 1 (identity), NOT 0 — scale-x-[.5] leaves y unscaled.
-            var uniform = hasUniform ? uw.Value : 1f;
+            var uniform = hasUniform ? uw.Value : UniformScaleFromClasses(element);
             var x = hasX ? xw.Value : uniform;
             var y = hasY ? yw.Value : uniform;
             element.style.scale = new Scale(new Vector2(x, y));
+        }
+
+        private static void RefreshScaleClassFallback(VisualElement element, LayerMap map, float? previousUniform)
+        {
+            if (previousUniform.HasValue && !TryWinningLayer(map, ArbitraryProperty.Scale, out _)
+                && TryWinningLayer(map, ArbitraryProperty.ScaleX, out _) != TryWinningLayer(map, ArbitraryProperty.ScaleY, out _)
+                && previousUniform.Value != UniformScaleFromClasses(element))
+            {
+                ApplyCombinedScale(element, map);
+            }
+        }
+
+        private static float UniformScaleFromClasses(VisualElement element)
+        {
+            var uniform = 1f;
+            var position = -1;
+            foreach (var cls in element.GetClasses())
+            {
+                if (TryGetUniformScalePreset(cls, out var scale)
+                    && StyleUtilityProperties.TryGet(cls, out var rule) && rule.CascadePosition > position)
+                {
+                    uniform = scale;
+                    position = rule.CascadePosition;
+                }
+            }
+            return uniform;
+        }
+
+        private static bool TryGetUniformScalePreset(string cls, out float scale)
+        {
+            scale = 1f;
+            return cls.StartsWith("scale-", StringComparison.Ordinal)
+                && TryGetAxisScale(cls.Substring("scale-".Length), out scale);
         }
 
         // transition-duration is a StyleList<TimeValue> (not a StyleLength), so the winning duration-[..] layer
