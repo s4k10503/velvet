@@ -41,7 +41,7 @@ namespace Velvet.Tests
         // name does not carry it, and an anchor that excluded them would have kept the largest family out of
         // the matrix while reporting nothing missing.
         private static readonly Regex FamilyPattern =
-            new(@"(?<family>Style\w+\.Is\w+)\(core\)", RegexOptions.Compiled);
+            new(@"(?<excluded>!\s*)?(?<family>Style\w+\.Is\w+)\(core\)", RegexOptions.Compiled);
 
         // A utility that stands for each family. Declared because the dispatcher answers "is this token
         // mine", not "write this one" — and stated per family so a reader can see what is being exercised.
@@ -130,11 +130,35 @@ namespace Velvet.Tests
         }
 
         private static IReadOnlyList<string> Families() =>
-            FamilyPattern.Matches(File.ReadAllText(Path.GetFullPath(DispatcherPath)))
+            Families(File.ReadAllText(Path.GetFullPath(DispatcherPath)));
+
+        private static IReadOnlyList<string> Families(string source) =>
+            FamilyPattern.Matches(source)
+                .Where(match => !match.Groups["excluded"].Success)
                 .Select(match => match.Groups["family"].Value)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
+
+        [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
+            "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) && ! StyleGapClass.IsSpaceToken(core)",
+            "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) || StyleGridClass.IsGridToken(core)",
+            "StyleGapClass.IsGapToken\nStyleGridClass.IsGridToken")]
+        public void Given_AFamilyGate_When_ItsFamiliesAreDerived_Then_OnlyAcceptedFamiliesRemain(
+            string source, string expected)
+        {
+            // Arrange
+            var dispatcher = source;
+
+            // Act
+            var families = Families(dispatcher);
+
+            // Assert
+            Assert.That(string.Join("\n", families), Is.EqualTo(expected));
+        }
 
         /// <remarks>
         /// Both directions, because the matrix below is driven by the DECLARED set. A one-way check that the
