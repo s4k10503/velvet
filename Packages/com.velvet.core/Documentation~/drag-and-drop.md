@@ -60,7 +60,8 @@ ancestor that captures (a draggable inside a button). A control that has a point
 its own — a slider, a scroller, a text field's selection — loses it to the drag the same way. Set
 `FiberElementProps.NoDrag` on the control or on an element around it
 (`V.Div(props: new FiberElementProps { NoDrag = true }, children: ...)`) and a press inside it
-never arms an enclosing draggable. That is this layer's spelling of dnd-kit's opt-out, a child that
+never arms that element's own draggable or an enclosing one. A draggable nested inside a `NoDrag`
+element still arms. That is this layer's spelling of dnd-kit's opt-out, a child that
 stops or prevents its pointer-down: a draggable arms before any of its children's own pointer-down
 callbacks run.
 

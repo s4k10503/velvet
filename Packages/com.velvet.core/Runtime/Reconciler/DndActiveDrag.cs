@@ -116,10 +116,10 @@ namespace Velvet
         // a press that never crosses the activation constraint must remain a plain click.
         internal static void Arm(VisualElement source, DndDraggableBinding draggable, ReconcilerContext ctx, PointerDownEvent evt)
         {
-            // A press that can never arm (secondary button, disabled) is validated BEFORE any hand-off:
+            // A press that can never arm (secondary button, disabled, NoDrag) is validated BEFORE any hand-off:
             // it must not cost a live pending session its observers (a right-button chord mid-press
             // would otherwise silently kill the held left gesture).
-            if (evt.button != 0 || draggable.Settings.Disabled)
+            if (evt.button != 0 || draggable.Settings.Disabled || ctx.NoDragElements.Contains(source))
             {
                 return;
             }
