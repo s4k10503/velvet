@@ -384,8 +384,6 @@ namespace Velvet
         private static int[] BuildSlotIndex()
         {
             var index = new int[Enum.GetValues(typeof(ArbitraryProperty)).Length];
-            // MUTANT_SURVIVES(equivalent, line removed): deleting this fill changes only non-slot entries.
-            // All index lookups receive the five axes, whose entries the loop overwrites.
             Array.Fill(index, -1);
             for (var i = 0; i < s_slots.Length; i++)
             {
@@ -485,7 +483,11 @@ namespace Velvet
                     claims[i] = new SlotClaim { Claimed = true, Precedence = long.MaxValue };
                     continue;
                 }
+                // MUTANT_SURVIVES(equivalent, boundary): resting claims never equal this lower inline rank before the comparison.
+                // Scan clears the claims and visits each resting slot once, with token index zero.
                 if (claims[i].Precedence < RestingInlineRank
+                    // MUTANT_SURVIVES(equivalent, clause removed): the mask contains only stylesheet contributors, whose higher ranks win the final claim.
+                    // Resting contributors precede this pass; side-array contributors overwrite it before Scan copies the claims.
                     && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
                     && context.HoldsInlineOutsideSwap(s_slots[i]))
                 {

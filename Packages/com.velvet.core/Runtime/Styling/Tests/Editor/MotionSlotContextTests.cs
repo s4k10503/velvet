@@ -168,6 +168,38 @@ namespace Velvet.Tests
                 Is.EqualTo(translate ? new[] { 10f, 60f } : new[] { 0.3f, 0f }).Within(1e-5f));
         }
 
+        [Test]
+        public void Given_AMountedTranslateWithOnlyAYTarget_When_Resolved_Then_XKeepsItsFrameAndYStartsFromItsFrame()
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            element.style.translate = new Translate(60f, 30f, 0f);
+            var from = new string[0];
+            var to = new[] { "translate-y-[20px]" };
+            var context = MotionSlotContext.Read(element, from, to, slot => slot == ArbitraryProperty.TranslateY);
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 60f, 30f, context);
+
+            // Assert
+            Assert.That(new[] { plan.TranslateX?.from ?? float.NaN, plan.TranslateX?.to ?? float.NaN,
+                    plan.TranslateY?.from ?? float.NaN, plan.TranslateY?.to ?? float.NaN },
+                Is.EqualTo(new[] { 60f, 60f, 30f, 20f }).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ANullLeavingClassArray_When_AWidthTargetIsResolved_Then_ItStartsFromTheCurrentWidth()
+        {
+            // Arrange
+            var element = MountInFixedParent();
+
+            // Act
+            var plan = Resolve(element, null, new[] { "w-[100px]" });
+
+            // Assert
+            Assert.That(Lengths(plan), Is.EqualTo("Width:200->100"));
+        }
+
         [TestCase("w-[40px]", "w-[50%]", "Width:20->50")]
         [TestCase("h-[40px]", "h-[50%]", "Height:40->50")]
         [TestCase("min-w-[50%]", "min-w-[60px]", "MinWidth:100->60")]
@@ -382,6 +414,541 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((start, running), Is.EqualTo((0.3f, true)));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_RunningChannelsBesideOtherNativeSlots_When_NewTargetsAreSelected_Then_OwnedFramesAndNativePaintStayDistinct(TransitionType type)
+        {
+            // Arrange
+            var pairs = new[]
+            {
+                (owned: ArbitraryProperty.Opacity, other: ArbitraryProperty.TranslateX),
+                (owned: ArbitraryProperty.TranslateX, other: ArbitraryProperty.Opacity),
+                (owned: ArbitraryProperty.TranslateY, other: ArbitraryProperty.Scale),
+                (owned: ArbitraryProperty.Scale, other: ArbitraryProperty.Rotate),
+                (owned: ArbitraryProperty.Rotate, other: ArbitraryProperty.Opacity),
+                (owned: ArbitraryProperty.BackgroundColor, other: ArbitraryProperty.Width),
+                (owned: ArbitraryProperty.Width, other: ArbitraryProperty.BackgroundColor),
+            };
+            var elements = new VisualElement[pairs.Length];
+            var schedulers = new StyleAnimationScheduler[pairs.Length];
+            var protectedSlots = new ArbitraryProperty[pairs.Length];
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, () => now);
+            for (var i = 0; i < pairs.Length; i++)
+            {
+                var pair = pairs[i];
+                var element = elements[i] = MountInFixedParent();
+                var scheduler = schedulers[i] = new StyleAnimationScheduler();
+                var oldTarget = ProbeChannelClass(pair.owned, initial: true);
+                Play(scheduler, element, type, false, new[] { ProbeChannelClass(pair.owned, initial: false) }, new[] { oldTarget });
+                element.RemoveFromClassList(oldTarget);
+                protectedSlots[i] = pair.owned == ArbitraryProperty.Width || pair.other == ArbitraryProperty.Width
+                    ? ArbitraryProperty.Opacity : ArbitraryProperty.Width;
+                WriteProbeChannel(element, protectedSlots[i], protectedSlots[i] == ArbitraryProperty.Width ? 40f : 0.25f);
+                WriteProbeChannel(element, pair.owned, pair.owned == ArbitraryProperty.Width ? 40f : 0.2f);
+                WriteProbeChannel(element, pair.other, pair.other == ArbitraryProperty.Width ? 40f : 0.2f);
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            for (var i = 0; i < pairs.Length; i++)
+            {
+                var element = elements[i];
+                element.style.transitionProperty = new List<StylePropertyName>
+                {
+                    new(ProbeNativeProperty(pairs[i].owned)), new(ProbeNativeProperty(pairs[i].other)),
+                };
+                element.style.transitionDuration = new List<TimeValue> { new(1f, TimeUnit.Second) };
+                element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+                WriteProbeChannel(element, pairs[i].owned, pairs[i].owned == ArbitraryProperty.Width ? 100f : 0.8f);
+                WriteProbeChannel(element, pairs[i].other, pairs[i].other == ArbitraryProperty.Width ? 100f : 0.8f);
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var before = new (bool ownedNative, bool otherNative, bool ownedDiffers, bool otherDiffers,
+                float ownedInline, float otherPaint, float protectedInline)[pairs.Length];
+            for (var i = 0; i < pairs.Length; i++)
+            {
+                var element = elements[i];
+                var ownedInline = ReadProbeChannel(element, pairs[i].owned, resolved: false);
+                var otherInline = ReadProbeChannel(element, pairs[i].other, resolved: false);
+                var ownedPaint = ReadProbeChannel(element, pairs[i].owned, resolved: true);
+                var otherPaint = ReadProbeChannel(element, pairs[i].other, resolved: true);
+                before[i] = (ProbeNativeRunning(element, pairs[i].owned), ProbeNativeRunning(element, pairs[i].other),
+                    !ownedInline.Equals(ownedPaint), !otherInline.Equals(otherPaint), ownedInline, otherPaint,
+                    ReadProbeChannel(element, protectedSlots[i], resolved: false));
+            }
+
+            // Act
+            var observed = new List<(ArbitraryProperty, bool, bool, bool, bool, bool, bool, bool, bool)>();
+            for (var i = 0; i < pairs.Length; i++)
+            {
+                var pair = pairs[i];
+                var element = elements[i];
+                var scheduler = schedulers[i];
+                Play(scheduler, element, type, false, new string[0], new[]
+                {
+                    ProbeChannelClass(pair.owned), ProbeChannelClass(pair.other), ProbeChannelClass(protectedSlots[i]),
+                });
+                var entries = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                    .GetField("_pendingEnters", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .GetValue(scheduler);
+                var registered = entries.Contains(element);
+                var ownedStart = ReadProbeChannel(element, pair.owned, resolved: false);
+                var otherStart = ReadProbeChannel(element, pair.other, resolved: false);
+                if (registered)
+                {
+                    var pending = entries[element];
+                    if (type == TransitionType.Spring)
+                    {
+                        MotionSpringDriver.Step(element, (MotionSpringState)pending.GetType().GetField("Spring").GetValue(pending), 0.1f);
+                    }
+                    else
+                    {
+                        BezierTweenDriver.Step(element, (BezierTweenState)pending.GetType().GetField("Bezier").GetValue(pending), 0.1f);
+                    }
+                }
+                observed.Add((pair.owned, before[i].ownedNative, before[i].otherNative, before[i].ownedDiffers,
+                    before[i].otherDiffers, registered, ownedStart.Equals(before[i].ownedInline),
+                    otherStart.Equals(before[i].otherPaint),
+                    ReadProbeChannel(element, protectedSlots[i], resolved: false).Equals(before[i].protectedInline)));
+                scheduler.CancelAll();
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(System.Array.ConvertAll(pairs,
+                pair => (pair.owned, true, true, true, true, true, true, true, true))));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AMountedClipWithCustomLengthAndOpacity_When_ChannelsAreReleased_Then_LayoutTransitionsReturnWhileTheWrapperStaysMounted(TransitionType type)
+        {
+            // Arrange
+            var placeholder = MountInFixedParent();
+            var parent = placeholder.parent;
+            placeholder.RemoveFromHierarchy();
+            var operations = new[] { "clear", "last-length" };
+            _mounted = V.Mount(parent, V.Fragment(operations.Select(operation =>
+                V.Div(name: operation, className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
+            ForcePanelUpdate(parent.panel);
+            var elements = operations.Select(operation => parent.Q<VisualElement>(operation)).ToArray();
+            var wrappers = elements.Select(ClipPathLayoutBox.Of).ToArray();
+            var states = new object[elements.Length];
+            var held = new bool[elements.Length];
+            for (var i = 0; i < elements.Length; i++)
+            {
+                var plan = new MotionSpringClassParser.SpringPlan
+                {
+                    Opacity = (0.25f, 0.75f),
+                    Lengths = new List<MotionSpringClassParser.LengthChannelPlan>
+                    {
+                        new(ArbitraryProperty.Width, 40f, 100f, LengthUnit.Pixel),
+                    },
+                };
+                if (type == TransitionType.Spring)
+                {
+                    var state = MotionSpringDriver.Create(plan, 100f, 10f, 1f);
+                    states[i] = state;
+                    MotionSpringDriver.ApplyCurrentValues(elements[i], state);
+                }
+                else
+                {
+                    var state = BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, 1f);
+                    states[i] = state;
+                    BezierTweenDriver.ApplyCurrentValues(elements[i], state);
+                }
+                var properties = wrappers[i].style.transitionProperty.value;
+                held[i] = properties is { Count: 1 } && properties[0] == new StylePropertyName("none");
+            }
+
+            // Act
+            var observed = new List<(string, bool, bool, bool, bool, bool)>();
+            for (var i = 0; i < elements.Length; i++)
+            {
+                var element = elements[i];
+                var wrapper = wrappers[i];
+                var releaseLength = i == 1;
+                if (type == TransitionType.Spring)
+                {
+                    var state = (MotionSpringState)states[i];
+                    if (releaseLength) MotionSpringDriver.ReleaseChannels(element, state, StyleLonghandSet.Of(StyleLonghand.Width));
+                    else MotionSpringDriver.ClearInlineOverrides(element, state);
+                }
+                else
+                {
+                    var state = (BezierTweenState)states[i];
+                    if (releaseLength) BezierTweenDriver.ReleaseChannels(element, state, StyleLonghandSet.Of(StyleLonghand.Width));
+                    else BezierTweenDriver.ClearInlineOverrides(element, state);
+                }
+                var opacity = element.style.opacity;
+                observed.Add((operations[i], !ReferenceEquals(element, wrapper), wrapper.parent == parent,
+                    held[i], wrapper.style.transitionProperty.keyword == StyleKeyword.Null,
+                    releaseLength ? opacity.keyword == StyleKeyword.Undefined && opacity.value.Equals(0.25f)
+                        : opacity.keyword == StyleKeyword.Null));
+                if (releaseLength)
+                {
+                    if (type == TransitionType.Spring) MotionSpringDriver.ClearInlineOverrides(element, (MotionSpringState)states[i]);
+                    else BezierTweenDriver.ClearInlineOverrides(element, (BezierTweenState)states[i]);
+                }
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(System.Array.ConvertAll(operations,
+                operation => (operation, true, true, true, true, true))));
+        }
+
+        [Test]
+        public void Given_ARunningNativeTween_When_ACustomPlayRetargets_Then_ItStartsFromPaintAndKeepsTheUnrelatedHolder()
+        {
+            // Arrange
+            var types = new[] { TransitionType.Spring, TransitionType.Bezier };
+            var elements = new VisualElement[types.Length];
+            var schedulers = new StyleAnimationScheduler[types.Length];
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, () => now);
+            for (var i = 0; i < types.Length; i++)
+            {
+                elements[i] = MountInFixedParent();
+                elements[i].AddToClassList("opacity-0");
+                elements[i].style.width = 40f;
+                schedulers[i] = new StyleAnimationScheduler();
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            for (var i = 0; i < types.Length; i++)
+            {
+                Play(schedulers[i], elements[i], TransitionType.Tween, false, new[] { "opacity-0" }, new[] { "opacity-100" });
+            }
+            now += 0.04;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            foreach (var element in elements) element.style.opacity = 0.8f;
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            now += 0.25;
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var pendingField = typeof(StyleAnimationScheduler).GetField("_pendingEnters",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var before = new (bool oldPending, bool nativeOnly, bool nativeRunning, bool paintDiffers, float paint)[types.Length];
+            for (var i = 0; i < types.Length; i++)
+            {
+                var entries = (System.Collections.IDictionary)pendingField.GetValue(schedulers[i]);
+                var pending = entries[elements[i]];
+                var paint = elements[i].resolvedStyle.opacity;
+                before[i] = (pending != null, pending != null
+                    && pending.GetType().GetField("Spring").GetValue(pending) == null
+                    && pending.GetType().GetField("Bezier").GetValue(pending) == null,
+                    ProbeNativeRunning(elements[i], ArbitraryProperty.Opacity),
+                    !paint.Equals(elements[i].style.opacity.value), paint);
+            }
+
+            // Act
+            var observed = new List<(TransitionType, bool, bool, bool, bool, bool, bool, bool)>();
+            for (var i = 0; i < types.Length; i++)
+            {
+                Play(schedulers[i], elements[i], types[i], false, new string[0], new[] { "opacity-50" });
+                var entries = (System.Collections.IDictionary)pendingField.GetValue(schedulers[i]);
+                observed.Add((types[i], before[i].oldPending, before[i].nativeOnly, before[i].nativeRunning,
+                    before[i].paintDiffers, entries.Contains(elements[i]),
+                    elements[i].style.opacity.value.Equals(before[i].paint), elements[i].style.width.value.value.Equals(40f)));
+                schedulers[i].CancelAll();
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(System.Array.ConvertAll(types,
+                type => (type, true, true, true, true, true, true, true))));
+        }
+
+        [Test]
+        public void Given_ARestingImportantUniformScale_When_AnImportantUniformTargetAlsoNamesAPlainAxis_Then_ThePerAxisPaintIsRetained()
+        {
+            // Arrange
+            var placeholder = MountInFixedParent();
+            var parent = placeholder.parent;
+            placeholder.RemoveFromHierarchy();
+            var names = new[] { "x-target", "y-target" };
+            var axes = new[] { "scale-x-[.5]", "scale-y-[.5]" };
+            _mounted = V.Mount(parent, V.Fragment(names.Select(name =>
+                V.Div(name: name, className: "!scale-[1.4]")).ToArray()));
+            ForcePanelUpdate(parent.panel);
+            var elements = names.Select(name => parent.Q<VisualElement>(name)).ToArray();
+            foreach (var element in elements) element.AddToClassList("!scale-[1.4]");
+            var plans = new MotionSpringClassParser.SpringPlan[elements.Length];
+            var validHolders = new bool[elements.Length];
+            for (var i = 0; i < elements.Length; i++)
+            {
+                var to = new[] { "!scale-[2]", axes[i] };
+                var context = MotionSlotContext.Read(elements[i], new string[0], to, _ => false);
+                validHolders[i] = context.RestingClasses().Contains("!scale-[1.4]")
+                    && StyleArbitraryValueResolver.HasImportantInlineOutside(elements[i],
+                    StyleLonghandSet.Of(StyleLonghand.Scale), new HashSet<ArbitraryProperty>())
+                    && !context.HasImportantInlineOutsideSwap(ArbitraryProperty.Scale);
+                plans[i] = MotionSpringClassParser.Resolve(new string[0], to, 0f, 0f, context);
+            }
+
+            // Act
+            _mounted.Render(V.Fragment(names.Select((name, i) =>
+                V.Div(name: name, className: "!scale-[1.4] !scale-[2] " + axes[i])).ToArray()));
+            var observed = new float[elements.Length * 2];
+            for (var i = 0; i < elements.Length; i++)
+            {
+                var state = MotionSpringDriver.Create(plans[i], 100f, 10f, 1f);
+                if (state != null) MotionSpringDriver.ApplyCurrentValues(elements[i], state);
+                var scale = elements[i].style.scale.value.value;
+                var noUniformOverride = validHolders[i] && plans[i].Scale == null;
+                observed[i * 2] = noUniformOverride ? scale.x : float.NaN;
+                observed[i * 2 + 1] = noUniformOverride ? scale.y : float.NaN;
+                if (state != null) MotionSpringDriver.ClearInlineOverrides(elements[i], state);
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(new[] { 0.5f, 2f, 2f, 0.5f }).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AMountedClipWrapperWithACustomWidthPlay_When_AForeignTransitionListIsWritten_Then_TheNextFramePreservesItsNamesAndTimings()
+        {
+            // Arrange
+            var placeholder = MountInFixedParent();
+            var parent = placeholder.parent;
+            placeholder.RemoveFromHierarchy();
+            var types = new[] { TransitionType.Spring, TransitionType.Bezier };
+            _mounted = V.Mount(parent, V.Fragment(types.Select(type =>
+                V.Div(name: type.ToString(), className: "clip-path-[inset(0)] transition-all duration-1000")).ToArray()));
+            ForcePanelUpdate(parent.panel);
+            var properties = new[] { new StylePropertyName("height"), new StylePropertyName("opacity") };
+            var durations = new[] { new TimeValue(0.5f), new TimeValue(1.5f) };
+            var delays = new[] { new TimeValue(0.25f), new TimeValue(0.75f) };
+            var easing = new[] { new EasingFunction(EasingMode.Linear), new EasingFunction(EasingMode.EaseOut) };
+            var observed = new List<(TransitionType, bool, bool, bool, bool, bool, bool, bool, bool, bool)>();
+            foreach (var type in types)
+            {
+                var element = parent.Q<VisualElement>(type.ToString());
+                var wrapper = ClipPathLayoutBox.Of(element);
+                var plan = new MotionSpringClassParser.SpringPlan
+                {
+                    Lengths = new List<MotionSpringClassParser.LengthChannelPlan>
+                    {
+                        new(ArbitraryProperty.Width, 40f, 100f, LengthUnit.Pixel),
+                    },
+                };
+                var spring = type == TransitionType.Spring ? MotionSpringDriver.Create(plan, 100f, 10f, 1f) : null;
+                var bezier = type == TransitionType.Bezier ? BezierTweenDriver.Create(plan, 0f, 0f, 1f, 1f, 1f) : null;
+                if (spring != null) MotionSpringDriver.ApplyCurrentValues(element, spring);
+                else BezierTweenDriver.ApplyCurrentValues(element, bezier);
+                var held = wrapper.style.transitionProperty.value.SequenceEqual(new[] { new StylePropertyName("none") });
+                var initialOwner = spring != null ? spring.NativeLayoutOwner : bezier.NativeLayoutOwner;
+                wrapper.style.transitionProperty = new List<StylePropertyName>(properties);
+                wrapper.style.transitionDuration = new List<TimeValue>(durations);
+                wrapper.style.transitionDelay = new List<TimeValue>(delays);
+                wrapper.style.transitionTimingFunction = new List<EasingFunction>(easing);
+                var foreignWrite = wrapper.style.transitionProperty.value.SequenceEqual(properties)
+                    && wrapper.style.transitionDuration.value.SequenceEqual(durations)
+                    && wrapper.style.transitionDelay.value.SequenceEqual(delays)
+                    && wrapper.style.transitionTimingFunction.value.SequenceEqual(easing);
+
+                // Act
+                if (spring != null) MotionSpringDriver.Step(element, spring, 0.05f);
+                else BezierTweenDriver.Step(element, bezier, 0.05f);
+                var nextOwner = spring != null ? spring.NativeLayoutOwner : bezier.NativeLayoutOwner;
+                observed.Add((type, !ReferenceEquals(element, wrapper), held, foreignWrite,
+                    ReferenceEquals(initialOwner, wrapper) && ReferenceEquals(nextOwner, wrapper),
+                    wrapper.style.width.value.value != 40f,
+                    wrapper.style.transitionProperty.value.SequenceEqual(properties),
+                    wrapper.style.transitionDuration.value.SequenceEqual(durations),
+                    wrapper.style.transitionDelay.value.SequenceEqual(delays),
+                    wrapper.style.transitionTimingFunction.value.SequenceEqual(easing)));
+                if (spring != null) MotionSpringDriver.ClearInlineOverrides(element, spring);
+                else BezierTweenDriver.ClearInlineOverrides(element, bezier);
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(System.Array.ConvertAll(types,
+                type => (type, true, true, true, true, true, true, true, true, true))));
+        }
+
+        [Test]
+        public void Given_AMountedInlineOpacityWithAConstantBezierExit_When_TheKeyIsRemoved_Then_TheExitDoesNotCompleteInTheRemovalRender()
+        {
+            // Arrange
+            var placeholder = MountInFixedParent();
+            var parent = placeholder.parent;
+            placeholder.RemoveFromHierarchy();
+            var variants = new Dictionary<string, MotionVariant>
+            {
+                ["rest"] = "opacity-50",
+                ["gone"] = "opacity-0",
+            };
+            var transition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f };
+            var completions = 0;
+            var motion = V.Motion(key: "entry", name: "constant-exit", className: "opacity-[0.7]",
+                variants: variants, animate: "rest", exit: "gone", transition: transition);
+            _mounted = V.Mount(parent, V.AnimatePresence(key: "presence", initial: false,
+                onExitComplete: () => completions++, children: new VNode[] { motion }));
+            ForcePanelUpdate(parent.panel);
+            var element = parent.Q<VisualElement>("constant-exit");
+            element.AddToClassList("opacity-[0.7]");
+            var context = MotionSlotContext.Read(element, new[] { "opacity-50" }, new[] { "opacity-0" }, _ => false);
+            var rawHolder = context.RestingClasses().Contains("opacity-[0.7]");
+            var registeredHolder = context.HoldsInlineOutsideSwap(ArbitraryProperty.Opacity);
+            var inlineAtRest = element.style.opacity.value;
+            var attachedAtRest = element.parent == parent;
+
+            // Act
+            _mounted.Render(V.AnimatePresence(key: "presence", initial: false,
+                onExitComplete: () => completions++, children: new VNode[0]));
+
+            // Assert
+            Assert.That((rawHolder, registeredHolder, inlineAtRest, attachedAtRest,
+                    ReferenceEquals(parent.Q<VisualElement>("constant-exit"), element), element.parent == parent,
+                    completions), Is.EqualTo((true, true, 0.7f, true, true, true, 0)));
+        }
+
+        private sealed class PresenceProbeStore : Store<int>
+        {
+            public PresenceProbeStore() : base(0) { }
+            public void Set(int stage) => SetState(_ => stage);
+            protected override void ResetCore() => SetState(_ => 0);
+        }
+
+        private readonly record struct PresenceProbeProps(PresenceProbeStore Store, System.Func<int, VNode> Render);
+
+        [Component(Compiler = false)]
+        private static VNode PresenceProbeHost(PresenceProbeProps props)
+        {
+            var stage = Hooks.UseStore(props.Store, value => value);
+            return props.Render(stage);
+        }
+
+        [Test]
+        public void Given_ACompletedFragmentExit_When_ReentryHasOnlyATweenedInitialPose_Then_AnInstantClassicEnterKeepsThePoseHeldUntilItsSwap()
+        {
+            // Arrange
+            var placeholder = MountInFixedParent();
+            var parent = placeholder.parent;
+            placeholder.RemoveFromHierarchy();
+            var variants = new Dictionary<string, MotionVariant>
+            {
+                ["rest"] = "pose-rest",
+                ["right"] = new MotionVariant("translate-x-[40px]", new StyleTransitionConfig { DurationSec = 0.3f }),
+                ["gone"] = new MotionVariant("pose-exit", new StyleTransitionConfig { Type = TransitionType.Spring }),
+            };
+            MotionNode reentry = null;
+            var originalMotion = V.Motion(key: "variant", name: "variant", className: "translate-x-[0px]",
+                variants: variants, animate: "rest", exit: "gone", transition: new StyleTransitionConfig { DurationSec = 0.3f });
+            VNode Entry(int stage) => V.AnimatePresence(key: "presence", initial: false, children: stage == 1
+                ? new VNode[0]
+                : new VNode[] { V.Fragment(new[] { stage == 0 ? originalMotion : reentry }, key: "entry") });
+            using var store = new PresenceProbeStore();
+            _mounted = V.Mount(parent, V.Component(PresenceProbeHost, new PresenceProbeProps(store, Entry)));
+            ForcePanelUpdate(parent.panel);
+            var element = parent.Q<VisualElement>("variant");
+            var ctx = _mounted.Root.Reconciler.Context;
+            store.Set(1);
+            _mounted.FlushStateForTest();
+            var presence = ctx.PresenceStates.Values.Single();
+            var completedGhost = presence.ExitComplete.Contains("entry");
+            var attachedGhost = element.parent == parent;
+            var memoBefore = ReferenceEquals(presence.MotionElements.GetValueOrDefault("entry"), element);
+            var instantEnters = 0;
+            var enterTargetMatched = false;
+            MotionHeldInline enterHold = null;
+            var enterSwapPending = false;
+            var enterInline = float.NaN;
+
+            // Act
+            reentry = V.Motion(key: "variant", name: "variant", className: "translate-x-[0px]",
+                variants: variants, initial: "right", transition: StyleTransitionConfig.None,
+                onEnterComplete: () =>
+                {
+                    instantEnters++;
+                    enterTargetMatched = ReferenceEquals(ctx.MotionNodes.GetValueOrDefault(element), reentry)
+                        && ReferenceEquals(presence.MotionElements.GetValueOrDefault("entry"), element)
+                        && ReferenceEquals(parent.hierarchy[0], element);
+                    ctx.MotionHeldInline.TryGetValue(element, out enterHold);
+                    enterSwapPending = enterHold != null && ctx.StyleAnimationScheduler.IsSwapPending(element, enterHold.Release);
+                    enterInline = element.style.translate.value.x.value;
+                });
+            store.Set(2);
+            _mounted.FlushStateForTest();
+            var holdTargetsInitial = enterHold != null && enterHold.Target.Contains("translate-x-[40px]");
+            var retainedHold = enterHold != null && ReferenceEquals(ctx.MotionHeldInline.GetValueOrDefault(element), enterHold);
+            var swapPending = enterHold != null && ctx.StyleAnimationScheduler.IsSwapPending(element, enterHold.Release);
+
+            // Assert
+            Assert.That((completedGhost, attachedGhost, memoBefore, enterTargetMatched,
+                    instantEnters, holdTargetsInitial, enterSwapPending, enterInline,
+                    retainedHold, swapPending, element.style.translate.value.x.value),
+                Is.EqualTo((true, true, true, true, 1, true, true, 0f, true, true, 0f)));
+        }
+
+        private static string ProbeChannelClass(ArbitraryProperty slot, bool? initial = null)
+        {
+            (string start, string end, string target) classes = slot switch
+            {
+                ArbitraryProperty.Opacity => (start: "opacity-0", end: "opacity-100", target: "opacity-50"),
+                ArbitraryProperty.TranslateX => ("translate-x-[0px]", "translate-x-[100px]", "translate-x-[30px]"),
+                ArbitraryProperty.TranslateY => ("translate-y-[0px]", "translate-y-[100px]", "translate-y-[30px]"),
+                ArbitraryProperty.Scale => ("scale-50", "scale-150", "scale-100"),
+                ArbitraryProperty.Rotate => ("rotate-0", "rotate-90", "rotate-45"),
+                ArbitraryProperty.BackgroundColor => ("bg-[#000000]", "bg-[#ffffff]", "bg-[#00ff00]"),
+                ArbitraryProperty.Width => ("w-[40px]", "w-[200px]", "w-20"),
+                _ => throw new System.ArgumentOutOfRangeException(nameof(slot)),
+            };
+            return initial.HasValue ? initial.Value ? classes.end : classes.start : classes.target;
+        }
+
+        private static string ProbeNativeProperty(ArbitraryProperty slot) => slot switch
+        {
+            ArbitraryProperty.Opacity => "opacity",
+            ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY => "translate",
+            ArbitraryProperty.Scale => "scale",
+            ArbitraryProperty.Rotate => "rotate",
+            ArbitraryProperty.BackgroundColor => "background-color",
+            ArbitraryProperty.Width => "width",
+            _ => throw new System.ArgumentOutOfRangeException(nameof(slot)),
+        };
+
+        private static void WriteProbeChannel(VisualElement element, ArbitraryProperty slot, float value)
+        {
+            switch (slot)
+            {
+                case ArbitraryProperty.Opacity: element.style.opacity = value; break;
+                case ArbitraryProperty.TranslateX:
+                case ArbitraryProperty.TranslateY: element.style.translate = new Translate(value, value, 0f); break;
+                case ArbitraryProperty.Scale: element.style.scale = new Scale(new Vector2(value, value)); break;
+                case ArbitraryProperty.Rotate: element.style.rotate = new Rotate(new Angle(value)); break;
+                case ArbitraryProperty.BackgroundColor: element.style.backgroundColor = new Color(value, value, value, 1f); break;
+                case ArbitraryProperty.Width: element.style.width = value; break;
+                default: throw new System.ArgumentOutOfRangeException(nameof(slot));
+            }
+        }
+
+        private static float ReadProbeChannel(VisualElement element, ArbitraryProperty slot, bool resolved) => slot switch
+        {
+            ArbitraryProperty.Opacity => resolved ? element.resolvedStyle.opacity : element.style.opacity.value,
+            ArbitraryProperty.TranslateX => resolved ? element.resolvedStyle.translate.x : element.style.translate.value.x.value,
+            ArbitraryProperty.TranslateY => resolved ? element.resolvedStyle.translate.y : element.style.translate.value.y.value,
+            ArbitraryProperty.Scale => resolved ? element.resolvedStyle.scale.value.x : element.style.scale.value.value.x,
+            ArbitraryProperty.Rotate => resolved ? element.resolvedStyle.rotate.angle.value : element.style.rotate.value.angle.value,
+            ArbitraryProperty.BackgroundColor => resolved ? element.resolvedStyle.backgroundColor.r : element.style.backgroundColor.value.r,
+            ArbitraryProperty.Width => resolved ? element.resolvedStyle.width : element.style.width.value.value,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(slot)),
+        };
+
+        private static bool ProbeNativeRunning(VisualElement element, ArbitraryProperty slot)
+        {
+            var method = EngineMember.HasRunningStyleAnimation.ResolveMethod();
+            var id = EngineMember.StylePropertyNameId.ResolveProperty()?.GetValue(new StylePropertyName(ProbeNativeProperty(slot)));
+            return id != null && method?.Invoke(element, new[] { id }) is true;
         }
 
         private static void Play(StyleAnimationScheduler scheduler, VisualElement element, TransitionType type,

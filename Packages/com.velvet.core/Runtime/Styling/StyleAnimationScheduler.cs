@@ -982,6 +982,7 @@ namespace Velvet
             object? scale, object? rotate)
             => (slot == ArbitraryProperty.Opacity && opacity != null)
                 || ((slot == ArbitraryProperty.TranslateX || slot == ArbitraryProperty.TranslateY)
+                    // MUTANT_SURVIVES(equivalent, logic): scheduler translates are paired by Resolve and created and released together by both drivers.
                     && (translateX != null || translateY != null))
                 || (slot == ArbitraryProperty.Scale && scale != null)
                 || (slot == ArbitraryProperty.Rotate && rotate != null);
