@@ -663,6 +663,9 @@ namespace Velvet.Tests
             var added = Carrying("scale-90", "scale-50");
             var reversed = Carrying("scale-50", "scale-90");
             var axis = new ArbitraryStyle(ArbitraryProperty.ScaleX, 0.75f, LengthUnit.Pixel);
+            var otherAxis = new ArbitraryStyle(ArbitraryProperty.ScaleY, 0.8f, LengthUnit.Pixel);
+            var foreignScale = new Scale(new UnityEngine.Vector2(0.2f, 0.3f));
+            var classChangeReadings = new List<float>();
 
             // Act
             StyleArbitraryValueResolver.Apply(added, in axis);
@@ -672,6 +675,26 @@ namespace Velvet.Tests
 
             foreach (var element in new[] { added, reversed })
             {
+                var visibleBefore = element.ClassListContains("scale-90") && element.ClassListContains("scale-50");
+                element.style.scale = foreignScale;
+                var singleSeed = element.style.scale.value.value;
+                StyleClassProjection.Add(element, "bg-red-500", StyleLayerPriority.Base);
+                var singleAfter = element.style.scale.value.value;
+
+                StyleArbitraryValueResolver.Apply(element, in otherAxis);
+                var bothLayers = element.style.scale.value.value;
+                element.style.scale = foreignScale;
+                var bothSeed = element.style.scale.value.value;
+                StyleClassProjection.Remove(element, "scale-90", StyleLayerPriority.Base);
+                var bothAfter = element.style.scale.value.value;
+                var visibleAfter = !element.ClassListContains("scale-90") && element.ClassListContains("scale-50");
+                classChangeReadings.AddRange(new[] { visibleBefore ? 1f : 0f,
+                    singleSeed.x, singleSeed.y, singleAfter.x, singleAfter.y,
+                    bothLayers.x, bothLayers.y, bothSeed.x, bothSeed.y,
+                    bothAfter.x, bothAfter.y, visibleAfter ? 1f : 0f });
+
+                StyleClassProjection.Add(element, "scale-90", StyleLayerPriority.Base);
+                StyleArbitraryValueResolver.Clear(element, in otherAxis);
                 StyleArbitraryValueResolver.Clear(element, in axis);
                 StyleClassProjection.Add(element, "opacity-50", StyleLayerPriority.Hover);
                 StyleArbitraryValueResolver.Apply(element, in axis, StyleLayerPriority.Hover);
@@ -681,8 +704,11 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(new[] { fromAdded.x, fromAdded.y, fromReversed.x, fromReversed.y,
-                    higherFromAdded.x, higherFromAdded.y, higherFromReversed.x, higherFromReversed.y },
-                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f }).Within(0.0001f));
+                    higherFromAdded.x, higherFromAdded.y, higherFromReversed.x, higherFromReversed.y }
+                    .Concat(classChangeReadings).ToArray(),
+                Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f,
+                    1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f,
+                    1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
         }
 
         [Test]

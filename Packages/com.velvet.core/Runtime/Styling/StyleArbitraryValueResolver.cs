@@ -1281,6 +1281,7 @@ namespace Velvet
         internal static float? UniformScaleClassFallback(VisualElement element)
         {
             return s_layers.TryGetValue(element, out var map)
+                // MUTANT_SURVIVES(equivalent, clause removed): removing the outer axis-presence clause leaves writes unchanged: the three current callers add no axis before refresh, which rejects that capture.
                 && (map.ContainsKey(ArbitraryProperty.ScaleX) || map.ContainsKey(ArbitraryProperty.ScaleY))
                 ? UniformScaleFromClasses(element)
                 : null;
@@ -1717,6 +1718,7 @@ namespace Velvet
             foreach (var cls in element.GetClasses())
             {
                 if (TryGetUniformScalePreset(cls, out var scale)
+                    // MUTANT_SURVIVES(equivalent, boundary): each recognized uniform preset has a distinct generated cascade position; a tie repeats the same factor.
                     && StyleUtilityProperties.TryGet(cls, out var rule) && rule.CascadePosition > position)
                 {
                     uniform = scale;
