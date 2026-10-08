@@ -96,6 +96,12 @@ namespace Velvet.Tests
         private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
 
+        // Null on a tree without the pointer-events utilities, which PointerEventsOf reports as an answer no
+        // case expects rather than throw.
+        private static readonly MethodInfo ReadPointerEvents = typeof(V).Assembly
+            .GetType("Velvet.StylePointerEventsClass")
+            ?.GetMethod("Read", BindingFlags.Public | BindingFlags.Static);
+
         // A helper that applies classes runs the production routing, and the routing reaches production code
         // an arrangement can leave unexecuted.
         private static readonly string[] ArrangementHelpers = { nameof(Carrying), nameof(Patched) };
@@ -110,6 +116,8 @@ namespace Velvet.Tests
             "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
             "System.Void Velvet.FiberNodePatcher.ApplyGridManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyPointerEvents("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyTextBalanceManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
@@ -180,6 +188,9 @@ namespace Velvet.Tests
 
         private static int? HostStamp(VisualElement element)
             => (int?)StampHostClasses?.Invoke(null, new object[] { 0, element });
+
+        private static string PointerEventsOf(string[] classNames)
+            => ReadPointerEvents?.Invoke(null, new object[] { classNames })?.ToString() ?? "no reader";
 
         // The name is kept beside the definition so the composed order can be read back by name rather than
         // by definition reference.
@@ -317,8 +328,7 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): the base already hands the array to these five and no others.
-        // What shows the case can fail is a fifth applier beside them — measured with an
+        // What shows the case can fail is one more applier beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
         [Test]
@@ -585,6 +595,27 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false)),
                 "the divider colour this path configures the manipulator with is whichever divide colour "
                 + "token the class list hands over last");
+        }
+
+        // What shows the case can fail is a first-wins guard in StylePointerEventsClass.Read: each arrangement
+        // then takes the utility it was handed first and the pair inverts.
+        [Test]
+        [ReaderVerdict(LiveClassesReader)]
+        public void Given_BothPointerEventsUtilitiesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheModeTheReSyncResolvesIsTheOneAddedLast()
+        {
+            // Arrange — the same re-sync hands its class source to the pointer-events scope, whose mode is the
+            // later of the two utilities when neither carries the important modifier.
+            var added = Carrying("pointer-events-none", "pointer-events-auto");
+            var reversed = Carrying("pointer-events-auto", "pointer-events-none");
+
+            // Act
+            var fromAdded = PointerEventsOf(LiveClasses(added));
+            var fromReversed = PointerEventsOf(LiveClasses(reversed));
+
+            // Assert
+            Assert.That((fromAdded, fromReversed), Is.EqualTo(("Auto", "None")),
+                "the mode this path configures the pointer-events scope with is whichever of the two "
+                + "utilities the class list hands over last");
         }
 
         [Test]

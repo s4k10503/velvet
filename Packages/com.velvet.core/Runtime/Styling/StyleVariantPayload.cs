@@ -226,8 +226,8 @@ namespace Velvet
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
-        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators), the six wrapper-less
-        // paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
+        // the four layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
+        // the six wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
         // (FiberNodePatcher.ApplyFontLayer) and the text-effect cascade (FiberNodePatcher.ApplyTextEffects).
         // Each family answers for its own prefix set so this gate cannot drift from the array scans those
         // passes run.
@@ -241,6 +241,7 @@ namespace Velvet
                 || StyleGridClass.IsGridToken(core)
                 || StyleDivideClass.IsDivideToken(core)
                 || StyleTextBalanceClass.IsTextBalanceToken(core)
+                || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleShadowClass.IsShadowClass(core)
                 || StyleGradientClass.IsGradientClass(core)

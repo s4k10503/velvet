@@ -279,6 +279,13 @@ namespace Velvet
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
+            if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
+            {
+                pointerEvents.Release();
+                _ctx.PointerEventsScopes.Remove(element);
+            }
+            // Before the pool return, which resets a control's own picking mode and not its internals'.
+            PointerEventsScope.ReleaseTorn(element);
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's

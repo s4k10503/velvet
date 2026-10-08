@@ -289,6 +289,8 @@ namespace Velvet
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
+                // After the portal drain for the same reason: a Portal's target can sit inside a scope.
+                PointerEventsScope.SyncAll(_ctx);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -815,6 +817,16 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
+            foreach (var scope in _ctx.PointerEventsScopes.Values)
+            {
+                // MUTANT_SURVIVES(unreachable): the unmount reconcile ahead of Dispose released each scope whose
+                // element it tore down, so one is left here only for an element that reconcile skipped.
+                scope.Release();
+            }
+
+            // MUTANT_SURVIVES(equivalent): a disposed context runs no pass that walks the table, and a second
+            // Release of a scope still listed drops nothing.
+            _ctx.PointerEventsScopes.Clear();
             // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
             // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
             // store, supports-, the Motion applied-classes, child label and node, the presence-child roots,

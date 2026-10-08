@@ -656,6 +656,9 @@ namespace Velvet
         // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
+        // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
+        public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
         // one whose mere presence in a class array decides what a class-driven pass builds; the families are
