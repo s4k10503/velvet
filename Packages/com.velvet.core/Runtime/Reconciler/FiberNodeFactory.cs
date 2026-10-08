@@ -569,6 +569,7 @@ namespace Velvet
             // own. At mount the ancestor's own effect is parsed in its later post-children pass, which
             // re-applies; OnTextSet here makes an isolated later leaf re-render self-sufficient.
             StyleTextEffectResolver.OnTextSet(_ctx, label, textNode.Text);
+            _patcher.ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
             return label;
         }
 

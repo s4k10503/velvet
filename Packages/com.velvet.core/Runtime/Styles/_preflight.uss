@@ -1,0 +1,13 @@
+/*
+ * Preflight - the baseline every utility outranks.
+ *
+ * Tailwind v4's preflight zeroes margin and padding on every element. UI Toolkit's own controls give a Label
+ * a margin and padding of their own, and Velvet resets that one: `unity-label` is the class a Label is
+ * constructed with. The rule is imported ahead of every utility sheet, so a `p-*` or `m-*` on the same
+ * element ties with it on specificity and wins on order.
+ *
+ * The generator's utility table skips a `unity-` selector (UssSelectorKind.EngineClass), so this baseline
+ * never counts as a class declaring its own margin or padding.
+ */
+
+.unity-label { margin: 0; padding: 0; }

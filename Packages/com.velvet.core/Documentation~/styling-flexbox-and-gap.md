@@ -330,33 +330,29 @@ spells it, and the percent form especially would otherwise read as a factor of f
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.
 
-## A `Label`'s own margin, padding and shrink
+## A text item's margin, padding and minimum size
 
-Tailwind v4's preflight zeroes every element's margin and padding. Velvet ships no equivalent: its
-sheets set a `Label`'s margin, padding or `flex-shrink` only through a utility class on it. A `V.Text`
-takes no class, and a `V.Label` given none of those utilities keeps what UI Toolkit's defaults and the
-panel's theme give it. To have the three come from utilities alone, reset them under a class your own
-labels carry:
+**Margin and padding.** Tailwind v4's preflight zeroes every element's margin and padding. Velvet's
+`_preflight.uss` does it for a `Label` — the class `unity-label`, which a `V.Label` and a `V.Text` both
+carry — and is imported ahead of every utility, so a `p-*` or `m-*` on the label ties with it on specificity
+and wins on order. A label centred in a box therefore sits on the box's centre, with none of the theme's
+padding or margin on one side of it. A `Label` UI Toolkit builds inside its own controls carries the same
+class and takes the same reset. Buttons and fields keep the chrome the theme gives them.
 
-```css
-.label-reset { margin: 0; padding: 0; flex-shrink: 0; }
-```
+A rule of your own that sets a `Label`'s margin or padding ties with the baseline too: it wins when its sheet
+is attached after Velvet's, and loses to it when attached before.
 
-```csharp
-V.Label(className: "label-reset text-4xl", text: "42");
-```
+**Minimum size.** A CSS flex item cannot shrink below its content along the container's main axis
+(`min-width: auto` in a row, `min-height: auto` in a column). Velvet writes that value inline on every
+`Label` and `Button` it creates, measured from the text:
 
-Writing the same rule against `.unity-label`, the class a `Label` is constructed with
-(`Label.ussClassName`), reaches every element carrying that class instead: a `V.Text`, and any `Label`
-UI Toolkit builds inside its own controls. Leave `flex-shrink: 0` out of a rule that reaches a `truncate`
-label in a `flex-row`: the label keeps its full width, and the ellipsis never shows.
+- in a row, the widest word while the text may wrap and the whole text under `whitespace-nowrap` and `whitespace-pre`;
+- in a column, the height the text takes at the width the item was given;
+- plus the item's own padding and border on that axis.
 
-`.label-reset` has the same specificity as a utility class, so nothing in the selectors keeps a `p-*`,
-`m-*` or `shrink-*` on the same label ahead of it, and the theme's `.unity-label` ties with it the same
-way. Attach the reset before Velvet's sheet, the reverse of a token override in
-[styling-variants.md](styling-variants.md#theme-the-dark-variant-and-the-token-set-beside-it): add it to
-the root's `styleSheets` before `VelvetStyleUtilities.AttachTo` runs there, since attaching Velvet's
-sheet again does not move it ([setup.md](setup.md#the-supported-path)). Then check both sides: a label
-carrying `label-reset p-2` still has its padding, and one carrying `label-reset` alone has lost whatever
-the theme gave it. A bracket value such as `p-[8px]` is inline style ([setup.md](setup.md)) and is not part
-of either tie.
+The item stands down, keeping whatever its cascade gives it, when it is clipped (`overflow-hidden`,
+`truncate`), declares its own `min-w-*` / `min-h-*` on that axis, or declares its own size there (`w-*`,
+`h-*`, `size-*`) — CSS clips to zero for the first, and caps the minimum at the declared size for the third,
+where Velvet leaves the declared size shrinkable. An item with children, an absolutely positioned one and a
+hidden one are not measured. Only the 16 longest distinct words are measured to find the widest, and a
+variant that lights one of the stand-down classes without a patch is read at the label's next patch.

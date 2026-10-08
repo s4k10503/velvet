@@ -815,6 +815,12 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.FlexMinSizeManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.FlexMinSizeManipulators.Clear();
             // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
             // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
             // store, supports-, the Motion applied-classes, child label and node, the presence-child roots,

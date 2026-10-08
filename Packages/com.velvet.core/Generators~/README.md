@@ -200,6 +200,8 @@ The same run writes `../Runtime/Styles/_radius_declared.uss`, which restates eve
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 
+`_preflight.uss` declares a baseline on a class UI Toolkit's own controls carry (`.unity-label`), imported ahead of every utility. A plain `unity-` class selector is skipped by the table, so the baseline never counts as a class declaring its own margin or padding to `StyleArbitraryValueResolver.DeclaresOwn`; a gated or compounded one is still recorded.
+
 ## The code-shape rules
 
 Three mechanical limits and one mechanical defect ship as analyzers under the `Velvet.Shape` category. Every

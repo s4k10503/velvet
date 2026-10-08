@@ -440,6 +440,7 @@ namespace Velvet
                 // did not re-render) still shows the inherited transform; a whole-component render also re-applies
                 // via the ancestor's post-children pass (idempotent).
                 StyleTextEffectResolver.OnTextSet(_ctx, label, newNode.Text);
+                ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
             }
         }
 
@@ -3194,6 +3195,26 @@ namespace Velvet
             }
             ApplyDivideManipulator(element, classNames);
             ApplyTextBalanceManipulator(element, classNames);
+            ApplyFlexMinSizeManipulator(element, classNames);
+        }
+
+        // Every Label and Button gets one, unlike the class-gated manipulators beside it: the automatic
+        // minimum size applies to a text flex item whatever classes it carries, and the manipulator decides
+        // for itself whether a class has taken the axis over.
+        internal void ApplyFlexMinSizeManipulator(VisualElement element, string[] classNames)
+        {
+            if (element is not TextElement)
+            {
+                return;
+            }
+            if (_ctx.FlexMinSizeManipulators.TryGetValue(element, out var existing))
+            {
+                existing.Refresh(classNames);
+                return;
+            }
+            var manipulator = new StyleFlexMinSizeManipulator(classNames);
+            element.AddManipulator(manipulator);
+            _ctx.FlexMinSizeManipulators[element] = manipulator;
         }
 
         // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a

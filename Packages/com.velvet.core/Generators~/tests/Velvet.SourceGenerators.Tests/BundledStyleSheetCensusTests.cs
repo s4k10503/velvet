@@ -24,7 +24,7 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2216;
+        private const int SurveyedRuleCount = 2217;
         private const int SurveyedSingleClassRuleCount = 2176;
         private const int SurveyedDistinctPropertyNameCount = 63;
         private const int SurveyedUtilityClassCount = 2137;
@@ -253,6 +253,7 @@ namespace Velvet.SourceGenerators.Tests
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,
                 [SelectorShape.TypeKeyed] = 1,
+                [SelectorShape.EngineClass] = 1,
             };
 
             // Act
@@ -466,6 +467,7 @@ namespace Velvet.SourceGenerators.Tests
             ClassWithStateMarker,
             Root,
             TypeKeyed,
+            EngineClass,
             Unmodelled,
         }
 
@@ -564,6 +566,8 @@ namespace Velvet.SourceGenerators.Tests
                         return SelectorShape.Root;
                     case UssSelectorKind.TypeKeyed:
                         return SelectorShape.TypeKeyed;
+                    case UssSelectorKind.EngineClass:
+                        return SelectorShape.EngineClass;
                     case UssSelectorKind.UtilityClass when target.Gate == UssGate.None:
                         return SelectorShape.SingleClass;
                     case UssSelectorKind.UtilityClass when target.Gate == UssGate.Selected:

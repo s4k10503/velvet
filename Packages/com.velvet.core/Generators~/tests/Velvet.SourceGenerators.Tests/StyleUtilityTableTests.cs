@@ -248,6 +248,46 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
+        public void Given_AnEngineClassRule_When_TheTableIsDerived_Then_ItContributesNoEntry()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".unity-label { margin: 0; padding: 0; } .p-2 { padding: 8px; }"));
+
+            // Act
+            var count = StyleTableTestHelper.Load(run).Count;
+
+            // Assert
+            Assert.Equal(1, count);
+        }
+
+        [Fact]
+        public void Given_AnEngineClassRule_When_TheTableIsDerived_Then_NothingIsReported()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(".unity-label { margin: 0; padding: 0; }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Empty(codes);
+        }
+
+        [Fact]
+        public void Given_AGatedEngineClassRule_When_TheTableIsDerived_Then_ItIsStillRecorded()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(".unity-label:hover { margin: 0; }"));
+
+            // Act
+            var count = StyleTableTestHelper.Load(run).Count;
+
+            // Assert
+            Assert.Equal(1, count);
+        }
+
+        [Fact]
         public void Given_ATypeKeyedRule_When_TheTableIsDerived_Then_NothingIsReported()
         {
             // Arrange

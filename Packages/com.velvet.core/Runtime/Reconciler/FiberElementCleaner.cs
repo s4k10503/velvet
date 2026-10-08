@@ -278,6 +278,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);
+            DetachManipulator(element, _ctx.FlexMinSizeManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);

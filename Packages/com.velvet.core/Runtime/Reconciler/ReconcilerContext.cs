@@ -656,6 +656,9 @@ namespace Velvet
         // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
+        // Removed on cleanup / dispose like the manipulators above.
+        public Dictionary<VisualElement, StyleFlexMinSizeManipulator> FlexMinSizeManipulators { get; } = new();
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
         // one whose mere presence in a class array decides what a class-driven pass builds; the families are

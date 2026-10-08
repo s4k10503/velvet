@@ -205,6 +205,7 @@ namespace Velvet.StyleTable
                     return;
 
                 case UssSelectorKind.TypeKeyed:
+                case UssSelectorKind.EngineClass:
                     return;
             }
 

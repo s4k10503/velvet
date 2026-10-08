@@ -55,7 +55,7 @@ namespace Velvet
     // element, tracks it in ReconcilerContext.TextBalanceManipulators, and removes it on cleanup. Detach
     // clears the inline width and the reconciler restores a co-present w-* right after; a full unmount
     // does not, since the element's layer record is dropped and FiberElementPoolReset nulls width anyway.
-    internal sealed class StyleTextBalanceManipulator : Manipulator
+    internal sealed class StyleTextBalanceManipulator : StyleTextItemManipulator
     {
         private const int MaxIterations = 8;
 
@@ -87,32 +87,10 @@ namespace Velvet
 
         private TextWrapStyle _style;
 
-        private int _lastSignature;
-        private bool _hasSignature;
-
-        // Tracked so the callback can be unregistered from the exact element it was registered on.
-        private VisualElement? _subscribedParent;
-
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
         {
             _ctx = ctx;
             _style = style;
-        }
-
-        protected override void RegisterCallbacksOnTarget()
-        {
-            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
-            target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            target.RegisterCallback<ChangeEvent<string>>(OnTextChanged);
-            Apply();
-        }
-
-        protected override void UnregisterCallbacksFromTarget()
-        {
-            Clear();
-            target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
-            target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            target.UnregisterCallback<ChangeEvent<string>>(OnTextChanged);
         }
 
         // Forces a full re-derive, mirroring StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap.
@@ -123,48 +101,8 @@ namespace Velvet
             Apply();
         }
 
-        private void OnAttach(AttachToPanelEvent evt)
+        protected override void Derive(TextElement textElement, VisualElement parent)
         {
-            _hasSignature = false;
-            Apply();
-        }
-
-        private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
-
-        private void OnTextChanged(ChangeEvent<string> evt) => Apply();
-
-        private void OnParentGeometryChanged(GeometryChangedEvent evt) => Apply();
-
-        // Re-pointed from every Apply, not only from AttachToPanelEvent, so a mid-life reparent is caught
-        // without depending on how UI Toolkit sequences Attach/Detach for a same-panel reparent.
-        private void SyncParentSubscription(VisualElement? parent)
-        {
-            if (ReferenceEquals(parent, _subscribedParent))
-            {
-                return;
-            }
-            _subscribedParent?.UnregisterCallback<GeometryChangedEvent>(OnParentGeometryChanged);
-            _subscribedParent = parent;
-            _subscribedParent?.RegisterCallback<GeometryChangedEvent>(OnParentGeometryChanged);
-        }
-
-        private void Apply()
-        {
-            if (target is not TextElement textElement)
-            {
-                return;
-            }
-
-            var parent = textElement.parent;
-            SyncParentSubscription(parent);
-            if (parent == null)
-            {
-                // Re-arms so a later resolve is never skipped as a false repeat, mirroring
-                // StyleGridManipulator's off-panel deferral.
-                _hasSignature = false;
-                return;
-            }
-
             if (StyleTextBalanceClass.DeclaresWidthLayer(textElement))
             {
                 // In FRONT of the signature guard: two dictionary lookups, no allocation. This is what
@@ -427,14 +365,12 @@ namespace Velvet
 
         // Stops at the clear: only the caller can tell a class removal, which owes the element its
         // co-present w-* back, from an unmount, whose layer record is dropped moments later.
-        private void Clear()
+        protected override void Clear()
         {
             if (target is TextElement textElement)
             {
                 ClearWidth(textElement);
             }
-            SyncParentSubscription(null);
-            _hasSignature = false;
         }
 
         // The available width is already ceiling-clamped, so a ceiling change that can alter the outcome
