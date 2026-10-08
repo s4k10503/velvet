@@ -660,6 +660,9 @@ namespace Velvet.Tests
                 "A completion from before the reset does not count the later action out");
         }
 
+        // GREEN_ON_BASE(characterization): the base never leaves an entry out of a render, so the holder keeps
+        // it there too. What this pins is the branch's half: the commit-time leave-out applies only to the
+        // drain that lands the entry's own transition, never to an unrelated drain.
         [Test]
         public void Given_ATransitionEnrolledOnAnotherComponent_When_AnUnrelatedDrainRendersTheHolderOfItsEntry_Then_ThatRenderKeepsIt()
         {
