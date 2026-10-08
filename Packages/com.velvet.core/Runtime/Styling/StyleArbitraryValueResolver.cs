@@ -1111,8 +1111,8 @@ namespace Velvet
             }
         }
 
-        // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
-        // projection see none of it — but every layer resolve that writes a held slot writes the held value
+        // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — the class projection
+        // sees none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
         // off — cannot take the slot from it. Yield makes the exception.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
