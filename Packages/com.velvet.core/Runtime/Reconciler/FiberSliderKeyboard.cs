@@ -35,6 +35,7 @@ namespace Velvet
             slider.RegisterCallback(s_onKeyDown, TrickleDown.TrickleDown);
             slider.RegisterCallback(s_onNavigationMove, TrickleDown.TrickleDown);
             slider.RegisterCallback(s_onValueChanged, TrickleDown.TrickleDown);
+            slider.Q(className: Slider.inputUssClassName)?.RegisterCallback(s_stopAtField);
             return slider;
         }
 
@@ -58,11 +59,6 @@ namespace Velvet
 
             if (IsInInputField(evt.target as VisualElement, slider))
             {
-                if (evt.keyCode is KeyCode.Home or KeyCode.End)
-                {
-                    slider.Q(className: Slider.textFieldClassName).RegisterCallback(s_stopAtField);
-                }
-
                 return;
             }
 
@@ -87,11 +83,15 @@ namespace Velvet
             evt.StopImmediatePropagation();
         }
 
-        // A Home or End the field's text editor leaves unhandled would bubble to the slider's own handler, which
-        // puts them at the swapped ends; this stops it at the field.
+        // The slider's own handler takes Home and End from any target, so a Home or End aimed at the field is
+        // stopped on the way up. It sits on the slider's input container from Create rather than on the field,
+        // which exists only once showInputField is set: SliderDirectionPanelTests pins the first press.
         private static void StopHomeEndAtField(KeyDownEvent evt)
         {
-            if (evt.keyCode is KeyCode.Home or KeyCode.End)
+            if (evt.keyCode is KeyCode.Home or KeyCode.End
+                && evt.currentTarget is VisualElement container
+                && container.GetFirstAncestorOfType<Slider>() is { } slider
+                && IsInInputField(evt.target as VisualElement, slider))
             {
                 evt.StopPropagation();
             }
