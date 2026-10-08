@@ -1,7 +1,8 @@
 # Virtualized lists
 
-`V.VirtualList` renders a large collection into a vertical `ScrollView`, keeping only the rows in and
-near the viewport in the tree — the counterpart of react-window's `List`.
+`V.VirtualList` renders a large collection into a `ScrollView`, keeping only the rows in and near the
+viewport in the tree — the counterpart of react-window's `List`, and with `horizontal: true` of a
+FlashList laid out as a row.
 
 | Parameter | Meaning |
 |-----------|---------|
@@ -12,6 +13,11 @@ near the viewport in the tree — the counterpart of react-window's `List`.
 | `overscan` | Rows rendered beyond each edge of the viewport. Defaults to 3; must not be negative. |
 | `key`, `className`, `name` | The list's own key among its siblings, and the `ScrollView`'s classes and name. |
 | `listRef` | A `Ref<VirtualListHandle>` that holds the list's handle while it is mounted — see [Scrolling to an item](#scrolling-to-an-item). |
+| `horizontal` | Lays the items out in a row the list scrolls sideways, FlashList's `horizontal`. Defaults to `false`. |
+
+In a horizontal list every height and vertical extent below is a width and a horizontal one: `itemHeight`
+gives each item's width, the viewport's width decides the range, and the horizontal scroller is the one
+`ScrollToItem` moves.
 
 A null `items`, `keySelector`, `renderer` or height function throws `ArgumentNullException`; an
 `itemHeight` of 0 or less and a negative `overscan` throw `ArgumentOutOfRangeException`.
@@ -24,13 +30,14 @@ first item. Each row element is given its own item's height. A height function i
 each time the list renders.
 
 The rendered range is the items the viewport overlaps at the current scroll offset, widened by
-`overscan` on each side and clamped to the collection. It is recomputed when the scroll offset changes,
+`overscan` on each side and clamped to the collection. An item ending at the viewport's near edge, or
+starting at its far edge, is outside the visible range. It is recomputed when the scroll offset changes,
 when the `ScrollView`'s geometry changes, and when the component holding the list renders it again —
 which renders the range from the new `items` and `renderer`.
 
 ## Scrolling to an item
 
-`listRef.Current.ScrollToItem(index, align)` scrolls the list the way react-window's `scrollToRow`
+`listRef.Current.ScrollToItem(index, align, behavior)` scrolls the list the way react-window's `scrollToRow`
 does, against the viewport height the list's last layout measured:
 
 | `align` | Where the item goes |
@@ -41,11 +48,27 @@ does, against the viewport height the list's last layout measured:
 | `End` | Its end at the viewport's end |
 | `Start` | Its start at the viewport's start |
 
+The existing `ScrollToItem(index, align)` overload keeps the default behavior. The three-argument
+overload requires an explicit `behavior`:
+
+| `behavior` | How the list gets there |
+|------------|-------------------------|
+| `Auto` (default) | As `Instant`: the DOM's `auto` follows an element's `scroll-behavior`, which a `ScrollView` does not carry |
+| `Instant` | In one step |
+| `Smooth` | Animated over 300 ms, eased in and out |
+
+A change to the active scroller's value from outside the list cancels the current smooth scroll and
+any target awaiting content layout. A range change that clamps the current value preserves the target.
+A subsequent `ScrollToItem` replaces both the animation and deferred target, including when a
+value-change handler calls it before the earlier request returns. Changing orientation or disposing
+the list cancels them too.
+
 No alignment scrolls past either end of the list. An item a render has just added is reached once the
 list's content has been laid out for it. An item taller than the viewport counts as in view
 while the viewport lies within it. An index outside the items throws `ArgumentOutOfRangeException`.
 `listRef.Current.Element` is the list's `ScrollView`. The ref holds the handle from the list's mount to its
-unmount, and lets go of it when a render gives the list another ref.
+unmount, and lets go of it when a render gives the list another ref. A handle retained after disposal
+does nothing when `ScrollToItem` is called.
 
 ## Keys
 

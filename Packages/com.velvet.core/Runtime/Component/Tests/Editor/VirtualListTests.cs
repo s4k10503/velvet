@@ -157,7 +157,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ViewportAtTop_When_RangeUpdated_Then_RendersVisibleWindowPlusOverscan()
         {
-            // Arrange — viewport 200 / itemHeight 50 spans items 0..4; overscan 2 extends the tail to item 6.
+            // Arrange — viewport 200 / itemHeight 50 spans items 0..3, item 4 starting at its bottom edge; overscan 2
+            // extends the tail to item 5.
             var node = V.VirtualList(
                 items: CreateItems(100),
                 keySelector: item => item.Id,
@@ -172,8 +173,8 @@ namespace Velvet.Tests
 
             // Assert
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
-            Assert.That(visibleContainer.childCount, Is.EqualTo(7),
-                "Items 0..4 are visible and overscan 2 adds items 5..6, for 7 rendered items");
+            Assert.That(visibleContainer.childCount, Is.EqualTo(6),
+                "Items 0..3 are visible and overscan 2 adds items 4..5, for 6 rendered items");
         }
 
         [Test]
@@ -542,7 +543,7 @@ namespace Velvet.Tests
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
 
             // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Assert — the texts in window order rather than a count, so a dropped row names itself.
             Assert.That(
@@ -625,10 +626,10 @@ namespace Velvet.Tests
                 overscan: 0);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Act — the window becomes items 10..14, sharing no item index with items 0..4.
-            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 250f);
 
             // Assert
             Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
@@ -669,8 +670,7 @@ namespace Velvet.Tests
                 Is.EqualTo("[typed] typed, [] shown on return"));
         }
 
-        // GREEN_ON_BASE(characterization): the second of two items sharing a key renders where the first
-        // renders nothing.
+        // GREEN_ON_BASE(characterization): an empty item still leaves its sibling visible with the wider viewport.
         [Test]
         public void Given_TwoItemsSharingAKeyWhoseFirstRendersNothing_When_TheRangeIsRendered_Then_TheSecondRenders()
         {
@@ -686,7 +686,7 @@ namespace Velvet.Tests
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
 
             // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Assert
             Assert.That(
@@ -717,6 +717,7 @@ namespace Velvet.Tests
             UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
         }
 
+        // GREEN_ON_BASE(characterization): the viewport adjustment must preserve the base's duplicate-key rendering.
         [Test]
         public void Given_TwoItemsSharingAKey_When_TheRangeIsRendered_Then_BothRender()
         {
@@ -734,7 +735,7 @@ namespace Velvet.Tests
                 new System.Text.RegularExpressions.Regex("Duplicate key detected: \"item-1\""));
 
             // Act
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Assert
             Assert.That(
@@ -897,10 +898,10 @@ namespace Velvet.Tests
                 overscan: 0);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Act — the window becomes items 10..14, sharing no item with items 0..4.
-            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 250f);
 
             // Assert
             Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
@@ -1018,9 +1019,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets an item renderer's throw out of the update.
-        // The unwind the cases below pin must not turn it into a silent skip, and the last two of them
-        // share this arrangement exactly, so it is also what says their Act reached the renderer at all.
+        // GREEN_ON_BASE(characterization): renderer exceptions still reach the caller with the wider viewport.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ARangeChangeReachesIt_Then_TheThrowReachesTheCaller()
         {
@@ -1029,12 +1028,12 @@ namespace Velvet.Tests
             var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", new List<string>());
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             poisoned = true;
 
             // Act + Assert — the window becomes items 1..5, whose last item the renderer refuses.
             Assert.Throws<InvalidOperationException>(
-                () => controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f));
+                () => controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f));
         }
 
         [Test]
@@ -1049,13 +1048,13 @@ namespace Velvet.Tests
             var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", cleaned);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             poisoned = true;
 
             // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
             try
             {
-                controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
+                controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 300f);
             }
             catch (InvalidOperationException)
             {
@@ -1078,13 +1077,13 @@ namespace Velvet.Tests
             var node = ThrowingRendererList(item => poisoned && item.Id == "item-1", cleaned);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             poisoned = true;
 
             // Act — the window becomes items 1..5, whose first item the renderer refuses.
             try
             {
-                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f);
             }
             catch (InvalidOperationException)
             {
@@ -1193,6 +1192,7 @@ namespace Velvet.Tests
                 Is.EqualTo("[constructor refused] thrown, item-2 released 1 time(s)"));
         }
 
+        // GREEN_ON_BASE(characterization): failed ranges keep the base's invalid indices after the viewport adjustment.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheControllerNamesNoRenderedRange()
         {
@@ -1201,13 +1201,13 @@ namespace Velvet.Tests
             var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", new List<string>());
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             poisoned = true;
 
             // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
             try
             {
-                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f);
             }
             catch (InvalidOperationException)
             {
@@ -1220,6 +1220,7 @@ namespace Velvet.Tests
                 Is.EqualTo("-1..-1"));
         }
 
+        // GREEN_ON_BASE(characterization): failed ranges still clear the base's visible rows with the wider viewport.
         [Test]
         public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows()
         {
@@ -1229,13 +1230,13 @@ namespace Velvet.Tests
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             poisoned = true;
 
             // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
             try
             {
-                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f);
             }
             catch (InvalidOperationException)
             {
@@ -1279,12 +1280,12 @@ namespace Velvet.Tests
             var renderer = CleanupRecordingRenderer(cleaned, RecordedLabel);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, LabelRowsList(10, renderer), Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Act — Update renders nothing while no viewport height is known, so the range is re-supplied
             // as the type-flip case in the visible-range region does.
             controller.Update(LabelRowsList(0, renderer));
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Assert
             Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
@@ -1413,10 +1414,10 @@ namespace Velvet.Tests
             });
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             using var controller = new FiberVirtualListController(scrollView, OneNodeForEveryItemList(shared), Reconciler);
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
 
             // Act — the window becomes items 1..5: item-0's row leaves and item-5's arrives.
-            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f);
 
             // Assert
             Assert.That(setUp + " set up, " + cleanedUp + " cleaned up", Is.EqualTo("6 set up, 1 cleaned up"));
@@ -1473,12 +1474,12 @@ namespace Velvet.Tests
                 overscan: 0);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
             var controller = new FiberVirtualListController(scrollView, node, Reconciler);
-            controller.UpdateVisibleRange(scrollY: firstScrollY, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: firstScrollY, viewportHeight: 250f);
             isPoisoned = true;
             var thrown = "nothing";
             try
             {
-                controller.UpdateVisibleRange(scrollY: failScrollY, viewportHeight: 200f);
+                controller.UpdateVisibleRange(scrollY: failScrollY, viewportHeight: 250f);
             }
             catch (Exception exception)
             {
@@ -1628,6 +1629,7 @@ namespace Velvet.Tests
                     : V.Div(),
                 overscan: 0);
 
+        // GREEN_ON_BASE(characterization): the wider range must preserve the base's cleanup of a half-built row's child.
         [Test]
         public void Given_ARowThatFailsHalfBuiltAfterMountingAComponent_When_ItsEffectsFlush_Then_ThatComponentIsNotLeftMounted()
         {
@@ -1637,12 +1639,12 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(HalfBuiltComponentChildHostRender, key: "host"));
             var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
-            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
             s_refusingRowId = "item-5";
             var thrown = "nothing";
             try
             {
-                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 250f);
             }
             catch (Exception exception)
             {

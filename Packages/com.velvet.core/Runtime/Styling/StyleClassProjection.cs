@@ -35,8 +35,9 @@ namespace Velvet
         // nothing.
         public static void Add(VisualElement element, string cls, long priority)
         {
+            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
             AddToModel(element, cls, priority);
-            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
         private static void AddToModel(VisualElement element, string cls, long priority)
@@ -58,8 +59,9 @@ namespace Velvet
 
         public static void Remove(VisualElement element, string cls, long priority)
         {
+            var previousUniform = StyleArbitraryValueResolver.UniformScaleClassFallback(element);
             RemoveFromModel(element, cls, priority);
-            StyleArbitraryValueResolver.NotifyClassesChanged(element);
+            StyleArbitraryValueResolver.NotifyClassesChanged(element, previousUniform);
         }
 
         private static void RemoveFromModel(VisualElement element, string cls, long priority)
@@ -83,6 +85,10 @@ namespace Velvet
         // Whether element's className declares cls while the projection keeps it off the live class list.
         internal static bool SuppressesDeclared(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
+
+        // Whether cls sits on element's live class list only because a variant payload put it there.
+        internal static bool IsHeldOnlyByPayload(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.HeldOnlyByPayload(cls) == true;
 
         // Called by StyleArbitraryValueResolver, because an inline layer both outranks the classes below it
         // and can itself be outranked by a class above it.
@@ -377,6 +383,11 @@ namespace Velvet
                 => _suppressed?.Contains(cls) == true
                     && (IndexOf(cls, StyleLayerPriority.Base) >= 0
                         || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
+
+            public bool HeldOnlyByPayload(string cls)
+                => Holds(cls)
+                    && IndexOf(cls, StyleLayerPriority.Base) < 0
+                    && IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) < 0;
 
             private int FirstIndexOf(string cls)
             {

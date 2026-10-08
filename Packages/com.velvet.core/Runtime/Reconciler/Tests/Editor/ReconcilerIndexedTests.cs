@@ -23,6 +23,13 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ReconcilerIndexedTests : ReconcilerTestFixture
     {
+        public override void TearDown()
+        {
+            base.TearDown();
+            // A saturating case below fills a process-wide pool, which the rest of the run would inherit.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+        }
+
         [Test]
         public void Given_EmptyTree_When_ElementsAdded_Then_ChildrenCreatedInOrder()
         {
@@ -188,6 +195,7 @@ namespace Velvet.Tests
             Assert.That(Root.ElementAt(0), Is.Not.InstanceOf<Button>());
         }
 
+        // GREEN_ON_BASE(characterization): the base patches the Label slot, so the instance stays put.
         [Test]
         public void Given_MixedTypeChange_When_Patched_Then_SameTypePositionKeepsInstance()
         {
@@ -206,12 +214,15 @@ namespace Velvet.Tests
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldChildren);
             var originalLabel = Root.ElementAt(1);
+            var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldChildren, newChildren);
 
             // Assert — Label -> Label keeps its instance and is patched
-            Assert.That(Root.ElementAt(1), Is.SameAs(originalLabel));
+            Assert.That(
+                (poolSaturated, ReferenceEquals(Root.ElementAt(1), originalLabel)),
+                Is.EqualTo((true, true)));
         }
 
         // The indexed desync recovery (the Common-phase slotExists check + the create-on-missing inserts) must not

@@ -10,15 +10,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>
+    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
     /// whose items each take their own height, and the <see cref="VirtualListHandle"/> a list sets on its
     /// <c>listRef</c>, against react-window's <c>List</c>.
     /// <list type="bullet">
     /// <item>The spacer is as tall as the items' heights added up, and follows them when the list renders
     /// again, whether its heights or its number of items changed.</item>
-    /// <item>The rendered range runs from the item at the scroll offset through the item at the viewport's
-    /// bottom edge — an item ending exactly at an edge being outside it — and is the last item alone past the
-    /// list's end, for a list of one height as well; its container sits where its first item starts, and
+    /// <item>The rendered range runs from the item at the scroll offset through the last item starting before the
+    /// viewport's bottom edge — an item ending exactly at the top edge, or starting exactly at the bottom one,
+    /// being outside it — and is the last item alone past the list's end, for a list of one height as well; its container sits where its first item starts, and
     /// each row takes its own item's height.</item>
     /// <item><c>ScrollToItem</c> places the item as react-window's <c>scrollToRow</c> does for each
     /// alignment, within the list's ends. Auto leaves an item already in view where it is, one whose start or
@@ -120,23 +120,27 @@ namespace Velvet.Tests
             Assert.That(spacer.style.height.value.value, Is.EqualTo(210f).Within(0.01f));
         }
 
-        [Test]
-        public void Given_HeightsByIndex_When_TheRangeIsRendered_Then_ItRunsFromTheItemAtTheOffsetToTheItemAtTheBottomEdge()
+        // GREEN_ON_BASE(characterization): interior variable-height ranges, including one short item, already render these rows; the separate exact-edge case asks the exclusive viewport contract.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_HeightsByIndex_When_TheRangeIsRendered_Then_ItRunsFromTheItemAtTheOffsetToTheItemAtTheBottomEdge(
+            bool singleItem)
         {
-            // Arrange — the items end at 100, 110, 130, 160, 260 and 360.
+            // Arrange — the ordinary items end at 100, 110, 130, 160, 260 and 360; the single item ends at 40.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            var heights = singleItem ? new[] { 40f } : new[] { 100f, 10f, 20f, 30f, 100f, 100f };
             using var controller = new FiberVirtualListController(
-                scrollView, VariableList(new[] { 100f, 10f, 20f, 30f, 100f, 100f }), Reconciler);
+                scrollView, VariableList(heights), Reconciler);
 
-            // Act — the viewport runs from 105 to 155.
-            controller.UpdateVisibleRange(scrollY: 105f, viewportHeight: 50f);
+            // Act — the ordinary viewport runs from 105 to 155; the short list's runs from 5 to 25.
+            controller.UpdateVisibleRange(scrollY: singleItem ? 5f : 105f, viewportHeight: singleItem ? 20f : 50f);
 
             // Assert
-            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1,item-2,item-3"));
+            Assert.That(RowTexts(scrollView), Is.EqualTo(singleItem ? "item-0" : "item-1,item-2,item-3"));
         }
 
         [Test]
-        public void Given_HeightsByIndex_When_TheViewportEdgesFallOnItemEnds_Then_TheItemsStartingThereRender()
+        public void Given_HeightsByIndex_When_TheViewportEdgesFallOnItemEnds_Then_OnlyTheItemBetweenThemRenders()
         {
             // Arrange — the items end at 50, 100, 150 and so on.
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
@@ -147,7 +151,7 @@ namespace Velvet.Tests
             controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 50f);
 
             // Assert — item 0 ends at the top edge; item 2 starts at the bottom one.
-            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1,item-2"));
+            Assert.That(RowTexts(scrollView), Is.EqualTo("item-1"));
         }
 
         [Test]
@@ -233,6 +237,26 @@ namespace Velvet.Tests
         #endregion
 
         #region ScrollToItem
+
+        // GREEN_ON_BASE(characterization): the existing public signatures bind these delegate types.
+        [Test]
+        public void Given_TheExistingPublicSignatures_When_BoundAsMethodGroups_Then_TheirParameterCountsRemain()
+        {
+            // Arrange
+            Func<IReadOnlyList<string>, Func<string, string>, float, Func<string, VNode>, int,
+                string, string, string, Ref<VirtualListHandle>, VirtualListNode> fixedFactory = V.VirtualList;
+            Func<IReadOnlyList<string>, Func<string, string>, Func<int, float>, Func<string, VNode>, int,
+                string, string, string, Ref<VirtualListHandle>, VirtualListNode> variableFactory = V.VirtualList;
+            var (_, handle) = MountScrollable();
+            Action<int, VirtualListAlign> scroll = handle.ScrollToItem;
+
+            // Act
+            var parameterCounts = new[] { fixedFactory.Method.GetParameters().Length,
+                variableFactory.Method.GetParameters().Length, scroll.Method.GetParameters().Length };
+
+            // Assert
+            Assert.That(parameterCounts, Is.EqualTo(new[] { 9, 9, 2 }));
+        }
 
         [Test]
         public void Given_StartAlignment_When_ScrolledToAnItem_Then_ItsStartMeetsTheViewportsStart()

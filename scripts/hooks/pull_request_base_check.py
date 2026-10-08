@@ -146,7 +146,8 @@ def main():
         sys.stdout.write(json.dumps({field: known[field] for field in asked}))
         return 0
     if argv[0] == "pr" and argv[1] == "checks":
-        sys.stdout.write(json.dumps([{"name": "Required checks (Unity)", "bucket": "pass"}]))
+        sys.stdout.write(os.environ.get("VELVET_BASE_CHECK_CHECKS") or json.dumps(
+            [{"name": "Required checks (Unity)", "bucket": "pass"}]))
         return 0
     return unmodelled()
 

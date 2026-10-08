@@ -93,5 +93,25 @@ namespace Velvet.Tests
             // Assert
             Assert.That(IntTaskSourceField.GetValue(second), Is.SameAs(firstRunner));
         }
+
+        // GREEN_ON_BASE(characterization): the base already pools a consumed yield source on the main thread.
+        // Pins by identity the reuse VelvetTaskAllocationComparisonTests' yield case reads as a block count.
+        [Test]
+        public void Given_AConsumedYield_When_TheMainThreadYieldsAgain_Then_ItReusesTheYieldSource()
+        {
+            // Arrange
+            var first = VelvetTask.Yield();
+            var firstSource = VoidTaskSourceField.GetValue(first);
+#if UNITY_EDITOR
+            DrainEditorUpdateForTest();
+#endif
+            first.GetAwaiter().GetResult();
+
+            // Act
+            var second = VelvetTask.Yield();
+
+            // Assert
+            Assert.That(VoidTaskSourceField.GetValue(second), Is.SameAs(firstSource));
+        }
     }
 }

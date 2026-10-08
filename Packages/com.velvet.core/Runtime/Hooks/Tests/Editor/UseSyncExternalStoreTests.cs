@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <see cref="Hooks.UseSyncExternalStore{T}"/> against a store Velvet does not own: what a render
     /// returns, which notifications re-render, when the hook subscribes and unsubscribes, the thread and lane a
-    /// notification is held to, and the snapshot readers share across a batch drain wave.
+    /// notification is held to, and the snapshot readers share across one batch drain pass.
     /// </summary>
     [TestFixture]
     internal sealed class UseSyncExternalStoreTests
@@ -439,68 +439,61 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AncestorImmediateAndDescendantDelayed_When_StoreChangesBetweenDrains_Then_DescendantRendersTheWaveSnapshot()
+        public void Given_AncestorImmediateAndDescendantDelayed_When_StoreChangesBetweenDrains_Then_TheDelayedDrainCommitsTheChangeToBoth()
         {
-            // Arrange
+            // Arrange — the change re-schedules both readers on the immediate tier
             s_tearSource = new ExternalSource<int>(0);
             using var mounted = MountAncestorDescendant();
             s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-
-            // Act
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_tearSource.Set(1);
-            var rendersBefore = s_descendantRenders;
+
+            // Act
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
-            // Assert — the snapshot the immediate drain's ancestor rendered, not the live 1, read by a render
-            // the delayed drain made
-            Assert.AreEqual("0, rendered in the delayed drain: True",
-                $"{s_descendantValue}, rendered in the delayed drain: {s_descendantRenders > rendersBefore}");
+            // Assert
+            Assert.AreEqual("1/1", $"{s_ancestorValue}/{s_descendantValue}");
         }
 
         [Test]
-        public void Given_ReaderMountedInTheDelayedDrainAfterAChange_When_TheWaveEnds_Then_ItRendersTheLatestSnapshot()
+        public void Given_AncestorImmediateAndDescendantDelayed_When_AChangeInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth()
         {
-            // Arrange — the ancestor pins 0 in the immediate drain; the host mounts the reader in the delayed drain
+            // Arrange — the change is made inside startTransition, which must not move the readers' re-render
+            // onto the Transition lane
+            s_tearSource = new ExternalSource<int>(0);
+            using var mounted = MountAncestorDescendant();
+            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            FiberWorkLoop.StartTransition(s_ancestorFiber, new HookTransitionSlot(), () => s_tearSource.Set(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.AreEqual("1/1", $"{s_ancestorValue}/{s_descendantValue}");
+        }
+
+        [Test]
+        public void Given_ReaderMountedInADrainPassAfterAChange_When_TheDrainEnds_Then_ItRendersTheLatestSnapshot()
+        {
+            // Arrange — the ancestor pins 0 in the pass; the host changes the store and then mounts the reader
             s_lateSource = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Div(name: "late", children: new VNode[]
             {
                 V.Component(LateAncestorRender, key: "ancestor"),
                 V.Component(LateHostRender, key: "host"),
             }));
-            s_lateAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            s_lateHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-
-            // Act — the change lands before the reader exists to subscribe to it
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_showLateReader = true;
-            s_lateSource.Set(1);
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_lateAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_lateHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act — the reader subscribes after the change, so no notification is left to reach it
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — it first rendered the wave's pin, then the store's value
+            // Assert — it first rendered the pass's pin, then the store's value
             Assert.AreEqual("first 0, last 1", $"first {s_lateReaderFirstValue}, last {s_lateReaderValue}");
-        }
-
-        [Test]
-        public void Given_StoreChangedMidWave_When_TheNextWaveDrains_Then_BothReadersRenderTheLatestSnapshot()
-        {
-            // Arrange
-            s_tearSource = new ExternalSource<int>(0);
-            using var mounted = MountAncestorDescendant();
-            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_tearSource.Set(1);
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-
-            // Act
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-
-            // Assert
-            Assert.AreEqual("1/1", $"{s_ancestorValue}/{s_descendantValue}");
         }
 
         private sealed record PairState(int Number, string Text);
@@ -814,7 +807,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region LateMount components (a reader the delayed drain mounts)
+        #region LateMount components (a reader mounted partway through a drain pass)
 
         private static ExternalSource<int> s_lateSource;
         private static bool s_showLateReader;
@@ -845,6 +838,7 @@ namespace Velvet.Tests
         private static VNode LateHostRender()
         {
             s_lateHostFiber = FiberAmbientStack.Current;
+            if (s_showLateReader && s_lateSource.GetSnapshot() == 0) s_lateSource.Set(1);
             return s_showLateReader ? V.Component(LateReaderRender, key: "reader") : V.Label(text: "empty");
         }
 

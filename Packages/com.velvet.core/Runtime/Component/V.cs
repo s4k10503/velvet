@@ -537,8 +537,9 @@ namespace Velvet
         /// Creates a TextField.
         /// </summary>
         /// <remarks>
-        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
-        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/>,
+        /// <paramref name="isDelayed"/>, <paramref name="multiline"/>, <paramref name="keyboardType"/> and
+        /// <paramref name="autoCorrection"/> are undeclared when null rather than reset to a default;
         /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
         /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
@@ -559,6 +560,9 @@ namespace Velvet
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
+        /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
+        /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
+        /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -581,13 +585,17 @@ namespace Velvet
             string? placeholder = null,
             int? maxLength = null,
             bool? isReadOnly = null,
-            bool? isDelayed = null)
+            bool? isDelayed = null,
+            bool? multiline = null,
+            TouchScreenKeyboardType? keyboardType = null,
+            bool? autoCorrection = null)
         {
             VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
-                                    || isReadOnly.HasValue || isDelayed.HasValue;
+                                    || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
+                                    || keyboardType.HasValue || autoCorrection.HasValue;
 
             FiberElementProps? props = null;
             if (value != null || label != null || declaresTextField || enabled.HasValue)
@@ -598,6 +606,11 @@ namespace Velvet
                 props.Enabled = enabled;
                 props.TextField = declaresTextField
                     ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
+                    {
+                        Multiline = multiline,
+                        KeyboardType = keyboardType,
+                        AutoCorrection = autoCorrection,
+                    }
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -2367,6 +2380,29 @@ namespace Velvet
 
         #region Virtualized list
 
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            float itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+
         /// <summary>
         /// Virtualized list component for rendering large item collections.
         /// Renders a ScrollView of items of one height and only places the visible range in the DOM
@@ -2393,6 +2429,8 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
+        /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
@@ -2400,6 +2438,7 @@ namespace Velvet
             Func<T, string> keySelector,
             float itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
@@ -2418,13 +2457,37 @@ namespace Velvet
                 Name = name,
                 Key = key,
                 ListRef = listRef,
+                Horizontal = horizontal,
             };
         }
+
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels at an index.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            Func<int, float> itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
 
         /// <summary>
         /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
         /// index — react-window's <c>rowHeight</c> function. Every other parameter is
-        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>'s.
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>'s.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
@@ -2437,6 +2500,8 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
+        /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
@@ -2444,6 +2509,7 @@ namespace Velvet
             Func<T, string> keySelector,
             Func<int, float> itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
@@ -2462,6 +2528,7 @@ namespace Velvet
                 Name = name,
                 Key = key,
                 ListRef = listRef,
+                Horizontal = horizontal,
             };
         }
 
