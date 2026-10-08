@@ -56,9 +56,6 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.VisualElement, Velvet.ClipPathSpec&)";
         private const string ClipWrapperMirrorReader =
             "System.Void Velvet.ClipPathLayoutBox.SyncClasses(UnityEngine.UIElements.VisualElement)";
-        private const string BalanceWidthReader =
-            "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
-            + "UnityEngine.UIElements.VisualElement)";
         private const string FlexMinSizeScanReader =
             "System.Void Velvet.StyleFlexMinSizeManipulator.Scan(UnityEngine.UIElements.TextElement)";
         private const string OwnSlotReader =
@@ -136,8 +133,6 @@ namespace Velvet.Tests
             "System.Void Velvet.FiberNodePatcher.ApplyGridManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyPointerEvents("
-                + "UnityEngine.UIElements.VisualElement, System.String[])",
-            "System.Void Velvet.FiberNodePatcher.ApplyTextBalanceManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
         };
 
@@ -687,27 +682,6 @@ namespace Velvet.Tests
             string Sorted(VisualElement wrapper) => string.Join(" ", wrapper.GetClasses().OrderBy(c => c, StringComparer.Ordinal));
             Assert.That((Sorted(addedWrapper), Sorted(reversedWrapper)), Is.EqualTo(("self-end w-32", "self-end w-32")),
                 "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
-        }
-
-        // GREEN_ON_BASE(characterization): the base already answers this from the set, not the order.
-        // What shows the case can fail is trading the `return true` in DeclaresWidthClass for an
-        // assignment that keeps scanning: measured, the arrangement ending on w-auto then answers false.
-        [Test]
-        [ReaderVerdict(BalanceWidthReader)]
-        public void Given_AWidthTokenBesideTheAutoToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheBalanceVerdictIsTheSameBothWays()
-        {
-            // Arrange — w-auto declares nothing to stand down for, so a reading that took the last matching
-            // token rather than any of them answers differently depending on which arrived second.
-            var added = Carrying("w-32", "w-auto");
-            var reversed = Carrying("w-auto", "w-32");
-
-            // Act
-            var fromAdded = StyleTextBalanceClass.DeclaresWidthClass(added);
-            var fromReversed = StyleTextBalanceClass.DeclaresWidthClass(reversed);
-
-            // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
-            Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
-                "the balance manipulator stands down for a declared width wherever it sits in the list");
         }
 
         // What shows the case can fail is Scan taking the last width token in the list again: the two orders

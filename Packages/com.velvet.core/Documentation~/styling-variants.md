@@ -261,7 +261,7 @@ payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it reso
 utilities have to be re-derived when the variant toggles.
 
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
-utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the picking
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`; the picking
 Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
 ([styling-pointer-events.md](styling-pointer-events.md)); the wrapper-less paints — `skew-*`,
 `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /

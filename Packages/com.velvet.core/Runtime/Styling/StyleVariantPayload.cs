@@ -49,12 +49,6 @@ namespace Velvet
             // re-derives the grid from its FINAL token set instead of first building a one-column grid from
             // the half-applied one.
             var gateChanged = false;
-            // A USS-spelled width payload has to re-sync the layout manipulators: it decides whether
-            // text-balance stands down, and it loses to balance's own inline width, so it moves nothing the
-            // engine would raise a geometry event for. Kept out of the gate set above because it needs only
-            // the trigger, not the per-patch live-list routing that set also turns on. The inline-resolved
-            // spellings need nothing here — the manipulator's own layer probe sees both of their edges.
-            var reSyncOnly = false;
 
             for (var index = 0; index < payloads.Length; index++)
             {
@@ -88,17 +82,15 @@ namespace Velvet
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
-                var (payloadGated, payloadReSync) =
-                    ToggleResolvedPayload(dest, payload, on, effectivePriority, ctx, declaration);
+                var payloadGated = ToggleResolvedPayload(dest, payload, on, effectivePriority, ctx, declaration);
                 if (ReferenceEquals(dest, control))
                 {
                     gateChanged |= payloadGated;
-                    reSyncOnly |= payloadReSync;
                 }
                 else
                 {
                     box = dest;
-                    boxChanged |= payloadGated || payloadReSync;
+                    boxChanged |= payloadGated;
                 }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
@@ -111,7 +103,7 @@ namespace Velvet
                 }
             }
 
-            if (gateChanged || reSyncOnly)
+            if (gateChanged)
             {
                 // A gate class just appeared on (or left) the live class list without passing through the
                 // reconciler, so the layout manipulators and paint layers those tokens gate must be
@@ -141,10 +133,9 @@ namespace Velvet
             return dest;
         }
 
-        // Applies or clears one payload whose priority is already resolved, reporting back the two things the
-        // caller must re-sync once the whole array is through: whether a gate token moved, and whether a
-        // USS-spelled width payload did.
-        private static (bool GateChanged, bool ReSyncOnly) ToggleResolvedPayload(
+        // Applies or clears one payload whose priority is already resolved, reporting back whether a gate token
+        // moved, which the caller must re-sync once the whole array is through.
+        private static bool ToggleResolvedPayload(
             VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
@@ -164,7 +155,7 @@ namespace Velvet
                 {
                     StyleArbitraryValueResolver.Clear(target, in style, key);
                 }
-                return (false, false);
+                return false;
             }
 
             // font-[…] / leading-[…]: no arbitrary property claims either prefix, so both fall past the
@@ -174,7 +165,7 @@ namespace Velvet
             if (StyleFontClass.IsArbitraryFontClass(core)
                 || StyleTextEffectClass.IsArbitraryLeadingClass(core))
             {
-                return (TrackVariantGate(ctx, target, payload, key, declaration, on), false);
+                return TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
@@ -182,7 +173,7 @@ namespace Velvet
             // TryClearUnregisteredFilterToken).
             if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, key))
             {
-                return (false, false);
+                return false;
             }
 
             if (on)
@@ -194,8 +185,7 @@ namespace Velvet
                 StyleClassProjection.Remove(target, core, key);
             }
 
-            return (TrackVariantGate(ctx, target, payload, key, declaration, on),
-                StyleTextBalanceClass.IsWidthDeclaringToken(core));
+            return TrackVariantGate(ctx, target, payload, key, declaration, on);
         }
 
         // True when any token in classNames is a VARIANT whose payload is a gate token — the question "could
@@ -258,7 +248,7 @@ namespace Velvet
                 || (StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core));
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
-        // the four layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
+        // the three layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
         // the six wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
         // (FiberNodePatcher.ApplyFontLayer) and the text-effect cascade (FiberNodePatcher.ApplyTextEffects).
         // Each family answers for its own prefix set so this gate cannot drift from the array scans those
@@ -266,13 +256,11 @@ namespace Velvet
         //
         // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
         // to the composed class source on every later patch, which costs an array per patch, and that is
-        // only worth paying for a token a pass has to READ back out of the class array. A width payload
-        // needs the trigger and nothing else — text-balance reads the live list directly.
+        // only worth paying for a token a pass has to READ back out of the class array.
         private static bool IsVariantGateToken(string core)
             => StyleGapClass.IsGapToken(core)
                 || StyleGridClass.IsGridToken(core)
                 || StyleDivideClass.IsDivideToken(core)
-                || StyleTextBalanceClass.IsTextBalanceToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleShadowClass.IsShadowClass(core)

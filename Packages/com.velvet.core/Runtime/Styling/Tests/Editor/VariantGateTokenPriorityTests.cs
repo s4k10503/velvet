@@ -8,7 +8,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Several variants naming one utility, for the families Velvet realises in C# rather than in USS
-    /// (gap / divide / grid / text-balance and the wrapper-less paint layers). <see cref="StyleClassProjection"/>
+    /// (gap / divide / grid and the wrapper-less paint layers). <see cref="StyleClassProjection"/>
     /// decides which CLASSES may sit on the element and cannot decide which of two same-family tokens a
     /// class-driven pass reads, because that is settled by the order of the composed array: the tracked
     /// gate-token list is what orders it. It must rank by the priority each payload was applied at, and

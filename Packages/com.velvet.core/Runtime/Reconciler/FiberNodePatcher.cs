@@ -182,6 +182,12 @@ namespace Velvet
                         TextOverlineSilhouette.Detach(element, overlineBinding);
                         _ctx.TextOverlineBindings.Remove(element);
                     }
+                    // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
+                    // a leaf the resolver can no longer resolve.
+                    if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))
+                    {
+                        element.RemoveManipulator(balanceBreaker);
+                    }
                 }
             }
             // After DiffProps (and the class-driven config it follows): re-sync the data-/aria- attribute
@@ -341,14 +347,12 @@ namespace Velvet
         // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
         //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
         //   AFTER PatchCommon so it sees the final child set.
-        // - The layout manipulators (gap, divide, grid and text-balance, with the pointer-events scope —
+        // - The layout manipulators (gap, divide and grid, with the pointer-events scope —
         //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
         //   AFTER PatchCommon (which reconciles children) so gap's margin writes are the final word on the
         //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
         //   against the current child set (a child add / remove re-spaces even when the className did not
-        //   change). text-balance rides the same slot for consistency (every per-element style manipulator
-        //   attaches from one place), though its own ordering is not load-bearing: it measures the
-        //   element's own text, not a shared child edge or the child set.
+        //   change).
         // - Structural variants (first:/last:/nth) re-derive every child's position-based match from the
         //   final sibling order.
         // - has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
@@ -3073,9 +3077,9 @@ namespace Velvet
                 new ChildVariantOp(payloads, declarations, inputBoxOnly));
         }
 
-        // Configures the four manipulators whose existence is gated purely on a layout utility class being
-        // present: gap, divide, grid, text-balance; and the pointer-events scope, which rides the same sequence
-        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The four are configured as
+        // Configures the three manipulators whose existence is gated purely on a layout utility class being
+        // present: gap, divide, grid; and the pointer-events scope, which rides the same sequence
+        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The three are configured as
         // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
         // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
         // the container's children have been reconciled so each sees the final child list.
@@ -3196,14 +3200,10 @@ namespace Velvet
         // the children unspaced until something unrelated forces a re-apply. Which one departs is exactly
         // the grid-class verdict, so it selects the order — and is forwarded so the gap gate does not
         // re-scan for it.
-        // Divide and text-balance are in no such handoff: divide writes only the border width and color of
-        // the one edge it draws on (and hands that same pair back on teardown), text-balance writes only the
-        // element's OWN width, and neither gap nor grid writes a border at all — so the three write sets
-        // are disjoint and the position of these two in the sequence is not load-bearing. Grid writes its
-        // CHILDREN's widths, which is the one slot text-balance also writes, and the handoff for that is
-        // the child's own: a text-balance element inside a grid container stands down entirely (see
-        // StyleTextBalanceManipulator's grid-parent check).
-        // The pointer-events scope writes only pickingMode, which none of the four writes, so its place is not
+        // Divide is in no such handoff: it writes only the border width and color of the one edge it draws
+        // on (and hands that same pair back on teardown), and neither gap nor grid writes a border at all —
+        // so the write sets are disjoint and its position in the sequence is not load-bearing.
+        // The pointer-events scope writes only pickingMode, which none of the three writes, so its place is not
         // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
@@ -3218,7 +3218,6 @@ namespace Velvet
                 ApplyGapManipulator(element, classNames, gridSuppressed: false);
             }
             ApplyDivideManipulator(element, classNames);
-            ApplyTextBalanceManipulator(element, classNames);
             ApplyFlexMinSizeManipulator(element, classNames);
             ApplyPointerEvents(element, classNames);
         }
@@ -3303,7 +3302,7 @@ namespace Velvet
         internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
-        // The same source for the gates that resolve at their own point in the sequence — the four layout
+        // The same source for the gates that resolve at their own point in the sequence — the three layout
         // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)
         // and the text-effect cascade (ApplyTextEffects). It reads the cached array but does not REPLACE it: the
         // paint resolve a few passes later answers "did the classes change" by comparing against that same record,
@@ -3464,41 +3463,6 @@ namespace Velvet
 
             Configure<GridOp, StyleGridManipulator>(element, hasGrid,
                 new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
-        }
-
-        // Carries no per-element spec to diff, unlike Gap/Grid/Divide — the manipulator re-derives
-        // everything itself. Kept outside the shared Configure step because its teardown owes the element a
-        // restore of the shared inline width slot, which the shared body has no way to signal.
-        private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
-        {
-            // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
-            var wrapStyle = StyleTextBalanceClass.ReadWrapStyle(classNames);
-            if (wrapStyle == TextWrapStyle.None)
-            {
-                if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
-                {
-                    element.RemoveManipulator(stale);
-                    _ctx.TextBalanceManipulators.Remove(element);
-                    // Detach nulls the borrowed width slot, taking a w-[..] or size-[..] applied in this
-                    // same patch with it — the class diff re-applies a token only on a change. The layer
-                    // map rather than a class array: a w-[600px] never enters the class list, and the array
-                    // here may be the element's LIVE one — ReSyncVariantGatedPasses substitutes it for an
-                    // element no pass has recorded a reconciled array for — which carries no bracket tokens.
-                    StyleArbitraryValueResolver.ReapplyWidthSlot(element);
-                }
-                return;
-            }
-
-            if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
-            {
-                existing.Refresh(wrapStyle);
-            }
-            else
-            {
-                var manipulator = new StyleTextBalanceManipulator(_ctx, wrapStyle);
-                element.AddManipulator(manipulator);
-                _ctx.TextBalanceManipulators[element] = manipulator;
-            }
         }
 
         // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so

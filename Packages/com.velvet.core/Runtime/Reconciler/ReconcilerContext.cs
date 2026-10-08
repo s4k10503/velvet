@@ -653,8 +653,9 @@ namespace Velvet
         public Dictionary<VisualElement, StyleGapManipulator> GapManipulators { get; } = new();
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
-        // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
-        // GridManipulators; removed on cleanup / dispose.
+        // The line-breaking manipulator of each text leaf whose resolved text-wrap-style is balance or pretty
+        // (StyleTextEffectResolver attaches it). Mirrors GapManipulators / GridManipulators; removed on
+        // cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
         // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
         // Removed on cleanup / dispose like the manipulators above.
