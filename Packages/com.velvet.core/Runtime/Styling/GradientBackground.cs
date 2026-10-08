@@ -204,9 +204,6 @@ namespace Velvet
             return tex;
         }
 
-        // Bakes the spec for a square box.
-        internal static Texture2D Bake(GradientSpec spec) => Bake(spec, 1f);
-
         // Bakes the spec into an RGBA32 texture for a box of the given width over height. Pixel coordinates
         // use UV with (0,0) at the top-left so the gradient axis matches screen space (y grows downward) —
         // UI Toolkit draws background-image top-left-origin, so a ToBottom gradient runs from-color at the

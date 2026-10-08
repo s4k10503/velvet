@@ -22,7 +22,7 @@ namespace Velvet.Tests
         private static Color SampleAcross(string[] classNames, float fraction)
         {
             StyleGradientClass.TryExtract(classNames, out var spec);
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var pixel = tex.GetPixel(Mathf.RoundToInt(fraction * (tex.width - 1)), tex.height / 2);
             Object.DestroyImmediate(tex);
             return pixel;

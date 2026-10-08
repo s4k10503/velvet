@@ -141,7 +141,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-gradient-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — bake and sample the left edge (t=0 → from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var left = tex.GetPixel(0, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -156,7 +156,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-gradient-to-b", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the TOP texture row (GetPixel y = height-1 is the top, which UITK draws at the top).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var top = tex.GetPixel(tex.width / 2, tex.height - 1);
             Object.DestroyImmediate(tex);
 
@@ -236,7 +236,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-linear-90", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var left = tex.GetPixel(0, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -254,7 +254,7 @@ namespace Velvet.Tests
                 new[] { "bg-gradient-to-b", "from-[#ff0000]", "from-50%", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the box upper quarter (texture row 0.75·H → t≈0.25; bake flips top=from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var upper = tex.GetPixel(tex.width / 2, Mathf.RoundToInt(tex.height * 0.75f));
             Object.DestroyImmediate(tex);
 
@@ -364,7 +364,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-radial", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the centre pixel (t≈0 → from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var center = tex.GetPixel(tex.width / 2, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -379,7 +379,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-conic", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample right of centre (90° clockwise → t≈0.25, near the `from` end of the sweep).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var right = tex.GetPixel(Mathf.RoundToInt(tex.width * 0.78f), tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -395,8 +395,8 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample the gradient midpoint (t=0.5) of each.
-            var sTex = GradientBackground.Bake(srgb);
-            var oTex = GradientBackground.Bake(oklab);
+            var sTex = GradientBackground.Bake(srgb, 1f);
+            var oTex = GradientBackground.Bake(oklab, 1f);
             var sMid = sTex.GetPixel(sTex.width / 2, sTex.height / 2);
             var oMid = oTex.GetPixel(oTex.width / 2, oTex.height / 2);
             Object.DestroyImmediate(sTex);
@@ -442,8 +442,8 @@ namespace Velvet.Tests
                 new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample t≈0.25 (mid of the from→via segment, via at 0.5).
-            var sTex = GradientBackground.Bake(srgb);
-            var oTex = GradientBackground.Bake(oklab);
+            var sTex = GradientBackground.Bake(srgb, 1f);
+            var oTex = GradientBackground.Bake(oklab, 1f);
             var x = Mathf.RoundToInt(sTex.width * 0.25f);
             var sMid = sTex.GetPixel(x, sTex.height / 2);
             var oMid = oTex.GetPixel(x, oTex.height / 2);
