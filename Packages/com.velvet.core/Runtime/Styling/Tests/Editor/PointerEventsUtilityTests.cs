@@ -350,17 +350,18 @@ namespace Velvet.Tests
         private static VNode SwappedButton()
         {
             var on = Hooks.UseStore(s_flag, s => s.On);
-            return V.Div(className: "pointer-events-none", children: new VNode[]
-            {
-                on ? V.Button(key: "second", name: "second", text: "b") : V.Button(key: "first", name: "first", text: "a"),
-            });
+            return V.Div(className: "pointer-events-none", children: on
+                ? new VNode[] { V.Div(name: "spacer"), V.Button(name: "second", text: "b") }
+                : new VNode[] { V.Button(name: "first", text: "a") });
         }
 
         [Test]
         public void Given_AHeldButtonInsideANoneScope_When_ARenderReplacesItInItsSlot_Then_TheButtonThePoolHandsBackIgnoresPicking()
         {
-            // Arrange — a different key in the same slot is removed before its replacement is created, so the
-            // replacement is rented from the pool the removal just returned the first button to.
+            // Arrange — the children are unkeyed, so the indexed diff replaces the first slot's button with the
+            // spacer before it builds the second slot, and the second button is rented from the pool that removal
+            // just returned the first one to. A keyed swap would not do: the keyed diff builds the new key before it
+            // removes the old one, so the replacement is rented before the first button is back in the pool.
             using var flag = new PointerEventsFlagStore(false);
             s_flag = flag;
             using var mounted = V.Mount(_root, V.Component(SwappedButton, key: "swap"));
