@@ -355,6 +355,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "abc", string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): the base re-shows the committed value under the new limit, which a
+        // zero limit also cuts to nothing; the case pins that the branch's cut of the edit does the same.
         // Zero is a length to cut to, where -1 is no limit. The committed value is "xy" so the cut edit
         // still differs from it and reads as uncommitted.
         [Test]
