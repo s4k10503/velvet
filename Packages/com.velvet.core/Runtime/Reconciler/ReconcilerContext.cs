@@ -1812,6 +1812,11 @@ namespace Velvet
             // The keys mounted already leaving, whose Motions rest at their initial pose until they return or drop.
             public readonly HashSet<string> LeavingMounts = new();
 
+            // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
+            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            public bool Expanding;
+            public List<System.Action>? DeferredCompletions;
+
             // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
             // render that drops it.
             internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);

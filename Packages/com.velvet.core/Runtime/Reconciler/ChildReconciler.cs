@@ -230,7 +230,8 @@ namespace Velvet
                 // read: its diff carries no owner, and its parked state outlives the rented list that would
                 // carry one. The general walk takes such a container instead — it holds the owners for the
                 // whole of its own pass and never parks.
-                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0)
+                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0
+                    || _general.EmitsLeavingChildHoldingPropagatingPresence())
                 {
                     // General path: a single live-context walk commits each emitted leaf
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so

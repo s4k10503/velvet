@@ -108,6 +108,13 @@ namespace Velvet.Tests
 
         private VisualElement InnerItem => Root.Q<VisualElement>("inner-x");
 
+        // The inner presence's children still mounted, wherever the outer child's shape puts them.
+        private int InnerItemCount => Root.Query<VisualElement>().ToList().Count(e => e.name?.StartsWith("inner-") == true);
+
+        // What the outer child "a" mounts with no inner child left: a component rendering only the presence has no
+        // element of its own.
+        private static int ElementsOfOuterChildAtRest(string shape) => shape == "top" ? 0 : 1;
+
         // Declares an enter and an exit of its own, so either one playing is readable off its element.
         private static VNode TimedMotion(string name, string key) => V.Motion(name: name, key: key, variants: s_fade,
             initial: "hidden", animate: "visible", exit: "hidden",
@@ -363,7 +370,7 @@ namespace Velvet.Tests
             using var mounted = MountSettled(shape, "xy");
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
-            var heldWhileExiting = HostChildCount;
+            var heldWhileExiting = InnerItemCount;
 
             // Act — well past the 300ms exits.
             Frames(40);
@@ -481,8 +488,8 @@ namespace Velvet.Tests
             // Assert
             var item = InnerItem;
             Assert.That(
-                (HostChildCount, item?.ClassListContains("opacity-100"), item?.ClassListContains("opacity-0"),
-                    s_innerCompleted, s_outerCompleted),
+                (HostChildCount, item != null && item.ClassListContains("opacity-100"),
+                    item != null && item.ClassListContains("opacity-0"), s_innerCompleted, s_outerCompleted),
                 Is.EqualTo((1, true, false, 0, 0)));
         }
 
@@ -507,8 +514,8 @@ namespace Velvet.Tests
             Frames(40);
             Drain(mounted);
 
-            // Assert
-            Assert.That((InnerItem == null, HostChildCount), Is.EqualTo((true, 0)));
+            // Assert — the outer key is back, so its own elements stay.
+            Assert.That((InnerItem == null, HostChildCount), Is.EqualTo((true, ElementsOfOuterChildAtRest(shape))));
         }
 
         [TestCase("wrapper")]
@@ -553,7 +560,8 @@ namespace Velvet.Tests
 
             // Assert — mounted with its initial pose, not the pose its animate label rests at.
             var added = Root.Q<VisualElement>("inner-z");
-            Assert.That((added?.ClassListContains("opacity-0"), added?.ClassListContains("opacity-100")),
+            Assert.That((added != null && added.ClassListContains("opacity-0"),
+                    added != null && added.ClassListContains("opacity-100")),
                 Is.EqualTo((true, false)));
         }
 
@@ -878,6 +886,7 @@ namespace Velvet.Tests
             // Act
             s_outerKeys.Set("a");
             Drain(mounted);
+            mounted.FlushEffectsForTest();
 
             // Assert — the cleanup ran once at the removal, and the returning child mounted a fresh fiber.
             Assert.That((cleanupsAfterRemoval, s_cleanups, s_mounts), Is.EqualTo((1, 1, 2)));

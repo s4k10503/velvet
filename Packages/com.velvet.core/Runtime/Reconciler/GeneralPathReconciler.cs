@@ -1476,14 +1476,12 @@ namespace Velvet
         // diff removes its leaves (no out-of-band DOM mutation that would shift sibling slots).
 
         // Everything one expansion pass writes as it walks its entries, in one place so a PlayExit
-        // completion — which can fire either synchronously (see the Settled comment in
+        // completion — which can fire either synchronously (see the completion comment in
         // ExpandAnimatePresenceInline) or long after this pass's own stack frames are gone — always observes
         // the same mutable cell. Must be a reference type: C# forbids a lambda from capturing a ref
         // parameter, so none of this can be threaded through the entry walkers as `ref`.
         private sealed class PresencePassTally
         {
-            public bool Settled;
-            public List<Action>? Deferred;
             // Stagger ordinals: exits count only the ghosts that actually animate, enters count every child
             // emitted, so the two advance independently.
             public int ExitIndex;
@@ -1647,17 +1645,20 @@ namespace Velvet
                 // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
                 // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. an exit variant whose
                 // only delta is a keyword length like `w-auto` or a semantic theme token, neither of which
-                // carries a number to interpolate) is the one case that completes SYNCHRONOUSLY, from inside
-                // the PlayExit call below,
-                // before this pass has finished building nextCommitted for every other key and before this
-                // pass's own state.ExitComplete.Clear() further down. Running such a completion's bookkeeping
-                // immediately would have that same Clear() wipe the ExitComplete entry it just added, so the
-                // re-render it schedules finds the ghost "not complete" again, replays PlayExit, and repeats
-                // forever. exitPass.Settled tracks whether this pass's own bookkeeping (below) has already
-                // run; a completion that fires before then is queued and drained once it has, so its
-                // ExitComplete.Add survives into the render it schedules — a genuinely async completion
-                // always finds tally.Settled already true (this method returned long before it fires)
-                // and runs immediately, unchanged.
+                // carries a number to interpolate) completes SYNCHRONOUSLY, from inside the PlayExit call below,
+                // and so does a child's exit wait whose last slot is an inner presence that stops propagating
+                // inside this pass's re-emission of that child
+                // (AnimatePresencePropagateTests.Given_PropagateTurnedOffThenOnMidExit_When_TheInnerPresenceIsWaitedOn_Then_TheOuterChildLeavesOnce).
+                // Either reaches the completion before this pass has finished building nextCommitted for every
+                // other key and before its own state.ExitComplete.Clear() further down. Running such a
+                // completion's bookkeeping immediately would have that same Clear() wipe the ExitComplete entry
+                // it just added, so the re-render it schedules finds the ghost "not complete" again, replays
+                // PlayExit, and repeats forever. state.Expanding tracks whether this pass is under way; a
+                // completion that fires meanwhile is queued on the state and drained once the pass's bookkeeping
+                // has run, so its ExitComplete.Add survives into the render it schedules — a genuinely async
+                // completion finds Expanding already false (this method returned long before it fires) and
+                // runs immediately, unchanged.
+                state.Expanding = true;
                 var tally = new PresencePassTally { AnimatedExitCount = exitCount };
                 var pass = new PresenceExpansion
                 {
@@ -1695,7 +1696,7 @@ namespace Velvet
                 // had NO exit animation (all instant-removed above) no PlayExit callback runs to fire it, so fire it
                 // here — but only when no animated exit is still in flight (those fire it when the Exiting set drains).
                 // Contained the same way as RunExitComplete's animated-exit path above: a throwing callback
-                // must not skip the state.Committed/exitPass.Settled bookkeeping that follows, or the next
+                // must not skip the state.Committed bookkeeping that follows, or the next
                 // render reproduces a stale old side.
                 if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
                 {
@@ -1720,13 +1721,13 @@ namespace Velvet
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
                 state.ExitComplete.Clear();
 
-                // This pass's own bookkeeping has settled — a synchronous exit completion queued above can now
-                // run safely (see PresencePassTally.Settled's declaration comment): its ExitComplete.Add
-                // survives past this point instead of being wiped by the Clear() just above.
-                tally.Settled = true;
-                if (tally.Deferred != null)
+                // This pass's own bookkeeping has settled — a completion queued above can now run safely: its
+                // ExitComplete.Add survives past this point instead of being wiped by the Clear() just above.
+                state.Expanding = false;
+                if (state.DeferredCompletions is { } deferred)
                 {
-                    foreach (var completion in tally.Deferred) completion();
+                    state.DeferredCompletions = null;
+                    foreach (var completion in deferred) completion();
                 }
 
                 // Marked here rather than beside stateKey above, so an expansion that unwound is not
@@ -1735,6 +1736,7 @@ namespace Velvet
             }
             finally
             {
+                state!.Expanding = false;
                 if (!ReferenceEquals(newKeyed, givenKeyed)) _ctx.BufferPool.Return(givenKeyed);
                 _ctx.BufferPool.Return(newKeyed);
                 _ctx.BufferPool.ReturnPresenceKeySet(newKeySet);
@@ -1994,6 +1996,21 @@ namespace Velvet
             foreach (var inner in _ctx.PresenceStates.Values)
             {
                 if (IsPropagatingPresenceOf(inner, outer, key) && inner.Committed.Count > 0) return true;
+            }
+            return false;
+        }
+
+        // Whether the child being emitted is leaving and holds a propagating presence. Such a presence has to
+        // expand again for the child to take its exits, so a container inside the child reconciles through the
+        // expansion walk even when its nodes are the identical instances on both sides, which the flat diff
+        // skips unread.
+        internal bool EmitsLeavingChildHoldingPropagatingPresence()
+        {
+            var emitting = _ctx.EnclosingPresenceChild;
+            if (emitting == null || emitting.Value.IsPresent || _ctx.PresenceStates.Count < 2) return false;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, emitting.Value.State, emitting.Value.Key)) return true;
             }
             return false;
         }
@@ -2280,15 +2297,20 @@ namespace Velvet
             // resting variant classes live), which for a wrapped Motion is not the anchor —
             // without a resolved element the variant path is unavailable and the classic,
             // anchor-targeted transition plays instead.
-            var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
+            // A child mounted already leaving rests at its initial pose, which is where its exit starts from.
+            var variantExit = ghostMotionElement != null
+                ? TryResolveVariantExit(ghostMotionNode,
+                    state.LeavingMounts.Contains(key) ? RestingVariantClass(ghostMotionElement) : null)
+                : null;
             var exitTransition = variantExit ?? ghostMotionNode?.Transition;
             var exitTarget = variantExit != null ? ghostMotionElement! : ClassicTarget(ghostAnchor, ghostMotionElement);
-            // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired from
-            // inside one of the PlayExit calls below) is queued instead of run inline.
+            // See the completion comment in ExpandAnimatePresenceInline: a completion that fires while this
+            // presence is expanding, from inside one of the PlayExit calls below or from an inner presence settling
+            // during an expansion of its own, is queued instead of run inline.
             void Settled()
             {
-                if (tally.Settled) runExitComplete();
-                else (tally.Deferred ??= new List<Action>()).Add(runExitComplete);
+                if (state.Expanding) (state.DeferredCompletions ??= new List<Action>()).Add(runExitComplete);
+                else runExitComplete();
             }
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
@@ -2590,7 +2612,13 @@ namespace Velvet
                 ? _patcher.RestingClassSet(motionElement, motion?.ClassNames)
                 : null;
             var anchorResting = ReferenceEquals(anchor, motionElement) ? resting : null;
-            _ctx.StyleAnimationScheduler.CancelExit(anchor, anchorResting?.VariantClasses, anchorResting?.Merged);
+            // Without a Motion of its own the key plays no exit on its anchor, and that anchor can be the element
+            // of an inner presence's child that is exiting for its own reasons (the key rendering nothing but
+            // that presence), which a cancel here would strand mid-exit.
+            if (motion != null)
+            {
+                _ctx.StyleAnimationScheduler.CancelExit(anchor, anchorResting?.VariantClasses, anchorResting?.Merged);
+            }
             // A wrapped Motion's variant exit ran on its own element, not the anchor — the
             // cancel (whose reversal restores the resting variant) must land there too.
             if (motionElement != null && !ReferenceEquals(motionElement, anchor))
@@ -3154,8 +3182,9 @@ namespace Velvet
         // transition) unless the Motion sets its own Exit + Animate + Variants, the exit label names a pose,
         // and a transition resolves for it. The caller supplies the element the swap targets — the Motion's
         // own, so a wrapped Motion's exit variant animates the same element its resting variant classes
-        // live on.
-        internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
+        // live on. restingOverride stands in for variants[Animate] as the pose the exit starts from, for an
+        // element resting at another.
+        internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion, string? restingOverride = null)
         {
             if (!TryResolveExitVariant(motion, out var restingClass, out var exitClass, out var transition)
                 || transition == null)
@@ -3167,7 +3196,7 @@ namespace Velvet
             // Damping/Mass, so a spring-configured Motion's variant EXIT is also spring-driven and hands off to
             // a reversal spring on an exit-cancel instead of silently falling back to a tween) and replaces
             // only the exit class pair — a single source for that knob list instead of hand-copying it here.
-            return transition.WithExitClasses(restingClass, exitClass);
+            return transition.WithExitClasses(restingOverride ?? restingClass, exitClass);
         }
 
         #endregion
