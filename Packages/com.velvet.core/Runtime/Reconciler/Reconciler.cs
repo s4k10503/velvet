@@ -101,8 +101,7 @@ namespace Velvet
                         // not left permanently active.
                         try
                         {
-                            FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
-                            _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
+                            FlushDrainEndCommitWork();
                         }
                         finally
                         {
@@ -110,6 +109,19 @@ namespace Velvet
                             MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                         }
                     });
+            }
+        }
+
+        // The drag session's overlay join follows the layout effects but does not depend on them completing.
+        private void FlushDrainEndCommitWork()
+        {
+            try
+            {
+                FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+            }
+            finally
+            {
+                _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
             }
         }
 

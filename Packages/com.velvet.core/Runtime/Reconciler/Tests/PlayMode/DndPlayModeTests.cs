@@ -44,6 +44,9 @@ namespace Velvet.Tests
             s_setShowOverlay = default;
             s_startMountsOverlay = false;
             s_earlyOverlay = false;
+            s_parkedRowCount = 0;
+            s_parkedShowOverlay = false;
+            s_parkedFiber = null;
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -689,7 +692,7 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_ADragOverlayMountedOutsideADrain_When_ThePointerMoves_Then_TheOverlayShows()
         {
-            // Arrange — the flush bypasses the scheduler's drain, so only the move can join it.
+            // Arrange — the flush bypasses the scheduler's drain, which stays armed until a frame passes.
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(LateOverlayScene, key: "root"));
             yield return null;
@@ -699,9 +702,8 @@ namespace Velvet.Tests
             s_setShowOverlay.Invoke(true);
             _mounted.FlushStateForTest();
 
-            // Act
+            // Act — no frame passes before the assert, so the drain the setter armed has not run.
             SendPointerMove(item, new Vector2(60, 30));
-            yield return null;
 
             // Assert — the Overlay layer host exists only once an overlay has mounted.
             var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
@@ -735,6 +737,88 @@ namespace Velvet.Tests
                 .GetField("_overlays", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(drag)!;
             Assert.That(joined.Count, Is.EqualTo(2));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerHostCreatedByAnOverlayMountedMidDrag_When_EscapeIsPressedOnItsPanel_Then_TheDragCancels()
+        {
+            // Arrange — no overlay exists at activation, so the Overlay layer host is created mid-drag.
+            s_startMountsOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+            var overlayPanelRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay]
+                .Document.rootVisualElement.panel.visualTree;
+
+            // Act
+            using (var evt = KeyDownEvent.GetPooled('\0', KeyCode.Escape, EventModifiers.None))
+            {
+                evt.target = overlayPanelRoot;
+                overlayPanelRoot.SendEvent(evt);
+            }
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ActiveDrag == null, Is.True);
+        }
+
+        private static int s_parkedRowCount;
+        private static bool s_parkedShowOverlay;
+        private static ComponentFiber s_parkedFiber;
+
+        // Rows first, the overlay last, so a tiny budget parks the pass before the overlay mounts.
+        [Component]
+        private static VNode ParkedOverlayList()
+        {
+            s_parkedFiber = FiberAmbientStack.Current;
+            var children = new VNode[s_parkedRowCount + 1];
+            for (var i = 0; i < s_parkedRowCount; i++)
+            {
+                children[i] = V.Label($"row-{i}");
+            }
+            children[s_parkedRowCount] = s_parkedShowOverlay
+                ? V.DragOverlay(key: "parked", children: new VNode[] { V.Label("ghost", name: "parked-ghost") })
+                : null;
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode ParkedOverlayScene() => V.DndContext(
+            activation: DragActivation.None,
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", movement: DragMovement.None,
+                    className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                V.Component(ParkedOverlayList, key: "list"),
+            });
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByAParkedReconcile_When_ItsTerminalSliceCompletes_Then_TheOverlayShowsAtThePointerWithoutAMove()
+        {
+            // Arrange
+            s_parkedRowCount = 3;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ParkedOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            s_parkedRowCount = 40;
+            s_parkedShowOverlay = true;
+            s_parkedFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_parkedFiber.FlushStateWithTinyBudgetForTest();
+            Assume.That(s_parkedFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the pass parked");
+
+            // Act — the resume runs outside the batch drain; no frame passes and the pointer does not move.
+            s_parkedFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("parked-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
         }
 
         [UnityTest]

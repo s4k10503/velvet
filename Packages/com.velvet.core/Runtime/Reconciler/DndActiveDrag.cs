@@ -334,8 +334,7 @@ namespace Velvet
             RegisterActiveObservers();
             EstablishFocusAnchor();
             ApplyActiveStyling();
-            JoinMountedOverlays();
-            SyncOverlays();
+            RefreshOverlays();
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
             FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
@@ -376,9 +375,6 @@ namespace Velvet
             RegisterOnObserved(_onDragDown);
             RegisterOnObserved(_onDragCancel);
             _source.RegisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
-            // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
-            // dispatch through the FOCUSED panel, which need not be the source's.
-            RegisterEscapeOnManagedRoots();
         }
 
         // The runtime input system only routes keyboard events into a panel that HAS a focused
@@ -443,11 +439,20 @@ namespace Velvet
         // commit that mounted it rather than on the next move.
         internal void JoinOverlaysAfterCommit()
         {
-            if (_active && !_closed)
+            if (_active)
             {
-                JoinMountedOverlays();
-                SyncOverlays();
+                RefreshOverlays();
             }
+        }
+
+        // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
+        // dispatch through the FOCUSED panel, which need not be the source's — and an overlay mounting
+        // mid-drag can create a layer host whose panel did not exist at activation.
+        private void RefreshOverlays()
+        {
+            JoinMountedOverlays();
+            RegisterEscapeOnManagedRoots();
+            SyncOverlays();
         }
 
         private bool HasJoinedOverlay(VisualElement positioner)
@@ -539,8 +544,7 @@ namespace Velvet
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
-            JoinMountedOverlays();
-            SyncOverlays();
+            RefreshOverlays();
             UpdateCollision();
             evt.StopPropagation();
         }
@@ -973,7 +977,7 @@ namespace Velvet
 
         // Key events dispatch through whichever panel holds keyboard focus, which need not be the
         // source's panel in a tree spanning layer/world-space hosts — the Escape cancel listens on every
-        // managed panel root that exists at activation time.
+        // managed panel root that exists when the session refreshes its overlays.
         private void RegisterEscapeOnManagedRoots()
         {
             void AddRoot(VisualElement? root)

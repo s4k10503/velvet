@@ -543,6 +543,8 @@ namespace Velvet
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
                     FiberEffects.CommitSubtreeEffects(fiber);
+                    // This commit completes outside the batch drain, whose end joins a mid-drag overlay.
+                    resumeContext.ActiveDrag?.JoinOverlaysAfterCommit();
                     // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
                     // time-sliced flush that toggled a descendant's class / controlled value reflects on a
                     // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
