@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using NUnit.Framework;
 using Velvet.TestUtilities;
 
@@ -23,6 +25,8 @@ namespace Velvet.Tests
         private static int s_callCount;
         private static int s_renderCount;
         private static AnimationSequenceState s_firstRenderState;
+        private static readonly List<CancellationToken> s_tokens = new();
+        private static readonly List<VelvetTaskCompletionSource> s_sources = new();
 
         [SetUp]
         public void SetUp()
@@ -32,6 +36,8 @@ namespace Velvet.Tests
             s_callCount = 0;
             s_renderCount = 0;
             s_repeatDelaySec = 0f;
+            s_tokens.Clear();
+            s_sources.Clear();
         }
 
         [TearDown]
@@ -77,6 +83,29 @@ namespace Velvet.Tests
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
             _mounted.FlushStateForTest();
+        }
+
+        // Each arrival at the Await step hands out a fresh pending task and records its token.
+        private static VelvetTask NextPending(CancellationToken cancellationToken)
+        {
+            s_tokens.Add(cancellationToken);
+            var source = new VelvetTaskCompletionSource();
+            s_sources.Add(source);
+            return source.Task;
+        }
+
+        // A 0.05s label then an Await, so the cursor parks on the Await 0.05s into each pass.
+        private static AnimationSequenceStep[] LabelThenAwait() => new[]
+        {
+            AnimationSequenceStep.To("a", holdSec: 0.05f),
+            AnimationSequenceStep.Await(NextPending),
+        };
+
+        // Resolves the wait the cursor is parked on and lets the next frames cross it.
+        private void SettleAndAdvance(int arrival, float seconds)
+        {
+            s_sources[arrival].SetResult();
+            AdvancePast(seconds);
         }
 
         // Two 0.1s holds, so one pass takes 0.2s.
@@ -466,6 +495,172 @@ namespace Velvet.Tests
 
             // Assert — two passes before the restart and two after it.
             Assert.That(s_callCount, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Given_TwoIterations_When_TheClockIsInTheSecondPass_Then_TimeSecCountsTheFirstPassToo()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            Mount();
+
+            // Act — 0.272s of ticks against a 0.2s pass.
+            AdvancePast(0.25f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.272f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapOfTwoTenths_When_TheClockIsInsideTheGap_Then_TimeSecCountsTheGapAsItPasses()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+
+            // Act — 0.24s of ticks, 0.04s into the gap spanning 0.2s to 0.4s.
+            AdvancePast(0.22f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.24f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapOfTwoTenths_When_TheSecondPassHasBegun_Then_TimeSecCountsTheWholeGap()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+
+            // Act — 0.48s of ticks, 0.08s into the second pass that begins at 0.4s.
+            AdvancePast(0.45f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.48f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapOfTwoTenths_When_TimePassesPastTheSecondPass_Then_TimeSecIsTwoPassesAndOneGap()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+
+            // Act — 1.0s of ticks: past the 0.6s end, with no trailing gap and none of the overshoot counted.
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.6f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeIterationsWithAGapLoweredToTwoDuringTheThirdPass_When_TheNextFramesTick_Then_TimeSecIsTwoPassesAndOneGap()
+        {
+            // Arrange — the passes span 0-0.2s, 0.3-0.5s and 0.6-0.8s; the clock is at 0.672s.
+            s_steps = TwoLabels();
+            s_iterations = 3;
+            s_repeatDelaySec = 0.1f;
+            Mount();
+            AdvancePast(0.65f);
+            s_iterations = 2;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.5f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeIterationsLoweredToZeroDuringTheSecondPass_When_TheNextFramesTick_Then_TimeSecIsZero()
+        {
+            // Arrange
+            LowerDuringSecondPass(0);
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_TwoIterationsEndingInAnAwaitStep_When_TheFirstWaitSettles_Then_TheSecondPassArrivesAtItsOwnWait()
+        {
+            // Arrange
+            s_steps = LabelThenAwait();
+            s_iterations = 2;
+            Mount();
+            AdvancePast(0.2f);
+
+            // Act
+            SettleAndAdvance(0, 0.2f);
+
+            // Assert
+            Assert.That(s_sources.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_TwoIterationsEndingInAnAwaitStep_When_BothWaitsSettle_Then_TheSequenceIsComplete()
+        {
+            // Arrange
+            s_steps = LabelThenAwait();
+            s_iterations = 2;
+            Mount();
+            AdvancePast(0.2f);
+            SettleAndAdvance(0, 0.2f);
+
+            // Act
+            SettleAndAdvance(1, 0.1f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoIterationsEndingInAnAwaitStep_When_TheSecondWaitStaysPendingForSeconds_Then_TimeSecIsTheTwoLabelHolds()
+        {
+            // Arrange
+            s_steps = LabelThenAwait();
+            s_iterations = 2;
+            Mount();
+            AdvancePast(0.2f);
+            SettleAndAdvance(0, 0.2f);
+
+            // Act — the clock runs a second beyond the pending wait, which holds no time of its own.
+            AdvancePast(1f);
+
+            // Assert — the 0.02s tolerance is the frame's overshoot past a hold, which the wait inherits.
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.1f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ThreeIterationsParkedOnTheSecondPassesWait_When_TheCountIsLoweredToOne_Then_ThatWaitIsCancelled()
+        {
+            // Arrange
+            s_steps = LabelThenAwait();
+            s_iterations = 3;
+            Mount();
+            AdvancePast(0.2f);
+            SettleAndAdvance(0, 0.2f);
+            s_iterations = 1;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.True);
         }
 
         [Test]

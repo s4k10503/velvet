@@ -168,8 +168,9 @@ namespace Velvet
 
         // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step, the
         // label and transition the To steps leave, folded as Arrive folds them, and the time a completion reads,
-        // Iterations passes of the steps' holds with a repeat gap between each. No Call callback runs and an
-        // Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
+        // Iterations passes of the steps' holds with a repeat gap between each, each pass costed as the first is: a
+        // later pass whose first To step names no transition would carry the previous pass's. No Call callback runs
+        // and an Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
         // and label as they are and reads time 0.
         private void AdoptEndState()
         {

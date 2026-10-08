@@ -8,6 +8,8 @@
   sequence at the next frame with the end state a normal completion holds, no skipped `Call` run, and raised it
   resumes a completed one. `repeatDelaySec` is Framer Motion's `repeatDelay`, a gap between passes that never
   delays completion. The overload taking `loop` is unchanged.
+  `controls.TimeSec` counts a `repeatDelaySec` gap as it passes and a sequence that played its passes reads their
+  total length plus the gaps between them, as Framer Motion's `time` does for a repeated animation.
   An alternate direction is not offered; the motion guide's Timelines section says why, and where the count
   differs from the Web Animations API's.
 

@@ -526,8 +526,10 @@ step's label has already started: `controls.Pause()` freezes the cursor, and the
 step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
 authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
-on each; a completed sequence reads its full length, and a reseed reads 0. It is read live from the handle,
-where `state` is a per-render snapshot.
+on each; a completed sequence reads its full length, and a reseed reads 0. Under `iterations` it counts a
+`repeatDelaySec` gap as it passes, as Framer Motion's `time` counts `repeatDelay`, so the timeline of `n` passes
+of length `L` ends at `n * L + (n - 1) * repeatDelaySec`, with no gap after the last pass. It is read live from
+the handle, where `state` is a per-render snapshot.
 
 A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
 (`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
