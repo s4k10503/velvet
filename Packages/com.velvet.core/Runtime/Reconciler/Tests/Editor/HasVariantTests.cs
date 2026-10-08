@@ -319,6 +319,18 @@ namespace Velvet.Tests
             Assert.That(state, Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the live list, which holds the class. The case holds
+        // the match for a class declared important, whose base entry sits in the important band.
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantDeclaresTheClassImportantAndAVariantPayloadAddsItToo_Then_PayloadApplied()
+        {
+            // Act
+            var state = HasWhiteAcross("!bg-white first:bg-white");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((true, true)));
+        }
+
         [Test]
         public void Given_HasClassParent_When_TheCarryingDescendantIsRemoved_Then_PayloadClears()
         {
