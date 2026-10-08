@@ -241,6 +241,9 @@ namespace Velvet
             return IsSizedByGridParent(parent);
         }
 
+        // Where two classes declare the same length, the one later in Tailwind's rule order
+        // (StyleRuleOrder) wins, so the answer is a function of the set of classes and not of the order they
+        // were added in.
         private void Scan(TextElement textElement)
         {
             _clipped = false;
@@ -250,8 +253,17 @@ namespace Velvet
             _specifiedHeight = null;
             _maxWidth = null;
             _maxHeight = null;
+            var classes = new List<string>();
             foreach (var cls in textElement.GetClasses())
             {
+                classes.Add(cls);
+            }
+            var names = classes.ToArray();
+            var ordinals = StyleRuleOrder.OrdinalsOf(names);
+            var ranks = new[] { -1, -1, -1, -1 };
+            for (var i = 0; i < names.Length; i++)
+            {
+                var cls = names[i];
                 if (cls == OverflowHiddenClass || cls == TruncateClass)
                 {
                     _clipped = true;
@@ -266,33 +278,44 @@ namespace Velvet
                 }
                 else
                 {
-                    ScanLength(cls);
+                    ScanLength(cls, ordinals[i], ranks);
                 }
             }
         }
 
-        private void ScanLength(string cls)
+        // ranks holds the rule-order place of the class now declaring each of width, height, maximum width and
+        // maximum height; a class of an equal place, the same token written twice, replaces it.
+        private void ScanLength(string cls, int rank, int[] ranks)
         {
             if (TryClassLength(cls, WidthPrefix, out var width))
             {
-                _specifiedWidth = width;
+                Declare(ref _specifiedWidth, ref ranks[0], width, rank);
             }
             else if (TryClassLength(cls, HeightPrefix, out var height))
             {
-                _specifiedHeight = height;
+                Declare(ref _specifiedHeight, ref ranks[1], height, rank);
             }
             else if (TryClassLength(cls, SizePrefix, out var size))
             {
-                _specifiedWidth = size;
-                _specifiedHeight = size;
+                Declare(ref _specifiedWidth, ref ranks[0], size, rank);
+                Declare(ref _specifiedHeight, ref ranks[1], size, rank);
             }
             else if (TryClassLength(cls, MaxWidthPrefix, out var maxWidth))
             {
-                _maxWidth = maxWidth;
+                Declare(ref _maxWidth, ref ranks[2], maxWidth, rank);
             }
             else if (TryClassLength(cls, MaxHeightPrefix, out var maxHeight))
             {
-                _maxHeight = maxHeight;
+                Declare(ref _maxHeight, ref ranks[3], maxHeight, rank);
+            }
+        }
+
+        private static void Declare(ref Dim? slot, ref int slotRank, Dim? value, int rank)
+        {
+            if (rank >= slotRank)
+            {
+                slot = value;
+                slotRank = rank;
             }
         }
 

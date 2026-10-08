@@ -172,11 +172,14 @@ namespace Velvet.Tests
             return label;
         }
 
-        private static bool ScannedWidthIsDeclared(Label label)
+        private static float? ScannedWidth(Label label)
         {
             var manipulator = new StyleFlexMinSizeManipulator(null!, System.Array.Empty<string>());
             ScanFlexMinSizeClasses.Invoke(manipulator, new object[] { label });
-            return FlexMinSizeSpecifiedWidth.GetValue(manipulator) != null;
+            var declared = FlexMinSizeSpecifiedWidth.GetValue(manipulator);
+            return declared == null
+                ? null
+                : (float)declared.GetType().GetProperty("Value")!.GetValue(declared)!;
         }
 
         private static string[] LiveClasses(VisualElement element)
@@ -659,24 +662,25 @@ namespace Velvet.Tests
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
         }
 
-        // What shows the case can fail is making the width keyword leave an earlier width in place: the
-        // arrangement ending on w-auto then still declares one. The verdict is that the order decides, by the
-        // last width token, which is what a reader moving to a cascade-ordered answer has to settle.
+        // What shows the case can fail is Scan taking the last width token in the list again: the two orders
+        // then declare the two widths in turn. The verdict is that only the set decides, the later rule in
+        // StyleRuleOrder winning.
         [Test]
         [ReaderVerdict(FlexMinSizeScanReader)]
-        public void Given_AWidthTokenBesideAWidthKeyword_When_TheOrderTheyWereAddedInIsReversed_Then_TheFlexMinSizeScanTakesTheLastTokenBothWays()
+        public void Given_TwoWidthTokens_When_TheOrderTheyWereAddedInIsReversed_Then_TheFlexMinSizeScanDeclaresTheSameWidthBothWays()
         {
-            // Arrange — w-auto declares no definite width, so the answer depends on which token arrived last.
-            var added = Labelled("w-32", "w-auto");
-            var reversed = Labelled("w-auto", "w-32");
+            // Arrange
+            var added = Labelled("w-4", "w-8");
+            var reversed = Labelled("w-8", "w-4");
 
             // Act
-            var fromAdded = ScannedWidthIsDeclared(added);
-            var fromReversed = ScannedWidthIsDeclared(reversed);
+            var fromAdded = ScannedWidth(added);
+            var fromReversed = ScannedWidth(reversed);
 
-            // Assert — one of each rather than merely different from nothing: two falses would agree too.
-            Assert.That((fromAdded, fromReversed), Is.EqualTo((false, true)),
-                "the automatic minimum caps at the width of the last width token in the list");
+            // Assert — a width is declared in both, folded in: two absent widths would agree while measuring
+            // nothing.
+            Assert.That((fromAdded.HasValue, fromAdded == fromReversed), Is.EqualTo((true, true)),
+                "the automatic minimum caps at the same width wherever its token sits in the list");
         }
 
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
