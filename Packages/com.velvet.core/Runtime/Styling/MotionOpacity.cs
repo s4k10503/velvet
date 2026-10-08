@@ -311,7 +311,8 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent): on the editor this package declares, every member resolves and this returns nothing.
                 // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
                 // fails where one does not.
-                return s_readable ? StyleCascade.Of(element) : null;
+                if (!s_readable) return null;
+                return StyleCascade.Of(element);
             }
         }
     }
