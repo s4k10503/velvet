@@ -362,6 +362,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADelayedFieldWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOnWithNoEdit_Then_TheFieldShowsTheValueUpToTheLimit()
+        {
+            // Arrange — turning multiline off leaves the value cut with its break removed, a third form beside
+            // SingleLineDisplay and the limit write's, and no one typed it.
+            var multilineTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: false),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            Reconciler.Reconcile(Root, multilineTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileSingleLine = ((TextElement)element.textEdition).text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the single-line reading is folded in because the case is about what that display showed.
+            Assert.That(
+                (whileSingleLine, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("ab", "a\nb")));
+        }
+
+        [Test]
         public void Given_ADelayedFieldWithNoEditWhoseValueFitsItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
         {
             // Arrange — a limit longer than the value, so the single-line display is not cut at all.

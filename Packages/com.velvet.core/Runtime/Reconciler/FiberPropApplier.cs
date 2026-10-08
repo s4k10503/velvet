@@ -270,8 +270,11 @@ namespace Velvet
         // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
         // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
         // survives the cut, that differs and is carried, and it is the text the restore would have written.
+        // Multiline coming off then drops the breaks from that cut value, which is CutThenStripped, and no
+        // edit made it either. A user edit equal to one of those two forms is not told from them, so it is
+        // replaced by the value's display.
         // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
-        // the value write's and the restore.
+        // the value write's, the restore and the off-then-on sequence.
         // The silent setter, because the carried text is not a new edit.
         private static void WriteMultiline(TextField field, bool value)
         {
@@ -282,7 +285,7 @@ namespace Velvet
             }
 
             var shown = field.text;
-            var uncommitted = shown != SingleLineDisplay(field);
+            var uncommitted = shown != SingleLineDisplay(field) && shown != CutThenStripped(field);
             field.multiline = true;
             if (uncommitted)
             {
@@ -292,12 +295,21 @@ namespace Velvet
 
         private static string SingleLineDisplay(TextField field)
         {
-            var display = (field.value ?? string.Empty).Replace("\n", string.Empty);
-            // MUTANT_SURVIVES(equivalent, boundary): a cut to the display's own length returns it unchanged,
-            // and a field limited to no characters shows nothing whether its display is cut or carried.
-            return field.maxLength >= 0 && display.Length > field.maxLength
-                ? display.Substring(0, field.maxLength)
-                : display;
+            return CutToLimit(field, (field.value ?? string.Empty).Replace("\n", string.Empty));
+        }
+
+        private static string CutThenStripped(TextField field)
+        {
+            return CutToLimit(field, field.value ?? string.Empty).Replace("\n", string.Empty);
+        }
+
+        private static string CutToLimit(TextField field, string text)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): a cut to the text's own length returns it unchanged,
+            // and a field limited to no characters shows nothing whether its text is cut or carried.
+            return field.maxLength >= 0 && text.Length > field.maxLength
+                ? text.Substring(0, field.maxLength)
+                : text;
         }
 
         // The engine writes keyboardType back to Default and autoCorrection back to false when the field
