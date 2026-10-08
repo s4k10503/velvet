@@ -57,7 +57,7 @@ namespace Velvet.Tests
         public IEnumerator Given_AnOperationFailingTenTimes_When_RunWithTwoRetries_Then_TheThirdFailureIsRethrown() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var policy = s_noDelay with { MaxRetries = 2 };
+            var policy = s_noDelay with { Retry = 2 };
             var thrown = new List<Exception>();
             Exception? caught = null;
 
@@ -89,7 +89,7 @@ namespace Velvet.Tests
             try { await policy.RunAsync(FailingTenTimes(new List<Exception>())); }
             catch (InvalidOperationException) { }
 
-            // Assert — three waits is the default MaxRetries as well, since one wait precedes each retry.
+            // Assert — three waits is the default Retry count as well, since one wait precedes each retry.
             Assert.That(string.Join(",", waits), Is.EqualTo("00:00:01,00:00:02,00:00:04"),
                 "The default policy waits 1 s, 2 s and 4 s before its three retries");
         });
@@ -111,7 +111,7 @@ namespace Velvet.Tests
             var waits = new List<TimeSpan>();
             var policy = new RetryPolicy
             {
-                MaxRetries = 2,
+                Retry = 2,
                 RetryDelay = (failureCount, _) => TimeSpan.FromMilliseconds(10 * (failureCount + 1)),
                 Wait = (delay, _) =>
                 {
@@ -130,17 +130,17 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AShouldRetryAcceptingOnlyTheFirstFailure_When_EveryAttemptFails_Then_ItRunsTwice() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AWhenAcceptingOnlyTheFirstFailure_When_EveryAttemptFails_Then_ItRunsTwice() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var asked = new List<int>();
             var policy = s_noDelay with
             {
-                ShouldRetry = (failureCount, _) =>
+                Retry = RetryRule.When((failureCount, _) =>
                 {
                     asked.Add(failureCount);
                     return failureCount == 0;
-                },
+                }),
             };
 
             // Act
@@ -149,16 +149,17 @@ namespace Velvet.Tests
 
             // Assert — two attempts, so the predicate was asked after each and declined the second.
             Assert.That(string.Join(",", asked), Is.EqualTo("0,1"),
-                "ShouldRetry is asked with each failure's count, and a refusal ends the retries");
+                "The function is asked with each failure's count, and a refusal ends the retries");
         });
 
         [UnityTest]
-        public IEnumerator Given_AShouldRetryAcceptingMoreThanMaxRetries_When_EveryAttemptFails_Then_MaxRetriesStillBoundsIt() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AWhenAcceptingFourFailures_When_EveryAttemptFails_Then_ItRunsFiveTimesPastTheDefaultCount() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the predicate accepts four failures rather than every one, so a policy that let it
-            // override the bound ends after five attempts instead of retrying forever.
+            // Arrange — the function accepts four failures rather than every one, so a policy that kept the
+            // default count of three beside it ends after four attempts, and one that lost the function's
+            // bound retries until the operation stops failing.
             var attempts = 0;
-            var policy = s_noDelay with { MaxRetries = 1, ShouldRetry = (failureCount, _) => failureCount < 4 };
+            var policy = s_noDelay with { Retry = RetryRule.When((failureCount, _) => failureCount < 4) };
 
             // Act
             try
@@ -172,8 +173,100 @@ namespace Velvet.Tests
             catch (InvalidOperationException) { }
 
             // Assert
-            Assert.That(attempts, Is.EqualTo(2), "A predicate accepting more failures than MaxRetries still gets one retry");
+            Assert.That(attempts, Is.EqualTo(5), "A function replaces the count, as TanStack's retry function does");
         });
+
+        [UnityTest]
+        public IEnumerator Given_AWhen_When_AnOperationFails_Then_ItIsAskedWithTheFailureItself() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var thrown = new List<Exception>();
+            var asked = new List<Exception>();
+            var policy = s_noDelay with
+            {
+                Retry = RetryRule.When((_, error) =>
+                {
+                    asked.Add(error);
+                    return false;
+                }),
+            };
+
+            // Act
+            try { await policy.RunAsync(FailingTenTimes(thrown)); }
+            catch (InvalidOperationException) { }
+
+            // Assert
+            Assert.That(asked, Is.EqualTo(thrown), "The function receives the exception the attempt threw");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_RetryTrue_When_AnOperationFailsTenTimes_Then_ItIsRetriedUntilItSucceeds() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — ten failures exceed the default count of three, so only a rule without a bound
+            // reaches the eleventh attempt's result.
+            var thrown = new List<Exception>();
+            var policy = s_noDelay with { Retry = true };
+
+            // Act
+            var result = await policy.RunAsync(FailingTenTimes(thrown));
+
+            // Assert
+            Assert.That((result, thrown.Count), Is.EqualTo((10, 10)), "true retries every failure, as TanStack's retry: true does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_RetryFalse_When_AnOperationFails_Then_ItIsNotRetried() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var attempts = 0;
+            var policy = s_noDelay with { Retry = false };
+
+            // Act
+            try
+            {
+                await policy.RunAsync<int>(_ =>
+                {
+                    attempts++;
+                    throw new InvalidOperationException("down");
+                });
+            }
+            catch (InvalidOperationException) { }
+
+            // Assert
+            Assert.That(attempts, Is.EqualTo(1), "false retries none, as TanStack's retry: false does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_RetryZero_When_AnOperationFails_Then_ItIsNotRetried() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var attempts = 0;
+            var policy = s_noDelay with { Retry = 0 };
+
+            // Act
+            try
+            {
+                await policy.RunAsync<int>(_ =>
+                {
+                    attempts++;
+                    throw new InvalidOperationException("down");
+                });
+            }
+            catch (InvalidOperationException) { }
+
+            // Assert
+            Assert.That(attempts, Is.EqualTo(1), "A count of zero retries none, as TanStack's retry: 0 does");
+        });
+
+        [Test]
+        public void Given_ANullFunction_When_RetryRuleWhenIsCalled_Then_ItThrows()
+        {
+            // Act
+            TestDelegate create = () => RetryRule.When(null!);
+
+            // Assert
+            Assert.That(create, Throws.ArgumentNullException, "A rule with no function is refused where it is made");
+        }
 
         [UnityTest]
         public IEnumerator Given_AnOperationThatThrowsItsOwnCancellation_When_Run_Then_ItIsNotRetried() => VelvetTask.ToCoroutine(async () =>

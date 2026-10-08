@@ -100,7 +100,7 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `useMutation({ mutationFn, onSuccess, onError })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...))` |
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
-| `useMutation({ mutationFn, retry: 3, retryDelay })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { Retry = new RetryPolicy { MaxRetries = 3, RetryDelay = ... } }` |
+| `useMutation({ mutationFn, retry: 3, retryDelay })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { Retry = new RetryPolicy { Retry = 3, RetryDelay = ... } }` |
 
 **Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
 delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
@@ -137,15 +137,16 @@ render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets
 
 | v5 | `RetryPolicy` |
 |----|---------------|
-| `retry: 3` | `MaxRetries = 3` (the default once a policy is given) |
-| `retry: (failureCount, error) => …` | `ShouldRetry = (failureCount, error) => …`, which narrows `MaxRetries` rather than replacing it; there is no `retry: true`, so an unbounded retry is `MaxRetries = int.MaxValue` |
+| `retry: 3` | `Retry = 3` (the default once a policy is given) |
+| `retry: true` / `retry: false` | `Retry = true` retries every failure without end; `Retry = false` retries none |
+| `retry: (failureCount, error) => …` | `Retry = RetryRule.When((failureCount, error) => …)`, which replaces the count: the function alone ends the retries |
 | `retryDelay: (failureCount, error) => ms` | `RetryDelay = (failureCount, error) => TimeSpan`, defaulting to v5's 1 s doubled per retry and capped at 30 s |
 
 Where v5 differs: an `OperationCanceledException` is never retried, and no further attempt starts once the
 token is cancelled. The handle has no `failureCount` / `failureReason`, so the failures before the last
-attempt are visible only to `ShouldRetry` and `RetryDelay`. The default wait is wall-clock time on the main
-thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does, unaffected by
-`Time.timeScale`; it does not pause while the device is offline or the window unfocused as v5 does —
+attempt are visible only to a `RetryRule.When` function and `RetryDelay`. The default wait is wall-clock time
+on the main thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does,
+unaffected by `Time.timeScale`; it does not pause while the device is offline or the window unfocused as v5 does —
 supply `Wait` to wait on game time or on connectivity.
 
 **Callback error semantics** (TanStack Query v5 parity):

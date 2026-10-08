@@ -11,8 +11,7 @@ namespace Velvet
     /// <see cref="Hooks.Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> loader.
     /// </summary>
     /// <remarks>
-    /// After the operation fails, it runs again while fewer than <see cref="MaxRetries"/> retries have been
-    /// made and <see cref="ShouldRetry"/>, when given, accepts the failure, after waiting
+    /// After the operation fails, it runs again when <see cref="Retry"/> accepts the failure, after waiting
     /// <see cref="RetryDelay"/>. The last failure is the one the caller receives. An
     /// <see cref="OperationCanceledException"/> is never retried, and once the token passed to
     /// <see cref="RunAsync{T}"/> is cancelled no further attempt starts: a failure then propagates as it is, and
@@ -23,17 +22,10 @@ namespace Velvet
         private static readonly Func<TimeSpan, CancellationToken, VelvetTask> s_waitRealtime = WaitRealtime;
 
         /// <summary>
-        /// The most retries after the first attempt, so an operation runs at most <c>MaxRetries + 1</c> times.
-        /// Zero or less makes no retry. Defaults to 3, TanStack Query's default for a query.
+        /// Which failures are retried, as TanStack's <c>retry</c> option. Defaults to 3 retries, TanStack Query's
+        /// default for a query.
         /// </summary>
-        public int MaxRetries { get; init; } = 3;
-
-        /// <summary>
-        /// Decides from the number of failures before this one and this failure's exception whether to retry,
-        /// as TanStack's <c>retry</c> function does. It narrows <see cref="MaxRetries"/> rather than replacing
-        /// it. When null, <see cref="MaxRetries"/> alone decides.
-        /// </summary>
-        public Func<int, Exception, bool>? ShouldRetry { get; init; }
+        public RetryRule Retry { get; init; } = 3;
 
         /// <summary>
         /// The wait before the next attempt, from the number of failures before this one and this failure's
@@ -78,7 +70,7 @@ namespace Velvet
                 catch (Exception error) when (error is not OperationCanceledException
                                               && !cancellationToken.IsCancellationRequested)
                 {
-                    if (failureCount >= MaxRetries || ShouldRetry?.Invoke(failureCount, error) == false)
+                    if (!Retry.Allows(failureCount, error))
                     {
                         throw;
                     }
@@ -113,5 +105,48 @@ namespace Velvet
             // and there it waits one frame more, within the frame this polled wait already overshoots by.
             while (TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - start) / (double)Stopwatch.Frequency) < delay);
         }
+    }
+
+    /// <summary>
+    /// TanStack's <c>retry</c> option as a value: a number of retries, every failure, no failure, or a function
+    /// of the failure. A number or a bool converts implicitly, and <see cref="When"/> takes the function.
+    /// </summary>
+    /// <remarks>
+    /// The default value retries nothing.
+    /// </remarks>
+    public readonly struct RetryRule
+    {
+        private readonly int _count;
+        private readonly Func<int, Exception, bool>? _shouldRetry;
+
+        private RetryRule(int count, Func<int, Exception, bool>? shouldRetry)
+        {
+            _count = count;
+            _shouldRetry = shouldRetry;
+        }
+
+        /// <summary>
+        /// Retries up to <paramref name="count"/> times after the first attempt, so an operation runs at most
+        /// <c>count + 1</c> times. Zero or less makes no retry.
+        /// </summary>
+        public static RetryRule Times(int count) => new(count, null);
+
+        /// <summary>
+        /// Decides from the number of failures before this one and this failure's exception whether to retry.
+        /// The function replaces a count rather than narrowing one, so it alone ends the retries: one that
+        /// always accepts retries without end.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="shouldRetry"/> is null.</exception>
+        public static RetryRule When(Func<int, Exception, bool> shouldRetry) =>
+            new(0, shouldRetry ?? throw new ArgumentNullException(nameof(shouldRetry)));
+
+        /// <summary><c>true</c> retries every failure without end, <c>false</c> none.</summary>
+        public static implicit operator RetryRule(bool retry) => retry ? When(static (_, _) => true) : default;
+
+        /// <summary>As <see cref="Times"/>.</summary>
+        public static implicit operator RetryRule(int count) => Times(count);
+
+        internal bool Allows(int failureCount, Exception error) =>
+            _shouldRetry != null ? _shouldRetry(failureCount, error) : failureCount < _count;
     }
 }
