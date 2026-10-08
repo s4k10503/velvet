@@ -278,7 +278,11 @@
 [Velvet] field Velvet.VirtualListAlign.End: Velvet.VirtualListAlign
 [Velvet] field Velvet.VirtualListAlign.Smart: Velvet.VirtualListAlign
 [Velvet] field Velvet.VirtualListAlign.Start: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListScrollBehavior.Auto: Velvet.VirtualListScrollBehavior
+[Velvet] field Velvet.VirtualListScrollBehavior.Instant: Velvet.VirtualListScrollBehavior
+[Velvet] field Velvet.VirtualListScrollBehavior.Smooth: Velvet.VirtualListScrollBehavior
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
+[Velvet] method Velvet.AnimationSequenceStep.Await(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
@@ -547,9 +551,11 @@
 [Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
-[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): Velvet.ElementNode
+[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[UnityEngine.TouchScreenKeyboardType], System.Nullable`1[System.Boolean]): Velvet.ElementNode
 [Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Boolean, System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Boolean, System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]?): Velvet.VNode?
 [Velvet] method Velvet.V.WorldSpace(UnityEngine.Vector3, System.Nullable`1[UnityEngine.Quaternion], System.Nullable`1[UnityEngine.Vector2], Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.WorldSpaceNode
@@ -645,6 +651,7 @@
 [Velvet] method Velvet.VelvetTask`1[T].Preserve(): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask`1[T].SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
 [Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign): System.Void
+[Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign, Velvet.VirtualListScrollBehavior): System.Void
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
@@ -667,10 +674,12 @@
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Restart: System.Action
+[Velvet] property Velvet.AnimationSequenceControls.TimeSec: System.Single
 [Velvet] property Velvet.AnimationSequenceState.CurrentLabel: System.String?
 [Velvet] property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.AnimationSequenceState.IsComplete: System.Boolean
 [Velvet] property Velvet.AnimationSequenceState.StepIndex: System.Int32
+[Velvet] property Velvet.AnimationSequenceStep.AwaitFactory: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]?
 [Velvet] property Velvet.AnimationSequenceStep.Callback: System.Action?
 [Velvet] property Velvet.AnimationSequenceStep.HoldSec: System.Nullable`1[System.Single]
 [Velvet] property Velvet.AnimationSequenceStep.Label: System.String?
@@ -785,12 +794,15 @@
 [Velvet] property Velvet.Experimental.VSlider.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]?
 [Velvet] property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VTextField.AutoCorrection: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.Enabled: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsPasswordField: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.KeyboardType: System.Nullable`1[UnityEngine.TouchScreenKeyboardType]
 [Velvet] property Velvet.Experimental.VTextField.Label: System.String?
 [Velvet] property Velvet.Experimental.VTextField.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.Experimental.VTextField.Multiline: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]?
 [Velvet] property Velvet.Experimental.VTextField.Placeholder: System.String?
 [Velvet] property Velvet.Experimental.VTextField.Value: System.String?
@@ -991,10 +1003,13 @@
 [Velvet] property Velvet.SubmitOptions.Replace: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SuspenseNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.SuspenseNode.Fallback: Velvet.VNode
+[Velvet] property Velvet.TextFieldSettings.AutoCorrection: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsPassword: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.KeyboardType: System.Nullable`1[UnityEngine.TouchScreenKeyboardType]
 [Velvet] property Velvet.TextFieldSettings.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.TextFieldSettings.Multiline: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.Placeholder: System.String?
 [Velvet] property Velvet.TextNode.Text: System.String
 [Velvet] property Velvet.VNode.Key: System.String?
@@ -1031,6 +1046,7 @@
 [Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
 [Velvet] property Velvet.VirtualListHandle.Element: UnityEngine.UIElements.ScrollView
 [Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
+[Velvet] property Velvet.VirtualListNode.Horizontal: System.Boolean
 [Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
 [Velvet] property Velvet.VirtualListNode.ItemHeightAt: System.Func`2[System.Int32, System.Single]?
 [Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object?]
@@ -1239,5 +1255,6 @@
 [Velvet] type Velvet.VirtualListAlign
 [Velvet] type Velvet.VirtualListHandle
 [Velvet] type Velvet.VirtualListNode
+[Velvet] type Velvet.VirtualListScrollBehavior
 [Velvet] type Velvet.WheelBinding
 [Velvet] type Velvet.WorldSpaceNode

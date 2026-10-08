@@ -124,9 +124,10 @@ Four consequences worth knowing:
   either one important changes nothing — there is no property set to rank them by. Use the
   arbitrary-value form where the family has one, or compute the class string in C# and render exactly
   one member.
-- **`has-[.foo]:` still sees a class that lost.** A `.foo` written in a descendant's `className`
+- **`has-[.foo]:` matches what the className wrote.** A `.foo` written in a descendant's `className`
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
-  however the cascade ranks `.foo`'s declarations.
+  however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
+  descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
@@ -136,6 +137,12 @@ takes its top from `pt-6` and the rest from `p-[12px]`) — except on a margin `
 higher-priority inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]`
 both work. The filter family is the exception — filters compose rather than override, so a `filter` class
 and a `blur-[6px]` layer both apply.
+
+A per-axis scale keeps the uniform utility on its other axis: `scale-50 scale-x-75` resolves to
+`(0.75, 0.5)`, and `scale-50 scale-y-75` to `(0.5, 0.75)`. Adding or removing a uniform preset
+updates that fallback. Several uniform presets follow the bundled stylesheet's declaration order;
+an inline uniform value supplies the fallback ahead of a plain preset. The priority rules above
+still decide which classes and inline layers participate.
 
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
 `shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is

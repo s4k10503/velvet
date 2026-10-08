@@ -327,12 +327,15 @@ namespace Velvet.Tests
                 Is.EqualTo((Half4, Half4, StyleKeyword.Null, -Half4, StyleKeyword.Null)));
         }
 
-        [Test]
-        public void Given_AWrappingRowWithDifferentColumnAndRowGaps_When_Reconciled_Then_EachAxisTakesItsOwnHalf()
+        [TestCase("flex flex-row flex-wrap gap-x-4 gap-y-2")]
+        [TestCase("flex flex-row flex-wrap !gap-x-4 gap-x-8 gap-y-2")]
+        [TestCase("flex flex-row flex-wrap gap-x-4 gap-y-2! gap-y-8")]
+        [TestCase("flex flex-row flex-wrap !gap-2 gap-x-4!")]
+        public void Given_AWrappingRowWithDifferentColumnAndRowGaps_When_Reconciled_Then_EachAxisTakesItsOwnHalf(string className)
         {
-            // Arrange — CSS keeps column-gap and row-gap apart; the later gap-y-2 must not replace gap-x-4.
+            // Arrange — column-gap and row-gap choose their winning declarations independently.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row flex-wrap gap-x-4 gap-y-2", 3) };
+            var tree = new VNode[] { Row(className, 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -1705,18 +1708,55 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        [Test]
-        public void Given_FlexRowGapArbitrary_When_Reconciled_Then_AppliesPixelGap()
+        [TestCase("flex flex-row gap-x-[12px]")]
+        [TestCase("flex flex-row !gap-x-[12px]")]
+        [TestCase("flex flex-row gap-x-[12px]!")]
+        [TestCase("flex flex-row !gap-x-[12px] gap-x-8")]
+        [TestCase("flex flex-row gap-x-[12px] !gap-x-[32px]!")]
+        public void Given_FlexRowGapArbitrary_When_Reconciled_Then_AppliesPixelGap(string className)
         {
             // Arrange — the arbitrary form must drive the manipulator end-to-end, like the presets.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row gap-x-[12px]", 3) };
+            var tree = new VNode[] { Row(className, 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
             Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(12f));
+        }
+
+        [TestCase("flex flex-row gap-2 hover:gap-4", Space4, false)]
+        [TestCase("flex flex-row !gap-2 hover:!gap-4", Space4, false)]
+        [TestCase("flex flex-row gap-2! hover:gap-4", Space2, false)]
+        [TestCase("flex flex-row space-x-2 hover:!space-x-4", Space4, true)]
+        [TestCase("flex flex-row space-x-2 hover:space-x-4!", Space4, true)]
+        public void Given_AVariantSpacing_When_HoverStartsAndEnds_Then_TheWinningSpacingAppliesAndRestores(
+            string className, float hoveredSpacing, bool space)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 2) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+            var child = container[space ? 0 : 1];
+            float ReadMargin() => space ? child.style.marginRight.value.value : child.style.marginLeft.value.value;
+            var atRest = ReadMargin();
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                container.SimulateEvent(over);
+            }
+            var whileHover = ReadMargin();
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                container.SimulateEvent(leave);
+            }
+            var afterLeave = ReadMargin();
+
+            // Assert
+            Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((Space2, hoveredSpacing, Space2)));
         }
     }
 

@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace Velvet
 {
@@ -26,6 +28,10 @@ namespace Velvet
         private int _passesCompleted;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
+        // The holds of every step the cursor has left since the last reseed, and every repeat gap it has waited
+        // out, across passes, so TimeSec reads the timeline position without re-deriving them. A double, since a loop adds to it for as long as the
+        // sequence plays.
+        private double _timeBeforeStepSec;
         private string? _currentLabel;
         private StyleTransitionConfig? _currentTransition;
         private bool _isComplete;
@@ -33,6 +39,9 @@ namespace Velvet
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
+        // Non-null only while the cursor is held on an Await step, whose hold reads as unbounded until
+        // DetachAwait clears both.
+        private AwaitHold? _await;
 
         // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
         // true (the caller gates it), so there is nothing more for this flag to do here.
@@ -41,6 +50,8 @@ namespace Velvet
         public bool IsComplete => _isComplete;
 
         public int StepIndex => _stepIndex;
+
+        public float TimeSec => (float)(_timeBeforeStepSec + _elapsedInStepSec);
 
         // Bumped on every committed Arrive (a real step transition, including a same-index re-arrival on a
         // single-step loop), independent of StepIndex — a caller diffing StepIndex alone would miss the
@@ -90,10 +101,18 @@ namespace Velvet
             }
             if (!PassesRemain)
             {
-                AdoptEndState();
-                _inRepeatGap = false;
-                _isComplete = true;
+                CompleteAtLoweredCount();
                 return _stepIndex;
+            }
+            if (_await != null)
+            {
+                if (!_await.IsSettled)
+                {
+                    return _stepIndex;
+                }
+                // Time left over from before the await counts toward no hold after it; this frame's does.
+                _elapsedInStepSec = 0f;
+                ReleaseAwait();
             }
 
             _elapsedInStepSec += dt;
@@ -101,6 +120,7 @@ namespace Velvet
             while (!_isComplete && _elapsedInStepSec >= _currentHoldSec && guard-- > 0)
             {
                 _elapsedInStepSec -= _currentHoldSec;
+                _timeBeforeStepSec += _currentHoldSec;
                 if (_inRepeatGap)
                 {
                     _inRepeatGap = false;
@@ -114,6 +134,8 @@ namespace Velvet
                     if (!PassesRemain)
                     {
                         _isComplete = true;
+                        // A finished sequence reads its full length, not the overshoot past it.
+                        _elapsedInStepSec = 0f;
                         break;
                     }
                     if (RepeatDelaySec > 0f)
@@ -132,17 +154,28 @@ namespace Velvet
         // A null Iterations plays without end.
         private bool PassesRemain => Iterations == null || _passesCompleted < Iterations;
 
-        // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step and the
-        // label and transition the To steps leave, folded as Arrive folds them. No Call callback runs. Zero passes
-        // commit nothing, so a count lowered to zero leaves the cursor and label as they are.
+        // Completes at a count the finished passes already reach. The wait the cursor was parked on is abandoned
+        // only once the walker has completed, as ResetImmediate abandons the one a reseed leaves.
+        private void CompleteAtLoweredCount()
+        {
+            var left = DetachAwait();
+            AdoptEndState();
+            _inRepeatGap = false;
+            _isComplete = true;
+            _elapsedInStepSec = 0f;
+            left?.Abandon();
+        }
+
+        // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step, the
+        // label and transition the To steps leave, folded as Arrive folds them, and the time a completion reads,
+        // Iterations passes of the steps' holds with a repeat gap between each. No Call callback runs and an
+        // Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
+        // and label as they are and reads time 0.
         private void AdoptEndState()
         {
-            if (Iterations == 0)
-            {
-                return;
-            }
             string? label = null;
             StyleTransitionConfig? transition = null;
+            double passSec = 0;
             for (var i = 0; i < _steps.Count; i++)
             {
                 if (_steps[i].Kind == AnimationSequenceStepKind.To)
@@ -150,6 +183,13 @@ namespace Velvet
                     label = _steps[i].Label;
                     transition = _steps[i].Transition ?? transition ?? StyleTransition.Fade;
                 }
+                passSec += HoldOf(_steps[i], transition);
+            }
+            var passes = Iterations ?? 0;
+            _timeBeforeStepSec = passes == 0 ? 0 : passes * passSec + (passes - 1) * (double)RepeatDelaySec;
+            if (passes == 0)
+            {
+                return;
             }
             _stepIndex = _steps.Count - 1;
             _currentLabel = label;
@@ -171,12 +211,38 @@ namespace Velvet
 
         public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
 
+        // The wait a reseed leaves is abandoned only after the reseed has arrived, here and in ArriveAtStart's
+        // drain: its token's callbacks are user code, so one that throws must find the walker reseeded rather
+        // than halfway through, and a restart from one must find the new wait installed to abandon in turn.
+        // Where the arrival itself threw, its exception stays the one that propagates.
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
-            var isComplete = ApplyStepsReset(steps ?? Array.Empty<AnimationSequenceStep>());
-            if (!isComplete)
+            var left = DetachAwait();
+            try
             {
-                ArriveAtStart(0);
+                var isComplete = ApplyStepsReset(steps ?? Array.Empty<AnimationSequenceStep>());
+                if (!isComplete)
+                {
+                    ArriveAtStart(0);
+                }
+            }
+            catch
+            {
+                AbandonLoggingAnyThrow(left);
+                throw;
+            }
+            left?.Abandon();
+        }
+
+        private static void AbandonLoggingAnyThrow(AwaitHold? left)
+        {
+            try
+            {
+                left?.Abandon();
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogException(exception);
             }
         }
 
@@ -192,6 +258,7 @@ namespace Velvet
             HasReseeded = true;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
+            _timeBeforeStepSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
@@ -217,7 +284,7 @@ namespace Velvet
                 if (step.Kind == AnimationSequenceStepKind.To && step.Label == null)
                 {
                     FiberLogger.LogWarning("AnimationSequence",
-                        $"steps[{i}] is a default(AnimationSequenceStep), not one built through To/Wait/Call "
+                        $"steps[{i}] is a default(AnimationSequenceStep), not one built through To/Wait/Call/Await "
                         + "(a likely unfilled array slot). Treating it as a no-op Wait(0) instead of a To step "
                         + "with a null label.");
                 }
@@ -245,19 +312,33 @@ namespace Velvet
             {
                 var pending = _pendingResetSteps;
                 _pendingResetSteps = null;
-                var isComplete = ApplyStepsReset(pending);
+                var left = DetachAwait();
+                bool isComplete;
+                try
+                {
+                    isComplete = ApplyStepsReset(pending);
+                    if (!isComplete)
+                    {
+                        _isArriving = true;
+                        try
+                        {
+                            Arrive(0);
+                        }
+                        finally
+                        {
+                            _isArriving = false;
+                        }
+                    }
+                }
+                catch
+                {
+                    AbandonLoggingAnyThrow(left);
+                    throw;
+                }
+                left?.Abandon();
                 if (isComplete)
                 {
                     break;
-                }
-                _isArriving = true;
-                try
-                {
-                    Arrive(0);
-                }
-                finally
-                {
-                    _isArriving = false;
                 }
             }
             if (_pendingResetSteps != null)
@@ -288,15 +369,124 @@ namespace Velvet
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
                     _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
-                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
+                    _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Wait:
-                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? 0f);
+                    _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Call:
                     _currentHoldSec = 0f;
                     step.Callback?.Invoke();
                     break;
+                case AnimationSequenceStepKind.Await:
+                    _currentHoldSec = 0f;
+                    BeginAwait(step.AwaitFactory!);
+                    break;
+            }
+        }
+
+        // The hold a To or Wait step parks the cursor for, given the transition the cursor carries into it; every
+        // other kind holds for none.
+        private static float HoldOf(in AnimationSequenceStep step, StyleTransitionConfig? transition)
+        {
+            switch (step.Kind)
+            {
+                case AnimationSequenceStepKind.To:
+                    return Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(transition!));
+                case AnimationSequenceStepKind.Wait:
+                    return Math.Max(0f, step.HoldSec ?? 0f);
+                default:
+                    return 0f;
+            }
+        }
+
+        // Hooks.UseAnimationSequence calls this on unmount. A task still pending has its token cancelled.
+        public void AbandonAwait() => DetachAwait()?.Abandon();
+
+        // The hold is unbounded only while _await holds it.
+        private AwaitHold? DetachAwait()
+        {
+            var hold = _await;
+            if (hold != null)
+            {
+                _await = null;
+                _currentHoldSec = 0f;
+            }
+            return hold;
+        }
+
+        // A factory that throws propagates as a throwing Call callback does. The continuation is registered as an
+        // await registers it, so where it runs inline the step is released here and crossed in the same Advance
+        // as a Call step.
+        private void BeginAwait(Func<CancellationToken, VelvetTask> taskFactory)
+        {
+            var hold = new AwaitHold();
+            var task = taskFactory(hold.Token);
+            task.GetAwaiter().OnCompleted(() => hold.Settle(VelvetTaskOutcome.Consume(task)));
+            _await = hold;
+            if (hold.IsSettled)
+            {
+                ReleaseAwait();
+            }
+            else
+            {
+                // Stops Advance's loop on this step until a later frame reads the settle.
+                _currentHoldSec = float.PositiveInfinity;
+            }
+        }
+
+        // Rethrows the task's fault, or a cancellation the walker did not cause, the way a throwing Call callback
+        // propagates, with the cursor already free to move on.
+        private void ReleaseAwait()
+        {
+            DetachAwait()!.ThrowIfFailed();
+        }
+
+        // One per arrival at an Await step, so a continuation from an earlier arrival writes only to a hold the
+        // walker has already dropped and cannot release the step the cursor is on now.
+        private sealed class AwaitHold
+        {
+            private readonly CancellationTokenSource _cancellation = new();
+            private VelvetTaskOutcome<AsyncUnit> _outcome;
+            private bool _abandoned;
+
+            public bool IsSettled { get; private set; }
+
+            public CancellationToken Token => _cancellation.Token;
+
+            public void Settle(VelvetTaskOutcome<AsyncUnit> outcome)
+            {
+                _outcome = outcome;
+                IsSettled = true;
+                if (_abandoned)
+                {
+                    VelvetTaskScheduler.PublishUnobservedFaults(outcome.Faults);
+                }
+            }
+
+            // A fault that settled before the walker read it, or that arrives later, is logged as Forget() logs
+            // one; the cancellation this causes is not.
+            public void Abandon()
+            {
+                _abandoned = true;
+                if (IsSettled)
+                {
+                    VelvetTaskScheduler.PublishUnobservedFaults(_outcome.Faults);
+                    return;
+                }
+                _cancellation.Cancel();
+            }
+
+            public void ThrowIfFailed()
+            {
+                if (_outcome.Faults != null)
+                {
+                    _outcome.Faults[0].Throw();
+                }
+                if (_outcome.Cancellation != null)
+                {
+                    ExceptionDispatchInfo.Capture(_outcome.Cancellation).Throw();
+                }
             }
         }
 

@@ -159,13 +159,8 @@ namespace Velvet
             HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             var cmp = comparer ?? ObjectIsEqualityComparer<TSel>.Instance;
 
-            // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
-            // drain wave instead of the live store.Current. An ancestor on the immediate tier and a
-            // descendant on the delayed tier (separated by up to DelayedTierDelayMs) therefore observe the SAME
-            // store value even if the store mutates between their tier drains; the mutation re-schedules every
-            // reader, and that follow-up render lands on the next immediate drain, which re-pins to the now-
-            // current snapshot so readers converge. Falls back to store.Current
-            // outside a reconcile context (e.g. a fiber not yet attached to a Reconciler).
+            // Tearing guard: readers committed in one drain pass read the snapshot the pass pinned (see
+            // ReconcilerContext.PinStoreSnapshot) rather than the live store.Current.
             var snapshot = PinStoreSnapshot(fiber, store);
 
             if (index >= fiber.StoreSlots.Count)
@@ -201,6 +196,7 @@ namespace Velvet
                 });
 
                 fiber.StoreSlots.Add(slot);
+                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, slot.LastValue);
                 return slot.LastValue;
             }
 
@@ -220,7 +216,20 @@ namespace Velvet
             typed.Selector = selector;
             typed.Comparer = cmp;
             typed.LastValue = selector(snapshot);
+            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, typed.LastValue);
             return typed.LastValue;
+        }
+
+        // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
+        // notification still to come: the mutation notified before this render overwrote LastValue, or before
+        // this reader subscribed. The render this asks for reads the store in a later pass, which pins afresh.
+        private static void CatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, Store<TStore> store, TStore snapshot, Func<TStore, TSel> selector,
+            IEqualityComparer<TSel> comparer, TSel selected)
+        {
+            var live = store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || comparer.Equals(selected, selector(live))) return;
+            FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
         }
 
         // Returns the store snapshot pinned for the current batch drain wave (see
@@ -1285,6 +1294,9 @@ namespace Velvet
             var fiber = Resolve("UseAnimationSequence");
             var walker = UseRef(() => new SequenceWalker());
             var (_, bumpRenderVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent): every bump goes through here, so a decrement moves the version on each
+            // call as surely as an increment does, and nothing reads the version itself.
+            void Rerender() => bumpRenderVersion.Invoke(v => v + 1);
 
             // Tracks the LATEST render's steps for controls.Restart() to read (see below) — mirrors UseFrame's
             // own `latest.Set(onFrame)` pattern: a re-render must not leave an earlier render's Restart closing
@@ -1301,9 +1313,10 @@ namespace Velvet
 
             UseEffect(() =>
             {
-                walker.Current.Reset(steps);
+                // Before the Reset: step 0's Call callback can pause the walker it is arriving on.
                 walker.Current.IsPaused = !autoplay;
-                bumpRenderVersion.Invoke(v => v + 1);
+                walker.Current.Reset(steps);
+                Rerender();
                 return (Action)null;
             }, deps);
 
@@ -1318,9 +1331,13 @@ namespace Velvet
                 walker.Current.Advance(dt);
                 if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
                 {
-                    bumpRenderVersion.Invoke(v => v + 1);
+                    Rerender();
                 }
             });
+
+            // Not the reset effect's cleanup, which would also run on every deps restart: a restart already
+            // abandons the wait in the walker's own reseed, so this one is for unmount.
+            UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
 
             var controls = new AnimationSequenceControls(
                 play: () => walker.Current.IsPaused = false,
@@ -1328,8 +1345,9 @@ namespace Velvet
                 restart: () =>
                 {
                     walker.Current.Reset(latestSteps.Current ?? steps);
-                    bumpRenderVersion.Invoke(v => v + 1);
-                });
+                    Rerender();
+                },
+                walker: walker.Current!);
 
             // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence
             // that plays nothing as not yet complete for the whole mount render.
@@ -2172,10 +2190,10 @@ namespace Velvet
         /// <param name="value">Latest value (provided by the caller).</param>
         /// <returns>
         /// First render: returns <paramref name="value"/> as-is.
-        /// Subsequent renders: returns the previously committed value and queues the next value as pending
-        /// on the Transition lane. A re-render that is not draining that lane keeps returning the previously
-        /// committed value and re-queues the lane.
-        /// The render that drains the Transition lane: commits the pending value and returns the new value.
+        /// A later render that is not draining Transition-lane work and carries a changed value: returns the
+        /// previously committed value and queues the new value as pending on the Transition lane.
+        /// A render draining Transition-lane work: commits <paramref name="value"/> and returns it, whether or
+        /// not it is the value last queued.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
             => UseDeferredValueCore(value, default!, hasInitialValue: false);
@@ -2225,13 +2243,12 @@ namespace Velvet
                     $"HookDeferredValueSlot<{typeof(T).Name}>", index);
             }
 
-            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value)
-                && FiberWorkLoop.IsRenderingTransitionLane)
+            if (FiberWorkLoop.IsRenderingTransitionLane)
             {
-                // Only the render draining transition-lane work may promote pending to current. The rest of
-                // the condition tests the input alone, so without the gate any re-render still carrying it
-                // commits — and the subtree the deferral exists to keep off the urgent path renders there.
-                // A render that is not the one falls through to the change branch, which re-queues the lane.
+                // A render draining transition-lane work commits the input it was handed, whether or not it is
+                // the value an urgent render queued: requiring the two to match left an input built afresh on
+                // every render never committing. Any other render falls through to the change branch, which
+                // re-queues the lane.
                 typed.Current = value;
                 typed.Pending = default;
                 typed.HasPending = false;
