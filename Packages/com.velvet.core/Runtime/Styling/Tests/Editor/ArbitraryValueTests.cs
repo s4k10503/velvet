@@ -1374,6 +1374,40 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_PositionFractionClassAdded_When_Reconciled_Then_AppliesInlinePercentLeft()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div() };
+            var newTree = new VNode[] { V.Div("left-1/2") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            var el = root.ElementAt(0);
+            Assert.That((el.style.left.value.value, el.style.left.value.unit),
+                Is.EqualTo((50f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_PositionFractionClass_When_Mounted_Then_DoesNotEnterClassList()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("-top-1/2") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).ClassListContains("-top-1/2"), Is.False);
+        }
+
+        [Test]
         public void Given_ArbitraryClassRemoved_When_Reconciled_Then_ClearsInlineStyle()
         {
             // Arrange
@@ -2415,6 +2449,88 @@ namespace Velvet.Tests
         {
             // 7 is not an accepted sizing denominator (2/3/4/5/6/12 only), so w-1/7 does not resolve.
             Assert.That(StyleArbitraryValueResolver.TryParse("w-1/7", out _), Is.False);
+        }
+
+        static readonly object[] PositionFractionCases =
+        {
+            // Given_LeftHalfFraction_When_Parsed_Then_ResolvesLeftFiftyPercent
+            new object[] { "left-1/2", ArbitraryProperty.Left, 50f },
+            // Given_TopHalfFraction_When_Parsed_Then_ResolvesTopFiftyPercent
+            new object[] { "top-1/2", ArbitraryProperty.Top, 50f },
+            // Given_RightQuarterFraction_When_Parsed_Then_ResolvesRightTwentyFivePercent
+            new object[] { "right-1/4", ArbitraryProperty.Right, 25f },
+            // Given_BottomThreeQuartersFraction_When_Parsed_Then_ResolvesBottomSeventyFivePercent
+            new object[] { "bottom-3/4", ArbitraryProperty.Bottom, 75f },
+            // Given_InsetHalfFraction_When_Parsed_Then_ResolvesInsetFiftyPercent
+            new object[] { "inset-1/2", ArbitraryProperty.Inset, 50f },
+            // Given_InsetXQuarterFraction_When_Parsed_Then_ResolvesInsetXRatherThanInset
+            new object[] { "inset-x-1/4", ArbitraryProperty.InsetX, 25f },
+            // Given_InsetYThreeQuartersFraction_When_Parsed_Then_ResolvesInsetYRatherThanInset
+            new object[] { "inset-y-3/4", ArbitraryProperty.InsetY, 75f },
+            // Given_NegatedTopHalfFraction_When_Parsed_Then_ResolvesNegativeFiftyPercent
+            new object[] { "-top-1/2", ArbitraryProperty.Top, -50f },
+            // Given_NegatedRightQuarterFraction_When_Parsed_Then_ResolvesNegativeTwentyFivePercent
+            new object[] { "-right-1/4", ArbitraryProperty.Right, -25f },
+            // Given_NegatedBottomThreeQuartersFraction_When_Parsed_Then_ResolvesNegativeSeventyFivePercent
+            new object[] { "-bottom-3/4", ArbitraryProperty.Bottom, -75f },
+            // Given_NegatedLeftHalfFraction_When_Parsed_Then_ResolvesNegativeFiftyPercent
+            new object[] { "-left-1/2", ArbitraryProperty.Left, -50f },
+            // Given_NegatedInsetHalfFraction_When_Parsed_Then_ResolvesNegativeFiftyPercent
+            new object[] { "-inset-1/2", ArbitraryProperty.Inset, -50f },
+            // Given_NegatedInsetXQuarterFraction_When_Parsed_Then_ResolvesNegativeTwentyFivePercent
+            new object[] { "-inset-x-1/4", ArbitraryProperty.InsetX, -25f },
+            // Given_NegatedInsetYThreeQuartersFraction_When_Parsed_Then_ResolvesNegativeSeventyFivePercent
+            new object[] { "-inset-y-3/4", ArbitraryProperty.InsetY, -75f },
+        };
+
+        [TestCaseSource(nameof(PositionFractionCases))]
+        public void Given_PositionFraction_When_Parsed_Then_ResolvesAPercentOfTheContainingBlock(
+            string className, object property, float percent)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
+
+            // Assert — a declined parse reads as (false, default) and fails the same comparison.
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, (ArbitraryProperty)property, percent, LengthUnit.Percent)));
+        }
+
+        [TestCase("left-1/2")]
+        [TestCase("-top-1/2")]
+        public void Given_PositionFraction_When_DispatchGateChecked_Then_ClaimedAsStaticScale(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale(className);
+
+            // Assert
+            Assert.That(claimed, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): a negated sizing fraction already resolves to nothing on the base.
+        // The signed position families now share its table, and dropping the Signed column reddens this.
+        [TestCase("-w-1/2")]
+        [TestCase("-h-1/2")]
+        [TestCase("-size-1/2")]
+        public void Given_NegatedSizingFraction_When_ParsedAndGated_Then_NeitherClaimsIt(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale(className);
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That((claimed, parsed), Is.EqualTo((false, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a gradient's interpolation modifier already stays off the base gate.
+        // The fraction gate claims a '/' only behind a fraction family's prefix, and this pins that it does.
+        [Test]
+        public void Given_ASlashTokenOutsideTheFractionFamilies_When_DispatchGateChecked_Then_NotClaimed()
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale("bg-linear-to-r/oklch");
+
+            // Assert
+            Assert.That(claimed, Is.False);
         }
 
         [Test]

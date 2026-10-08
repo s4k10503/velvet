@@ -627,6 +627,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_HalfOffsetsAndNegativeHalfTranslates_When_Resolved_Then_TheChildIsCentredInItsParent()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "w-[200px] h-[200px]", name: "parent", children: new VNode?[]
+                {
+                    V.Div(name: "leaf",
+                        className: "absolute left-1/2 top-1/2 w-[40px] h-[20px] -translate-x-1/2 -translate-y-1/2"),
+                }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+
+            // Act
+            var offCentre = Vector2.Distance(leaf.worldBound.center, parent.worldBound.center);
+
+            // Assert
+            Assert.That(offCentre, Is.EqualTo(0f).Within(0.5f));
+        }
+
+        [Test]
         public void Given_OriginTopRightClass_When_Resolved_Then_TransformOriginIsAtTheTopEdge()
         {
             // Arrange/Act — origin-top-right -> `right top`; the y component resolves to the top edge (0),

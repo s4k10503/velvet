@@ -268,9 +268,9 @@ namespace Velvet
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
         // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
-        // '/'-bearing translate fraction, and the positive per-axis translate/scale presets (no USS class — a
-        // per-axis rule would clobber the other axis via the shorthand). Other positive non-slash names (mt-2,
-        // rotate-6) keep their USS classes and are intentionally NOT claimed here.
+        // '/'-bearing translate, sizing and position fractions, and the positive per-axis translate/scale
+        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand). Other
+        // positive non-slash names (mt-2, rotate-6) keep their USS classes and are intentionally NOT claimed here.
         internal static bool MayBeStaticScale(string cls)
         {
             if (string.IsNullOrEmpty(cls))
@@ -280,6 +280,10 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
             if (StyleFilterValueParser.IsFilterPreset(cls))
+            {
+                return true;
+            }
+            if (IsFractionToken(cls))
             {
                 return true;
             }
@@ -305,15 +309,6 @@ namespace Velvet
                 }
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
                 return suffix.SequenceEqual("full".AsSpan()) || SuffixInKeys(suffix, s_spacingScale);
-            }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) have no USS class — USS selectors cannot spell '/' —
-            // so the slash form routes to the resolver (the bracket form w-[50%] is claimed by the '[' check).
-            if ((cls.StartsWith("w-", StringComparison.Ordinal)
-                    || cls.StartsWith("h-", StringComparison.Ordinal)
-                    || cls.StartsWith("size-", StringComparison.Ordinal))
-                && cls.IndexOf('/') >= 0)
-            {
-                return true;
             }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
@@ -384,9 +379,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses the non-bracket static-scale forms that have no USS class: negative margins on the
-        // preset scale (-mt-2 -> MarginTop -8px), the negative rotate preset (-rotate-6 -> -6deg), and the
-        // translate fraction / negative px translate (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
+        // Parses the non-bracket static-scale forms that have no USS class: the sizing and position fractions
+        // (w-1/2, -left-1/2), negative margins on the preset scale (-mt-2 -> MarginTop -8px), the negative
+        // rotate preset (-rotate-6 -> -6deg), and the translate fraction / negative px translate
+        // (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
         // Returns false for anything else, so positive USS-backed names fall through to the class list.
         private static bool TryParseStaticScale(string className, out ArbitraryStyle result)
         {
@@ -395,8 +391,7 @@ namespace Velvet
             {
                 return false;
             }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) are non-negated and resolve to a percent of the parent.
-            if (TryParseSizingFraction(className, out result))
+            if (TryParseFraction(className, out result))
             {
                 return true;
             }
@@ -543,22 +538,55 @@ namespace Velvet
             return true;
         }
 
-        // Fractional sizing (w-1/2, h-2/3, size-3/4 → a percent of the parent). USS cannot spell '/',
-        // so these resolve here as inline percent rather than via a USS class. Width/Height target their own
-        // property; size-* fans out to both (the Size property). Only the denominators (2/3/4/5/6/12)
-        // and a numerator in 1..d-1 are accepted (100% is the separate `*-full` utility; anything else falls
-        // through and is not claimed).
-        private static bool TryParseSizingFraction(string className, out ArbitraryStyle result)
+        // The fraction families (w-1/2, h-2/3, size-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
+        // since no USS selector can spell '/'. Only a position offset takes a sign (-left-1/2), as in Tailwind.
+        // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Signed)[] s_fractionFamilies =
+        {
+            ("w-", ArbitraryProperty.Width, false),
+            ("h-", ArbitraryProperty.Height, false),
+            ("size-", ArbitraryProperty.Size, false),
+            ("top-", ArbitraryProperty.Top, true),
+            ("right-", ArbitraryProperty.Right, true),
+            ("bottom-", ArbitraryProperty.Bottom, true),
+            ("left-", ArbitraryProperty.Left, true),
+            ("inset-x-", ArbitraryProperty.InsetX, true),
+            ("inset-y-", ArbitraryProperty.InsetY, true),
+            ("inset-", ArbitraryProperty.Inset, true),
+        };
+
+        // -1 when cls names no fraction family, or negates one that takes no sign.
+        private static int FractionFamilyOf(string cls)
+        {
+            var negate = cls[0] == '-';
+            var body = cls.AsSpan(negate ? 1 : 0);
+            for (var i = 0; i < s_fractionFamilies.Length; i++)
+            {
+                if (body.StartsWith(s_fractionFamilies[i].Prefix.AsSpan()))
+                {
+                    return negate && !s_fractionFamilies[i].Signed ? -1 : i;
+                }
+            }
+            return -1;
+        }
+
+        // MUTANT_SURVIVES(equivalent): FractionFamilyOf declines a token that opens with '/'.
+        // The boundary moves only that token, since every family prefix opens with a letter.
+        private static bool IsFractionToken(string cls) => cls.IndexOf('/') >= 0 && FractionFamilyOf(cls) >= 0;
+
+        // Only the denominators 2/3/4/5/6/12 with a numerator in 1..d-1 are accepted; anything else does not
+        // parse.
+        private static bool TryParseFraction(string className, out ArbitraryStyle result)
         {
             result = default;
-            ArbitraryProperty property;
-            int prefixLen;
-            if (className.StartsWith("w-", StringComparison.Ordinal)) { property = ArbitraryProperty.Width; prefixLen = 2; }
-            else if (className.StartsWith("h-", StringComparison.Ordinal)) { property = ArbitraryProperty.Height; prefixLen = 2; }
-            else if (className.StartsWith("size-", StringComparison.Ordinal)) { property = ArbitraryProperty.Size; prefixLen = 5; }
-            else { return false; }
-
-            var frac = className.Substring(prefixLen);
+            var family = FractionFamilyOf(className);
+            if (family < 0)
+            {
+                return false;
+            }
+            var (prefix, property, _) = s_fractionFamilies[family];
+            var negate = className[0] == '-';
+            var frac = className.Substring((negate ? 1 : 0) + prefix.Length);
             var slash = frac.IndexOf('/');
             if (slash <= 0 || slash >= frac.Length - 1)
             {
@@ -577,7 +605,8 @@ namespace Velvet
             {
                 return false;
             }
-            result = new ArbitraryStyle(property, 100f * n / d, LengthUnit.Percent);
+            var percent = 100f * n / d;
+            result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
             return true;
         }
 

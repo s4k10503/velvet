@@ -631,6 +631,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APositionFractionPair_When_SteppedToHalfTheDuration_Then_TheInlineLeftIsTheMidpointPercent()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            var state = CreateHalfway(element, new[] { "left-1/4" }, new[] { "left-3/4" });
+
+            // Assert — 25% to 75%, sampled halfway.
+            Assert.That(state != null ? (Length?)element.style.left.value : null,
+                Is.EqualTo(new Length(50f, LengthUnit.Percent)));
+        }
+
+        [Test]
         public void Given_AVariantDeltaMixingAColorAndTheOpacityAxis_When_Resolved_Then_BothChannelsArePlanned()
         {
             // Arrange / Act — the property channels are additive to the fixed axes, not a replacement for them.
