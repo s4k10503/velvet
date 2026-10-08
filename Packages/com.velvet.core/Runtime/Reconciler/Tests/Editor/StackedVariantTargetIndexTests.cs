@@ -8,10 +8,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that <see cref="ReconcilerContext"/>'s by-target index of stacked-variant manipulators follows
-    /// the registry through three ways a registration leaves it — an outer gate closing over a level-based
-    /// inner, an owner being dropped, an element being detached — and that it keeps the registrations that
-    /// stay. Gates are opened and closed by hand on a bare context, so no reconcile pass decides what the index
-    /// is handed.
+    /// the registry through four ways a registration leaves it — an outer gate closing over a level-based
+    /// inner, an owner being dropped, an element being detached, the owning reconciler being disposed — and
+    /// that it keeps the registrations that stay. Gates are opened and closed by hand, so no reconcile pass
+    /// decides what the index is handed; the dispose cases take their context from a reconciler, the rest
+    /// build one bare.
     /// </summary>
     [TestFixture]
     internal sealed class StackedVariantTargetIndexTests
