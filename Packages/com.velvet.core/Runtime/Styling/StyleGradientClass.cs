@@ -1072,18 +1072,9 @@ namespace Velvet
             }
         }
 
-        // A non-negative length as CSS writes one: pixels, or a bare 0.
+        // A non-negative length, as a radius is: TryParseStopLength's grammar without the sign.
         private static bool TryParsePixelLength(string token, out float px)
-        {
-            px = 0f;
-            if (token == "0")
-            {
-                return true;
-            }
-            return token.EndsWith("px", StringComparison.Ordinal)
-                && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
-                && unit == LengthUnit.Pixel && px >= 0f;
-        }
+            => TryParseStopLength(token, out px) && px >= 0f;
 
         // A non-negative length or percentage: pixels as written, a percentage as a fraction of the box.
         private static bool TryParseLengthPercentage(string token, out float value, out bool percent)

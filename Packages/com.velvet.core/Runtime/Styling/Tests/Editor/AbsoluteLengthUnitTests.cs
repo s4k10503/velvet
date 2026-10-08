@@ -130,5 +130,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That(spec.Stops[1].PositionPx, Is.EqualTo(96f).Within(1e-3f));
         }
+
+        [Test]
+        public void Given_ACircleOfAnInchRadius_When_Extracted_Then_ItsRadiusIsNinetySixPixels()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_1in,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Radial.X, Is.EqualTo(96f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnEllipseOfRemAndInchRadii_When_Extracted_Then_BothAreInPixels()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_2rem_1in,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.X, spec.Radial.Y), Is.EqualTo((32f, 96f)));
+        }
+
+        // GREEN_ON_BASE(characterization): a negative radius was rejected before and still is.
+        [Test]
+        public void Given_ACircleOfANegativeInchRadius_When_Extracted_Then_TheClassIsInert()
+        {
+            // Act
+            var ok = StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_-1in,#ff0000,#0000ff]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
     }
 }
