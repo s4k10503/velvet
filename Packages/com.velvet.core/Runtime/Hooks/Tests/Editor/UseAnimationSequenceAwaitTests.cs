@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins <c>AnimationSequenceStep.Await</c> on the EditMode fake clock, with the harness
     /// <see cref="UseAnimationSequenceTests"/> uses: the cursor holds until the task settles and not past it,
-    /// time left over from before the await counts toward no hold after it, a pause holds a settled wait, a fault reaches the error
+    /// time left over from before a pending await counts toward no hold after it, a pause holds a settled wait, a fault reaches the error
     /// boundary, and a restart or unmount cancels the wait it leaves and keeps that wait's late settle out of the
     /// sequence it starts.
     /// </summary>
@@ -255,32 +255,51 @@ namespace Velvet.Tests
             Assert.That(leftToken.IsCancellationRequested, Is.True);
         }
 
-        [Test]
-        public void Given_AnAwaitFactoryThatRestartsTheSequenceFromInsideItself_When_Mounted_Then_OnlyTheFirstArrivalsTokenIsCancelled()
+        // The first two arrivals restart from inside their factories, so the walker's drain reseeds twice: the
+        // second restart lands during an arrival the drain itself makes.
+        private static AnimationSequenceStep[] TwiceRestartingAwaitThenB() => new[]
         {
-            // Arrange — the restart lands while the arrival is still in flight, so the walker defers it and
-            // reseeds from its own drain rather than from Reset.
-            s_steps = new[]
+            AnimationSequenceStep.Await(token =>
             {
-                AnimationSequenceStep.Await(token =>
+                var task = NextPending(token);
+                if (s_tokens.Count <= 2)
                 {
-                    var task = NextPending(token);
-                    if (s_tokens.Count == 1)
-                    {
-                        s_controls.Restart();
-                    }
-                    return task;
-                }),
-                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 1f }),
-            };
+                    s_controls.Restart();
+                }
+                return task;
+            }),
+            AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 1f }),
+        };
+
+        [Test]
+        public void Given_AnAwaitFactoryThatRestartsTheSequenceFromInsideItselfTwice_When_Mounted_Then_EveryWaitButTheLastIsCancelled()
+        {
+            // Arrange
+            s_steps = TwiceRestartingAwaitThenB();
 
             // Act
             Mount(SequenceHost);
 
             // Assert
             Assert.That(
-                (s_tokens.Count, s_tokens[0].IsCancellationRequested, s_tokens[1].IsCancellationRequested),
-                Is.EqualTo((2, true, false)));
+                (s_tokens.Count, s_tokens[0].IsCancellationRequested, s_tokens[1].IsCancellationRequested,
+                    s_tokens[2].IsCancellationRequested),
+                Is.EqualTo((3, true, true, false)));
+        }
+
+        [Test]
+        public void Given_AMountWhoseAwaitFactoriesRestartedFromInsideThemselves_When_ControlsRestart_Then_TheWaitTheMountLeftIsCancelled()
+        {
+            // Arrange
+            s_steps = TwiceRestartingAwaitThenB();
+            Mount(SequenceHost);
+            var leftToken = s_tokens[s_tokens.Count - 1];
+
+            // Act
+            s_controls.Restart();
+
+            // Assert
+            Assert.That(leftToken.IsCancellationRequested, Is.True);
         }
 
         [Test]
@@ -297,6 +316,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(token.IsCancellationRequested, Is.True);
+        }
+
+        [Test]
+        public void Given_ALeftWaitWhoseTokenCallbackThrows_When_ControlsRestartAndTwoFramesTick_Then_TheStepAfterTheRestartedAwaitIsCurrent()
+        {
+            // Arrange — only the first arrival's wait is pending and carries the throwing callback; the
+            // restarted one has already completed.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Await(token =>
+                {
+                    s_tokens.Add(token);
+                    if (s_tokens.Count > 1)
+                    {
+                        return VelvetTask.CompletedTask;
+                    }
+                    token.Register(() => throw new InvalidOperationException("token probe"));
+                    return new VelvetTaskCompletionSource().Task;
+                }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 1f }),
+            };
+            Mount(SequenceHost);
+
+            // Act — the callback's exception leaves the restart; what is pinned is the sequence it leaves behind.
+            try
+            {
+                s_controls.Restart();
+            }
+            catch (AggregateException)
+            {
+            }
+            AdvanceTicks(2);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_ALeftWaitWhoseTokenCallbackRestartsTheSequence_When_ControlsRestart_Then_EveryWaitButTheLastIsCancelled()
+        {
+            // Arrange — the callback's restart lands after the outer restart has installed the second wait.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Await(token =>
+                {
+                    var task = NextPending(token);
+                    if (s_tokens.Count == 1)
+                    {
+                        token.Register(() => s_controls.Restart());
+                    }
+                    return task;
+                }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 1f }),
+            };
+            Mount(SequenceHost);
+
+            // Act
+            s_controls.Restart();
+
+            // Assert
+            Assert.That(
+                (s_tokens.Count, s_tokens[0].IsCancellationRequested, s_tokens[1].IsCancellationRequested,
+                    s_tokens[2].IsCancellationRequested),
+                Is.EqualTo((3, true, true, false)));
         }
 
         [Test]
@@ -335,7 +418,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ALastAwaitStepWhoseTaskHasAlreadyFaulted_When_TheFrameThatReachesItTicks_Then_TheBoundaryCatchesTheTasksException()
         {
-            // Arrange — that frame also completes the sequence, after which no frame reads the step again.
+            // Arrange — a step left unreleased at arrival would be crossed into completion in that frame, after
+            // which no frame reads it again.
             s_steps = new[]
             {
                 AnimationSequenceStep.To("a", new StyleTransitionConfig { DurationSec = 0.05f }),

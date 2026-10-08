@@ -33,8 +33,8 @@ namespace Velvet
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
-        // Non-null only while the cursor is held on an Await step, whose hold reads as unbounded until Advance
-        // releases it.
+        // Non-null only while the cursor is held on an Await step, whose hold reads as unbounded until
+        // DetachAwait clears both.
         private AwaitHold? _await;
 
         // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
@@ -108,12 +108,23 @@ namespace Velvet
 
         public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
 
+        // The wait a reseed leaves is abandoned only after the reseed has arrived, here and in ArriveAtStart's
+        // drain: its token's callbacks are user code, so one that throws must find the walker reseeded rather
+        // than halfway through, and a restart from one must find the new wait installed to abandon in turn.
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
-            var isComplete = ApplyStepsReset(steps ?? Array.Empty<AnimationSequenceStep>());
-            if (!isComplete)
+            var left = DetachAwait();
+            try
             {
-                ArriveAtStart(0);
+                var isComplete = ApplyStepsReset(steps ?? Array.Empty<AnimationSequenceStep>());
+                if (!isComplete)
+                {
+                    ArriveAtStart(0);
+                }
+            }
+            finally
+            {
+                left?.Abandon();
             }
         }
 
@@ -123,7 +134,6 @@ namespace Velvet
         // decides its own next step (ArriveAtStart(0) vs break) without duplicating the reset itself.
         private bool ApplyStepsReset(IReadOnlyList<AnimationSequenceStep> steps)
         {
-            AbandonAwait();
             _steps = steps;
             _stepIndex = 0;
             _elapsedInStepSec = 0f;
@@ -176,19 +186,27 @@ namespace Velvet
             {
                 var pending = _pendingResetSteps;
                 _pendingResetSteps = null;
-                var isComplete = ApplyStepsReset(pending);
-                if (isComplete)
-                {
-                    break;
-                }
-                _isArriving = true;
+                var left = DetachAwait();
                 try
                 {
-                    Arrive(0);
+                    var isComplete = ApplyStepsReset(pending);
+                    if (isComplete)
+                    {
+                        break;
+                    }
+                    _isArriving = true;
+                    try
+                    {
+                        Arrive(0);
+                    }
+                    finally
+                    {
+                        _isArriving = false;
+                    }
                 }
                 finally
                 {
-                    _isArriving = false;
+                    left?.Abandon();
                 }
             }
             if (_pendingResetSteps != null)
@@ -235,13 +253,19 @@ namespace Velvet
             }
         }
 
-        // Hooks.UseAnimationSequence calls this on unmount; a reseed calls it itself. A task still pending has its
-        // token cancelled.
-        public void AbandonAwait()
+        // Hooks.UseAnimationSequence calls this on unmount. A task still pending has its token cancelled.
+        public void AbandonAwait() => DetachAwait()?.Abandon();
+
+        // The hold is unbounded only while _await holds it.
+        private AwaitHold? DetachAwait()
         {
             var hold = _await;
-            _await = null;
-            hold?.Abandon();
+            if (hold != null)
+            {
+                _await = null;
+                _currentHoldSec = 0f;
+            }
+            return hold;
         }
 
         // A factory that throws propagates as a throwing Call callback does. The continuation is registered as an
@@ -268,10 +292,7 @@ namespace Velvet
         // propagates, with the cursor already free to move on.
         private void ReleaseAwait()
         {
-            var hold = _await!;
-            _await = null;
-            _currentHoldSec = 0f;
-            hold.ThrowIfFailed();
+            DetachAwait()!.ThrowIfFailed();
         }
 
         // One per arrival at an Await step, so a continuation from an earlier arrival writes only to a hold the

@@ -499,10 +499,12 @@ A step is exactly one of:
   counts that frame's time and none from before it, the wait's included. A task that faults, or cancels on its
   own, throws out of that frame as a throwing `Call` callback does, reaching the nearest error boundary,
   and the cursor moves on from the next frame. The factory receives a `CancellationToken`, which a
-  restart, a `deps` change or unmount cancels when it leaves the step with the task still pending. A task
-  the sequence has left advances nothing, and a fault it ends in is logged, as `Forget()` logs one. Under
-  the Editor's StrictMode mount double-invoke an `Await` at step 0 calls its factory twice, the first
-  call's token cancelled.
+  restart, a `deps` change or unmount cancels when it leaves the step with the task still pending; a
+  restart or `deps` change cancels it only after reseeding the sequence, so a token callback that throws
+  does so out of the restart with the sequence already reseeded. A task the sequence has left
+  advances nothing, and a fault it ends in is logged, as `Forget()` logs one. Under the Editor's StrictMode
+  mount double-invoke an `Await` at step 0 calls its factory twice, the first call's token cancelled when
+  its task is still pending.
 
 **"One at a time" needs no separate multi-target API.** Descendant Motions naming no label of their own inherit
 the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
