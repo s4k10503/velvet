@@ -1270,6 +1270,8 @@ namespace Velvet
             try
             {
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+                // The target's other children count as siblings too, other portals' among them.
+                ApplyStructuralVariants(target);
             }
             finally
             {

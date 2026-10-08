@@ -435,6 +435,8 @@ namespace Velvet
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
                         slotStart: slotStart);
+                    // The mount half of FiberNodePatcher.PatchPortalChildren's structural pass.
+                    _patcher.ApplyStructuralVariants(resolvedTarget);
                 }
                 finally
                 {

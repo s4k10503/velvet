@@ -178,6 +178,9 @@ namespace Velvet
             {
                 caught = ReconcileChildren(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit,
                     catchingBoundary);
+                // A parent that no CreateElement or PatchNode is running for (the mount host, or one only a
+                // wrapper-less component re-renders into) gets no post-children structural pass of its own.
+                _patcher.ApplyStructuralVariants(parent);
             }
             finally
             {
