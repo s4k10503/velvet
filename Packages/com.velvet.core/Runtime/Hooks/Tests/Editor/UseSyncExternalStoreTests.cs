@@ -147,8 +147,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved()
         {
-            // Arrange
-            LogAssert.Expect(LogType.Exception, new Regex("unsubscribe failed"));
+            // Arrange — a whole-tree dispose marks the root disposed before unmounting it, so the contained
+            // exception's walk toward a boundary stops at the root and logs nothing
             s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
             s_sourceB = new ExternalSource<int>(0);
             var mounted = V.Mount(_root, V.Component(TwoStoresRender, key: "two"));
@@ -158,6 +158,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual(0, s_sourceB.ListenerCount);
+        }
+
+        [Test]
+        public void Given_UnsubscribeThatThrows_When_TheReaderAloneUnmounts_Then_TheExceptionIsLogged()
+        {
+            // Arrange — with the host still mounted, the contained exception's walk reaches the live root, which
+            // is no boundary, and is logged
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: unsubscribe failed");
+            s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
+            using var mounted = V.Mount(_root, V.Component(ToggledReaderHostRender, key: "host"));
+
+            // Act
+            s_setShowToggledReader.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect takes the one exception the contained unsubscribe reports
         }
 
         [Test]
@@ -581,6 +597,7 @@ namespace Velvet.Tests
             s_sourceA = null;
             s_sourceB = null;
             s_setUseB = default;
+            s_setShowToggledReader = default;
             s_switchingValue = 0;
             s_switchingRenders = 0;
         }
@@ -594,6 +611,23 @@ namespace Velvet.Tests
             var source = useB ? s_sourceB : s_sourceA;
             s_switchingValue = Hooks.UseSyncExternalStore(source.Subscribe, source.GetSnapshot);
             return V.Label(text: s_switchingValue.ToString());
+        }
+
+        private static StateUpdater<bool> s_setShowToggledReader;
+
+        [Component]
+        private static VNode ToggledReaderHostRender()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_setShowToggledReader = setShow;
+            return show ? V.Component(ToggledReaderRender, key: "reader") : V.Label(text: "gone");
+        }
+
+        [Component]
+        private static VNode ToggledReaderRender()
+        {
+            var value = Hooks.UseSyncExternalStore(s_sourceA.Subscribe, s_sourceA.GetSnapshot);
+            return V.Label(text: value.ToString());
         }
 
         [Component]

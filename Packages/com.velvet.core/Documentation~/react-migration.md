@@ -239,8 +239,7 @@ It follows React's `useSyncExternalStore`:
   new closure every render and re-subscribes every render, as an inline subscribe function does in
   React; the StrictMode diagnostic render does not subscribe. Switching to another store's `subscribe`
   removes the previous subscription first. Unmounting removes it; an unsubscribe that throws there is
-  reported like a throwing effect cleanup — to the nearest error boundary, or the console without one —
-  and the component's other subscriptions are still removed. A change the store raises while
+  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store raises while
   `subscribe` runs is rendered by the render that subscribed.
 - **The change callback must be invoked on the Unity main thread.** Invoked from another thread it
   throws `InvalidOperationException` back to the invoker and schedules nothing; marshal the
