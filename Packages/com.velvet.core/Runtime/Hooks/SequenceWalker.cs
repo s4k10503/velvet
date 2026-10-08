@@ -27,6 +27,10 @@ namespace Velvet
         private int _stepIndex;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
+        // The holds of every step the cursor has left since the last reseed, across loop passes, so TimeSec reads
+        // the timeline position without re-deriving them. A double, since a loop adds to it for as long as the
+        // sequence plays.
+        private double _timeBeforeStepSec;
         private string? _currentLabel;
         private StyleTransitionConfig? _currentTransition;
         private bool _isComplete;
@@ -44,6 +48,8 @@ namespace Velvet
         public bool IsComplete => _isComplete;
 
         public int StepIndex => _stepIndex;
+
+        public float TimeSec => (float)(_timeBeforeStepSec + _elapsedInStepSec);
 
         // Bumped on every committed Arrive (a real step transition, including a same-index re-arrival on a
         // single-step loop), independent of StepIndex — a caller diffing StepIndex alone would miss the
@@ -91,12 +97,15 @@ namespace Velvet
             while (!_isComplete && _elapsedInStepSec >= _currentHoldSec && guard-- > 0)
             {
                 _elapsedInStepSec -= _currentHoldSec;
+                _timeBeforeStepSec += _currentHoldSec;
                 var next = _stepIndex + 1;
                 if (next >= _steps.Count)
                 {
                     if (!loop)
                     {
                         _isComplete = true;
+                        // A finished sequence reads its full length, not the overshoot past it.
+                        _elapsedInStepSec = 0f;
                         break;
                     }
                     next = 0;
@@ -153,6 +162,7 @@ namespace Velvet
             _stepIndex = 0;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
+            _timeBeforeStepSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;

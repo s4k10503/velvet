@@ -673,6 +673,7 @@
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Restart: System.Action
+[Velvet] property Velvet.AnimationSequenceControls.TimeSec: System.Single
 [Velvet] property Velvet.AnimationSequenceState.CurrentLabel: System.String?
 [Velvet] property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.AnimationSequenceState.IsComplete: System.Boolean

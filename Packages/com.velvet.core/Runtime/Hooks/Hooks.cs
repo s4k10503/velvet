@@ -1246,6 +1246,9 @@ namespace Velvet
             var fiber = Resolve("UseAnimationSequence");
             var walker = UseRef(() => new SequenceWalker());
             var (_, bumpRenderVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent): every bump goes through here, so a decrement moves the version on each
+            // call as surely as an increment does, and nothing reads the version itself.
+            void Rerender() => bumpRenderVersion.Invoke(v => v + 1);
 
             // Tracks the LATEST render's steps for controls.Restart() to read (see below) — mirrors UseFrame's
             // own `latest.Set(onFrame)` pattern: a re-render must not leave an earlier render's Restart closing
@@ -1259,9 +1262,10 @@ namespace Velvet
 
             UseEffect(() =>
             {
-                walker.Current.Reset(steps);
+                // Before the Reset: step 0's Call callback can pause the walker it is arriving on.
                 walker.Current.IsPaused = !autoplay;
-                bumpRenderVersion.Invoke(v => v + 1);
+                walker.Current.Reset(steps);
+                Rerender();
                 return (Action)null;
             }, deps);
 
@@ -1275,7 +1279,7 @@ namespace Velvet
                 walker.Current.Advance(dt, loop);
                 if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
                 {
-                    bumpRenderVersion.Invoke(v => v + 1);
+                    Rerender();
                 }
             });
 
@@ -1289,8 +1293,9 @@ namespace Velvet
                 restart: () =>
                 {
                     walker.Current.Reset(latestSteps.Current ?? steps);
-                    bumpRenderVersion.Invoke(v => v + 1);
-                });
+                    Rerender();
+                },
+                walker: walker.Current!);
 
             return (walker.Current.ToState(), controls);
         }
