@@ -326,11 +326,10 @@ namespace Velvet
             ApplyPlayTrigger(binding);
         }
 
-        // Instantiate remaps a reference only when its target sits inside the cloned hierarchy, so a
-        // sub-emitter living elsewhere would still be triggered on the source's system, which the
-        // framework never simulates or draws. Each such target is cloned under the host (once, however
-        // many systems name it), at the host's origin, and the reference re-pointed at the clone. The
-        // queue also visits the clones, so a sub-emitter's own external sub-emitters follow.
+        // A sub-emitter outside the host's hierarchy is cloned under the host (once, however many
+        // systems name it), at the host's origin, and the reference re-pointed at the clone, so the
+        // clone's particles are the ones drawn. The queue also visits the clones, so a sub-emitter's
+        // own external sub-emitters follow.
         private static void CloneExternalSubEmitters(ParticleSystem host)
         {
             var clones = new System.Collections.Generic.Dictionary<ParticleSystem, ParticleSystem>();

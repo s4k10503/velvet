@@ -531,6 +531,129 @@ namespace Velvet.Tests
             Assert.That(host.subEmitters.GetSubEmitterSystem(0).transform.IsChildOf(host.transform), Is.True);
         }
 
+        private ParticleSystem CreateExternalSystem(string name)
+        {
+            var system = new GameObject(name).AddComponent<ParticleSystem>();
+            _spawned.Add(system.gameObject);
+            return system;
+        }
+
+        private static void AddBirthSubEmitter(ParticleSystem parent, ParticleSystem subEmitter)
+        {
+            var module = parent.subEmitters;
+            module.enabled = true;
+            module.AddSubEmitter(subEmitter, ParticleSystemSubEmitterType.Birth, ParticleSystemSubEmitterProperties.InheritNothing);
+        }
+
+        private ParticlesBinding MountEffect(ParticleSystem effect, string name)
+        {
+            MountAndLayout(V.Particles(effect, name: name, className: "w-[128px] h-[128px]"));
+            return _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>(name)];
+        }
+
+        [Test]
+        public void Given_TwoSystemsNamingOneExternalSubEmitter_When_Mounted_Then_TheHostHoldsOneCloneOfIt()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-dedupe-sub");
+            var effect = CreateEffectSource("fx-dedupe-root");
+            var child = CreateExternalSystem("fx-dedupe-child");
+            child.transform.SetParent(effect.transform);
+            AddBirthSubEmitter(effect, external);
+            AddBirthSubEmitter(child, external);
+
+            // Act
+            var host = MountEffect(effect, "px-dedupe").Host;
+
+            // Assert — the root, its child and the single clone.
+            Assert.That(host.GetComponentsInChildren<ParticleSystem>().Length, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AnExternalSubEmitterWithItsOwnExternalSubEmitter_When_Mounted_Then_TheSecondIsClonedUnderTheHost()
+        {
+            // Arrange
+            var first = CreateExternalSystem("fx-chain-first");
+            var second = CreateExternalSystem("fx-chain-second");
+            AddBirthSubEmitter(first, second);
+            var effect = CreateEffectSource("fx-chain-root");
+            AddBirthSubEmitter(effect, first);
+
+            // Act
+            var host = MountEffect(effect, "px-chain").Host;
+            var firstClone = host.subEmitters.GetSubEmitterSystem(0);
+
+            // Assert
+            Assert.That(firstClone.subEmitters.GetSubEmitterSystem(0).transform.IsChildOf(host.transform), Is.True);
+        }
+
+        [Test]
+        public void Given_AnInactiveExternalSubEmitter_When_Mounted_Then_TheCloneIsActive()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-inactive-sub");
+            external.gameObject.SetActive(false);
+            var effect = CreateEffectSource("fx-inactive-root");
+            AddBirthSubEmitter(effect, external);
+
+            // Act
+            var host = MountEffect(effect, "px-inactive").Host;
+
+            // Assert
+            Assert.That(host.subEmitters.GetSubEmitterSystem(0).gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void Given_AnExternalSubEmitter_When_Mounted_Then_TheCloneIsHiddenLikeTheHost()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-hidden-sub");
+            var effect = CreateEffectSource("fx-hidden-root");
+            AddBirthSubEmitter(effect, external);
+
+            // Act
+            var host = MountEffect(effect, "px-hidden").Host;
+
+            // Assert
+            Assert.That(
+                host.subEmitters.GetSubEmitterSystem(0).gameObject.hideFlags,
+                Is.EqualTo(HideFlags.HideInHierarchy | HideFlags.DontSaveInEditor));
+        }
+
+        // GREEN_ON_BASE(characterization): a sub-emitter inside the effect needs no clone, as before.
+        [Test]
+        public void Given_ASubEmitterThatIsTheEffectsChild_When_Mounted_Then_NoExtraCloneIsMade()
+        {
+            // Arrange
+            var effect = CreateEffectSource("fx-inside-root");
+            var child = CreateExternalSystem("fx-inside-child");
+            child.transform.SetParent(effect.transform);
+            AddBirthSubEmitter(effect, child);
+
+            // Act
+            var host = MountEffect(effect, "px-inside").Host;
+
+            // Assert — the root and its one child.
+            Assert.That(host.GetComponentsInChildren<ParticleSystem>().Length, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnExternalSubEmitter_When_Mounted_Then_TheCloneIsAmongTheDrawnSystems()
+        {
+            // Arrange
+            var external = CreateExternalSystem("fx-drawn-sub");
+            var effect = CreateEffectSource("fx-drawn-root");
+            AddBirthSubEmitter(effect, external);
+
+            // Act
+            var binding = MountEffect(effect, "px-drawn");
+
+            // Assert
+            Assert.That(
+                binding.Systems.Any(hosted => hosted.System == binding.Host.subEmitters.GetSubEmitterSystem(0)),
+                Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a finished burst whose particles still live keeps the tick running, as before.
         [Test]
         public void Given_AFinishedBurstWithLiveParticles_When_TheTickObservesIt_Then_TheTickKeepsRunning()
