@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
@@ -11,15 +10,21 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when <c>FiberBatchScheduler</c>'s Transition tier renders, on a simulated panel whose clock
-    /// only moves when a test advances it.
+    /// only moves when a test advances it. Each <c>FrameUpdateMs</c> is one scheduler pass.
     /// <list type="bullet">
-    /// <item>A <c>startTransition</c> update on an otherwise idle tree commits on the next frame.</item>
-    /// <item>A <c>UseDeferredValue</c> derivation commits on the frame after the urgent render that observed
-    /// the changed input.</item>
-    /// <item>A transition requested from inside the Transition tier's own drain renders on the next frame, not
+    /// <item>Transition work commits in a later pass than the urgent render that requested it: a request made
+    /// inside a scheduler callback drains on the next pass, one made outside every callback — a discrete
+    /// handler's flush, a call from outside the panel — on the pass after that.</item>
+    /// <item>An urgent update reaching a component whose deferred value is already queued for the coming pass
+    /// commits in that pass without the deferred value, which moves to the pass after — until it has moved as
+    /// often as FiberWorkLoop's starvation bound, after which it stays and commits.</item>
+    /// <item>Requests made outside every pass share one admission, and requests made inside one callback share
+    /// one drain; an admission that already ran takes no later request.</item>
+    /// <item>A transition requested from inside the Transition tier's own drain renders on the next pass, not
     /// again inside the one that requested it.</item>
-    /// <item>The Transition tier's drain commits the Normal / Urgent work still queued before its own, and with
-    /// none queued it leaves the immediate tier's registration as it found it.</item>
+    /// <item>The Transition tier's drain commits the Normal / Urgent work still queued before its own.</item>
+    /// <item>A discrete flush that consumed the immediate queue leaves that tier's registered callback in place,
+    /// so a later Normal update rides it rather than registering a second one, and still commits.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -27,8 +32,8 @@ namespace Velvet.Tests
     {
         private const long FrameMs = 16;
 
-        // Far above the two frames a case advances, so a re-requested render that ran again inside the frame
-        // requesting it would show as a count well past two rather than stopping at it.
+        // Far above the passes a case advances, so a re-requested render that ran again inside the pass
+        // requesting it would show as a count well past the passes rather than stopping at them.
         private const int ChainCap = 10;
 
         private EditorPanelSimulator _sim;
@@ -36,6 +41,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setValue;
         private static TransitionStarter s_start;
         private static StateUpdater<int> s_setInput;
+        private static StateUpdater<int> s_setTick;
         private static int s_chainRenders;
         private static ComponentFiber s_chainFiber;
         private static ComponentFiber s_normalLaneFiber;
@@ -52,6 +58,7 @@ namespace Velvet.Tests
             s_setValue = default;
             s_start = default;
             s_setInput = default;
+            s_setTick = default;
             s_chainRenders = 0;
             s_chainFiber = null;
             s_normalLaneFiber = null;
@@ -67,7 +74,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATransitionOnAnIdleTree_When_OneFramePasses_Then_ItHasCommitted()
+        public void Given_ATransitionStartedOutsideASchedulerPass_When_TwoFramesPass_Then_ItHasCommitted()
         {
             // Arrange
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(TransitionRender, key: "transition"));
@@ -75,10 +82,11 @@ namespace Velvet.Tests
 
             // Act
             _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
 
             // Assert
-            Assert.That(_sim.rootVisualElement.Q<Label>("value").text, Is.EqualTo("1"),
-                "A transition with nothing ahead of it renders on the next frame");
+            Assert.That(Text("value"), Is.EqualTo("1"),
+                "A transition requested outside every pass is admitted by the first and drained by the second");
         }
 
         [Test]
@@ -86,33 +94,86 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
-            s_setInput.Invoke(1);
+            s_setInput.Invoke(v => v + 1);
 
-            // Act — the first frame renders the urgent update, which requests the deferred one
+            // Act — the first pass renders the urgent update, which requests the deferred one from inside it
             _sim.FrameUpdateMs(FrameMs);
             _sim.FrameUpdateMs(FrameMs);
 
             // Assert
-            Assert.That(_sim.rootVisualElement.Q<Label>("deferred").text, Is.EqualTo("1"),
-                "The deferred value commits on the frame after the urgent render that observed its input");
+            Assert.That(Text("deferred"), Is.EqualTo("1"),
+                "The deferred value commits on the pass after the urgent render that observed its input");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fixed delay already held the deferred value out of that pass.
+        [Test]
+        public void Given_AnUrgentUpdateArrivingBeforeAQueuedDeferredValueDrains_When_ThatPassRuns_Then_OnlyTheUrgentValueCommits()
+        {
+            // Arrange — the first pass queues the deferred value for the second, and a second urgent update
+            // arrives before the second pass runs
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
+            s_setInput.Invoke(v => v + 1);
+            _sim.FrameUpdateMs(FrameMs);
+            s_setInput.Invoke(v => v + 1);
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("2", "0")),
+                "The urgent render's own request waits for the pass after the one that commits it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fixed delay already held the deferred value out of that pass.
+        [Test]
+        public void Given_ADeferredInputChangedInAClickHandler_When_OneFramePasses_Then_TheDeferredValueHasNotCommitted()
+        {
+            // Arrange — the click's flush renders the urgent update outside every scheduler pass
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
+            _sim.rootVisualElement.Q<Button>("set-input").SimulateClick();
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("1", "0")),
+                "The next pass may share the click's frame, so it admits the deferred render rather than running it");
         }
 
         [Test]
-        public void Given_ARenderThatReRequestsItsOwnTransition_When_TwoFramesPass_Then_ItRendersOncePerFrame()
+        public void Given_ADeferredInputChangedInAClickHandler_When_TwoFramesPass_Then_TheDeferredValueHasCommitted()
         {
-            // Arrange — up to ChainCap, each Transition-lane render of this component hands its deferred value
-            // a new input, so each one requests the next
-            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(ChainRender, key: "chain"));
-            var rendersAtMount = s_chainRenders;
-            s_chainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            // Arrange
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
+            _sim.rootVisualElement.Q<Button>("set-input").SimulateClick();
 
             // Act
             _sim.FrameUpdateMs(FrameMs);
             _sim.FrameUpdateMs(FrameMs);
 
             // Assert
-            Assert.That(s_chainRenders - rendersAtMount, Is.EqualTo(2),
-                "A transition requested from inside the Transition tier's drain waits for the next frame");
+            Assert.That(Text("deferred"), Is.EqualTo("1"),
+                "The pass after the admitting one drains the deferred render");
+        }
+
+        [Test]
+        public void Given_ARenderThatReRequestsItsOwnTransition_When_TwoFramesPass_Then_ItRendersOncePerFrame()
+        {
+            // Arrange — up to ChainCap, each Transition-lane render of this component requests the next; the
+            // first pass admits the request made outside it and the second runs the first render of the chain
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(ChainRender, key: "chain"));
+            s_chainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+            var rendersBefore = s_chainRenders;
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(s_chainRenders - rendersBefore, Is.EqualTo(2),
+                "A transition requested from inside the Transition tier's drain waits for the next pass");
         }
 
         [Test]
@@ -133,17 +194,115 @@ namespace Velvet.Tests
                 "The Transition tier's drain commits queued Normal-lane work before its own");
         }
 
-        // GREEN_ON_BASE(characterization): a base delayed drain with no immediate work queued left that tier's registration alone.
         [Test]
-        public void Given_AnImmediateCallbackStillRegisteredOverAnEmptiedQueue_When_TheDelayedDrainRuns_Then_ALaterNormalUpdateRegistersNoSecondCallback()
+        public void Given_ATransitionAlreadyDrained_When_ASecondIsStartedOutsideAPass_Then_ItCommitsTwoFramesLater()
         {
-            // Arrange — the immediate callback is registered and its only fiber leaves the queue, as an unmount
-            // before the frame does
+            // Arrange — the first transition's admission ran and its drain committed it
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(TransitionRender, key: "transition"));
+            s_start.Invoke(() => s_setValue.Invoke(1));
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+            s_start.Invoke(() => s_setValue.Invoke(2));
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(Text("value"), Is.EqualTo("2"),
+                "A later request outside a pass waits for an admission of its own, not one that already ran");
+        }
+
+        // GREEN_ON_BASE(characterization): the base coalesced both requests onto one delayed callback already.
+        [Test]
+        public void Given_TwoComponentsTransitionsStartedOutsideAPass_When_TheyAreRequested_Then_OneCallbackIsRegistered()
+        {
+            // Arrange
+            using var mounted = MountLanePair();
+            var scheduler = mounted.GetSchedulerForTest();
+            var callbacksBefore = scheduler.ScheduledCallbackCount;
+
+            // Act
+            s_transitionLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_normalLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Assert
+            Assert.That(scheduler.ScheduledCallbackCount - callbacksBefore, Is.EqualTo(1),
+                "Requests outside every pass share the one admission waiting for the next pass");
+        }
+
+        // GREEN_ON_BASE(characterization): the base coalesced both requests onto one delayed callback already.
+        [Test]
+        public void Given_TwoDeferredChildrenOfOneParent_When_TheParentsUrgentPassRuns_Then_OneDrainIsRegistered()
+        {
+            // Arrange — the parent's update registers its immediate callback before the count is read
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredParentRender, key: "parent"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_setTick.Invoke(v => v + 1);
+            var callbacksBefore = scheduler.ScheduledCallbackCount;
+
+            // Act — both children request their deferred values from inside the parent's pass
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(scheduler.ScheduledCallbackCount - callbacksBefore, Is.EqualTo(1),
+                "Requests made inside one callback share the drain that callback registers");
+        }
+
+        [Test]
+        public void Given_AParentUpdatedEveryFrameAboveADeferredChild_When_TheDeferralBoundIsReached_Then_TheChildCommitsOnThatFrameAndNotBefore()
+        {
+            // Arrange — every frame the parent's urgent render hands the child a new value, which moves the
+            // child's queued deferred render to the pass after; the first request makes the entry, so the
+            // move that reaches the bound is the one on frame bound + 1, and the request on frame bound + 2
+            // leaves the entry on the drain that runs in that same pass
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredParentRender, key: "parent"));
+            var frames = FiberWorkLoop.TransitionStarvationThreshold + 1;
+            for (var i = 0; i < frames; i++)
+            {
+                s_setTick.Invoke(v => v + 1);
+                _sim.FrameUpdateMs(FrameMs);
+            }
+            var beforeTheBound = Text("child-a");
+
+            // Act
+            s_setTick.Invoke(v => v + 1);
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((beforeTheBound, Text("child-a")), Is.EqualTo(("0", (frames + 1).ToString())),
+                "A deferred value an urgent update keeps moving stays put once it has moved as often as the bound");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's next registration already committed the update.
+        [Test]
+        public void Given_AnImmediateCallbackThatAlreadyRan_When_ANormalUpdateArrivesAndAFramePasses_Then_ItCommits()
+        {
+            // Arrange — one Normal update rendered by the panel's callback
+            using var mounted = MountLanePair();
+            s_normalLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            _sim.FrameUpdateMs(FrameMs);
+            s_renderOrder.Clear();
+            s_transitionLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(string.Join(", ", s_renderOrder), Is.EqualTo("transition"),
+                "The callback that ran retired its registration, so the next update registers one of its own");
+        }
+
+        [Test]
+        public void Given_AnImmediateCallbackRegisteredAndADiscreteFlushThatDrainedItsQueue_When_ANormalUpdateArrives_Then_NoSecondCallbackIsRegistered()
+        {
+            // Arrange — a callback has run once first, so the flush below is not the scheduler's first drain
             using var mounted = MountLanePair();
             var scheduler = mounted.GetSchedulerForTest();
             s_normalLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            scheduler.Remove(s_normalLaneFiber);
-            scheduler.DrainDelayedForTest();
+            _sim.FrameUpdateMs(FrameMs);
+            s_normalLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            scheduler.FlushImmediate();
             var callbacksBefore = scheduler.ScheduledCallbackCount;
 
             // Act
@@ -151,8 +310,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scheduler.ScheduledCallbackCount - callbacksBefore, Is.EqualTo(0),
-                "The update rides the immediate callback already registered");
+                "The update rides the immediate callback still registered");
         }
+
+        // GREEN_ON_BASE(characterization): the base's second registration already committed the update.
+        [Test]
+        public void Given_AnImmediateCallbackRegisteredAndADiscreteFlushThatDrainedItsQueue_When_ANormalUpdateArrivesAndAFramePasses_Then_ItCommits()
+        {
+            // Arrange
+            using var mounted = MountLanePair();
+            var scheduler = mounted.GetSchedulerForTest();
+            s_normalLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            scheduler.FlushImmediate();
+            s_renderOrder.Clear();
+            s_transitionLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That(string.Join(", ", s_renderOrder), Is.EqualTo("transition"),
+                "The callback the flush left registered commits what arrived after it");
+        }
+
+        private string Text(string name) => _sim.rootVisualElement.Q<Label>(name).text;
 
         private MountedTree MountLanePair()
             => V.Mount(_sim.rootVisualElement, V.Div(children: new VNode[]
@@ -177,16 +358,51 @@ namespace Velvet.Tests
             var (input, setInput) = Hooks.UseState(0);
             s_setInput = setInput;
             var deferred = Hooks.UseDeferredValue(input);
-            return V.Label(name: "deferred", text: deferred.ToString());
+            return V.Div(children: new VNode[]
+            {
+                V.Label(name: "input", text: input.ToString()),
+                V.Label(name: "deferred", text: deferred.ToString()),
+                V.Button(name: "set-input", onClick: () => setInput.Invoke(v => v + 1)),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DeferredParentRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(DeferredChildARender, tick, key: "child-a"),
+                V.Component(DeferredChildBRender, tick, key: "child-b"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DeferredChildARender(int value)
+        {
+            var deferred = Hooks.UseDeferredValue(value);
+            return V.Label(name: "child-a", text: deferred.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DeferredChildBRender(int value)
+        {
+            var deferred = Hooks.UseDeferredValue(value);
+            return V.Label(name: "child-b", text: deferred.ToString());
         }
 
         [Component(Compiler = false)]
         private static VNode ChainRender()
         {
             s_chainRenders++;
-            s_chainFiber = FiberAmbientStack.Current;
-            var deferred = Hooks.UseDeferredValue(Math.Min(s_chainRenders, ChainCap));
-            return V.Label(text: deferred.ToString());
+            var fiber = FiberAmbientStack.Current;
+            s_chainFiber = fiber;
+            if (FiberWorkLoop.IsRenderingTransitionLane && s_chainRenders < ChainCap)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+            }
+            return V.Label();
         }
 
         [Component(Compiler = false)]

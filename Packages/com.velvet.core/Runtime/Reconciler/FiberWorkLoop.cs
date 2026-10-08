@@ -14,7 +14,7 @@ namespace Velvet
     {
         // The FlushState invocation at which a continuously-pending Transition lane is promoted
         // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
-        private const int TransitionStarvationThreshold = 30;
+        internal const int TransitionStarvationThreshold = 30;
 
         // Set while a discrete user-input event handler (click, change, pointer down/up, key down/up, focus/blur)
         // is executing. A hook-triggered render requested during a discrete event takes the Urgent lane and the

@@ -454,7 +454,7 @@ namespace Velvet
             // Urgent inside a discrete handler, on the rule an ordinary state update made there follows: the
             // clear belongs to the interaction being serviced and commits with it. Never the Transition lane,
             // though, even where this is reached inside an open transition scope — this render is what takes
-            // the indicator down, and the delayed tier would hold it up for its own delay.
+            // the indicator down, and the delayed tier would hold it up until a later frame than this one.
             FiberWorkLoop.ScheduleRerender(
                 declaring,
                 FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);

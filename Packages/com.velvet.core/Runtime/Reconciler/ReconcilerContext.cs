@@ -2079,23 +2079,15 @@ namespace Velvet
         // cross-fiber case. Automatic batching is always on; there is no opt-out.
         internal FiberBatchScheduler BatchScheduler { get; } = new();
 
-        // Cross-tier tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot
-        // pinned for the current batch-scheduler drain wave, keyed by the Store reference (the value
-        // is the store's TState snapshot, boxed). Every UseStore read of the same store within
-        // one wave returns the selector applied to this pinned snapshot rather than the live
-        // store.Current, so an ancestor on the immediate tier and a descendant on the delayed tier
-        // observe the SAME value even if the store mutates between their tier drains — giving every
-        // external-store read in one wave a consistent snapshot.
-        // Pinning is active only inside a batch-scheduler drain (_storeSnapshotWaveActive). A
-        // "wave" spans the immediate drain and the delayed drain that follows it in the same frame: the
-        // immediate drain opens the wave dropping the prior wave's pins (BeginStoreSnapshotWave
-        // with reset = true), so its first UseStore read pins the now-current snapshot; the delayed
-        // drain opens with reset = false so it REUSES that pin. A store mutation mid-wave re-schedules every
-        // reader (via the subscription's RequestRender), and that follow-up render lands on the next immediate
-        // drain, which opens a fresh wave and re-pins to the now-current snapshot so readers converge. Outside
-        // a drain — on mount or a synchronous whole-tree flush — there is no tier separation, so reads return
-        // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores
-        // never collide and the map is empty in the steady state.
+        // Tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot pinned for the current
+        // batch-scheduler drain pass (a wave), keyed by the Store reference (the value is the store's TState
+        // snapshot, boxed). Every UseStore read of the same store within one wave returns the selector applied
+        // to this pinned snapshot rather than the live store.Current, so readers committed in one pass agree
+        // even when the store mutates partway through it; a reader whose pin is older than the store asks for
+        // the render that catches it up (see Hooks.UseStore). Pinning is active only inside a drain
+        // (_storeSnapshotWaveActive); outside one — on mount or a synchronous whole-tree flush — reads return
+        // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores never
+        // collide, and the pins are dropped when the wave ends.
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
@@ -2121,19 +2113,16 @@ namespace Velvet
             return liveSnapshot;
         }
 
-        // Activates UseStore snapshot pinning for the span of a batch drain. reset drops the
-        // previous wave's pins (the immediate drain that opens a fresh wave) versus reusing them (the delayed
-        // drain continuing the same wave). Paired with EndStoreSnapshotWave.
-        internal void BeginStoreSnapshotWave(bool reset)
-        {
-            if (reset) _pinnedStoreSnapshots.Clear();
-            _storeSnapshotWaveActive = true;
-        }
+        // Paired with EndStoreSnapshotWave.
+        internal void BeginStoreSnapshotWave() => _storeSnapshotWaveActive = true;
 
-        // Deactivates UseStore snapshot pinning at the end of a batch drain. The pinned snapshots are retained
-        // (not cleared) so the delayed drain that continues the wave can reuse them; the next immediate drain
-        // clears them via BeginStoreSnapshotWave with reset = true.
-        internal void EndStoreSnapshotWave() => _storeSnapshotWaveActive = false;
+        // Every drain pass is a wave of its own: a pin carried into the next pass would hand a reader that pass
+        // queued a snapshot older than the store it was queued for.
+        internal void EndStoreSnapshotWave()
+        {
+            _storeSnapshotWaveActive = false;
+            _pinnedStoreSnapshots.Clear();
+        }
 
         // Gates the one-time ContextPropagationGeneration bump within a reconcile pass: the first Provider
         // whose value changed flips this and bumps the generation; later changed Providers in the same pass

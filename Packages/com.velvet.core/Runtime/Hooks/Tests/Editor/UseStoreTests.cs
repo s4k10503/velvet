@@ -16,10 +16,12 @@ namespace Velvet.Tests
     /// <item>Unmount disposes the store subscription, so later store changes no longer reach the component.</item>
     /// <item>Re-mounting establishes a fresh subscription.</item>
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
-    /// <item>Every reader of the same store within one batch drain wave observes the SAME snapshot. When an
-    /// ancestor lands on the immediate tier (Normal lane) and a descendant on the delayed tier (Transition lane)
-    /// and the store mutates between their tier drains, the delayed drain commits the mutation's follow-up
-    /// renders first, so both readers commit the latest snapshot.</item>
+    /// <item>Readers rendered in one batch drain pass read the snapshot that pass pinned, even when the store
+    /// mutates partway through it; a reader whose pinned read is older than the store renders again in a later
+    /// pass, so it does not stay behind the store.</item>
+    /// <item>Each drain pass pins afresh: when one reader lands on the immediate tier and another on the delayed
+    /// tier and the store mutates between their tier drains — outside a transition or inside one — both commit
+    /// the latest snapshot by the end of the delayed drain.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -204,8 +206,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AncestorImmediateAndDescendantDelayed_When_StoreMutatesBetweenDrains_Then_TheDelayedDrainCommitsTheMutationToBoth()
         {
-            // Arrange — the immediate drain pins the old snapshot for the wave a delayed drain would continue,
-            // and the mutation then re-schedules both readers on the immediate tier.
+            // Arrange — after the immediate drain renders the ancestor, the mutation re-schedules both readers on
+            // the immediate tier.
             using var store = new TestCounterStore(initial: 0);
             s_store = store;
             using var mounted = MountAncestorDescendant();
@@ -220,6 +222,92 @@ namespace Velvet.Tests
             // Assert
             Assert.That((s_ancestorValue, s_descendantValue), Is.EqualTo((1, 1)),
                 "The delayed drain commits the mutation's follow-up renders in a fresh wave before its own queue");
+        }
+
+        [Test]
+        public void Given_AncestorImmediateAndDescendantDelayed_When_AStoreMutationInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth()
+        {
+            // Arrange — the immediate drain renders the ancestor at 0; the mutation, made inside a transition,
+            // re-schedules both readers on the Transition lane, so no immediate work precedes the delayed drain.
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountAncestorDescendant();
+            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            FiberWorkLoop.StartTransition(s_ancestorFiber, new HookTransitionSlot(), () => store.SetValue(1));
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That((s_ancestorValue, s_descendantValue), Is.EqualTo((1, 1)),
+                "The delayed drain pins the store afresh rather than reading the immediate drain's snapshot");
+        }
+
+        // GREEN_ON_BASE(characterization): a base drain already ended its pinning when it returned.
+        [Test]
+        public void Given_ADrainThatHasEnded_When_AReaderRendersTwiceOutsideADrainAcrossAStoreChange_Then_ItReadsTheLiveStore()
+        {
+            // Arrange — a drain runs and ends, then a flush outside any drain renders the reader at 0
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountAncestorDescendant();
+            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_ancestorFiber);
+            store.SetValue(1);
+
+            // Act
+            FiberWorkLoop.FlushState(s_ancestorFiber);
+
+            // Assert
+            Assert.That(s_ancestorValue, Is.EqualTo(1),
+                "Outside a drain no snapshot is pinned, so a render after the change reads it");
+        }
+
+        // GREEN_ON_BASE(characterization): a base drain pass already pinned the snapshot its first reader read.
+        [Test]
+        public void Given_AStoreMutatedPartwayThroughADrainPass_When_ALaterReaderInThatPassRenders_Then_ItReadsThePinnedSnapshot()
+        {
+            // Arrange — three siblings queued in one pass; the middle one mutates the store while it renders
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            s_midPassReaderRenders.Clear();
+            s_midPassMutateOnRender = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassReaderFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the reader's first render after the mutation, still inside the pass that pinned 0
+            Assert.That(s_midPassReaderRenders[0], Is.EqualTo(0),
+                "A reader rendered after a mid-pass mutation reads the snapshot its pass pinned, not the live store");
+        }
+
+        [Test]
+        public void Given_AStoreMutatedPartwayThroughADrainPass_When_TheDrainEnds_Then_TheLaterReaderShowsTheLatestSnapshot()
+        {
+            // Arrange — as above: the reader was already queued, so the mutation's notification coalesced onto
+            // the render that then read the pinned snapshot
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            s_midPassMutateOnRender = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassReaderFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("mid-pass-reader").text, Is.EqualTo("1"),
+                "A reader that read a pin older than the store renders again and catches up with it");
         }
 
         private sealed record PairState(int Number, string Text);
@@ -395,6 +483,56 @@ namespace Velvet.Tests
             s_descendantFiber = FiberAmbientStack.Current;
             s_descendantValue = Hooks.UseStore(s_store, s => s);
             return V.Label(text: s_descendantValue.ToString());
+        }
+
+        private static ComponentFiber s_midPassFirstFiber;
+        private static ComponentFiber s_midPassMutatorFiber;
+        private static ComponentFiber s_midPassReaderFiber;
+        private static bool s_midPassMutateOnRender;
+        private static readonly List<int> s_midPassReaderRenders = new();
+
+        private MountedTree MountMidPassMutation()
+        {
+            s_midPassFirstFiber = null;
+            s_midPassMutatorFiber = null;
+            s_midPassReaderFiber = null;
+            s_midPassMutateOnRender = false;
+            s_midPassReaderRenders.Clear();
+            return V.Mount(_root, V.Div(children: new VNode[]
+            {
+                V.Component(MidPassFirstRender, key: "first"),
+                V.Component(MidPassMutatorRender, key: "mutator"),
+                V.Component(MidPassReaderRender, key: "reader"),
+            }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MidPassFirstRender()
+        {
+            s_midPassFirstFiber = FiberAmbientStack.Current;
+            var value = Hooks.UseStore(s_store, s => s);
+            return V.Label(name: "mid-pass-first", text: value.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MidPassMutatorRender()
+        {
+            s_midPassMutatorFiber = FiberAmbientStack.Current;
+            if (s_midPassMutateOnRender)
+            {
+                s_midPassMutateOnRender = false;
+                ((TestCounterStore)s_store).SetValue(1);
+            }
+            return V.Label();
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MidPassReaderRender()
+        {
+            s_midPassReaderFiber = FiberAmbientStack.Current;
+            var value = Hooks.UseStore(s_store, s => s);
+            s_midPassReaderRenders.Add(value);
+            return V.Label(name: "mid-pass-reader", text: value.ToString());
         }
 
         #endregion

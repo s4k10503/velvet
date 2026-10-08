@@ -8,13 +8,13 @@ namespace Velvet
     // single frame-boundary flush. A single event handler that calls
     // setState on N different fibers commits in one reconcile pass with no intermediate render between
     // the updates, instead of scheduling N independent IVisualElementScheduler callbacks.
-    // Two tiers exist so the Transition lane renders behind Normal / Urgent work: both register for the
-    // next frame boundary, and the delayed drain commits the immediate tier's queue before its own (see
-    // DrainDelayed). Each tier registers exactly
-    // one schedule.Execute callback per pending batch (guarded by a flag) and drains its whole
-    // set in one pass. The per-fiber lane queue is still popped one lane per FiberWorkLoop.FlushState
-    // call inside the drain, so lane priority ordering and starvation promotion are
-    // preserved — only the scheduler-callback count collapses to one per tier.
+    // Two tiers exist so the Transition lane renders behind Normal / Urgent work: the immediate tier drains at
+    // the next frame boundary, and the Transition tier at a later one (see ScheduleDelayed), committing
+    // whatever the immediate tier still holds before its own queue. The immediate tier registers one
+    // schedule.Execute callback per pending batch, the Transition tier one per admission and one per
+    // drain (see ScheduleDelayed), and each drain takes its whole batch in one pass. The per-fiber lane queue is still popped
+    // one lane per FiberWorkLoop.FlushState call inside the drain, so lane priority ordering and starvation
+    // promotion are preserved.
     internal sealed class FiberBatchScheduler
     {
         // Cap on the drain-until-quiet passes one DrainImmediate performs — the
@@ -33,9 +33,43 @@ namespace Velvet
         private readonly List<ComponentFiber> _immediateOrder = new();
         private readonly HashSet<ComponentFiber> _immediateSet = new();
         private readonly List<ComponentFiber> _delayedOrder = new();
-        private readonly HashSet<ComponentFiber> _delayedSet = new();
+        private readonly Dictionary<ComponentFiber, DelayedEntry> _delayedEntries = new();
+        private readonly List<ComponentFiber> _delayedDue = new();
         private bool _immediateScheduled;
-        private bool _delayedScheduled;
+
+        // A Transition-tier entry and the drain registration it waits for (see ScheduleDelayed).
+        private readonly struct DelayedEntry
+        {
+            internal readonly DelayedAdmission Admission;
+            internal readonly int Deferrals;
+
+            internal DelayedEntry(DelayedAdmission admission, int deferrals)
+            {
+                Admission = admission;
+                Deferrals = deferrals;
+            }
+        }
+
+        // One registered Transition-tier callback. RegisteredIn is the scheduler callback it was registered
+        // from, or 0 for the admission a request made outside every scheduler callback waits in.
+        private sealed class DelayedAdmission
+        {
+            internal readonly int RegisteredIn;
+
+            internal DelayedAdmission(int registeredIn) => RegisteredIn = registeredIn;
+        }
+
+        private DelayedAdmission? _unadmitted;
+        private DelayedAdmission? _admittedForNextPass;
+
+        // The scheduler callback running now, 0 outside every one; numbered from _callbacksStarted.
+        private int _callbackId;
+        private int _callbacksStarted;
+
+        // Only the registered immediate callback retires its registration: an inline drain (a discrete flush,
+        // the Transition tier's) leaves it live, so intake arriving before that callback runs rides it rather
+        // than registering a second.
+        private bool _inImmediateCallback;
 
         // Guards against re-entering a drain. FlushImmediate runs at the end of a discrete event handler; when
         // such an event is dispatched SYNCHRONOUSLY while a drain is already in progress (e.g. focus loss when a
@@ -56,23 +90,15 @@ namespace Velvet
         // reconcile-on-stack, not which path put it there.
         private Func<bool>? _reconcileActiveProbe;
 
-        // UseStore cross-tier tearing-guard hooks (ReconcilerContext.BeginStoreSnapshotWave /
-        // EndStoreSnapshotWave). A "wave" spans the immediate drain and the delayed drain that follows it in
-        // the same frame: the immediate drain opens the wave with reset=true (drop the prior wave's pins) so its
-        // first UseStore read pins the now-current snapshot; the delayed drain opens with reset=false so it
-        // REUSES that pin, keeping an immediate-tier ancestor and a delayed-tier descendant on the same
-        // snapshot. Pinning is active only inside a drain — renders outside a drain (mount, a synchronous
-        // whole-tree flush) run in a single pass with no tier separation and read the live store snapshot.
-        private Action<bool>? _onDrainBegin;
+        // UseStore tearing-guard hooks (ReconcilerContext.BeginStoreSnapshotWave / EndStoreSnapshotWave). Each
+        // drain pass opens a wave of its own, whose first UseStore read of a store pins the snapshot the rest of
+        // that pass reads. Pinning is active only inside a drain — renders outside one (mount, a synchronous
+        // whole-tree flush) read the live store snapshot.
+        private Action? _onDrainBegin;
         private Action? _onDrainEnd;
         // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before a
         // synchronous discrete-event drain so those effects commit before the new update's render.
         private Action? _flushPassiveEffects;
-
-        // True when an immediate drain has just established snapshot pins that a pending delayed drain should
-        // reuse (the delayed drain continues the immediate drain's wave). Set by DrainImmediate, consumed by
-        // DrainDelayed; a solo delayed drain finds it false and opens a fresh wave.
-        private bool _delayedContinuesWave;
 
         // Set by ScheduleImmediate whenever intake happens while a drain is live; the delayed drain
         // resets it before draining and reads it after, to decide whether its commits spawned
@@ -85,9 +111,8 @@ namespace Velvet
         // batch; the root mount element outlives every descendant in the tree.
         private VisualElement? _anchor;
 
-        // Number of frame-boundary drain callbacks registered with the scheduler since construction.
-        // In a fully batched flush this increments by exactly one per tier per batch regardless of how
-        // many fibers were enqueued. Exposed for tests that assert coalescing; not used by production.
+        // Number of callbacks either tier registered with the panel scheduler since construction, however many
+        // fibers each one serves. Exposed for tests that assert coalescing; not used by production.
         internal int ScheduledCallbackCount { get; private set; }
 
         // Count of fibers awaiting the next-frame (Normal / Urgent) batch drain.
@@ -117,7 +142,7 @@ namespace Velvet
 
         // Registers the callbacks bracketing each drain that drive the UseStore tearing-guard wave (see
         // _onDrainBegin). Called once by the owning Reconciler.
-        internal void SetStoreSnapshotWaveCallbacks(Action<bool> onDrainBegin, Action onDrainEnd)
+        internal void SetStoreSnapshotWaveCallbacks(Action onDrainBegin, Action onDrainEnd)
         {
             _onDrainBegin = onDrainBegin;
             _onDrainEnd = onDrainEnd;
@@ -145,22 +170,120 @@ namespace Velvet
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(DrainImmediate);
+            _anchor.schedule.Execute(RunImmediateCallback);
         }
 
-        // Registered with no delay of its own: what keeps this tier behind the immediate one is the order
-        // DrainDelayed drains them in. A fiber that re-defers from inside a delayed drain arms a fresh
-        // callback, which has to land on the panel's next tick rather than the one already running, or a
-        // render that re-requests its own transition every pass would never yield the frame —
-        // TransitionFrameSchedulingTests holds that.
+        private void RunImmediateCallback()
+        {
+            var outer = EnterCallback();
+            _inImmediateCallback = true;
+            try
+            {
+                DrainImmediate();
+            }
+            finally
+            {
+                _inImmediateCallback = false;
+                _callbackId = outer;
+            }
+        }
+
+        private int EnterCallback()
+        {
+            var outer = _callbackId;
+            _callbackId = ++_callbacksStarted;
+            return outer;
+        }
+
+        // Short of the bound below, a Transition request does not join a drain the panel can run in the pass
+        // the request was made in, so the render that asked for it — an urgent render reaching UseDeferredValue,
+        // the urgent flush that re-enrols a surviving Transition lane — commits in an earlier pass than the
+        // transition. Made inside one of this scheduler's callbacks, the request waits for a drain registered
+        // from that callback, which the panel runs on its next pass rather than the current one; made anywhere
+        // else, the next pass may share the request's frame, so the request waits for an admission that pass
+        // runs, which registers the drain for the pass after. TransitionFrameSchedulingTests holds the
+        // next-pass behaviour both rely on.
+        // The bound: a queued fiber moves to the admission its latest request chose, so an urgent update
+        // arriving every frame would keep it moving indefinitely. FiberWorkLoop's starvation promotion stops
+        // that only for a fiber whose own flush the update preempts, not for one an ancestor's render
+        // subsumes, so after TransitionStarvationThreshold moves the entry stays where it is.
         internal void ScheduleDelayed(ComponentFiber fiber)
         {
             if (fiber?.MountPoint == null) return;
-            if (_delayedSet.Add(fiber)) _delayedOrder.Add(fiber);
-            if (_delayedScheduled || _anchor == null) return;
-            _delayedScheduled = true;
+            var queued = _delayedEntries.TryGetValue(fiber, out var entry);
+            if (queued && entry.Deferrals >= FiberWorkLoop.TransitionStarvationThreshold) return;
+            var admission = _callbackId != 0 ? AdmissionForNextPass() : Unadmitted();
+            if (!queued)
+            {
+                _delayedOrder.Add(fiber);
+                _delayedEntries[fiber] = new DelayedEntry(admission, 0);
+            }
+            else if (entry.Admission != admission)
+            {
+                _delayedEntries[fiber] = new DelayedEntry(admission, entry.Deferrals + 1);
+            }
+        }
+
+        private DelayedAdmission AdmissionForNextPass()
+        {
+            var current = _admittedForNextPass;
+            if (current != null && current.RegisteredIn == _callbackId) return current;
+            var admission = new DelayedAdmission(_callbackId);
+            _admittedForNextPass = admission;
+            Register(() => RunDelayedCallback(admission));
+            return admission;
+        }
+
+        private DelayedAdmission Unadmitted()
+        {
+            var current = _unadmitted;
+            if (current != null) return current;
+            var admission = new DelayedAdmission(0);
+            _unadmitted = admission;
+            Register(() => RunAdmitCallback(admission));
+            return admission;
+        }
+
+        private void Register(Action callback)
+        {
+            if (_anchor == null) return;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(DrainDelayed);
+            _anchor.schedule.Execute(callback);
+        }
+
+        private void RunAdmitCallback(DelayedAdmission admission)
+        {
+            var outer = EnterCallback();
+            try
+            {
+                if (_unadmitted == admission) _unadmitted = null;
+                for (var i = 0; i < _delayedOrder.Count; i++)
+                {
+                    var fiber = _delayedOrder[i];
+                    var entry = _delayedEntries[fiber];
+                    if (entry.Admission == admission)
+                    {
+                        _delayedEntries[fiber] = new DelayedEntry(AdmissionForNextPass(), entry.Deferrals);
+                    }
+                }
+            }
+            finally
+            {
+                _callbackId = outer;
+            }
+        }
+
+        private void RunDelayedCallback(DelayedAdmission admission)
+        {
+            var outer = EnterCallback();
+            try
+            {
+                DrainDelayedTier(admission);
+            }
+            finally
+            {
+                _callbackId = outer;
+            }
         }
 
         private void DrainImmediate()
@@ -174,7 +297,6 @@ namespace Velvet
             // for the whole loop: the loop itself consumes every mid-drain enqueue, so registering
             // another frame callback for one would only fire an empty drain next frame (dead
             // scheduler churn that also skews the coalescing counter).
-            var openedWave = false;
             var totalPasses = 0;
             while (_immediateOrder.Count > 0)
             {
@@ -225,46 +347,45 @@ namespace Velvet
                     break;
                 }
                 totalPasses++;
-                openedWave = true;
-                Drain(_immediateOrder, _immediateSet, resetWave: true);
+                Drain(_immediateOrder, _immediateSet);
             }
-            _immediateScheduled = false;
+            if (_inImmediateCallback) _immediateScheduled = false;
             // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
             // a render — the loop that would otherwise consume that request being the one it abandons.
             // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
             if (_immediateOrder.Count > 0) ArmImmediateDrain();
-            // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
-            // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
-            // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
-            // and an EMPTY run (a callback whose work an earlier synchronous drain already consumed) must not
-            // clobber a hand-off that earlier drain established.
-            if (openedWave)
-            {
-                _delayedContinuesWave = _delayedScheduled;
-            }
         }
 
-        internal void DrainDelayed()
+        // Drains every Transition-tier entry, whatever admission it waits for. No panel callback runs this;
+        // VelvetPreviewHost.Settle does, to settle a story without the panel.
+        internal void DrainDelayed() => DrainDelayedTier(null);
+
+        private void DrainDelayedTier(DelayedAdmission? admission)
         {
-            // Both tiers register for the same frame boundary, so the immediate queue is drained here rather
-            // than trusting the panel to run its callback first. Ahead of clearing _delayedScheduled: a
-            // Transition lane that pass re-enrols then joins this drain instead of arming a callback of its
-            // own, and DrainImmediate's hand-off makes this drain continue the wave it opened.
-            if (_immediateOrder.Count > 0)
+            // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
+            // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
+            // only a drain of every admission picks it up below.
+            DrainImmediate();
+            var kept = 0;
+            for (var i = 0; i < _delayedOrder.Count; i++)
             {
-                DrainImmediate();
+                var fiber = _delayedOrder[i];
+                if (admission == null || _delayedEntries[fiber].Admission == admission)
+                {
+                    _delayedDue.Add(fiber);
+                    _delayedEntries.Remove(fiber);
+                }
+                else
+                {
+                    _delayedOrder[kept++] = fiber;
+                }
             }
-            _delayedScheduled = false;
-            // Reuse the immediate drain's pins ONLY when continuing its wave; a SOLO delayed drain (no immediate
-            // drain pinned a snapshot this cycle) opens a fresh wave so it reads the current store value rather
-            // than a stale pin retained from a prior wave.
-            var continuesImmediateWave = _delayedContinuesWave;
-            _delayedContinuesWave = false;
+            _delayedOrder.RemoveRange(kept, _delayedOrder.Count - kept);
             // Only work this drain's commits spawn is owed the setState-in-commit guarantee, so the boundary
             // pass below is gated on the monotonic intake marker (never on a net count, which the drain's
             // own removals or a dedup onto an already-queued fiber would mask).
             _immediateWorkArrivedMidDrain = false;
-            Drain(_delayedOrder, _delayedSet, resetWave: !continuesImmediateWave);
+            Drain(_delayedDue, null);
             // A commit-phase write during a DELAYED-tier commit enqueues on the immediate tier; the
             // setState-in-commit guarantee (the follow-up render commits before this frame callback
             // yields) is tier-agnostic, so drain it now rather than leaving a one-frame slot/UI
@@ -275,21 +396,21 @@ namespace Velvet
             }
         }
 
-        private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber> set, bool resetWave)
+        private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber>? set)
         {
             if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
             // (a re-entrant call is blocked by _draining before reaching here) so a nested entry cannot reset
             // the wave mid-flush.
             var openedWave = !_draining;
-            if (openedWave) _onDrainBegin?.Invoke(resetWave);
+            if (openedWave) _onDrainBegin?.Invoke();
             _draining = true;
             try
             {
                 _drainBuffer.Clear();
                 _drainBuffer.AddRange(order);
                 order.Clear();
-                set.Clear();
+                set?.Clear();
                 StableSortByTreeDepth(_drainBuffer);
                 for (var i = 0; i < _drainBuffer.Count; i++)
                 {
@@ -367,7 +488,7 @@ namespace Velvet
         // Synchronously drains the next-frame (Normal / Urgent) batch now instead of waiting for the scheduled
         // frame-boundary callback. Called at the end of a discrete user-input event handler so Urgent-lane
         // updates scheduled during the handler commit synchronously, so the UI reflects them before the next frame. A frame-boundary
-        // callback registered earlier in the same batch still fires later but finds the queue already drained.
+        // callback registered earlier in the same batch stays registered and commits whatever arrives before it runs.
         // No-op while ANY drain (immediate or delayed) is already running OR a reconcile pass is otherwise on
         // the stack: a discrete event dispatched synchronously during a commit (e.g. focus loss when a focused
         // element is removed during reconcile) would otherwise re-enter the reconciler while an outer reconcile
@@ -401,7 +522,7 @@ namespace Velvet
         internal void Remove(ComponentFiber fiber)
         {
             if (_immediateSet.Remove(fiber)) _immediateOrder.Remove(fiber);
-            if (_delayedSet.Remove(fiber)) _delayedOrder.Remove(fiber);
+            if (_delayedEntries.Remove(fiber)) _delayedOrder.Remove(fiber);
         }
 
         // Drops every pending fiber and resets the scheduled flags and anchor. Called from the owning
@@ -411,11 +532,11 @@ namespace Velvet
             _immediateOrder.Clear();
             _immediateSet.Clear();
             _delayedOrder.Clear();
-            _delayedSet.Clear();
-            _delayedContinuesWave = false;
+            _delayedEntries.Clear();
+            _unadmitted = null;
+            _admittedForNextPass = null;
             _immediateWorkArrivedMidDrain = false;
             _immediateScheduled = false;
-            _delayedScheduled = false;
             _anchor = null;
             _onDrainBegin = null;
             _onDrainEnd = null;

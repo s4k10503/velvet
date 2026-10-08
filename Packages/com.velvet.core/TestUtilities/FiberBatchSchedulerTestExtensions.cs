@@ -28,8 +28,8 @@ namespace Velvet.TestUtilities
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainImmediateMethodName);
 
-        /// <summary>Drains the Transition tier, after whatever the Normal / Urgent tier still holds.</summary>
-        // Bypasses: the panel scheduler callback: production registers DrainDelayed with _anchor.schedule.Execute and never calls it.
+        /// <summary>Drains every Transition-tier entry, after whatever the Normal / Urgent tier still holds.</summary>
+        // Bypasses: the panel callbacks and their admission: a panel callback drains only the entries waiting for its own registration; VelvetPreviewHost.Settle is the production caller that drains the whole tier this way.
         internal static void DrainDelayedForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainDelayedMethodName);
 
