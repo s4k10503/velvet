@@ -333,26 +333,36 @@ two divide what is left over after every sibling's basis is taken.
 ## A text item's margin, padding and minimum size
 
 **Margin and padding.** Tailwind v4's preflight zeroes every element's margin and padding. Velvet's
-`_preflight.uss` does it for a `Label` — the class `unity-label`, which a `V.Label` and a `V.Text` both
-carry — and is imported ahead of every utility, so a `p-*` or `m-*` on the label ties with it on specificity
-and wins on order. A label centred in a box therefore sits on the box's centre, with none of the theme's
-padding or margin on one side of it. A `Label` UI Toolkit builds inside its own controls carries the same
-class and takes the same reset. Buttons and fields keep the chrome the theme gives them.
+`_preflight.uss` does it for the `Label` that a `V.Label`, a `V.Text` or `V.Custom<Label>` creates, by the
+class `velvet-label` those labels carry. The sheet is imported ahead of every utility, so a `p-*` or `m-*`
+on the label ties with it on specificity and wins on order. A label centred in a box therefore sits on the
+box's centre. A `Label` UI Toolkit builds inside its own control (a `V.TextField`'s label, a `V.Toggle`'s)
+and a `Button` keep the spacing the theme gives them, as an `<input>`'s label does on the web, where it is
+author markup.
 
-A rule of your own that sets a `Label`'s margin or padding ties with the baseline too: it wins when its sheet
-is attached after Velvet's, and loses to it when attached before.
+**Minimum size.** A CSS flex item cannot shrink below its content-based minimum size along the
+container's main axis (CSS Flexbox §4.5): its min-content size, capped by its definite preferred size on
+that axis, then by its maximum size. Velvet writes that value inline, as `min-width` in a row and
+`min-height` in a column, on every `Label` and `Button` it creates:
 
-**Minimum size.** A CSS flex item cannot shrink below its content along the container's main axis
-(`min-width: auto` in a row, `min-height: auto` in a column). Velvet writes that value inline on every
-`Label` and `Button` it creates, measured from the text:
+- a row's min-content width is the widest run of text with no break opportunity in it: spaces
+  separate runs (a no-break space does not), a hyphen between letters ends one, and each ideograph,
+  kana or Hangul syllable is its own, bar closing punctuation sticking to the character before it. Under
+  `whitespace-nowrap` and `whitespace-pre` it is the whole text;
+- a column's min-content height is the height the text takes at the width the item was given;
+- the item's own padding and border on that axis is added to either.
 
-- in a row, the widest word while the text may wrap and the whole text under `whitespace-nowrap` and `whitespace-pre`;
-- in a column, the height the text takes at the width the item was given;
-- plus the item's own padding and border on that axis.
+A declared `w-*` / `h-*` / `size-*` (class, bracket or inline) caps the minimum at that size, and a
+`max-w-*` / `max-h-*` caps it at the maximum; `w-fit`, `w-min`, `w-max` and `w-auto` declare no definite
+size and cap nothing. The `flex-shrink: 0` a reset rule for centred labels used to carry is replaced by this: a label in a row
+still wraps at its widest run instead of refusing to shrink, and one in a column cannot be squeezed below its
+text.
 
-The item stands down, keeping whatever its cascade gives it, when it is clipped (`overflow-hidden`,
-`truncate`), declares its own `min-w-*` / `min-h-*` on that axis, or declares its own size there (`w-*`,
-`h-*`, `size-*`) — CSS clips to zero for the first, and caps the minimum at the declared size for the third,
-where Velvet leaves the declared size shrinkable. An item with children, an absolutely positioned one and a
-hidden one are not measured. Only the 16 longest distinct words are measured to find the widest, and a
-variant that lights one of the stand-down classes without a patch is read at the label's next patch.
+The item keeps whatever its cascade gives it when it is clipped (`overflow-hidden`, `truncate`), declares
+its own `min-w-*` / `min-h-*` on that axis, has `shrink-0`, sits in a `grid` column, has children, or is
+absolutely positioned or hidden. A clipped item and a grid item have an automatic minimum of zero in CSS.
+
+Not covered: a minimum the theme or a stylesheet of your own declares on a label is not seen, and the
+automatic minimum is the inline value, so an element carrying a `transition-all` animates it. The widest
+run is searched among the 64 longest distinct runs of a text, and a variant that lights `min-w-*`, `h-*`
+or `overflow-hidden` outside a patch is read at the label's next patch.

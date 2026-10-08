@@ -1,47 +1,45 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Emulates the automatic minimum size CSS gives a flex item (CSS Flexbox §4.5): along the parent's main
-    // axis a text item cannot shrink below its content-based minimum size, which for text is its min-content
-    // size — the widest unbreakable word in a row while it may wrap, the whole line once white-space forbids
-    // soft wrapping, and the wrapped height in a column. UI Toolkit's initial min-width / min-height is `auto`,
-    // so this writes the inline value CSS would have resolved it to.
+    // The automatic minimum size CSS gives a flex item (CSS Flexbox §4.5), written inline along the parent's
+    // main axis: the item's min-content size, capped by its definite preferred size on that axis, then by its
+    // maximum size. For text, min-content is the widest unbreakable run in a row (the whole text once
+    // white-space forbids soft wrapping) and the wrapped height in a column. Re-derive triggers and the
+    // parent subscription are StyleTextItemManipulator's; the documented behaviour and its narrowings are in
+    // Documentation~/styling-flexbox-and-gap.md.
     //
-    // The spec gives the automatic minimum as zero for a scroll container, and caps the content size by a
-    // definite preferred size on that axis. Both are honoured by standing down, not by computing: an item
-    // that is clipped (`overflow-hidden`, `truncate`, an inline overflow of hidden) or that declares its own
-    // main size or its own min-width / min-height keeps whatever its cascade gives it, since any of those is
-    // the author taking the axis over. The stand-down for a declared main size is a narrowing — CSS would
-    // still cap the minimum at that size rather than lift it.
+    // The spec gives the automatic minimum as zero for a scroll container, and a grid item in a
+    // grid-cols-N track is sized by minmax(0, 1fr), so those stand down, as does an item that declares its
+    // own min-width / min-height on the axis. A width or height declared as w-fit, w-min, w-max or w-auto is
+    // a content keyword, not a definite size, and caps nothing.
     //
-    // Measurement is TextElement.MeasureTextSize, the call StyleTextBalanceManipulator measures with, and the
-    // frame (padding and border on the axis) is added back at the write for the reason that manipulator gives.
-    // The widest word is searched among the MaxMeasuredWords longest distinct words by character count, so a
-    // long paragraph costs a bounded number of measurements; a short word set in a much wider face than a
-    // longer one is the case this can miss.
+    // Declarations are read from what Velvet owns: the live class list (scanned when the reconciled classes
+    // change), the arbitrary-value layers, and the inline style; the resolved style is not consulted.
+    // TextItemBaselinePanelTests pins that a declaring class patched away is read at once.
     //
     // Ownership of the inline slot lasts only while a value this wrote sits in it: a bracket layer that
     // arrives for the same slot has already overwritten it and is never cleared by this.
-    //
-    // Re-derives on attach, on its own and its parent's GeometryChangedEvent, and on ChangeEvent<string>.
-    // A signature over the inputs absorbs the GeometryChangedEvent this manipulator's own write provokes.
-    // Lifecycle mirrors StyleTextBalanceManipulator: the reconciler attaches one per text element, tracks it in
-    // ReconcilerContext.FlexMinSizeManipulators, and removes it on cleanup.
     internal sealed class StyleFlexMinSizeManipulator : StyleTextItemManipulator
     {
-        private const int MaxMeasuredWords = 16;
+        private const int MaxMeasuredRuns = 64;
 
         private const string MinWidthPrefix = "min-w-";
         private const string MinHeightPrefix = "min-h-";
+        private const string MaxWidthPrefix = "max-w-";
+        private const string MaxHeightPrefix = "max-h-";
+        private const string WidthPrefix = "w-";
         private const string HeightPrefix = "h-";
         private const string SizePrefix = "size-";
-        private const string AutoHeightClass = "h-auto";
         private const string OverflowHiddenClass = "overflow-hidden";
         private const string TruncateClass = "truncate";
 
-        private static readonly char[] BreakChars = { ' ', '\t', '\n', '\r' };
+        // Reused across derives: manipulators run on the main thread, one derive at a time.
+        private static readonly List<string> s_runs = new();
+        private static readonly HashSet<string> s_seen = new();
+        private static readonly List<string> s_distinct = new();
 
         private enum Owned
         {
@@ -50,30 +48,54 @@ namespace Velvet
             Height,
         }
 
+        // A length a class declares: pixels, or a percentage of the parent's content box.
+        private readonly struct Dim
+        {
+            public Dim(float value, bool percent)
+            {
+                Value = value;
+                Percent = percent;
+            }
+
+            public float Value { get; }
+
+            public bool Percent { get; }
+        }
+
         private Owned _owned;
 
-        // The last value this wrote and the axis it wrote it on, kept past a release: the resolved style lags
-        // an inline clear, so a reading equal to it is still this manipulator's own and not a declaration.
+        // The last value this wrote and the axis it wrote it on; kept past a release so a later write of the
+        // same value is skipped, and so a value on the slot that is not this one's reads as someone else's.
         private Owned _lastWrittenAxis;
         private float _lastWritten;
 
         private string[]? _lastClassNames;
 
-        internal StyleFlexMinSizeManipulator(string[] classNames)
+        // What the live class list declares, rebuilt by Scan when _scanStale.
+        private bool _scanStale = true;
+        private bool _clipped;
+        private bool _declaresMinWidth;
+        private bool _declaresMinHeight;
+        private Dim? _specifiedWidth;
+        private Dim? _specifiedHeight;
+        private Dim? _maxWidth;
+        private Dim? _maxHeight;
+
+        internal StyleFlexMinSizeManipulator(ReconcilerContext ctx, string[] classNames)
+            : base(ctx)
         {
             _lastClassNames = classNames;
         }
 
-        // Re-derives after a patch. The class scan is behind the signature, so a patch that left the
-        // reconciled classes as they were keeps the guard: a class change is the only thing a patch can do
-        // that no signature term sees, and the text is a term. A variant payload that lights a min-w-,
-        // h- or overflow class without a patch is therefore read at the element's next patch.
+        // Re-derives after a patch. A patch can change what the classes declare without moving anything the
+        // signature reads, so a changed reconciled array rescans; an unchanged one keeps the guard. A variant
+        // payload that lights one of the scanned classes outside a patch is read at the next patch.
         public void Refresh(string[] classNames)
         {
             if (_lastClassNames == null || !System.MemoryExtensions.SequenceEqual(
                     new System.ReadOnlySpan<string>(classNames), new System.ReadOnlySpan<string>(_lastClassNames)))
             {
-                _hasSignature = false;
+                _scanStale = true;
             }
             _lastClassNames = classNames;
             Apply();
@@ -81,9 +103,16 @@ namespace Velvet
 
         protected override void Derive(TextElement textElement, VisualElement parent)
         {
+            if (_scanStale)
+            {
+                Scan(textElement);
+                _scanStale = false;
+                _hasSignature = false;
+            }
+
             var horizontal = parent.resolvedStyle.flexDirection is FlexDirection.Row or FlexDirection.RowReverse;
-            var slot = horizontal ? ArbitraryProperty.MinWidth : ArbitraryProperty.MinHeight;
-            if (StyleArbitraryValueResolver.HasLayer(textElement, slot))
+            if (StyleArbitraryValueResolver.HasLayer(
+                    textElement, horizontal ? ArbitraryProperty.MinWidth : ArbitraryProperty.MinHeight))
             {
                 // The layer's own write is already in the slot, over any value of ours.
                 _owned = Owned.None;
@@ -114,15 +143,22 @@ namespace Velvet
                 return;
             }
 
-            var signature = ComputeSignature(horizontal, text, resolved.fontSize, resolved.whiteSpace, frame, crossContent);
+            var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
+            var specified = ResolveLength(
+                horizontal ? textElement.style.width : textElement.style.height,
+                horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
+            var maximum = ResolveLength(
+                horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
+                horizontal ? _maxWidth : _maxHeight, parentContent);
+            var signature = ComputeSignature(
+                horizontal, text, resolved.fontSize, resolved.whiteSpace, frame, crossContent,
+                resolved.flexShrink > 0f, specified, maximum);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
             }
 
-            // Behind the signature guard because the class walk allocates; Refresh resets the guard for every
-            // path that can change the answer.
-            if (StandsDown(textElement, horizontal))
+            if (StandsDown(textElement, parent, horizontal, resolved.flexShrink))
             {
                 Release(textElement);
                 _lastSignature = signature;
@@ -142,7 +178,16 @@ namespace Velvet
                 return;
             }
 
-            Write(textElement, horizontal, Mathf.Ceil(contentMinimum) + frame);
+            var value = Mathf.Ceil(contentMinimum) + frame;
+            if (specified.HasValue)
+            {
+                value = Mathf.Min(value, specified.Value);
+            }
+            if (maximum.HasValue)
+            {
+                value = Mathf.Min(value, maximum.Value);
+            }
+            Write(textElement, horizontal, Mathf.Max(0f, value));
             _lastSignature = signature;
             _hasSignature = true;
         }
@@ -153,68 +198,135 @@ namespace Velvet
             => element.resolvedStyle.position != Position.Absolute
                 && element.resolvedStyle.display != DisplayStyle.None;
 
-        private bool StandsDown(TextElement textElement, bool horizontal)
+        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, float flexShrink)
         {
+            if (flexShrink <= 0f || _clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
+            {
+                return true;
+            }
             if (textElement.style.overflow.keyword == StyleKeyword.Undefined
                 && textElement.style.overflow.value == Overflow.Hidden)
             {
                 return true;
             }
 
-            var sizeLayer = horizontal ? ArbitraryProperty.Width : ArbitraryProperty.Height;
-            if (StyleArbitraryValueResolver.HasLayer(textElement, sizeLayer)
-                || StyleArbitraryValueResolver.HasLayer(textElement, ArbitraryProperty.Size))
+            // A min-size written by something other than this: the value on the slot is not the last one
+            // this wrote, or this has not written there.
+            var inline = horizontal ? textElement.style.minWidth : textElement.style.minHeight;
+            var axis = horizontal ? Owned.Width : Owned.Height;
+            if (inline.keyword == StyleKeyword.Undefined
+                && !(_lastWrittenAxis == axis && Mathf.Abs(inline.value.value - _lastWritten) < 0.01f))
             {
                 return true;
             }
+            return IsSizedByGridParent(parent);
+        }
 
-            // A minimum another source declared (a class, a theme rule, an inline value) reads back as
-            // something other than `auto`. While this owns the slot the reading includes its own value, so
-            // only the class scan below can tell the author's from it.
-            if (_owned == Owned.None)
-            {
-                var declared = horizontal ? textElement.resolvedStyle.minWidth : textElement.resolvedStyle.minHeight;
-                var axis = horizontal ? Owned.Width : Owned.Height;
-                var isOwnEcho = _lastWrittenAxis == axis
-                    && declared.keyword == StyleKeyword.Undefined
-                    && Mathf.Abs(declared.value - _lastWritten) < 0.5f;
-                if (declared.keyword != StyleKeyword.Auto && !isOwnEcho)
-                {
-                    return true;
-                }
-            }
-
+        private void Scan(TextElement textElement)
+        {
+            _clipped = false;
+            _declaresMinWidth = false;
+            _declaresMinHeight = false;
+            _specifiedWidth = null;
+            _specifiedHeight = null;
+            _maxWidth = null;
+            _maxHeight = null;
             foreach (var cls in textElement.GetClasses())
             {
-                if (DeclaresOwnAxis(cls, horizontal))
+                if (cls == OverflowHiddenClass || cls == TruncateClass)
                 {
-                    return true;
+                    _clipped = true;
                 }
+                else if (cls.StartsWith(MinWidthPrefix, System.StringComparison.Ordinal))
+                {
+                    _declaresMinWidth = true;
+                }
+                else if (cls.StartsWith(MinHeightPrefix, System.StringComparison.Ordinal))
+                {
+                    _declaresMinHeight = true;
+                }
+                else
+                {
+                    ScanLength(cls);
+                }
+            }
+        }
+
+        private void ScanLength(string cls)
+        {
+            if (TryClassLength(cls, WidthPrefix, out var width))
+            {
+                _specifiedWidth = width;
+            }
+            else if (TryClassLength(cls, HeightPrefix, out var height))
+            {
+                _specifiedHeight = height;
+            }
+            else if (TryClassLength(cls, SizePrefix, out var size))
+            {
+                _specifiedWidth = size;
+                _specifiedHeight = size;
+            }
+            else if (TryClassLength(cls, MaxWidthPrefix, out var maxWidth))
+            {
+                _maxWidth = maxWidth;
+            }
+            else if (TryClassLength(cls, MaxHeightPrefix, out var maxHeight))
+            {
+                _maxHeight = maxHeight;
+            }
+        }
+
+        // Recognizes prefix + a spacing-scale step, `full`, or a keyword that declares no definite size
+        // (auto, fit, min, max, none, screen): the last returns true with no length, so it clears an earlier
+        // class's. Any other suffix is not a length class this reads.
+        private static bool TryClassLength(string cls, string prefix, out Dim? length)
+        {
+            length = null;
+            if (!cls.StartsWith(prefix, System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var suffix = cls.Substring(prefix.Length);
+            if (suffix == "full")
+            {
+                length = new Dim(100f, true);
+                return true;
+            }
+            if (suffix is "auto" or "fit" or "min" or "max" or "none" or "screen")
+            {
+                return true;
+            }
+            if (StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out var px))
+            {
+                length = new Dim(px, false);
+                return true;
             }
             return false;
         }
 
-        // The class forms of the stand-downs: the bracket forms never enter the class list and are asked of
-        // the layer map instead.
-        private static bool DeclaresOwnAxis(string cls, bool horizontal)
+        // An inline value outranks a class; a keyword inline (auto, none) declares no definite length.
+        private static float? ResolveLength(StyleLength inline, Dim? fromClass, float parentContent)
         {
-            if (cls == OverflowHiddenClass || cls == TruncateClass)
+            if (inline.keyword == StyleKeyword.Undefined)
             {
-                return true;
+                var length = inline.value;
+                return length.unit == LengthUnit.Percent
+                    ? Percent(length.value, parentContent)
+                    : length.value;
             }
-            if (horizontal)
+            if (inline.keyword != StyleKeyword.Null || !fromClass.HasValue)
             {
-                return cls.StartsWith(MinWidthPrefix, System.StringComparison.Ordinal)
-                    || StyleTextBalanceClass.IsWidthDeclaringToken(cls);
+                return null;
             }
-            return cls.StartsWith(MinHeightPrefix, System.StringComparison.Ordinal)
-                || (cls != AutoHeightClass
-                    && (cls.StartsWith(HeightPrefix, System.StringComparison.Ordinal)
-                        || cls.StartsWith(SizePrefix, System.StringComparison.Ordinal)));
+            return fromClass.Value.Percent ? Percent(fromClass.Value.Value, parentContent) : fromClass.Value.Value;
         }
 
-        // The whole text once white-space forbids soft wrapping (nowrap, pre); otherwise the widest word,
-        // searched among the longest distinct ones.
+        private static float? Percent(float percent, float parentContent)
+            => float.IsNaN(parentContent) ? null : parentContent * percent / 100f;
+
+        // The whole text once white-space forbids soft wrapping; otherwise the widest unbreakable run, among
+        // the MaxMeasuredRuns longest distinct ones (ties by first occurrence).
         private static float MeasureMinContentWidth(TextElement textElement, string text, WhiteSpace whiteSpace)
         {
             if (whiteSpace == WhiteSpace.NoWrap || whiteSpace == WhiteSpace.Pre)
@@ -222,23 +334,33 @@ namespace Velvet
                 return MeasureWidth(textElement, text);
             }
 
-            var words = text.Split(BreakChars, System.StringSplitOptions.RemoveEmptyEntries);
-            System.Array.Sort(words, (a, b) => b.Length.CompareTo(a.Length));
-            var widest = 0f;
-            string? previous = null;
-            var measured = 0;
-            foreach (var word in words)
+            s_runs.Clear();
+            s_seen.Clear();
+            s_distinct.Clear();
+            TextBreakOpportunities.CollectRuns(text, s_runs);
+            foreach (var run in s_runs)
             {
-                if (word == previous)
+                if (s_seen.Add(run))
                 {
-                    continue;
+                    s_distinct.Add(run);
                 }
-                previous = word;
-                widest = Mathf.Max(widest, MeasureWidth(textElement, word));
-                if (++measured == MaxMeasuredWords)
+            }
+            if (s_distinct.Count > MaxMeasuredRuns)
+            {
+                // List.Sort is unstable, so the first-occurrence order is the explicit tie-break.
+                var order = new Dictionary<string, int>(s_distinct.Count);
+                for (var i = 0; i < s_distinct.Count; i++)
                 {
-                    break;
+                    order[s_distinct[i]] = i;
                 }
+                s_distinct.Sort((a, b) => a.Length != b.Length ? b.Length.CompareTo(a.Length) : order[a].CompareTo(order[b]));
+                s_distinct.RemoveRange(MaxMeasuredRuns, s_distinct.Count - MaxMeasuredRuns);
+            }
+
+            var widest = 0f;
+            foreach (var run in s_distinct)
+            {
+                widest = Mathf.Max(widest, MeasureWidth(textElement, run));
             }
             return widest;
         }
@@ -254,6 +376,10 @@ namespace Velvet
             if (_owned != Owned.None && _owned != axis)
             {
                 Release(textElement);
+            }
+            if (_owned == axis && Mathf.Approximately(_lastWritten, value))
+            {
+                return;
             }
             if (horizontal)
             {
@@ -294,7 +420,8 @@ namespace Velvet
         // The text in full rather than its length, which would miss a same-length swap. The white-space is a
         // term because a variant can switch the wrap mode without moving anything else here.
         private static int ComputeSignature(
-            bool horizontal, string text, float fontSize, WhiteSpace whiteSpace, float frame, float crossContent)
+            bool horizontal, string text, float fontSize, WhiteSpace whiteSpace, float frame, float crossContent,
+            bool canShrink, float? specified, float? maximum)
         {
             unchecked
             {
@@ -305,6 +432,9 @@ namespace Velvet
                 hash = hash * 31 + (int)whiteSpace;
                 hash = hash * 31 + Mathf.RoundToInt(frame);
                 hash = hash * 31 + Mathf.RoundToInt(crossContent);
+                hash = hash * 31 + (canShrink ? 1 : 0);
+                hash = hash * 31 + (specified.HasValue ? Mathf.RoundToInt(specified.Value) + 1 : 0);
+                hash = hash * 31 + (maximum.HasValue ? Mathf.RoundToInt(maximum.Value) + 1 : 0);
                 return hash;
             }
         }

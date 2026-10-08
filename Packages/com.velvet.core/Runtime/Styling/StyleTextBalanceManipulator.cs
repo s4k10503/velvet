@@ -82,14 +82,11 @@ namespace Velvet
         // The characters text-pretty breaks words at.
         private static readonly char[] BreakChars = { ' ', '\t', '\n', '\r' };
 
-        // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
-        private readonly ReconcilerContext _ctx;
-
         private TextWrapStyle _style;
 
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
+            : base(ctx)
         {
-            _ctx = ctx;
             _style = style;
         }
 
@@ -338,29 +335,6 @@ namespace Velvet
             var declared = element.resolvedStyle.maxWidth;
             ceilingPx = declared.value;
             return declared.keyword != StyleKeyword.None;
-        }
-
-        // StyleGridManipulator writes its children's own style.width. Asks the registry of attached grid
-        // manipulators rather than re-deriving the grid's class condition, so the two cannot drift apart.
-        // Walks ancestors because the grid sizes the children of GetChildContainer(target), and on any
-        // widget carrying a contentContainer redirect — ScrollView, Foldout, TabView, … — that inner box
-        // sits below the element the manipulator is keyed on; the match is that container being this
-        // element's own parent, so no unrelated ancestor grid can claim it.
-        private bool IsSizedByGridParent(VisualElement parent)
-        {
-            if (_ctx.GridManipulators.Count == 0)
-            {
-                return false;
-            }
-            for (var ancestor = parent; ancestor != null; ancestor = ancestor.parent)
-            {
-                if (_ctx.GridManipulators.ContainsKey(ancestor)
-                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(ancestor), parent))
-                {
-                    return true;
-                }
-            }
-            return false;
         }
 
         // Stops at the clear: only the caller can tell a class removal, which owes the element its

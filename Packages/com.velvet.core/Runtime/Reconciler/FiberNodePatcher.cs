@@ -3212,7 +3212,7 @@ namespace Velvet
                 existing.Refresh(classNames);
                 return;
             }
-            var manipulator = new StyleFlexMinSizeManipulator(classNames);
+            var manipulator = new StyleFlexMinSizeManipulator(_ctx, classNames);
             element.AddManipulator(manipulator);
             _ctx.FlexMinSizeManipulators[element] = manipulator;
         }

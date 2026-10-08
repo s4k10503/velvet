@@ -248,11 +248,12 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_AnEngineClassRule_When_TheTableIsDerived_Then_ItContributesNoEntry()
+        public void Given_APreflightSheet_When_TheTableIsDerived_Then_ItContributesNoEntry()
         {
             // Arrange
             var run = StyleTableTestHelper.Derive(
-                StyleSheetInput.Uss(".unity-label { margin: 0; padding: 0; } .p-2 { padding: 8px; }"));
+                new StyleSheetInput("/styles/_preflight.uss", ".velvet-label { margin: 0; padding: 0; }"),
+                new StyleSheetInput("/styles/_spacing.uss", ".p-2 { padding: 8px; }"));
 
             // Act
             var count = StyleTableTestHelper.Load(run).Count;
@@ -262,29 +263,17 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_AnEngineClassRule_When_TheTableIsDerived_Then_NothingIsReported()
+        public void Given_APreflightSheet_When_TheTableIsDerived_Then_NothingIsReported()
         {
             // Arrange
-            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(".unity-label { margin: 0; padding: 0; }"));
+            var run = StyleTableTestHelper.Derive(
+                new StyleSheetInput("/styles/_preflight.uss", ".velvet-label { margin: 0; padding: 0; }"));
 
             // Act
             var codes = run.ProblemCodes;
 
             // Assert
             Assert.Empty(codes);
-        }
-
-        [Fact]
-        public void Given_AGatedEngineClassRule_When_TheTableIsDerived_Then_ItIsStillRecorded()
-        {
-            // Arrange
-            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(".unity-label:hover { margin: 0; }"));
-
-            // Act
-            var count = StyleTableTestHelper.Load(run).Count;
-
-            // Assert
-            Assert.Equal(1, count);
         }
 
         [Fact]

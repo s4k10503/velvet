@@ -25,14 +25,6 @@ namespace Velvet.StyleTable
         /// changes whether such a rule matches, so it sits outside what a class projection can affect.
         /// </summary>
         TypeKeyed,
-
-        /// <summary>
-        /// A selector keyed on a class UI Toolkit's own controls carry (<c>unity-label</c>), where a bundled
-        /// baseline gives an element a starting value every utility outranks. Excluded from the table: a
-        /// control's own class is on the element whatever its utilities say, so recording it would make
-        /// <c>StyleArbitraryValueResolver.DeclaresOwn</c> read every <c>Label</c> as declaring its own margin.
-        /// </summary>
-        EngineClass,
     }
 
     /// <summary>
@@ -86,9 +78,6 @@ namespace Velvet.StyleTable
 
         public static UssSelectorTarget TypeKeyed() =>
             new UssSelectorTarget(UssSelectorKind.TypeKeyed, string.Empty, UssGate.None);
-
-        public static UssSelectorTarget EngineClass() =>
-            new UssSelectorTarget(UssSelectorKind.EngineClass, string.Empty, UssGate.None);
     }
 
     /// <summary>Classifies USS selectors into the shapes the utility-property table knows how to model.</summary>
@@ -116,10 +105,6 @@ namespace Velvet.StyleTable
             {
                 ["is-selected"] = UssGate.Selected,
             };
-
-        // The prefix UI Toolkit gives the classes its controls add to themselves. Only the plain form is
-        // excluded: a gated or compounded engine class is still reported rather than assumed harmless.
-        private const string EngineClassPrefix = "unity-";
 
         /// <summary>
         /// Splits a selector list and classifies each part. A comma-separated list is defined as the block
@@ -202,13 +187,7 @@ namespace Velvet.StyleTable
             }
 
             var plain = ParseClassName(selector.Substring(1));
-            if (plain == null)
-            {
-                return UssSelectorTarget.Unsupported();
-            }
-            return plain.StartsWith(EngineClassPrefix, StringComparison.Ordinal)
-                ? UssSelectorTarget.EngineClass()
-                : UssSelectorTarget.Utility(plain, UssGate.None);
+            return plain == null ? UssSelectorTarget.Unsupported() : UssSelectorTarget.Utility(plain, UssGate.None);
         }
 
         // Unity's USS class grammar is `\.[\w-]+`, so a name outside that character set is not a class the

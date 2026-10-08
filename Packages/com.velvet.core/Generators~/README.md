@@ -102,49 +102,14 @@ establish that an identifier or call returns a string, so replacing a `+` betwee
 expressions can still emit an invalid `-`, which the verdict **not a mutant (the operator does not
 apply)** below reads instead of failing the run.
 
-The line removal also reads a write standing alone on its line — a plain or compound assignment, or an
-increment, to a name, a member path or an element — whose value closes every group it opens, so
-`Left = 1 };` closing an initializer opened above it is not one. A compound write and an increment read
-their target first, so removing one cannot leave the target unassigned, and neither is refused for what
-it writes. A plain `=` is refused where removing it could leave a later read with no write before it:
-anywhere inside a struct constructor; where its target is a name the file declares as a local without a
-value, an `out` parameter, an `out` argument or a pattern variable; and where its target is a member
-path rooted at a local without a value or an `out` parameter, since a struct can be assigned field by
-field. An element write is not refused for its root, because indexing reads the root. An `out` is
-taken for a parameter only inside the parameter list of a signature whose brace opens a body, and a
-local declaration only on a line that starts a statement. The names are read over the whole file
-rather than the method holding the write, so a local declared without a value in one method refuses a
-plain write to a field of the same name in another, an element write aside. At `106ce04d`, over the
-corpus a campaign mutates, this refuses 1004 lines in the write shape, grouped by the reading that
-fired, with what a C# parser finds the target's root to be in the method holding the write:
-
-| reading | lines | what the root is there |
-|---|---|---|
-| a name the file declares as an `out` parameter | 553 | 534 `out` parameters, 15 locals with a value, 2 without one, 1 parameter, 1 pattern variable or `out` argument |
-| inside a struct constructor | 279 | — |
-| a name the file declares as a local without a value | 102 | 102 locals without a value |
-| a name the file declares as a pattern variable or an `out` argument | 46 | 37 of those, 9 locals with a value |
-| a member path rooted at a name the file declares as an `out` parameter | 22 | 18 parameters, 2 locals with a value, 2 pattern variables or `out` arguments |
-| a member path rooted at a name the file declares as a local without a value | 2 | 2 fields |
-
-Like the refusals above it reads the text rather than deciding definite assignment. What was checked
-instead is a parse: over the 3154 mutants the write arm adds there, tree-sitter's C# grammar finds
-none that adds a parse error, and none that removes a plain write whose root, in the method holding
-it, is an `out` parameter, a local declared without a value or a pattern variable or `out` argument,
-or that sits in a struct constructor; 69 write through a member of a pattern variable or `out`
-argument, which is left to the compile. `AssignmentRemovalTests` in `test_mutation_check.py` is the
-fixture for the readings.
-
 The generator carries an explicit mutation-model version in every scope digest. The digest also
 covers the merge base, platform and digestible content of each mutable target. Changing the operator
 model bumps the version, which makes cached killed verdicts from the older model
 ineligible even when every other input is unchanged.
 
-**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the forty first-parent commits ending at `106ce04d`: 6403 changed production code lines, which 1916 mutants reached 1296 of — 20% — before the line removal read writes, and 2217 mutants reach 1532 of — 24% — with it. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line. Under it the run prints a second share, over the changed code lines that start inside a member body's braces and hold more than brackets and separators — 2865 of the window's lines, 1195 of them reached before the write arm and 1430 with it. A member body's brace is one behind a signature's or a control head's closing parenthesis, a lambda's arrow, a case label or an accessor or block keyword; an initializer's, a switch expression's and a property's accessor list are not, so a generated table's entries are not counted. It sits beside the first rather than replacing it, because what it leaves out — a declaration, a signature, an expression-bodied member — can carry behaviour too.
+**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the twenty-four commits ending at `48057c8`, with the generator as it stands after the parse fixes below: 487 changed production code lines, 211 mutants, and 147 lines reached — 30%. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. A method written as a run of assignments generates nothing at all: a branch adding state-transition methods to the mutation hook came back with six mutants over its 27 changed code lines, and all 22 lines of the file holding those transitions were reached by none of them. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line.
 
-Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches — the write arm took the corpus a campaign mutates from 15456 mutants to 18610, and four of the window's forty commits past the 160 EditMode mutants ten shards of 16 take, where none of them was before. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
-
-**A forwarding member is in none of those shapes.** It is a method, property, operator, constructor or indexer standing directly in a type's braces, or a `get`, `set`, `init`, `add` or `remove` accessor standing in a property's, an indexer's or an event's braces, whose expression body is one identifier chain, optionally followed by a type argument list, with at most one argument list closing it whose arguments are identifier chains, each optionally behind `ref`, `out` or `in` — `public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);` — so in the package's spellings it carries no token a rewrite needs, a one-line body's line begins with the declaration rather than a call, and a wrapped body's line either opens with `=>` or stands behind one, where the line removal refuses to start. `ForwardedBodyReachTests` is what fails the day a mutant lands inside one anywhere in the package. The reach still counts a line reached when an operator emits anywhere on it, and a `true` or `false` default in a one-line member's head is such an emission, so a run names each forwarding member a changed line falls in whose forwarded body no mutant edits, `forwards` beside the unreached lines, whatever the reach says of its lines. `scripts/test_quality/forwarder_census.py` lists them across the package under the commit it read, with each member's lines, whether types of one name and different arities both declare it — `WhenAllVelvetTaskSource` beside `WhenAllVelvetTaskSource<T>`, `AsyncVelvetTaskMethod<TStateMachine>` beside `AsyncVelvetTaskMethod<TStateMachine, T>` — and the cut a sweep over them would make: an empty body where the member returns nothing, `default` where it returns something, and none where an `out` parameter or `async` leaves neither fitting. A nested type is named under the types enclosing it, and naming files on its command line pairs members within those files only. At `106ce04d` it lists 370 members and 31 accessors in 105 files; 2 carry a mutant on their lines, each a flipped default parameter value, none carries one inside its forwarded body, and 38 members sit in an arity pair. Which of them a test notices being cut is not yet measured, since that is an editor run per cut.
+Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
 
 Twelve verdicts:
 
@@ -235,7 +200,7 @@ The same run writes `../Runtime/Styles/_radius_declared.uss`, which restates eve
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 
-`_preflight.uss` declares a baseline on a class UI Toolkit's own controls carry (`.unity-label`), imported ahead of every utility. A plain `unity-` class selector is skipped by the table, so the baseline never counts as a class declaring its own margin or padding to `StyleArbitraryValueResolver.DeclaresOwn`; a gated or compounded one is still recorded.
+`_preflight.uss` declares the baseline `.velvet-label` gives a Label Velvet creates, imported ahead of every utility. The table skips that sheet by name: the class is a marker, not a utility, and recording it would make `StyleArbitraryValueResolver.DeclaresOwn` read every such label as declaring its own margin and padding.
 
 ## The code-shape rules
 
