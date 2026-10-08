@@ -644,11 +644,29 @@ namespace Velvet
             }
         }
 
-        internal void CopyStackedVariants(List<StyleStackedVariantManipulator> into)
+        // Walks the whole registry over a pooled copy, for the reason CopyStackedVariantsOn gives.
+        internal void ForEachStackedVariant<TState>(TState state,
+            System.Action<StyleStackedVariantManipulator, TState> action)
         {
-            foreach (var manipulator in _stackedVariantManipulators.Values)
+            if (_stackedVariantManipulators.Count == 0)
             {
-                into.Add(manipulator);
+                return;
+            }
+            var stacked = BufferPool.RentStackedVariantList();
+            try
+            {
+                foreach (var manipulator in _stackedVariantManipulators.Values)
+                {
+                    stacked.Add(manipulator);
+                }
+                foreach (var manipulator in stacked)
+                {
+                    action(manipulator, state);
+                }
+            }
+            finally
+            {
+                BufferPool.ReturnStackedVariantList(stacked);
             }
         }
 

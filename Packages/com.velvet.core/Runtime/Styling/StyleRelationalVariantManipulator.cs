@@ -80,19 +80,7 @@ namespace Velvet
             {
                 ctx.BufferPool.ReturnRelationalVariantList(relational);
             }
-            var stacked = ctx.BufferPool.RentStackedVariantList();
-            try
-            {
-                ctx.CopyStackedVariants(stacked);
-                foreach (var manipulator in stacked)
-                {
-                    manipulator.RetargetRelational();
-                }
-            }
-            finally
-            {
-                ctx.BufferPool.ReturnStackedVariantList(stacked);
-            }
+            ctx.ForEachStackedVariant<object?>(null, static (stacked, _) => stacked.RetargetRelational());
         }
 
         private readonly ReconcilerContext _ctx;

@@ -86,31 +86,15 @@ namespace Velvet
         // are keyed by the consuming element, so there is nothing to look the source up in; each consumer
         // compares it against the source it hooked, which costs one reference comparison per binding and walks
         // no part of the tree. The caller gates this on a bool control whose controlled value actually changed,
-        // which is what keeps the scan off the ordinary render path. The stacked registry is walked over a
-        // copy for the reason ReconcilerContext.CopyStackedVariantsOn gives.
+        // which is what keeps the scan off the ordinary render path.
         public static void SettleCheckedFromSource(VisualElement source, ReconcilerContext ctx, bool value)
         {
             foreach (var kv in ctx.RelationalVariantManipulators)
             {
                 kv.Value.SettleCheckedFromSource(source, value);
             }
-            if (ctx.StackedVariantManipulators.Count == 0)
-            {
-                return;
-            }
-            var stacked = ctx.BufferPool.RentStackedVariantList();
-            try
-            {
-                ctx.CopyStackedVariants(stacked);
-                foreach (var m in stacked)
-                {
-                    m.SettleCheckedFromSource(source, value);
-                }
-            }
-            finally
-            {
-                ctx.BufferPool.ReturnStackedVariantList(stacked);
-            }
+            ctx.ForEachStackedVariant((source, value),
+                static (stacked, edge) => stacked.SettleCheckedFromSource(edge.source, edge.value));
         }
     }
 
