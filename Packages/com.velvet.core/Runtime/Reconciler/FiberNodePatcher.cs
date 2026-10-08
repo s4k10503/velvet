@@ -517,8 +517,15 @@ namespace Velvet
             // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
             // the node's config while the swap ran on the pose's would let children start before their
             // parent finished.
-            var appliedNew = MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
-                out var newVariantClasses, out var swapTransition);
+            // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
+            string[] newVariantClasses;
+            StyleTransitionConfig? swapTransition;
+            var appliedNew = _ctx.PresenceMountsLeaving
+                ? MotionVariantResolver.ResolveAppliedAt(newNode,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    out newVariantClasses, out swapTransition)
+                : MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
+                    out newVariantClasses, out swapTransition);
             // Diff against the previously-APPLIED set (base + resolved variant), not the raw ClassNames — so a
             // changed effective label swaps the variant classes even when this node's base classes are equal.
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no

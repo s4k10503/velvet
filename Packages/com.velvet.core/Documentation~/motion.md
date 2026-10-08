@@ -91,7 +91,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers
   its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`,
   numbered as *Orchestration* below numbers a label change. The children of an inner
-  `V.AnimatePresence` are that presence's, as in Framer without `propagate`. `initial: false`
+  `V.AnimatePresence` are that presence's, as in Framer without `propagate`; see *Propagating a removal
+  to an inner presence* below for `propagate: true`. `initial: false`
   suppresses the mount enter of every Motion that mounts under a child the presence's first render
   created, a `V.Portal`'s and a later render's included, for as long as that child stays, as Framer's
   `PresenceChild` keeps the `initial` it was created with; an inner presence's children answer to that
@@ -106,6 +107,45 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - An `exit` on a Motion outside every `V.AnimatePresence` plays nothing, as in Framer.
 - A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
   throws `ArgumentOutOfRangeException`, naming the parameter.
+
+### Propagating a removal to an inner presence
+
+`propagate: true` on an inner `V.AnimatePresence` follows Framer's `propagate`. While the keyed child of the
+enclosing presence that holds it is leaving, the inner presence treats every one of its own children as not
+present and exits them through its own exit path, and the enclosing child stays mounted until those exits have
+completed.
+
+- Each presence owns its own exits. The inner presence's `onExitComplete` runs once, when its own exits have
+  finished, whatever else the enclosing child still waits on. When those were the last thing the enclosing child
+  waited for, the enclosing presence's `onExitComplete` runs first and the inner presence's second, as in Framer,
+  where the inner presence's `safeToRemove()` completes the enclosing child before its own callback runs.
+- A child the inner presence was already exiting is waited for and not exited again. One it removes in the same
+  render keeps the one exit.
+- The nearest enclosing presence decides: a presence between the two that does not propagate stops it, and the
+  enclosing child leaves without waiting. Without `propagate` on the inner presence its children are left as they
+  are when the enclosing child is removed.
+- If the enclosing key returns before the exits end, the inner presence's present children come back, as they do
+  for a cancelled exit. A child the inner presence removed itself stays exiting.
+- An inner presence that stops propagating, or is no longer rendered, while the enclosing child waits on it stops
+  holding that child.
+- A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
+  `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
+  play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+- The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
+  by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
+  later render of its own component. When it mounts that way, the nearest enclosing child is the one that
+  counts: the child of the nearest presence its host element or its component sits inside.
+
+```csharp
+V.AnimatePresence(key: "pages", children: new VNode[]
+{
+    V.Div(key: "settings", children: new VNode[]
+    {
+        V.AnimatePresence(key: "tabs", propagate: true, onExitComplete: OnTabsGone, children: tabs),
+    }),
+}),
+```
 
 ### `PopLayout` mode
 
