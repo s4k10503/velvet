@@ -285,19 +285,28 @@ namespace Velvet
                 }
                 return true;
             }
-            if (s_leadingPresets.TryGetValue(cls, out var em))
+            if (TryParseLeading(cls, out var leading))
             {
-                facets.Leading = new LeadingValue(LeadingUnit.Em, em);
+                facets.Leading = leading;
                 return true;
             }
-            if (TryParseLeadingBracket(cls, out var bracketLeading))
+            return false;
+        }
+
+        private static bool TryParseLeading(string cls, out LeadingValue leading)
+        {
+            if (s_leadingPresets.TryGetValue(cls, out var em))
             {
-                facets.Leading = bracketLeading;
+                leading = new LeadingValue(LeadingUnit.Em, em);
+                return true;
+            }
+            if (TryParseLeadingBracket(cls, out leading))
+            {
                 return true;
             }
             if (TryParseLeadingSpacing(cls, out var spacingPx))
             {
-                facets.Leading = new LeadingValue(LeadingUnit.Pixel, spacingPx);
+                leading = new LeadingValue(LeadingUnit.Pixel, spacingPx);
                 return true;
             }
             return false;
