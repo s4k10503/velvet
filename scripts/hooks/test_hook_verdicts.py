@@ -32,6 +32,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pull_request_base_check as worlds  # noqa: E402
@@ -50,12 +51,26 @@ VERDICT_SUFFIXES = {
     "report": ("_Then_ItReports", "_Then_ItStaysSilent"),
 }
 
-# What git is told to commit as, since HOME is a scratch directory with no identity in it.
+# What git is told to commit as, since `scratch_home` leaves it no identity to read.
 IDENTITY = ("-c", "user.email=verdicts@velvet", "-c", "user.name=verdicts")
 
 # What a case that arranges no `gh` is handed, so no verdict depends on the network or on who is
 # signed in to it.
 UNARRANGED_GH = 'echo "gh: this case arranges no gh" >&2\nexit 1'
+
+
+def scratch_home(home):
+    """Started: this process's environment with HOME at `home` and no global or system git config.
+
+    The arrangement runs under it as well as the hook: read through the developer's own
+    configuration, a global `commit.gpgsign` signed every commit a case arranged.
+    """
+    patched = mock.patch.dict(os.environ, {"HOME": str(home),
+                                           "XDG_CONFIG_HOME": str(home / ".config"),
+                                           "GIT_CONFIG_NOSYSTEM": "1"})
+    patched.start()
+    os.environ.pop("GIT_CONFIG_GLOBAL", None)
+    return patched
 
 
 def git(cwd, *args):
@@ -74,6 +89,7 @@ class VerdictFixture(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.home = self.root / "home"
         self.home.mkdir()
+        self.addCleanup(scratch_home(self.home).stop)
 
     def repository(self, name="tree"):
         """A repository on `main` holding one commit of a README."""
@@ -164,7 +180,7 @@ class AmendOfPublishedCommitVerdicts(VerdictFixture):
         self.with_origin(tree)
 
         # Act
-        answer = self.pose(bash(self.COMMAND, tree), tree, "--amend")
+        answer = self.pose(bash(self.COMMAND, tree), tree, "this commit is already published")
 
         # Assert
         self.assertEqual(answer, (REFUSED, True))
@@ -394,7 +410,7 @@ class EditWhileAReadyPrSitsVerdicts(VerdictFixture):
         event, tree = self.edited(ready_for=1800)
 
         # Act
-        answer = self.pose(event, tree, "#42")
+        answer = self.pose(event, tree, "#42 — green and unmerged for")
 
         # Assert
         self.assertEqual(answer, (REFUSED, True))
@@ -513,10 +529,13 @@ class MergeWorldFixture(VerdictFixture):
         cls.worlds = Path(tempfile.mkdtemp(prefix="velvet-verdict-worlds-")).resolve()
         cls.stub = cls.worlds / "stub_gh.py"
         cls.stub.write_text(worlds.STUB_GH, encoding="utf-8")
+        (cls.worlds / "home").mkdir()
+        cls.home_patch = scratch_home(cls.worlds / "home")
         cls.current = worlds.build_world(cls.worlds / "current", unpublished_on_maintenance=False)
 
     @classmethod
     def tearDownClass(cls):
+        cls.home_patch.stop()
         shutil.rmtree(cls.worlds, ignore_errors=True)
 
     def merge(self, project, head, base, red=("main",), checks=None, phrase=""):
@@ -610,7 +629,8 @@ class MergeWithoutBranchDeletionVerdicts(VerdictFixture):
     # GREEN_ON_BASE(characterization): the base already refuses a merge that keeps the branch.
     def test_Given_AMergeWithoutDeleteBranch_When_Posed_Then_ItRefuses(self):
         # Arrange / Act
-        answer = self.pose(bash("gh pr merge 42 --squash", self.root), self.root, "#42")
+        answer = self.pose(bash("gh pr merge 42 --squash", self.root), self.root,
+                           "would merge and leave the branch behind")
 
         # Assert
         self.assertEqual(answer, (REFUSED, True))
@@ -641,7 +661,8 @@ class MessageOutsideItsWorktreeVerdicts(VerdictFixture):
         message = self.message_at(self.root / "scratch")
 
         # Act
-        answer = self.pose(bash(f"git commit -F {message}", tree), tree, str(message))
+        answer = self.pose(bash(f"git commit -F {message}", tree), tree,
+                           "the worktree it describes")
 
         # Assert
         self.assertEqual(answer, (REFUSED, True))
@@ -791,8 +812,9 @@ class GitignoredWriteVerdicts(VerdictFixture):
 class RepositoryLitterVerdicts(VerdictFixture):
     HOOK = "report/repository_litter.py"
     EVENT = {"hook_event_name": "SessionStart", "source": "startup"}
-    # Set so far up that this machine's own project clones cannot reach it.
-    ENVIRONMENT = {"VELVET_LITTER_CLONES": "1000000"}
+    # The branch limit at its default, and the clone limit so far up that this machine's own
+    # project clones cannot reach it.
+    ENVIRONMENT = {"VELVET_LITTER_BRANCHES": "20", "VELVET_LITTER_CLONES": "1000000"}
 
     # GREEN_ON_BASE(characterization): the base already reports more branches than its limit.
     def test_Given_MoreLocalBranchesThanTheLimit_When_ASessionStarts_Then_ItReports(self):
