@@ -865,6 +865,9 @@ refuses on being `scripts/release/published_check.py`'s answer — and the floor
 cannot resolve to a source it reads. Named is weaker than posed, deliberately: what a name match
 says is that some case exists, not that the case asks anything.
 
+`scripts/hooks/test_hook_verdicts.py` is the posed half: it runs each of those scripts against an
+event it decides against and a near miss it lets through, and its docstring owns how.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
