@@ -54,6 +54,7 @@ namespace Velvet.Tests
             ["StyleGapClass.IsGapToken"] = "gap-4",
             ["StyleGridClass.IsGridToken"] = "grid-cols-2",
             ["StyleDivideClass.IsDivideToken"] = "divide-y",
+            ["StylePointerEventsClass.IsPointerEventsToken"] = "pointer-events-none",
             ["StyleSkewClass.IsSkewClass"] = "skew-x-6",
             ["StyleShadowClass.IsShadowClass"] = "shadow-lg",
             ["StyleGradientClass.IsGradientClass"] = "bg-gradient-to-r from-red-500 to-blue-500",
@@ -67,7 +68,7 @@ namespace Velvet.Tests
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 15;
+        private const int FamilyFloor = 16;
 
         /// <summary>The variants posed, with what opens each one's gate.</summary>
         /// <remarks>

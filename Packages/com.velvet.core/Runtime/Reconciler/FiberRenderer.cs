@@ -354,6 +354,9 @@ namespace Velvet
             // scrubs what an unmount must not carry over, and UseTransitionTests distinguishes an unowned
             // reused slot from a fresh one by identity — which a clear would make unaskable.
             fiber.DeferredValueSlots?.Clear();
+            // Optimistic slots go for the same reason, since a remount must not fold the entries a previous
+            // mount added.
+            fiber.ClearOptimisticSlots();
             // ExternalRef is re-injected by the parent on re-mount, mirroring how an imperative handle
             // is cleared on unmount and re-established on the next mount.
             // The ComponentRegistry path idempotently re-invokes SetExternalRef, so this is safe.
@@ -825,7 +828,8 @@ namespace Velvet
             // Re-entrancy guard: if async resolves synchronously during render, defer to schedule.
             if (fiber.IsRendering)
             {
-                fiber.MountPoint?.schedule.Execute(() => NotifyAsyncResourceCompleted(fiber));
+                fiber.MountPoint?.schedule.Execute(
+                    () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, NotifyAsyncResourceCompleted));
                 return;
             }
             // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a

@@ -113,8 +113,9 @@ A lone `divide-x-reverse` does nothing on its own — like `divide-{color}`, it 
 its share of the box model, and a `divide-{color}` colors all four edges of a divided child, as
 Tailwind's `border-color` does. Widths on the other three edges are left alone, so a child's own `border-b`
 under a `divide-x` row is preserved and takes the divide color. Unlike gap, divide has no
-wrap-specific strategy: a wrapping container still gets a single per-child divider edge, not a
-symmetric one, so dividers between wrapped *lines* are not drawn.
+wrap-specific strategy, and CSS has none either: the rule selects by sibling position, so under
+`flex-wrap` every child but the last gets its one divider edge whichever line it sits on. The last child
+of a wrapped line therefore keeps its end edge, and no rule is drawn along the break between two lines.
 
 `divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules
 itself, which costs them on a child that also carries `overflow-hidden` — see the painted-utility

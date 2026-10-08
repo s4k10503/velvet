@@ -347,8 +347,8 @@ namespace Velvet
         // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
         //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
         //   AFTER PatchCommon so it sees the final child set.
-        // - The layout manipulators (gap, divide and grid — ApplyResolvedLayoutManipulators owns the order
-        //   among those three) run next but still
+        // - The layout manipulators (gap, divide and grid, with the pointer-events scope —
+        //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
         //   AFTER PatchCommon (which reconciles children) so gap's margin writes are the final word on the
         //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
         //   against the current child set (a child add / remove re-spaces even when the className did not
@@ -422,6 +422,11 @@ namespace Velvet
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {
+            if (classesChanged)
+            {
+                // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
+                StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+            }
             _appliers.ApplyGradientOnPatch(element, classNames, skewable: paintTail);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
@@ -521,8 +526,15 @@ namespace Velvet
             // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
             // the node's config while the swap ran on the pose's would let children start before their
             // parent finished.
-            var appliedNew = MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
-                out var newVariantClasses, out var swapTransition);
+            // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
+            string[] newVariantClasses;
+            StyleTransitionConfig? swapTransition;
+            var appliedNew = _ctx.PresenceMountsLeaving
+                ? MotionVariantResolver.ResolveAppliedAt(newNode,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    out newVariantClasses, out swapTransition)
+                : MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
+                    out newVariantClasses, out swapTransition);
             // Diff against the previously-APPLIED set (base + resolved variant), not the raw ClassNames — so a
             // changed effective label swaps the variant classes even when this node's base classes are equal.
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
@@ -726,7 +738,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}|{style.Auto}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -1273,6 +1285,7 @@ namespace Velvet
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
+                PointerEventsScope.NoteReconciledInto(_ctx, target);
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
@@ -2181,21 +2194,23 @@ namespace Velvet
         {
             private readonly string[] _payloads;
             private readonly int[] _declarations;
+            private readonly bool[] _inputBoxOnly;
 
-            internal ChildVariantOp(string[] payloads, int[] declarations)
+            internal ChildVariantOp(string[] payloads, int[] declarations, bool[] inputBoxOnly)
             {
                 _payloads = payloads;
                 _declarations = declarations;
+                _inputBoxOnly = inputBoxOnly;
             }
 
             public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.ChildVariantManipulators;
 
             public StyleChildVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleChildVariantManipulator(ctx, _payloads, _declarations);
+                => new StyleChildVariantManipulator(ctx, _payloads, _declarations, _inputBoxOnly);
 
             public void Update(StyleChildVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_payloads, _declarations);
+                => manipulator.UpdatePayloads(_payloads, _declarations, _inputBoxOnly);
         }
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
@@ -2582,11 +2597,12 @@ namespace Velvet
             }
         }
 
-        // A class the projection took off an element to let a variant win still matches: :has(.foo) tests
-        // the class attribute, which the cascade never edits.
+        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
+        // an element to let a variant win still matches, and one a variant payload put on it does not.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
         {
-            if (root.ClassListContains(cls) || StyleClassProjection.SuppressesDeclared(root, cls))
+            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                || StyleClassProjection.SuppressesDeclared(root, cls))
             {
                 return true;
             }
@@ -3051,17 +3067,19 @@ namespace Velvet
 
             // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
             // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
-            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations);
+            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations,
+                out var inputBoxOnly);
 
             Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
-                new ChildVariantOp(payloads, declarations));
+                new ChildVariantOp(payloads, declarations, inputBoxOnly));
         }
 
         // Configures the three manipulators whose existence is gated purely on a layout utility class being
-        // present: gap, divide, grid. They are configured as a unit because gap and grid share
-        // one ownership rule — a grid owns its children's margins, so the gap manipulator must be suppressed
-        // for exactly the class lists that produce a grid manipulator. Call AFTER the container's children
-        // have been reconciled so each sees the final child list.
+        // present: gap, divide, grid; and the pointer-events scope, which rides the same sequence
+        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The three are configured as
+        // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
+        // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
+        // the container's children have been reconciled so each sees the final child list.
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
@@ -3072,10 +3090,10 @@ namespace Velvet
         // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
         internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
             => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
-                ResolveGateClasses(element, newClassNames));
+                ResolveGateClasses(element, newClassNames), _ctx.FontScope);
 
         internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
-            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames));
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames), _ctx.FontScope);
 
         // Same rule as ApplyFontLayer, over the same guard's other half.
         internal void ApplyTextEffects(VisualElement element, string[] classNames)
@@ -3128,7 +3146,9 @@ namespace Velvet
             // predecessor than a patch would.
             if (reconciled != null)
             {
-                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved);
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved, _ctx.FontScope);
+                // No pass boundary follows a variant toggle, so the inheritors it queued are settled here.
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             }
             ApplyResolvedLayoutManipulators(element, resolved);
             if (reconciled != null)
@@ -3180,6 +3200,8 @@ namespace Velvet
         // Divide is in no such handoff: it writes only the border width and color of the one edge it draws
         // on (and hands that same pair back on teardown), and neither gap nor grid writes a border at all —
         // so the write sets are disjoint and its position in the sequence is not load-bearing.
+        // The pointer-events scope writes only pickingMode, which none of the three writes, so its place is not
+        // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
             if (StyleGridClass.HasGridClass(classNames))
@@ -3193,6 +3215,7 @@ namespace Velvet
                 ApplyGapManipulator(element, classNames, gridSuppressed: false);
             }
             ApplyDivideManipulator(element, classNames);
+            ApplyPointerEvents(element, classNames);
         }
 
         // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
@@ -3257,10 +3280,11 @@ namespace Velvet
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
         // The same source for the gates that resolve at their own point in the sequence — the three layout
-        // manipulators (ApplyLayoutManipulators), the font layer (ApplyFontLayer) and the text-effect cascade
-        // (ApplyTextEffects). It reads the cached array but does not REPLACE it: the paint resolve a few
-        // passes later answers "did the classes change" by comparing against that same record, and advancing it
-        // here would swallow a payload one of the has- / attribute passes in between had just toggled.
+        // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)
+        // and the text-effect cascade (ApplyTextEffects). It reads the cached array but does not REPLACE it: the
+        // paint resolve a few passes later answers "did the classes change" by comparing against that same record,
+        // and advancing it here would swallow a payload one of the has- / attribute passes in between had just
+        // toggled.
         private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
@@ -3416,6 +3440,39 @@ namespace Velvet
 
             Configure<GridOp, StyleGridManipulator>(element, hasGrid,
                 new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
+        }
+
+        // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so
+        // every scope is walked again rather than this one alone.
+        private void ApplyPointerEvents(VisualElement element, string[] classNames)
+        {
+            var mode = StylePointerEventsClass.Read(classNames);
+            var scopes = _ctx.PointerEventsScopes;
+            if (scopes.TryGetValue(element, out var existing))
+            {
+                if (existing.Mode == mode)
+                {
+                    return;
+                }
+                if (mode == PointerEventsMode.Inherit)
+                {
+                    existing.Release();
+                    scopes.Remove(element);
+                }
+                else
+                {
+                    existing.Mode = mode;
+                }
+            }
+            else if (mode == PointerEventsMode.Inherit)
+            {
+                return;
+            }
+            else
+            {
+                scopes[element] = new PointerEventsScope(element, mode);
+            }
+            PointerEventsScope.RequestSyncAll(_ctx);
         }
 
         #endregion
