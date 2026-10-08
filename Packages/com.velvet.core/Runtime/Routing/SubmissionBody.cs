@@ -113,7 +113,8 @@ namespace Velvet
             var type = entry?.GetType();
             if (type != null && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
             {
-                pair = Pair(type.GetProperty("Key")!.GetValue(entry), type.GetProperty("Value")!.GetValue(entry));
+                pair = Pair(type.GetProperty(nameof(KeyValuePair<object, object>.Key))!.GetValue(entry),
+                    type.GetProperty(nameof(KeyValuePair<object, object>.Value))!.GetValue(entry));
                 return true;
             }
             if (entry is ITuple { Length: 2 } tuple)

@@ -189,7 +189,7 @@ does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
   data as the query string, which only a `get` encodes. The body is read as React Router reads it with
-  `new URLSearchParams(body)`: null, an `ISearchParams`, a string (one leading `?` dropped,
+  the URLSearchParams constructor: null, an `ISearchParams`, a string (one leading `?` dropped,
   `&`-separated, `+` and percent escapes decoded), a dictionary, a sequence of key/value pairs, tuples
   or two-element lists, and any other object, whose members it declares itself stand for a plain object's
   own enumerable ones, in declaration order. A value is stringified as JavaScript's `String` does: `null`
