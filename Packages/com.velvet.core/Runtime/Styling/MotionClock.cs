@@ -9,12 +9,14 @@ namespace Velvet
     /// <see cref="TransitionType.Bezier"/> variant play, its <see cref="StyleTransitionConfig.DelaySec"/>
     /// included, and the <c>animate-*</c> loops. A
     /// <see cref="TransitionType.Tween"/> hands its interpolation to UI Toolkit's own transitions, which no clock
-    /// chosen here reaches. <c>Documentation~/motion.md</c> owns the full scope.
+    /// chosen here reaches; a mount on any other clock than <see cref="Realtime"/> warns once when one plays.
+    /// <c>Documentation~/motion.md</c> owns the full scope.
     /// </summary>
     /// <remarks>
     /// Derive from this class for a clock the application controls itself — one a frame-step capture advances by
-    /// a fixed amount, for instance. A play steps by the distance <see cref="NowSec"/> moved since the frame
-    /// before, so a clock that does not move holds every play on it where it is.
+    /// a fixed amount, for instance. On any clock but <see cref="Realtime"/>, a spring or bezier play steps by
+    /// the distance <see cref="NowSec"/> moved since its previous tick, and an <c>animate-*</c> loop shows the
+    /// phase of the distance since it started, so a clock that does not move holds both where they are.
     /// </remarks>
     public abstract class MotionClock
     {
@@ -26,8 +28,8 @@ namespace Velvet
         public static MotionClock Realtime { get; } = new RealtimeClock();
 
         /// <summary>
-        /// Reads <c>Time.timeAsDouble</c>, so a play moves only as far as the game's own scaled time has moved —
-        /// for UI motion that should keep pace with gameplay.
+        /// Reads <c>Time.timeAsDouble</c>, so a spring or bezier play and an <c>animate-*</c> loop move only as far
+        /// as the game's own scaled time has moved — for UI motion that should keep pace with gameplay.
         /// </summary>
         public static MotionClock GameTime { get; } = new GameTimeClock();
 
@@ -39,8 +41,8 @@ namespace Velvet
         /// <summary>The clock's current reading, in seconds. Only differences between readings are used.</summary>
         public abstract double NowSec { get; }
 
-        // True for Realtime alone: its spring and bezier plays step by the panel scheduler's interval rather than
-        // by NowSec, the clock their scheduled items fire on (StyleAnimationScheduler.StartSpringTick).
+        // True for Realtime alone: its spring and bezier plays step by the panel scheduler's interval, the time
+        // their scheduled items fire on, rather than by NowSec (StyleAnimationScheduler.StartSpringTick).
         internal virtual bool StepsOnPanelTime => false;
 
         private sealed class RealtimeClock : MotionClock

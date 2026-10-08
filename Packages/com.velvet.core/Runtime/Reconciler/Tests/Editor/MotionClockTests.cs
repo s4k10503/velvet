@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -132,6 +133,86 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(element.style.opacity.value, Is.EqualTo(0.016f).Within(1e-5f));
+        }
+
+        private static readonly StyleTransitionConfig s_tween = new()
+        {
+            DurationSec = 0.3f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+        };
+
+        private static int TweenClockWarnings(System.Action play)
+        {
+            var count = 0;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains("does not follow this mount's MountOptions.MotionClock"))
+                {
+                    count++;
+                }
+            }
+            Application.logMessageReceived += OnLog;
+            try
+            {
+                play();
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+            return count;
+        }
+
+        [Test]
+        public void Given_AHeldClock_When_TwoTweenEntersPlay_Then_OneWarningSaysTheyDoNotFollowIt()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler { Clock = new HeldClock() };
+            var first = OnPanel("first");
+            var second = OnPanel("second");
+
+            // Act
+            var warnings = TweenClockWarnings(() =>
+            {
+                _scheduler.PlayVariantEnter(first, new[] { "opacity-0" }, new[] { "opacity-100" }, s_tween);
+                _scheduler.PlayVariantEnter(second, new[] { "opacity-0" }, new[] { "opacity-100" }, s_tween);
+            });
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHeldClock_When_ATweenExitPlays_Then_AWarningSaysItDoesNotFollowIt()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler { Clock = new HeldClock() };
+            var element = OnPanel("leaving");
+
+            // Act
+            var warnings = TweenClockWarnings(() =>
+                _scheduler.PlayExit(element, s_tween, onComplete: null, restoreFromOnCancel: true));
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_TheDefaultClock_When_TweenPlaysRun_Then_NoClockWarningIsLogged()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var entering = OnPanel("entering");
+            var leaving = OnPanel("leaving");
+
+            // Act
+            var warnings = TweenClockWarnings(() =>
+            {
+                _scheduler.PlayVariantEnter(entering, new[] { "opacity-0" }, new[] { "opacity-100" }, s_tween);
+                _scheduler.PlayExit(leaving, s_tween, onComplete: null, restoreFromOnCancel: true);
+            });
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(0));
         }
 
         [Test]

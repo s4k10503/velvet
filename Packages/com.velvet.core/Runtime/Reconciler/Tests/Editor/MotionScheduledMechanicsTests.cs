@@ -4559,7 +4559,7 @@ namespace Velvet.Tests
             Assert.That(element.ClassListContains("opacity-0"), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): a delayed bezier play on the default clock waits on the panel's time.
+        // GREEN_ON_BASE(characterization): a delayed bezier play on the default clock honours its delay.
         [Test]
         public void Given_ADelayedBezierPlayOnTheDefaultClock_When_LessThanTheDelayHasPassed_Then_ItHasNotMoved()
         {
@@ -4581,6 +4581,32 @@ namespace Velvet.Tests
             var opacity = element.style.opacity;
             scheduler.CancelAll();
             Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the default clock counts a delay on the panel's own time, which the
+        // simulated frames below carry past it; a delay counted on wall time would still be waiting unless the
+        // frames took half a second to run.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_MoreThanTheDelayHasPassedOnThePanel_Then_ItHasMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 40; i++) Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
         }
 
         [Component]

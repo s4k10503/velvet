@@ -4,4 +4,5 @@
   delays and its `animate-*` loops advance on. `MotionClock.GameTime` reads `Time.timeAsDouble`, so that motion
   moves only as far as game time does; a class deriving from `MotionClock` is a clock the application steps
   itself, such as for a frame-step capture. `MotionClock.Realtime`, the default, keeps the timing a tree had
-  before. A `Tween` transition runs on UI Toolkit's own transitions, which no clock reaches.
+  before. A `Tween` transition runs on UI Toolkit's own transitions, which no clock reaches, and a mount on
+  any other clock logs a warning saying so the first time a `Tween` plays in it.

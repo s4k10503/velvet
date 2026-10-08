@@ -474,8 +474,10 @@ A mount chooses the clock its driven motion advances on, through `MountOptions.M
 V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
 ```
 
-A play steps by the distance `MotionClock.NowSec` moved since the frame before, so a clock that holds
-still holds every play on it where it is, and one that moves a frame's worth moves them a frame's worth.
+On any clock but `MotionClock.Realtime`, a `Spring` or `Bezier` play steps by the distance
+`MotionClock.NowSec` moved since its previous tick, and an `animate-*` loop shows the phase of the distance
+since it started, so a clock that holds still holds them where they are, and one that moves a frame's
+worth moves them a frame's worth.
 
 - `MotionClock.Realtime`, the default: spring and bezier plays step by the panel scheduler's own
   interval, and the `animate-*` loops by `Time.realtimeSinceStartupAsDouble`.
@@ -486,11 +488,12 @@ still holds every play on it where it is, and one that moves a frame's worth mov
 The clock governs a `Spring` or `Bezier` variant play, enter or exit, including the wait for its
 `DelaySec` and stagger slot, and the `animate-*` loops. It does not reach a `Tween`, the default `Type`,
 which hands its interpolation to UI Toolkit's own transitions on the panel's time — a play that has to
-hold with the clock is a `Spring` or a `Bezier`. A `layoutId` move, a `filter-*` transition and
+hold with the clock is a `Spring` or a `Bezier`. A mount whose clock is not `MotionClock.Realtime` logs a
+warning saying so the first time a `Tween` plays in it. A `layoutId` move, a `filter-*` transition and
 `Hooks.UseFrame` keep their own time sources too, and so does `Hooks.UseAnimationSequence`'s walk from
 step to step, which `UseFrame` drives, while the label swap a step makes is a variant play governed as above.
-
-This is a Velvet addition: Framer Motion offers no clock choice.
+`UseFrame` steps on the panel's time, so while the clock holds still a sequence's holds keep running out
+and its steps keep arriving, while the `Spring` and `Bezier` plays those steps start stay frozen.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 

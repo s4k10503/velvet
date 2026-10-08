@@ -56,6 +56,7 @@ namespace Velvet
 
         // Set once by the mount before its first render, which is what lets a mount enter take it.
         internal MotionClock Clock { get; set; } = MotionClock.Realtime;
+        private bool _warnedTweenOffClock;
 
         // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
         // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
@@ -217,6 +218,7 @@ namespace Velvet
             {
                 return;
             }
+            WarnTweenOffClockOnce();
 
             // Cancel any existing enter animation.
             CancelEnter(element);
@@ -430,6 +432,7 @@ namespace Velvet
             {
                 return;
             }
+            WarnTweenOffClockOnce();
 
             // Cancel any existing exit animation.
             CancelExit(element);
@@ -1323,6 +1326,21 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros.
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
+
+        // Once per scheduler, and a mount owns one: a tween's interpolation is UI Toolkit's own transition, which
+        // the mount's clock cannot step.
+        private void WarnTweenOffClockOnce()
+        {
+            if (_warnedTweenOffClock || Clock.StepsOnPanelTime)
+            {
+                return;
+            }
+            _warnedTweenOffClock = true;
+            FiberLogger.LogWarning("Motion",
+                "A Tween transition plays on UI Toolkit's own transitions, on the panel's time, and does not follow "
+                + "this mount's MountOptions.MotionClock. Use Type = TransitionType.Bezier or TransitionType.Spring "
+                + "for a play that follows the clock.");
+        }
 
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {
