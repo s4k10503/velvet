@@ -227,14 +227,13 @@ namespace Velvet
         /// Router's 405 error.
         /// </summary>
         /// <param name="formData">What the submission sends. A <c>get</c> submission takes an
-        /// <see cref="ISearchParams"/> or null.</param>
+        /// <see cref="ISearchParams"/> or null; anything else commits React Router's error for a body it cannot
+        /// encode, as <c>routing.md</c> describes.</param>
         /// <param name="options">How to submit; null takes every default. A null
         /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
         /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
         /// <returns>The outcome, as <see cref="NavigateAsync(string, NavigationMode, CancellationToken)"/> reports
         /// it. A failure an action or a method commits reports <see cref="NavigationResult.Success"/>.</returns>
-        /// <exception cref="ArgumentException">A <c>get</c> submission's form data is not an
-        /// <see cref="ISearchParams"/>.</exception>
         public VelvetTask<NavigationResult> SubmitAsync(
             object? formData,
             SubmitOptions? options = null,
@@ -254,11 +253,10 @@ namespace Velvet
             var path = action;
             if (submission.Method == "GET")
             {
-                if (formData is not (null or ISearchParams))
+                if (submission.Refusal == null)
                 {
-                    throw new ArgumentException("A get submission sends an ISearchParams.", nameof(formData));
+                    path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery((ISearchParams)formData!);
                 }
-                path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery((ISearchParams)formData!);
             }
             // React Router replaces on a mutation submitted to the location it is on, so the entry the form was
             // on is not left under the one it produced.
@@ -1082,7 +1080,8 @@ namespace Velvet
             internal readonly string Action;
             internal readonly object? FormData;
             internal readonly bool? Replace;
-            // React Router's 405 for a method no form takes, committed in place of an action's result.
+            // React Router's error for a method no form takes (405) or a get body that is no query string (400),
+            // committed in place of an action's result.
             internal readonly Exception? Refusal;
 
             internal Submission(string method, string action, object? formData, bool? replace)
@@ -1096,14 +1095,19 @@ namespace Velvet
                 {
                     Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
                 }
+                else if (Method == "GET" && formData is not (null or ISearchParams))
+                {
+                    Refusal = new InvalidOperationException("Unable to encode submission body");
+                }
             }
 
             private static readonly string[] FormMethods = { "GET", "POST", "PUT", "PATCH", "DELETE" };
 
-            // A method no form takes runs no action and its refusal takes the action's place.
-            internal bool Runs => Method != "GET";
+            // A refused submission runs no action and its refusal takes the action's place. A get that is not
+            // refused runs nothing at all.
+            internal bool Runs => Method != "GET" || Refusal != null;
 
-            internal bool IsMutation => Runs && Refusal == null;
+            internal bool IsMutation => Method != "GET" && Refusal == null;
         }
 
         // React Router's getTargetMatch: the leaf index route when the query string holds a bare index,

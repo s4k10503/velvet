@@ -367,16 +367,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGetSubmissionOfSomethingOtherThanSearchParams_When_Submitted_Then_ItThrows()
+        public void Given_AGetSubmissionOfSomethingOtherThanSearchParams_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
 
             // Act
-            TestDelegate submit = () => router.SubmitAsync("lamp", new SubmitOptions { Action = "/items" });
+            Submit(router, "lamp", new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.Throws<ArgumentException>(submit);
+            Assert.That(
+                (router.CurrentLocation!.Path, router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+                Is.EqualTo(("/items", "Unable to encode submission body", false)));
         }
 
         [Test]
