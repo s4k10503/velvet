@@ -193,6 +193,7 @@ namespace Velvet
         public Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn { get; set; } = null!;
         public Action<TData, TVariables>? OnSuccess { get; set; }
         public Action<Exception, TVariables>? OnError { get; set; }
+        public RetryPolicy? Retry { get; set; }
         // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
         // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
         // instead: a call writes only while it still holds the current value, and Reset advances that too,

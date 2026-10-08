@@ -27,7 +27,16 @@ namespace Velvet
     public sealed record MutationOptions<TVariables, TData>(
         Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
         Action<TData, TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null);
+        Action<Exception, TVariables>? OnError = null)
+    {
+        /// <summary>
+        /// Retries a failed <see cref="MutationFn"/> within the same call: nothing is committed between
+        /// attempts, and <see cref="OnSuccess"/> / <see cref="OnError"/> run once, for the last attempt's
+        /// outcome. When null, the default, a failure is not retried, as TanStack Query's mutations default
+        /// to <c>retry: 0</c>.
+        /// </summary>
+        public RetryPolicy? Retry { get; init; }
+    }
 
     /// <summary>
     /// Options for a void mutation that takes <typeparamref name="TVariables"/> input but returns no data.
@@ -36,7 +45,11 @@ namespace Velvet
     public sealed record MutationOptions<TVariables>(
         Func<TVariables, CancellationToken, VelvetTask> MutationFn,
         Action<TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null);
+        Action<Exception, TVariables>? OnError = null)
+    {
+        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
+        public RetryPolicy? Retry { get; init; }
+    }
 
     /// <summary>
     /// Options for a void mutation that takes no input and returns no data. Common for "save current state" /
@@ -45,7 +58,11 @@ namespace Velvet
     public sealed record MutationOptions(
         Func<CancellationToken, VelvetTask> MutationFn,
         Action? OnSuccess = null,
-        Action<Exception>? OnError = null);
+        Action<Exception>? OnError = null)
+    {
+        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
+        public RetryPolicy? Retry { get; init; }
+    }
 
     /// <summary>
     /// Mutation handle returned by <see cref="Hooks.UseMutation{TVariables, TData}"/>. Exposes

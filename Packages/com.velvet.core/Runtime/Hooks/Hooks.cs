@@ -1954,6 +1954,7 @@ namespace Velvet
                     MutationFn = options.MutationFn,
                     OnSuccess = options.OnSuccess,
                     OnError = options.OnError,
+                    Retry = options.Retry,
                 };
                 slot.Result.MutateAction = variables => RunMutationAsync(fiber, slot, variables, rethrowOnFailure: false).Forget();
                 slot.Result.MutateAsyncFunc = variables => RunMutationAsync(fiber, slot, variables, rethrowOnFailure: true);
@@ -1972,6 +1973,7 @@ namespace Velvet
             typed.MutationFn = options.MutationFn;
             typed.OnSuccess = options.OnSuccess;
             typed.OnError = options.OnError;
+            typed.Retry = options.Retry;
             return typed.Result;
         }
 
@@ -1990,7 +1992,7 @@ namespace Velvet
                     return Unit.Default;
                 },
                 OnSuccess: options.OnSuccess is { } onSuccess ? (_, v) => onSuccess(v) : null,
-                OnError: options.OnError));
+                OnError: options.OnError) { Retry = options.Retry });
         }
 
         /// <summary>
@@ -2008,7 +2010,7 @@ namespace Velvet
                     return Unit.Default;
                 },
                 OnSuccess: options.OnSuccess is { } onSuccess ? (_, _) => onSuccess() : null,
-                OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null));
+                OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null) { Retry = options.Retry });
         }
 
         // rethrowOnFailure distinguishes the two call shapes: mutateAsync (true) returns a task its caller
@@ -2041,7 +2043,9 @@ namespace Velvet
 
             try
             {
-                var data = await slot.MutationFn(variables, cts.Token);
+                var data = await (slot.Retry is { } retry
+                    ? retry.RunWithStateAsync(slot.MutationFn, variables, cts.Token)
+                    : slot.MutationFn(variables, cts.Token));
                 if (fiber.IsDisposed) return data;
                 // The handler runs before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess reads is the handle as it stands rather than its own
