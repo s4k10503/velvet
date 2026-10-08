@@ -141,6 +141,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASliderShowingItsInputField_When_HomeIsPressedInTheFieldsTextElement_Then_TheTextElementReceivesTheKey()
+        {
+            // Arrange
+            var slider = Mount(V.Slider(value: Start, lowValue: Low, highValue: High,
+                onCreated: element => ((Slider)element).showInputField = true));
+            var text = slider.Q(className: Slider.textFieldClassName).Q<TextElement>();
+            var received = new List<KeyCode>();
+            text.RegisterCallback<KeyDownEvent>(evt => received.Add(evt.keyCode), TrickleDown.TrickleDown);
+
+            // Act
+            PressKey(text, KeyCode.Home);
+
+            // Assert
+            Assert.That(string.Join("|", received), Is.EqualTo(KeyCode.Home.ToString()));
+        }
+
+        [Test]
         public void Given_AHorizontalSlider_When_ALaterRenderChangesItsValueDirectionAndFlag_Then_OnValueChangedIsNotCalled()
         {
             // Arrange
