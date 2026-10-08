@@ -38,6 +38,7 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 | `useContext(Context)` | `Hooks.UseContext(context)` | React parity. Propagates Provider value changes live (a masked consumer — shadowed by an inner Provider — is still re-rendered, but it live-reads the same value, so the reconciler diffs it to a no-op) |
 | `useTransition()` | `Hooks.UseTransition()` | React parity on the returned tuple: `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]`. The callback marks the updates it schedules synchronously, whichever component owns the state they write — a setter received as a prop included, and a starter still held after the component that declared it unmounted — matching React's ambient transition flag. That last case marks the writes without lighting an `isPending` nobody is left to render. As in React, the marking ends where the callback hands control back — for an `async` action, the point it first suspends: it keeps `isPending` true until the task completes, but an update it makes after an `await` that suspended it falls outside the scope its callback opened, so that update takes the Normal lane unless it lands in some other scope — a discrete handler's, or a further `startTransition` call, which is what React's reference tells callers to write for them. An `await` of a `VelvetTask` suspends even where the task had already completed, as JavaScript's `await` resumes in a microtask once the code that called `startTransition` has returned: inside a discrete handler the continuation runs after the handler returns and ahead of the handler's flush, and elsewhere on the main thread's next tick, so the update after it falls outside the scope. An `await` of a completed `Task`, a ValueTask or `Awaitable` does not suspend, because C# continues inline wherever an awaiter it is handed reports completion and those awaiters are not Velvet's: the callback runs on past such an await still inside the scope, and that update is a transition, with `isPending` staying lit until it commits. Wrapping post-`await` updates in the starter makes the two paths agree, since a joined call is a transition on both. An error the callback throws, or an `async` action faults with, is not seen by the caller: it is thrown from the declaring component's next Transition-lane render to the error boundary above it, as React's `startTransition` dispatches it as the `isPending` update where the callback returns. The outcome rendered is that of the call whose callback returned last, an `async` action's included: a later call takes down an error not yet rendered, and an action that settles after a later call returned is not rendered. Once the declaring component has unmounted, the error is dropped, as React's dispatch to an unmounted component does nothing. An update from elsewhere that lands while the action awaits keeps its own priority, discrete input included, and a second `UseTransition()` slot started there is an independent transition with its own `isPending`. `isPending` follows the updates the slot's own callback scheduled, not the Transition lane: a synchronous callback that scheduled no update settles as soon as it returns, and a `UseDeferredValue` in the same component holding that lane does not keep the flag lit. Where those updates landed on other components, the flag stays lit until each of them has discharged that work — committed through its terminal reconcile slice, unmounted with no commit left to make, or had the scheduler drop it at the update-depth cap; two such components wait on each other, so what settles them is the last of those commits rather than the first. For an `async` action the flag stays lit until the task completes as well, and the declaring component re-renders once whichever of the two lands last. **Velvet deviation:** nothing renders purely because `isPending` turned true, where React re-renders the component on that alone. Whichever render some other cause already produces while the transition is open is what observes the flag here — the urgent update a click also makes, an ancestor's pass, a flush the callback itself reaches, the commit of one of two components it enrolled — and where nothing produces one, the first render the component gets is the one committing the transition with the flag still lit. The terminal commit then asks for the render that takes it down. An `async` action that suspends shows it from the commit of the work its callback queued until its task completes; one that never suspends is the synchronous case. A same-starter async call joined before an outer action completes keeps that lifecycle open until the joined call completes too |
 | `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render, while a render on the Transition lane commits and returns the value it is handed — a value built afresh on every render included; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is `Object.is`, the same default comparer as `Hooks.UseStore`, with no comparer argument of its own |
+| `useSyncExternalStore(subscribe, getSnapshot)` | `Hooks.UseSyncExternalStore<T>(subscribe, getSnapshot)` | Reads a store Velvet does not own: `subscribe` takes the change callback and returns the unsubscribe action, and `getSnapshot` must return a cached snapshot. Velvet's `Store<T>` keeps `Hooks.UseStore`. See [External stores](#external-stores) for subscription identity, the main-thread rule and lanes |
 | `useRef()` | Inside a component: `Hooks.UseRef<T>()` / outside a component (e.g. orchestrator): `new Ref<T>()` | For parent→child ref forwarding, pass the orchestrator-side `new Ref<T>()` to the `V.Component<TRef>(body, componentRef, key)` overload |
 | `useImperativeHandle(ref, createHandle, deps?)` | `Hooks.UseImperativeHandle<THandle>(handleRef, factory)` / `Hooks.UseImperativeHandle<THandle>(handleRef, factory, deps)` | React parity. Builds a handle via `factory` and writes it into the `Ref<THandle>` the parent forwarded through `componentRef:` (read back inside the child with `ForwardedRef<T>()`); omitting `deps` re-invokes `factory` every render, same as passing no deps array in React |
 | `useId()` | `Hooks.UseId(prefix?)` | React parity. Stable ID tied to the component instance and hook-slot position — same value across re-renders, distinct across instances/slots — for label/field association or `aria-*` attributes. Format is `:r{hex}:` (or `{prefix}:r{hex}:`), the same colon-wrapped shape React emits; a `prefix` is honored only on the first render |
@@ -370,6 +371,80 @@ equal content re-renders. Passing `EqualityComparer<TSel>.Default` as the third 
 that; for a string selector, or a value-type selector other than `float`/`double` — a `record struct`
 included — it changes nothing: `Object.is` already gives the same answer as that comparer for both. The
 `comparer` parameter points at `StateUpdater<T>`'s remarks, which state each branch.
+
+#### External stores
+
+State that lives outside Velvet — a model object of the game, a service raising its own change
+notifications — is read with `Hooks.UseSyncExternalStore`, without mirroring it into a `Store<T>` first:
+
+```csharp
+public sealed class Inventory
+{
+    private readonly List<Action> _listeners = new();
+    public IReadOnlyList<Item> Items { get; private set; } = Array.Empty<Item>();
+
+    public Action Subscribe(Action onStoreChange)
+    {
+        _listeners.Add(onStoreChange);
+        return () => _listeners.Remove(onStoreChange);
+    }
+
+    public IReadOnlyList<Item> GetSnapshot() => Items;
+
+    public void Add(Item item)
+    {
+        Items = Items.Append(item).ToArray(); // a new snapshot only when the contents change
+        foreach (var listener in _listeners.ToArray()) listener();
+    }
+}
+
+[Component]
+private static VNode InventoryCountRender()
+{
+    var inventory = Hooks.UseContext(InventoryContext);
+    var items = Hooks.UseSyncExternalStore(inventory.Subscribe, inventory.GetSnapshot);
+    return V.Label(text: items.Count.ToString());
+}
+```
+
+It follows React's `useSyncExternalStore`:
+
+- **Snapshots are compared with `Object.is` and must be cached.** A notification re-renders the
+  component when `getSnapshot` then returns a value that is not `Object.is`-equal to the one it last
+  rendered, or throws (the render repeats the call, so the exception reaches the error boundary). So
+  `getSnapshot` returns the same instance until the store changes, and in the Editor the hook logs an
+  error the first time two consecutive reads in one render differ. A `getSnapshot` that projects a field
+  (`() => model.Current.Count`) re-renders when that field changes, not when another one does. A render
+  that returns another snapshot than the previous one, or that subscribes, checks the snapshot again
+  once it commits, so a `getSnapshot` that builds a new snapshot on every read
+  re-renders the component after every render until the scheduler's update-depth limit drops the update
+  and logs an error.
+- **`subscribe` is called on mount and whenever its identity changes.** The hook compares it with the
+  previous render's using delegate equality, so a method group on the same instance
+  (`inventory.Subscribe`) keeps one subscription across renders, while a lambda capturing a local is a
+  new closure every render and re-subscribes every render, as an inline subscribe function does in
+  React; the StrictMode diagnostic render does not subscribe. Switching to another store's `subscribe`
+  removes the previous subscription first. Unmounting removes it; an unsubscribe that throws there is
+  handled as a throwing effect cleanup is, and the component's other subscriptions are still removed. A change the store raises while
+  `subscribe` runs is rendered by the render that subscribed.
+- **The change callback must be invoked on the Unity main thread.** Invoked from another thread it
+  throws `InvalidOperationException` back to the invoker and schedules nothing; marshal the
+  notification to the main thread first. The re-render it schedules takes the Urgent lane and never the
+  Transition lane, including when the store is mutated inside `startTransition`. The scheduler flushes
+  it from the main thread's posted work rather than waiting for its next frame-boundary callback.
+- **Readers in one drain pass see one snapshot.** Within a pass, readers passing equal `getSnapshot`
+  delegates — the same method group on the same instance — read the snapshot the pass's first read
+  pinned, even when the store changes partway through it, the same guarantee `Hooks.UseStore` gives
+  readers of one `Store<T>`; the change re-renders them in a later pass, which pins afresh, the delayed
+  tier's included. A reader that first subscribes after the store moved
+  past the pin renders the pin, then asks for that re-render itself once the render commits. Readers
+  holding different closures are not pinned to each other. A render outside a drain — the initial
+  mount, a synchronous flush, or a time-sliced render resumed after its drain returned — reads the
+  live snapshot, and so does a render whose `subscribe` raises a change while it runs. The scheduler's
+  resume of a parked time-sliced pass flushes such a re-render first, so readers the pass committed in an
+  earlier slice show the changed snapshot before the next slice renders it.
+
+For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selector and a comparer.
 
 ### 1-4. What a dependency list means
 
