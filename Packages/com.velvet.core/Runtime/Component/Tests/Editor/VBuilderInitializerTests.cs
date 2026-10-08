@@ -148,6 +148,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_VTextFieldWithMultilineAndKeyboardKnobs_When_Built_Then_TheSettingsCarryEach()
+        {
+            // Arrange
+            var builder = new VTextField("field")
+            {
+                Multiline = true,
+                KeyboardType = UnityEngine.TouchScreenKeyboardType.NumberPad,
+                AutoCorrection = false,
+            };
+
+            // Act
+            var node = builder.Build();
+
+            // Assert
+            Assert.That(
+                ((ElementNode)node).Props!.TextField,
+                Is.EqualTo(new TextFieldSettings
+                {
+                    Multiline = true,
+                    KeyboardType = UnityEngine.TouchScreenKeyboardType.NumberPad,
+                    AutoCorrection = false,
+                }));
+        }
+
+        [Test]
         public void Given_VSliderBuilder_When_Built_Then_ProducesSliderElementType()
         {
             VNode node = new VSlider("slider") { Value = 0.5f, LowValue = 0f, HighValue = 1f };

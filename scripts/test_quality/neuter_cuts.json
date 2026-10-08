@@ -594,6 +594,30 @@
       ]
     },
     {
+      "name": "pointer-events-parser",
+      "mechanism": "pointer-events",
+      "summary": "the pointer-events class reader declares nothing for any class list",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StylePointerEventsClass.cs",
+          "anchor": "public static PointerEventsMode Read(string[] classNames)",
+          "neuter": "return PointerEventsMode.Inherit;"
+        }
+      ]
+    },
+    {
+      "name": "pointer-events-walk",
+      "mechanism": "pointer-events",
+      "summary": "a pointer-events scope takes and drops no hold when it is walked",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/PointerEventsScope.cs",
+          "anchor": "public void Sync()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
       "name": "filter-transition-applier",
       "mechanism": "filter-transition",
       "summary": "no filter tween is bound, by the reconciler at create or at patch or by the write hook, and the write hook starts and redirects none",
@@ -671,6 +695,33 @@
       "cuts": [
         "balance-attach",
         "balance-apply"
+      ],
+      "caseScopes": [],
+      "platform": "PlayMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsUtilityTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsPanelTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsHoverPlaybackTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
       ],
       "caseScopes": [],
       "platform": "PlayMode"

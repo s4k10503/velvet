@@ -124,9 +124,10 @@ Four consequences worth knowing:
   either one important changes nothing — there is no property set to rank them by. Use the
   arbitrary-value form where the family has one, or compute the class string in C# and render exactly
   one member.
-- **`has-[.foo]:` still sees a class that lost.** A `.foo` written in a descendant's `className`
+- **`has-[.foo]:` matches what the className wrote.** A `.foo` written in a descendant's `className`
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
-  however the cascade ranks `.foo`'s declarations.
+  however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
+  descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
@@ -260,9 +261,10 @@ payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it reso
 utilities have to be re-derived when the variant toggles.
 
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
-utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the
-wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
-`from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the picking
+Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
+([styling-pointer-events.md](styling-pointer-events.md)); the wrapper-less paints — `skew-*`,
+`shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,

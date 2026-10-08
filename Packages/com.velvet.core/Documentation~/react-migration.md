@@ -33,11 +33,11 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 | `useEffect(fn, deps)` | `Hooks.UseEffect(fn, deps)` | Nearly equivalent. Runs asynchronously after paint, at the next frame boundary. 2-pass cleanup → effect ordering |
 | `useLayoutEffect(fn, deps)` | `Hooks.UseLayoutEffect(fn, deps)` | Nearly equivalent. Runs synchronously immediately after reconcile. For DOM measurement and layout adjustment |
 | `useInsertionEffect(fn, deps)` | `Hooks.UseInsertionEffect(fn, deps)` | Nearly equivalent. Runs synchronously after render, before every `UseLayoutEffect` of the same commit. For style injection; must not read layout or refs |
-| `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | React parity. Returns `(optimisticState, addOptimistic)`; the optimistic override is discarded once the pass-through state changes |
+| `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | Returns `(optimisticState, addOptimistic)`. Every render folds the pass-through state through the outstanding entries in the order `addOptimistic` received them, so an entry still outstanding lands on the authoritative state as it now is rather than on the state it was added over. An entry added while a `startTransition` callback runs — an `async` action's up to the point it first suspends — belongs to the innermost transition open there whose `isPending` is lit, and is discarded when that transition settles, or when no `async` action is left in flight (below): whether or not the pass-through state changed, and whether the action succeeded or faulted. An entry added where no such transition is open while an `async` action is in flight — that action's own code past a suspension included — belongs to every action in flight together. As in React, the actions in flight are entangled: a transition that settles while any is in flight hands its entries to them, so they are discarded once none is left, the last completing. An action counts from its start until its task completes, whether or not the component that started it is still mounted, as React's entangled scope waits on the promise: one awaiting a task that never completes holds every later transition's entries, its component's unmount included, until the next Play Mode entry. Before this an unmount gave the action up. The render `addOptimistic` requests is an ordinary one at the priority a setter called there would take outside a transition, so the value shows before the transition commits; an entry whose transition settles before any render showed it — a synchronous callback that queued nothing — is shown by that render and discarded by the component's next Transition-lane render. An entry nothing owns is discarded by the component's next Transition-lane render too; added outside every `startTransition` callback it logs a warning in the editor, and added in a callback whose starter's component has unmounted it does not. A Transition-lane drain that lands the last work a transition queued renders the component it drains, and any component its pass renders, without that transition's entries, so that commit already shows them gone as React's revert lane does. **Velvet deviation:** the work a transition queued commits one component at a time, so where it ends on a component that neither holds the entries nor renders the one that does, the entries are taken down by the render the settle requests, after that commit. The same holds where the work ended on a component and on a descendant its pass subsumes: the components rendered ahead of the descendant still show the entries in that commit, and the descendant leaves them out |
 | `useCallback(fn, deps)` | `Hooks.UseCallback(fn, deps)` | Nearly equivalent. In a C# 9 assembly the type argument is inferred for a parameterless `Action` lambda or method group, and for a lambda with typed parameters that is a `Func` of one to three parameters or an `Action` of two or three. Every other lambda or method group takes it explicitly there, as `Hooks.UseCallback<T>(fn, deps)`: a parameterless `Func`, a one-parameter `Action`, a lambda with untyped parameters, a method group with parameters, and a lambda of any other delegate type. A value that already has a delegate type — a delegate variable, or a cast lambda — takes no type argument either: it binds the overload named for its shape where there is one, and `UseCallback<T>` otherwise. No overload takes one type argument, since beside `UseCallback<T>` it would be a candidate for every such explicit call and take some of them over |
 | `useContext(Context)` | `Hooks.UseContext(context)` | React parity. Propagates Provider value changes live (a masked consumer — shadowed by an inner Provider — is still re-rendered, but it live-reads the same value, so the reconciler diffs it to a no-op) |
 | `useTransition()` | `Hooks.UseTransition()` | React parity on the returned tuple: `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]`. The callback marks the updates it schedules synchronously, whichever component owns the state they write — a setter received as a prop included, and a starter still held after the component that declared it unmounted — matching React's ambient transition flag. That last case marks the writes without lighting an `isPending` nobody is left to render. As in React, the marking ends where the callback hands control back — for an `async` action, the point it first suspends: it keeps `isPending` true until the task completes, but an update it makes after an `await` that suspended it falls outside the scope its callback opened, so that update takes the Normal lane unless it lands in some other scope — a discrete handler's, or a further `startTransition` call, which is what React's reference tells callers to write for them. An `await` of a `VelvetTask` suspends even where the task had already completed, as JavaScript's `await` resumes in a microtask once the code that called `startTransition` has returned: inside a discrete handler the continuation runs after the handler returns and ahead of the handler's flush, and elsewhere on the main thread's next tick, so the update after it falls outside the scope. An `await` of a completed `Task`, a ValueTask or `Awaitable` does not suspend, because C# continues inline wherever an awaiter it is handed reports completion and those awaiters are not Velvet's: the callback runs on past such an await still inside the scope, and that update is a transition, with `isPending` staying lit until it commits. Wrapping post-`await` updates in the starter makes the two paths agree, since a joined call is a transition on both. An error the callback throws, or an `async` action faults with, is not seen by the caller: it is thrown from the declaring component's next Transition-lane render to the error boundary above it, as React's `startTransition` dispatches it as the `isPending` update where the callback returns. The outcome rendered is that of the call whose callback returned last, an `async` action's included: a later call takes down an error not yet rendered, and an action that settles after a later call returned is not rendered. Once the declaring component has unmounted, the error is dropped, as React's dispatch to an unmounted component does nothing. An update from elsewhere that lands while the action awaits keeps its own priority, discrete input included, and a second `UseTransition()` slot started there is an independent transition with its own `isPending`. `isPending` follows the updates the slot's own callback scheduled, not the Transition lane: a synchronous callback that scheduled no update settles as soon as it returns, and a `UseDeferredValue` in the same component holding that lane does not keep the flag lit. Where those updates landed on other components, the flag stays lit until each of them has discharged that work — committed through its terminal reconcile slice, unmounted with no commit left to make, or had the scheduler drop it at the update-depth cap; two such components wait on each other, so what settles them is the last of those commits rather than the first. For an `async` action the flag stays lit until the task completes as well, and the declaring component re-renders once whichever of the two lands last. **Velvet deviation:** nothing renders purely because `isPending` turned true, where React re-renders the component on that alone. Whichever render some other cause already produces while the transition is open is what observes the flag here — the urgent update a click also makes, an ancestor's pass, a flush the callback itself reaches, the commit of one of two components it enrolled — and where nothing produces one, the first render the component gets is the one committing the transition with the flag still lit. The terminal commit then asks for the render that takes it down. An `async` action that suspends shows it from the commit of the work its callback queued until its task completes; one that never suspends is the synchronous case. A same-starter async call joined before an outer action completes keeps that lifecycle open until the joined call completes too |
-| `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is `Object.is`, the same default comparer as `Hooks.UseStore`, with no comparer argument of its own |
+| `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render, while a render on the Transition lane commits and returns the value it is handed — a value built afresh on every render included; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is `Object.is`, the same default comparer as `Hooks.UseStore`, with no comparer argument of its own |
 | `useRef()` | Inside a component: `Hooks.UseRef<T>()` / outside a component (e.g. orchestrator): `new Ref<T>()` | For parent→child ref forwarding, pass the orchestrator-side `new Ref<T>()` to the `V.Component<TRef>(body, componentRef, key)` overload |
 | `useImperativeHandle(ref, createHandle, deps?)` | `Hooks.UseImperativeHandle<THandle>(handleRef, factory)` / `Hooks.UseImperativeHandle<THandle>(handleRef, factory, deps)` | React parity. Builds a handle via `factory` and writes it into the `Ref<THandle>` the parent forwarded through `componentRef:` (read back inside the child with `ForwardedRef<T>()`); omitting `deps` re-invokes `factory` every render, same as passing no deps array in React |
 | `useId()` | `Hooks.UseId(prefix?)` | React parity. Stable ID tied to the component instance and hook-slot position — same value across re-renders, distinct across instances/slots — for label/field association or `aria-*` attributes. Format is `:r{hex}:` (or `{prefix}:r{hex}:`), the same colon-wrapped shape React emits; a `prefix` is honored only on the first render |
@@ -48,6 +48,9 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 > - `UseLayoutEffect` runs **synchronously before paint**. Use it only for DOM size measurement and layout adjustment
 > - `UseEffect` runs **asynchronously after paint** (at the next frame boundary). Network requests, subscriptions, and heavy work belong here
 > Note that writing heavy work in `UseLayoutEffect` blocks the frame
+
+> **Note — When Transition-lane work renders**  
+> An update `startTransition` marks and a `UseDeferredValue` derivation render with no fixed delay, as in React, and in a later panel scheduler pass than the urgent render that asked for them. What Velvet holds to is a later pass, not a later frame. A request made inside one of these callbacks, run by the scheduler of the panel the requesting tree is mounted on, renders on the next pass: Velvet's own render drains (so an urgent render one of them commits, reaching `UseDeferredValue`, and a Transition-lane render asking for another), the scheduled `UseEffect` drain, a time-sliced render's resume, the notification of a resource that resolved while its reader was rendering, and a `UseFrame` callback. A request made anywhere else renders on the pass after that: a discrete event handler, including the urgent render its synchronous flush commits (a search box's `UseDeferredValue`) and the `UseEffect`s it flushes before it starts; another panel's callbacks; Velvet's other scheduled work; and code outside every panel. Normal- and Urgent-lane work still queued when a transition drains commits first, in that same pass, and a component whose own deferred value is queued has it held back from an urgent pass that renders that component. An urgent update to a component whose deferred value is queued for the coming pass moves the deferred value to a later one; after `TransitionStarvationThreshold` (30) such moves it stays where it is and can commit in the same pass as an urgent update, so urgent work every frame cannot hold it back indefinitely.
 
 > **Note — `UseContext` live propagation (React parity)**  
 > Like React, Velvet's `UseContext` automatically re-renders consumers when the Provider's value changes.  
@@ -97,24 +100,84 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 
 | React Query | Velvet |
 |-------------|--------|
-| `useMutation({ mutationFn, onSuccess, onError })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...))` |
+| `useMutation({ mutationFn, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...) { OnSettled = ... })` |
+| `useMutation({ mutationFn, onMutate, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData, TContext>(MutationFn: ..., OnMutate: ..., OnSuccess: ..., OnError: ..., OnSettled: ...))` |
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
+| `mutate(variables, { onSuccess, onError, onSettled })` | `mutation.Mutate(variables, new MutateOptions<TVariables, TData> { OnSuccess = ..., OnError = ..., OnSettled = ... })`; `MutateAsync` takes the same second argument |
+
+**Lifecycle callbacks.** `OnMutate` runs when the call starts — after the handle has turned `Pending`
+with the call's `Variables`, before `MutationFn` — and what it returns is the context that call's
+`OnSuccess`, `OnError` and `OnSettled` receive. `OnSettled` runs on both paths, after `OnSuccess` or
+`OnError`: with the data and a null exception on success, with default data and the exception on
+failure. That is v5's order, and with it v5's optimistic-update recipe: snapshot and write the
+optimistic value in `OnMutate`, roll it back from the context in `OnError`, finish in `OnSettled`.
+Each call's context is its own, so overlapping calls never see each other's. The context-free option
+records carry `OnSettled` too, as an init-only property set in an object initializer; `OnMutate` and the
+context are only on `MutationOptions<TVariables, TData, TContext>`, which has no void form: a void
+mutation takes `Unit` as `TData` there and returns `Unit.Default`.
+
+```csharp
+// Loadout is a class, so a context OnMutate never returned arrives as null.
+var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
+    MutationFn: async (item, ct) =>
+    {
+        await inventoryApi.EquipAsync(item, ct);    // a VelvetTask
+        return Unit.Default;
+    },
+    OnMutate: item =>
+    {
+        var previous = inventory.Current.Loadout;   // snapshot
+        inventory.Equip(item);                      // optimistic write through a Store action
+        return previous;
+    },
+    OnError: (error, _, previous) =>
+    {
+        // An unmount cancelled the request: the server may have applied it, so reload rather than guess.
+        if (error is OperationCanceledException) { inventory.Reload(); return; }
+        if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
+    },
+    OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
+```
+
+**Per-call callbacks.** `Mutate` and `MutateAsync` take a `MutateOptions<TVariables, TData>` whose
+`OnSuccess`, `OnError` and `OnSettled` run after the hook options' own, once the call's outcome is on the
+handle, so they read `Status` / `Data` / `Error` as the call left them. As in v5, only the call the handle
+follows delivers them: a newer call, `Reset` and the component unmounting each drop them, while the hook
+options' callbacks still run. A throwing per-call callback is logged and costs neither the next one nor the
+outcome. Each receives the call's `OnMutate` result as an `object?`, null for the context-free option
+records, since the handle's type does not carry `TContext`.
+
+**Unmounting.** The callbacks of a call in flight still run after its component unmounts, as v5's
+option callbacks outlive the observer; only the handle is no longer written and the component no longer
+re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
+`MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
+`OnSettled` receive with the call's context, and `MutateAsync` rejects with that exception. One that
+ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`. A `MutateAsync`
+called after the unmount never starts and rejects with an `OperationCanceledException` too.
+A cancelled request may already have reached the server and been applied, so a cancellation does not say
+the write failed: rolling the optimistic value back on it can undo a write the server kept. Branch on
+`error is OperationCanceledException` in `OnError`, as the sample does, and reload the authoritative state
+there instead of restoring the snapshot.
+
+`OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
+synchronous.
 
 **Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
-delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
+delivers its own callbacks with its own context, and `Status` / `Data` / `Error` / `Variables` are one
 snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
 write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
 shows the previous one's result. Not cancelling on re-entry, following the newest, and clearing
 `Data` when a call starts are all v5's behaviour.
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
-only its variables. It is cancelled when the component unmounts, which is what a Unity web request
-wants, and it is never cancelled by a later call.
+its variables and a context of the query client, the mutation's `meta` and its `mutationKey`, with no
+cancellation signal. It is cancelled when the component unmounts (see **Unmounting** above), which is what
+a Unity web request wants, and it is never cancelled by a later call.
 
 **`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
 detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion
-and still delivers its own `OnSuccess` / `OnError`, but neither its result nor its failure reaches the
+and still delivers its own callbacks, but neither its result nor its failure reaches the
 handle, so resetting a save while it is in flight leaves the handle idle when the save lands.
 
 **When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
@@ -130,7 +193,9 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
-- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's, and `onSettled` still runs.
+- A throwing **`onMutate`** fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
+- A throwing **`onSettled`** follows the path it ran on. On success it fails the call as a throwing `onSuccess` does, so `onError` runs with its exception and `onSettled` runs a second time, with it — v5's order, since both handlers sit in the block its failure path catches. On failure it is logged as a throwing `onError` is, and the outcome stays the mutation's own.
 
 ### 1-3. State Management (React + Zustand)
 
@@ -225,22 +290,30 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("a <b>bold</b> word")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
+| `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
-`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
-null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
-member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
-a later render dropped goes back to the value the field carried before any render declared it. The
-three focus props follow the same rule — [focus.md](focus.md) states it for those.
+`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:`, `isDelayed:`, `multiline:`, `keyboardType:`
+and `autoCorrection:` are **undeclared** when null, not reset: null is not `placeholder=""`, not
+`maxLength: -1`, not `isReadOnly: false` and not `multiline: false`. A member no render has declared
+is left wherever a `refCallback:` put it, and one a render declared and a later render dropped goes
+back to the value the field carried before any render declared it. The three focus props follow the
+same rule — [focus.md](focus.md) states it for those.
 
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
-the flag off mid-edit receives the pending text rather than stranding it on screen.
+the flag off mid-edit receives the pending text rather than stranding it on screen. A render turning
+`multiline:` on leaves that pending text on screen too, still unreleased.
+
+UI Toolkit puts a field's `keyboardType` back to `Default` and its `autoCorrection` back to false when
+the field hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape). A
+declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
+field; one written from `refCallback:` is not.
 
 ### 2-2. Conditionals and Lists
 
