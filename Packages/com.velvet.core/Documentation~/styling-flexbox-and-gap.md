@@ -333,12 +333,13 @@ two divide what is left over after every sibling's basis is taken.
 ## A text item's margin, padding, wrapping and minimum size
 
 **Margin, padding, wrapping and shrinking.** Tailwind v4's preflight zeroes every element's margin and padding,
-and CSS starts every element at `white-space: normal` and `flex-shrink: 1`. Velvet's
+and CSS starts every element at `flex-shrink: 1` and, `white-space` being inherited, at its parent's. Velvet's
 `_preflight.uss` does it for the `Label` that a `V.Label`, a `V.Text` or `V.Custom<Label>` creates, by the
-class `velvet-label` those labels carry, and gives them all four values. The sheet is imported ahead of every
+class `velvet-label` those labels carry, and gives them all four values (`white-space: unset`, which takes
+the parent's, so a `whitespace-nowrap` on an ancestor still reaches the label). The sheet is imported ahead of every
 utility, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the label ties with it on specificity and wins on
-order. A label therefore wraps and shrinks by default, where a theme may have given it `nowrap` and
-`flex-shrink: 0`. A label centred in a box therefore sits on the
+order. A label therefore wraps (unless an ancestor says otherwise) and shrinks by default, where a theme may
+have given it `nowrap` and `flex-shrink: 0`. A label centred in a box therefore sits on the
 box's centre. A `Label` UI Toolkit builds inside its own control (a `V.TextField`'s label, a `V.Toggle`'s)
 and a `Button` keep the spacing the theme gives them, as an `<input>`'s label does on the web, where it is
 author markup.

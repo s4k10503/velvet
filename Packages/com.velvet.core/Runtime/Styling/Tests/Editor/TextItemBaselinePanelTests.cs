@@ -97,13 +97,47 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVelvetLabelWithNoUtilities_When_Resolved_Then_ItWrapsLikeCssNormalText()
+        public void Given_AVelvetLabelUnderAPlainDiv_When_Resolved_Then_ItWrapsLikeCssNormalText()
         {
             // Arrange / Act
             var label = MountLabel("flex flex-row", "", "text");
 
             // Assert
             Assert.That(label.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.Normal));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelUnderAWhitespaceNowrapDiv_When_Resolved_Then_ItInheritsNoWrap()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row whitespace-nowrap", "", "text");
+
+            // Assert
+            Assert.That(label.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.NoWrap));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelWhoseParentLosesWhitespaceNowrap_When_Reconciled_Then_ItWrapsAgain()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string parentClass) => new VNode[]
+            {
+                V.Div(parentClass, V.Label(text: "text")),
+            };
+            var before = Tree("flex flex-row whitespace-nowrap");
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+            var wasNoWrap = label.resolvedStyle.whiteSpace == WhiteSpace.NoWrap;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree("flex flex-row"));
+            Settle(label);
+
+            // Assert — the nowrap read is folded in: a label that never inherited it would wrap both times.
+            Assert.That((wasNoWrap, label.resolvedStyle.whiteSpace), Is.EqualTo((true, WhiteSpace.Normal)));
         }
 
         [Test]

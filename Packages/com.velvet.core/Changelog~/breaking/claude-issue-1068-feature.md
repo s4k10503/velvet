@@ -4,9 +4,9 @@
   padding, as Tailwind v4's preflight gives every element, through the class `velvet-label`. It used to keep
   the margin and padding the panel's theme gives a `Label`, so text centred in a box now sits on the box's
   centre and a layout that counted on that spacing loses it. A `p-*`, `m-*` or `px-[..]` on the label still
-  applies. The same class restores CSS's `white-space: normal` and `flex-shrink: 1`, so a label that a theme
-  kept on one line (`nowrap`, `flex-shrink: 0`) now wraps and shrinks; `whitespace-nowrap` and `shrink-0`
-  still apply. A `Label` UI Toolkit builds inside its own control, such as a `V.TextField`'s label, and a
+  applies. The same class takes CSS's `flex-shrink: 1` and the parent's `white-space`, so a label that a theme
+  kept on one line (`nowrap`, `flex-shrink: 0`) now wraps and shrinks, and a `whitespace-nowrap` on an
+  ancestor still reaches it; `whitespace-nowrap` and `shrink-0` on the label still apply. A `Label` UI Toolkit builds inside its own control, such as a `V.TextField`'s label, and a
   `Button` keep the theme's spacing. The reset the flexbox guide used to suggest for centred labels, which
   also set `flex-shrink: 0`, is no longer needed: the minimum size below replaces that half.
 
