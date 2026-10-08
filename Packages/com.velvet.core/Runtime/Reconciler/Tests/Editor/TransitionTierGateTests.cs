@@ -13,8 +13,10 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The immediate drain renders that child once, inside the parent's pass, and leaves the deferred
     /// value to the delayed tier.</item>
-    /// <item>The delayed drain renders it once more, committing the deferred value and leaving nothing pending,
-    /// behind Transition-lane work queued before it.</item>
+    /// <item>A drain of the whole delayed tier (the one DrainDelayedForTest reaches, which ignores admissions)
+    /// renders it once more, committing the deferred value and leaving nothing pending, behind Transition-lane
+    /// work queued before it. The panel's own admitted drains are held by
+    /// TransitionFrameSchedulingTests' deferred-child-queued-beside-its-parent case.</item>
     /// <item>The same holds for immediate work a delayed drain's commit spawns, and for an entry whose
     /// Transition lane no tier held.</item>
     /// <item>A fiber whose Transition lane sits behind Normal work still drains in the immediate tier, so

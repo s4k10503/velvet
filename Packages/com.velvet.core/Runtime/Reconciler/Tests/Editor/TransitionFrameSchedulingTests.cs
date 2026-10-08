@@ -149,11 +149,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_EveryKindOfSchedulerCallbackHasRun_When_AClickChangesTheDeferredInputAndTwoFramesPass_Then_ItCommitsOnTheSecondOnly()
+        public void Given_AClicksCallbacksHaveRun_When_AClickChangesTheDeferredInputAndTwoFramesPass_Then_ItCommitsOnTheSecondOnly()
         {
-            // Arrange — a first click and two passes run an immediate callback, an admission, a Transition drain
-            // and a passive-effect drain, so a marker or admission any of them left behind would be in place for
-            // the second click
+            // Arrange — a first click and two passes run four kinds of callback: an immediate callback, an
+            // admission, a Transition drain and a passive-effect drain, so a marker or admission any of them left
+            // behind would be in place for the second click
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
             var button = _sim.rootVisualElement.Q<Button>("set-input");
             button.SimulateClick();
@@ -168,7 +168,7 @@ namespace Velvet.Tests
 
             // Assert — the first value rides along to show the earlier passes did commit it
             Assert.That((afterOnePass.Item1, afterOnePass.Item2, Text("deferred")), Is.EqualTo(("2", "1", "2")),
-                "A request from a click is outside every pass whatever callbacks ran before it, and still commits");
+                "A request from a click is outside every pass after those callbacks ran, and still commits");
         }
 
         [Test]

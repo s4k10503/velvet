@@ -59,6 +59,9 @@ namespace Velvet
         // same scheduler is mid-pass: each panel's scheduler holds back only what is registered on itself.
         // Outside every bracketed callback the recorded panel is null, which no panel equals.
         internal static bool InPassOf(VisualElement? host)
-            => host?.panel is { } panel && ReferenceEquals(panel, s_currentPanel);
+        {
+            var panel = host?.panel;
+            return panel != null && ReferenceEquals(panel, s_currentPanel);
+        }
     }
 }
