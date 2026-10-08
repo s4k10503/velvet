@@ -2,7 +2,9 @@
 
 - `Hooks.UseOptimistic` ties each optimistic entry to the transition whose `startTransition` callback added
   it, and discards the entry when that transition's `isPending` clears: whether or not the pass-through
-  state changed, and whether the action succeeded or faulted. An entry added outside every
+  state changed, and whether the action succeeded or faulted. An entry no render has folded yet when its
+  transition settles is disowned instead, so the render `addOptimistic` requested still shows it, and the
+  component's next Transition-lane render discards it. An entry added outside every
   `startTransition` callback while an `async` action is in flight, that action's own code after an `await`
   included, belongs to the actions in flight together and is discarded once none is left. Each render folds
   the pass-through state through the entries still outstanding, so an entry whose transition is still

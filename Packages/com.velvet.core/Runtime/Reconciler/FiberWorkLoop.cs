@@ -100,9 +100,10 @@ namespace Velvet
 
         internal static bool IsInTransitionScope => OpenTransitionScopes.Count > 0;
 
-        // Stands for no single slot: its isPending is lit exactly while some async action's task has not
-        // completed, so the entries it owns retire when the last of them does. Outside every scope nothing
-        // says which in-flight action's code made the call, so the entry waits for all of them.
+        // Stands for no single slot: its isPending is lit while the count holds an action that was started on a
+        // live component and has neither completed nor been released by an unmount, so the entries it owns
+        // retire when the last of those does either. Outside every scope nothing says which in-flight
+        // action's code made the call, so the entry waits for all of them.
         internal static readonly HookTransitionSlot AsyncActionsInFlight = new();
         private static int s_asyncActionsInFlight;
 
