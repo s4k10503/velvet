@@ -256,6 +256,7 @@ namespace Velvet
             if (settings != null)
             {
                 _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, _ctx);
+                _ctx.ActiveDrag?.OnOverlayMounted();
             }
         }
 

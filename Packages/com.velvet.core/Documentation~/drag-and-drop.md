@@ -31,7 +31,9 @@ pooled element leaves with everything the session ever wrote restored.
   `onDragStart`, clear it in `onDragEnd`/`onDragCancel`, and render the preview conditionally:
   dnd-kit's own `activeId` recipe. Every overlay declared under the dragging scope, mounted before the drag or
   during it, shows the preview, as every dnd-kit `DragOverlay` renders its children while
-  its own context's drag is active; an overlay under another scope stays hidden.
+  its own context's drag is active; an overlay under another scope stays hidden. One that mounts from
+  the `onDragStart` update shows at once; one a later render mounts shows from the drag's next pointer
+  move, where dnd-kit shows it on the render itself.
 
 Any existing element can be a source, target, or scope through the corresponding
 `FiberElementProps` slots — the factories are sugar. An element carrying both `Draggable` and

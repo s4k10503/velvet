@@ -31,6 +31,7 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setShowChild;
         private static StateUpdater<bool> s_setShowOverlay;
         private static bool s_startMountsOverlay;
+        private static bool s_earlyOverlay;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
@@ -41,6 +42,7 @@ namespace Velvet.Tests
             s_setShowChild = default;
             s_setShowOverlay = default;
             s_startMountsOverlay = false;
+            s_earlyOverlay = false;
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -630,6 +632,9 @@ namespace Velvet.Tests
                 {
                     V.Draggable("item", name: "item", movement: DragMovement.None,
                         className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                    s_earlyOverlay
+                        ? V.DragOverlay(key: "early", children: new VNode[] { V.Label("ghost", name: "early-ghost") })
+                        : null,
                     showOverlay
                         ? V.DragOverlay(key: "late", children: new VNode[] { V.Label("ghost", name: "late-ghost") })
                         : null,
@@ -652,7 +657,9 @@ namespace Velvet.Tests
 
             // Assert — the Overlay layer host exists only once an overlay has mounted.
             var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
-            Assert.That(overlayRoot.Q<Label>("late-ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
         }
 
         [UnityTest]
@@ -674,7 +681,37 @@ namespace Velvet.Tests
 
             // Assert — the Overlay layer host exists only once an overlay has mounted.
             var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
-            Assert.That(overlayRoot.Q<Label>("late-ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 50f, 20f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnOverlayJoinedAtActivation_When_AnotherOverlayMountsAndThePointerMoves_Then_EachJoinedExactlyOnce()
+        {
+            // Arrange — the second overlay's mount makes the next move walk every binding again, the
+            // first one included.
+            s_earlyOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+            s_setShowOverlay.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act
+            SendPointerMove(item, new Vector2(60, 30));
+            SendPointerMove(item, new Vector2(70, 30));
+            yield return null;
+
+            // Assert
+            var drag = _mounted.Root.Reconciler.Context.ActiveDrag;
+            var joined = (System.Collections.ICollection)typeof(DndActiveDrag)
+                .GetField("_overlays", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(drag);
+            Assert.That(joined.Count, Is.EqualTo(2));
         }
 
         [UnityTest]
