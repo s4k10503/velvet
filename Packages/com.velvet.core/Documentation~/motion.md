@@ -490,6 +490,21 @@ A step is exactly one of:
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
   immediately (never holds the cursor).
+- **`AnimationSequenceStep.Await(taskFactory)`** -- calls `taskFactory` on arrival and holds the cursor
+  until the `VelvetTask` it returns settles: the `await` a `useAnimate` caller writes between two
+  `animate()` calls, for a wait no clock produces -- a server response, a tap, a dialogue advance. A task
+  that settles while the sequence is paused is read once it resumes, so no step after the await commits
+  in between. A task that has already settled when the factory returns is crossed in the same frame, as a
+  `Call` step is; otherwise the step after it commits on the first frame after the settle, and its hold
+  counts that frame's time and none from before it, the wait's included. A task that faults, or cancels on its
+  own, throws out of that frame as a throwing `Call` callback does, reaching the nearest error boundary,
+  and the cursor moves on from the next frame. The factory receives a `CancellationToken`, which a
+  restart, a `deps` change or unmount cancels when it leaves the step with the task still pending; a
+  restart or `deps` change cancels it only after reseeding the sequence, so a token callback that throws
+  does so out of the restart with the sequence already reseeded. A task the sequence has left
+  advances nothing, and a fault it ends in is logged, as `Forget()` logs one. Under the Editor's StrictMode
+  mount double-invoke an `Await` at step 0 calls its factory twice, the first call's token cancelled when
+  its task is still pending.
 
 **"One at a time" needs no separate multi-target API.** Descendant Motions naming no label of their own inherit
 the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
