@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/pr/settle.py watch:*)",
+      "Bash(python3 */scripts/pr/settle.py --project * watch)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

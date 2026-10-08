@@ -223,15 +223,6 @@ namespace Velvet
             ["12"] = 12f, ["45"] = 45f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // The translate fraction suffixes (percent of the element's own size). The slash form routes
-        // here; translate-x-full (100%) and the spacing-scale presets route to the same TranslateX/Y merge so
-        // an x and a y preset compose instead of clobbering via the `translate` shorthand.
-        private static readonly Dictionary<string, float> s_translateFraction = new()
-        {
-            ["1/2"] = 50f, ["1/3"] = 100f / 3f, ["2/3"] = 200f / 3f,
-            ["1/4"] = 25f, ["2/4"] = 50f, ["3/4"] = 75f,
-        };
-
         // The per-axis scale presets (scale-x-50 -> 0.5), mirroring the uniform .scale-N USS classes in
         // _transforms.uss. These have no standalone USS class because a separate .scale-x-N / .scale-y-N rule
         // would write the whole `scale: x y` and clobber the other axis; instead they route through the
@@ -269,9 +260,9 @@ namespace Velvet
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
         // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
-        // '/'-bearing translate fraction, and the positive per-axis translate/scale presets (no USS class — a
-        // per-axis rule would clobber the other axis via the shorthand). Other positive non-slash names (mt-2,
-        // rotate-6) keep their USS classes and are intentionally NOT claimed here.
+        // '/'-bearing translate, sizing and position fractions, and the positive per-axis translate/scale
+        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand). Other
+        // positive non-slash names (mt-2, rotate-6) keep their USS classes and are intentionally NOT claimed here.
         internal static bool MayBeStaticScale(string cls)
         {
             if (string.IsNullOrEmpty(cls))
@@ -281,6 +272,10 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
             if (StyleFilterValueParser.IsFilterPreset(cls))
+            {
+                return true;
+            }
+            if (IsFractionToken(cls))
             {
                 return true;
             }
@@ -306,15 +301,6 @@ namespace Velvet
                 }
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
                 return suffix.SequenceEqual("full".AsSpan()) || SuffixInKeys(suffix, s_spacingScale);
-            }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) have no USS class — USS selectors cannot spell '/' —
-            // so the slash form routes to the resolver (the bracket form w-[50%] is claimed by the '[' check).
-            if ((cls.StartsWith("w-", StringComparison.Ordinal)
-                    || cls.StartsWith("h-", StringComparison.Ordinal)
-                    || cls.StartsWith("size-", StringComparison.Ordinal))
-                && cls.IndexOf('/') >= 0)
-            {
-                return true;
             }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
@@ -385,9 +371,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses the non-bracket static-scale forms that have no USS class: negative margins on the
-        // preset scale (-mt-2 -> MarginTop -8px), the negative rotate preset (-rotate-6 -> -6deg), and the
-        // translate fraction / negative px translate (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
+        // Parses the non-bracket static-scale forms that have no USS class: the sizing and position fractions
+        // (w-1/2, -left-1/2), negative margins on the preset scale (-mt-2 -> MarginTop -8px), the negative
+        // rotate preset (-rotate-6 -> -6deg), and the translate fraction / negative px translate
+        // (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
         // Returns false for anything else, so positive USS-backed names fall through to the class list.
         private static bool TryParseStaticScale(string className, out ArbitraryStyle result)
         {
@@ -396,8 +383,7 @@ namespace Velvet
             {
                 return false;
             }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) are non-negated and resolve to a percent of the parent.
-            if (TryParseSizingFraction(className, out result))
+            if (TryParseFraction(className, out result))
             {
                 return true;
             }
@@ -494,7 +480,10 @@ namespace Velvet
 
             var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
             var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
-            if (s_translateFraction.TryGetValue(suffix, out var pct))
+            // The slash form (percent of the element's own size), translate-x-full (100%) and the spacing-scale
+            // presets route to the same TranslateX/Y merge so an x and a y preset compose instead of clobbering
+            // via the `translate` shorthand.
+            if (TryParseFractionPercent(suffix, out var pct))
             {
                 result = new ArbitraryStyle(property, negate ? -pct : pct, LengthUnit.Percent);
                 return true;
@@ -544,41 +533,118 @@ namespace Velvet
             return true;
         }
 
-        // Fractional sizing (w-1/2, h-2/3, size-3/4 → a percent of the parent). USS cannot spell '/',
-        // so these resolve here as inline percent rather than via a USS class. Width/Height target their own
-        // property; size-* fans out to both (the Size property). Only the denominators (2/3/4/5/6/12)
-        // and a numerator in 1..d-1 are accepted (100% is the separate `*-full` utility; anything else falls
-        // through and is not claimed).
-        private static bool TryParseSizingFraction(string className, out ArbitraryStyle result)
+        // The fraction families (w-1/2, min-h-1/3, basis-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
+        // for any a/b of non-negative integers as in Tailwind (left-3/2 is 150%). Only a position offset takes a
+        // sign (-left-1/2) and the `full` (left-full, -left-full) and `auto` keywords, as in Tailwind.
+        // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Position)[] s_fractionFamilies =
+        {
+            ("w-", ArbitraryProperty.Width, false),
+            ("h-", ArbitraryProperty.Height, false),
+            ("size-", ArbitraryProperty.Size, false),
+            ("min-w-", ArbitraryProperty.MinWidth, false),
+            ("min-h-", ArbitraryProperty.MinHeight, false),
+            ("max-w-", ArbitraryProperty.MaxWidth, false),
+            ("max-h-", ArbitraryProperty.MaxHeight, false),
+            ("basis-", ArbitraryProperty.FlexBasis, false),
+            ("top-", ArbitraryProperty.Top, true),
+            ("right-", ArbitraryProperty.Right, true),
+            ("bottom-", ArbitraryProperty.Bottom, true),
+            ("left-", ArbitraryProperty.Left, true),
+            ("inset-x-", ArbitraryProperty.InsetX, true),
+            ("inset-y-", ArbitraryProperty.InsetY, true),
+            ("inset-", ArbitraryProperty.Inset, true),
+        };
+
+        // -1 when cls names no fraction family, or negates one that takes no sign.
+        private static int FractionFamilyOf(string cls)
+        {
+            var negate = cls[0] == '-';
+            var body = cls.AsSpan(negate ? 1 : 0);
+            for (var i = 0; i < s_fractionFamilies.Length; i++)
+            {
+                if (body.StartsWith(s_fractionFamilies[i].Prefix.AsSpan()))
+                {
+                    return negate && !s_fractionFamilies[i].Position ? -1 : i;
+                }
+            }
+            return -1;
+        }
+
+        // The sizing `*-full` and `*-auto` classes are USS rules, so only a position family's keywords are claimed,
+        // and `-auto` only unnegated, as TryParseFraction reads it.
+        private static bool IsFractionToken(string cls)
+        {
+            var family = FractionFamilyOf(cls);
+            return family >= 0
+                && (cls.IndexOf('/') >= 0
+                    || (s_fractionFamilies[family].Position
+                        && (cls.EndsWith("-full", StringComparison.Ordinal)
+                            || (cls[0] != '-' && cls.EndsWith("-auto", StringComparison.Ordinal)))));
+        }
+
+        // Digits only with no sign or leading zero, as Tailwind's isPositiveInteger reads a fraction's halves.
+        private static bool TryParseFractionPart(string text, out int value)
+        {
+            value = 0;
+            if (text.Length == 0 || text.Length > 9 || (text.Length > 1 && text[0] == '0'))
+            {
+                return false;
+            }
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] < '0' || text[i] > '9')
+                {
+                    return false;
+                }
+                value = value * 10 + (text[i] - '0');
+            }
+            return true;
+        }
+
+        // A zero denominator does not parse: no percent stands for it.
+        private static bool TryParseFractionPercent(string frac, out float percent)
+        {
+            percent = 0f;
+            var slash = frac.IndexOf('/');
+            if (slash < 0
+                || !TryParseFractionPart(frac.Substring(0, slash), out var n)
+                || !TryParseFractionPart(frac.Substring(slash + 1), out var d)
+                || d == 0)
+            {
+                return false;
+            }
+            percent = 100f * n / d;
+            return true;
+        }
+
+        // `auto` is never negated, as in Tailwind, which has no -top-auto.
+        private static bool TryParseFraction(string className, out ArbitraryStyle result)
         {
             result = default;
-            ArbitraryProperty property;
-            int prefixLen;
-            if (className.StartsWith("w-", StringComparison.Ordinal)) { property = ArbitraryProperty.Width; prefixLen = 2; }
-            else if (className.StartsWith("h-", StringComparison.Ordinal)) { property = ArbitraryProperty.Height; prefixLen = 2; }
-            else if (className.StartsWith("size-", StringComparison.Ordinal)) { property = ArbitraryProperty.Size; prefixLen = 5; }
-            else { return false; }
-
-            var frac = className.Substring(prefixLen);
-            var slash = frac.IndexOf('/');
-            if (slash <= 0 || slash >= frac.Length - 1)
+            var family = FractionFamilyOf(className);
+            if (family < 0)
             {
                 return false;
             }
-            if (!int.TryParse(frac.Substring(0, slash), out var n)
-                || !int.TryParse(frac.Substring(slash + 1), out var d))
+            var (prefix, property, position) = s_fractionFamilies[family];
+            var negate = className[0] == '-';
+            var frac = className.Substring((negate ? 1 : 0) + prefix.Length);
+            float percent;
+            if (position && frac == "auto" && !negate)
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
+            }
+            if (position && frac == "full")
+            {
+                percent = 100f;
+            }
+            else if (!TryParseFractionPercent(frac, out percent))
             {
                 return false;
             }
-            if (d != 2 && d != 3 && d != 4 && d != 5 && d != 6 && d != 12)
-            {
-                return false;
-            }
-            if (n < 1 || n >= d)
-            {
-                return false;
-            }
-            result = new ArbitraryStyle(property, 100f * n / d, LengthUnit.Percent);
+            result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
             return true;
         }
 
@@ -1990,7 +2056,7 @@ namespace Velvet
                 return;
             }
 
-            var length = new StyleLength(new Length(style.Value, style.Unit));
+            var length = style.ToStyleLength();
             var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {

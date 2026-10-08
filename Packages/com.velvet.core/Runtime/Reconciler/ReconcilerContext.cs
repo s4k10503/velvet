@@ -656,6 +656,18 @@ namespace Velvet
         // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
+        // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
+        public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
+        // Elements this context put children into, or may have changed a pointer-events utility under, since the
+        // pointer-events scopes were last walked: the element each top-level pass reconciled into, each Portal
+        // target a mount or patch reconciled into, and the mount target and Portal targets a request outside a pass
+        // names (PointerEventsScope.NoteReconciledInto). Every walk (PointerEventsScope.WalkAll) empties it.
+        public HashSet<VisualElement> PointerEventsAnchors { get; } = new();
+        // Above zero from the start of Reconciler.FinishTopLevelPass until the pointer-events walk near its end. In
+        // that span SharedReconcileDepth is already back at zero, while the portal drain can still create elements,
+        // and the relational retarget toggle payloads, that request a walk (PointerEventsScope.RequestSyncAll).
+        internal int PointerEventsWalkHeld { get; set; }
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
         // one whose mere presence in a class array decides what a class-driven pass builds; the families are
@@ -671,6 +683,10 @@ namespace Velvet
         // / conditional / relational / child / stacked / has-), since any of them can carry such a payload. A
         // pure side-table (teardown is a plain Remove), so it is enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, VariantGateState> VariantGateClasses { get; } = new();
+
+        // The family each element's font layer named or inherited (FiberFontScope). Its two tables are pure
+        // side-tables, enrolled below.
+        internal FiberFontScope FontScope { get; } = new();
 
         // Hook to re-run every class-driven pass a variant payload can change (the layout manipulators and
         // the paint layers) against the element's current class source, set by FiberNodePatcher.
@@ -1675,7 +1691,7 @@ namespace Velvet
                 (added ??= new()).Add(key);
             }
             if (added == null) return;
-            foreach (var key in added) PresenceStates.Remove(key);
+            foreach (var key in added) RetirePresenceState(key);
         }
 
         internal readonly record struct BoundaryRecords(
@@ -1791,6 +1807,36 @@ namespace Velvet
             // descendants' exits. Entries retire with their key.
             public readonly Dictionary<string, PresenceExitWait> ExitWaits = new();
 
+            // The nearest enclosing presence's keyed child that this presence last expanded inside, Framer's
+            // nearest PresenceContext. A committing expansion made while that child is emitted writes it; the re-render
+            // this presence makes on its own (no enclosing emission around it) reads the last one.
+            public PresenceBoundaryState? Enclosing;
+            public string? EnclosingKey;
+
+            // As of the last expansion: whether this presence propagates, and whether that expansion treated every
+            // child as not present because the enclosing child is leaving.
+            public bool Propagate;
+            public bool ExitedForEnclosing;
+
+            // The slot this presence holds in the enclosing child's exit wait, for as long as it holds one.
+            public PresenceRegistration? Registration;
+
+            // The keys of the children the last committing expansion was given, which tells a key added since
+            // from one a finished exit has dropped while the props still list it.
+            public readonly HashSet<string> PropKeys = new();
+
+            // The keys mounted already leaving, whose Motions rest at their initial pose until they return or drop.
+            public readonly HashSet<string> LeavingMounts = new();
+
+            // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
+            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            public bool Expanding;
+            public List<System.Action>? DeferredCompletions;
+
+            // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
+            // render that drops it.
+            internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
+
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
             // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
             // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
@@ -1838,8 +1884,35 @@ namespace Velvet
         // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 
-        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
-        internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);
+        // The keyed child being emitted now and whether it is present: what a presence expanding inside that
+        // child's subtree reads as its nearest enclosing presence. Same set/restore discipline as
+        // PresenceAnchorMotion, and null outside any presence child's emission.
+        internal PresenceChildContext? EnclosingPresenceChild;
+
+        // Whether the keyed child being emitted was mounted already leaving: its Motions rest at their initial pose
+        // and exit from there. Same set/restore discipline as PresenceAnchorMotion.
+        internal bool PresenceMountsLeaving;
+
+        internal readonly record struct PresenceChildContext(PresenceBoundaryState State, string Key, bool IsPresent);
+
+        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key; State and
+        // Key name that key's presence and entry.
+        internal readonly record struct PresenceChildRootOwner(
+            List<VisualElement> Roots, long Emission, PresenceBoundaryState State, string Key);
+
+        // The presence child an element sits in, read off the nearest ancestor that is the top of one: what a
+        // presence expanding in a deferred mount (no emission around it) takes as its enclosing child.
+        internal PresenceChildContext? PresenceChildOf(VisualElement element)
+        {
+            for (var ancestor = element; ancestor != null; ancestor = ancestor.parent)
+            {
+                if (PresenceChildRoots.TryGetValue(ancestor, out var owner))
+                {
+                    return new PresenceChildContext(owner.State, owner.Key, !owner.State.IsLeaving(owner.Key));
+                }
+            }
+            return null;
+        }
 
         // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
         // from classes are the resting pose a cancel returns to.
@@ -1856,19 +1929,47 @@ namespace Velvet
             private readonly DescendantStatus[] _statuses;
             private int _pending;
             private readonly System.Action _onSettled;
-            private readonly System.Action<VisualElement> _onSettledByTeardown;
+            private readonly System.Action<VisualElement?> _onSettledByTeardown;
 
+            // inners are the propagating presences under this child that still have exits to play, each of which
+            // holds one slot of the count until its own exits are done.
             internal PresenceExitWait(bool anchorPlays, List<PresenceDescendantExit> descendants,
-                System.Action onSettled, System.Action<VisualElement> onSettledByTeardown)
+                List<PresenceBoundaryState>? inners, System.Action onSettled,
+                System.Action<VisualElement?> onSettledByTeardown)
             {
                 Descendants = descendants;
                 _statuses = new DescendantStatus[descendants.Count];
-                _pending = descendants.Count + (anchorPlays ? 1 : 0);
+                _pending = descendants.Count + (inners?.Count ?? 0) + (anchorPlays ? 1 : 0);
                 _onSettled = onSettled;
                 _onSettledByTeardown = onSettledByTeardown;
+                Registrations = Register(inners);
             }
 
             internal List<PresenceDescendantExit> Descendants { get; }
+
+            internal PresenceRegistration[] Registrations { get; }
+
+            private PresenceRegistration[] Register(List<PresenceBoundaryState>? inners)
+            {
+                if (inners == null) return System.Array.Empty<PresenceRegistration>();
+                var registrations = new PresenceRegistration[inners.Count];
+                for (var i = 0; i < registrations.Length; i++)
+                {
+                    registrations[i] = new PresenceRegistration(inners[i], this);
+                    inners[i].Registration = registrations[i];
+                }
+                return registrations;
+            }
+
+            internal void CompleteRegistration()
+            {
+                if (Settles()) _onSettled();
+            }
+
+            internal void TearDownRegistration()
+            {
+                if (Settles()) _onSettledByTeardown(null);
+            }
 
             internal DescendantStatus StatusOf(int index) => _statuses[index];
 
@@ -1902,6 +2003,37 @@ namespace Velvet
                 => Descendants.FindIndex(exit => ReferenceEquals(exit.Element, element));
 
             private bool Settles() => --_pending == 0;
+        }
+
+        // One propagating inner presence's slot in an enclosing child's exit wait, Framer's register(id) for
+        // usePresence(true). Whichever of the three ends it first settles the slot and the others find it spent.
+        internal sealed class PresenceRegistration
+        {
+            private readonly PresenceBoundaryState _inner;
+            private PresenceExitWait? _wait;
+
+            internal PresenceRegistration(PresenceBoundaryState inner, PresenceExitWait wait)
+            {
+                _inner = inner;
+                _wait = wait;
+            }
+
+            // safeToRemove: the inner presence's exits have finished, or it stopped propagating.
+            internal void Complete() => Spend()?.CompleteRegistration();
+
+            // The inner presence was retired before it finished, the way a descendant Motion leaves the tree.
+            internal void Gone() => Spend()?.TearDownRegistration();
+
+            // The enclosing key came back: nothing is waited for any more and nobody is told.
+            internal void Release() => Spend();
+
+            private PresenceExitWait? Spend()
+            {
+                var wait = _wait;
+                _wait = null;
+                if (ReferenceEquals(_inner.Registration, this)) _inner.Registration = null;
+                return wait;
+            }
         }
 
         // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
@@ -1940,8 +2072,16 @@ namespace Velvet
             }
             if (stale != null)
             {
-                foreach (var key in stale) PresenceStates.Remove(key);
+                foreach (var key in stale) RetirePresenceState(key);
             }
+        }
+
+        // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
+        // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
+        // torn down does (FiberElementCleaner).
+        private void RetirePresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        {
+            if (PresenceStates.Remove(key, out var state)) state.Registration?.Gone();
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -2064,7 +2204,7 @@ namespace Velvet
                 if (key.IsSuspense)
                     RemoveSuspenseFallback(key.Boundary, (key.Parent, key.PortalScope, key.Position));
                 else
-                    PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
+                    RetirePresenceState((key.Boundary, key.Parent, key.Position));
             }
             // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope truncates each scope in a finally, so the list is already empty before this clear runs.
             _boundaryReproduced.Clear();
@@ -2079,23 +2219,15 @@ namespace Velvet
         // cross-fiber case. Automatic batching is always on; there is no opt-out.
         internal FiberBatchScheduler BatchScheduler { get; } = new();
 
-        // Cross-tier tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot
-        // pinned for the current batch-scheduler drain wave, keyed by the Store reference (the value
-        // is the store's TState snapshot, boxed). Every UseStore read of the same store within
-        // one wave returns the selector applied to this pinned snapshot rather than the live
-        // store.Current, so an ancestor on the immediate tier and a descendant on the delayed tier
-        // (separated by up to DelayedTierDelayMs) observe the SAME value even if the store mutates
-        // between their tier drains — giving every external-store read in one wave a consistent snapshot.
-        // Pinning is active only inside a batch-scheduler drain (_storeSnapshotWaveActive). A
-        // "wave" spans the immediate drain and the delayed drain that follows it in the same frame: the
-        // immediate drain opens the wave dropping the prior wave's pins (BeginStoreSnapshotWave
-        // with reset = true), so its first UseStore read pins the now-current snapshot; the delayed
-        // drain opens with reset = false so it REUSES that pin. A store mutation mid-wave re-schedules every
-        // reader (via the subscription's RequestRender), and that follow-up render lands on the next immediate
-        // drain, which opens a fresh wave and re-pins to the now-current snapshot so readers converge. Outside
-        // a drain — on mount or a synchronous whole-tree flush — there is no tier separation, so reads return
-        // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores
-        // never collide and the map is empty in the steady state.
+        // Tearing guard for Hooks.UseStore<TStore,TSel>. Holds the store snapshot pinned for the current
+        // batch-scheduler drain pass (a wave), keyed by the Store reference (the value is the store's TState
+        // snapshot, boxed). Every UseStore read of the same store within one wave returns the selector applied
+        // to this pinned snapshot rather than the live store.Current, so readers committed in one pass agree
+        // even when the store mutates partway through it; a reader whose pin is older than the store asks for
+        // the render that catches it up (see Hooks.UseStore). Pinning is active only inside a drain
+        // (_storeSnapshotWaveActive); outside one — on mount or a synchronous whole-tree flush — reads return
+        // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores never
+        // collide, and the pins are dropped when the wave ends.
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
@@ -2121,19 +2253,16 @@ namespace Velvet
             return liveSnapshot;
         }
 
-        // Activates UseStore snapshot pinning for the span of a batch drain. reset drops the
-        // previous wave's pins (the immediate drain that opens a fresh wave) versus reusing them (the delayed
-        // drain continuing the same wave). Paired with EndStoreSnapshotWave.
-        internal void BeginStoreSnapshotWave(bool reset)
-        {
-            if (reset) _pinnedStoreSnapshots.Clear();
-            _storeSnapshotWaveActive = true;
-        }
+        // Paired with EndStoreSnapshotWave.
+        internal void BeginStoreSnapshotWave() => _storeSnapshotWaveActive = true;
 
-        // Deactivates UseStore snapshot pinning at the end of a batch drain. The pinned snapshots are retained
-        // (not cleared) so the delayed drain that continues the wave can reuse them; the next immediate drain
-        // clears them via BeginStoreSnapshotWave with reset = true.
-        internal void EndStoreSnapshotWave() => _storeSnapshotWaveActive = false;
+        // Every drain pass is a wave of its own: a pin carried into the next pass would hand a reader that pass
+        // queued a snapshot older than the store it was queued for.
+        internal void EndStoreSnapshotWave()
+        {
+            _storeSnapshotWaveActive = false;
+            _pinnedStoreSnapshots.Clear();
+        }
 
         // Gates the one-time ContextPropagationGeneration bump within a reconcile pass: the first Provider
         // whose value changed flips this and bumps the generation; later changed Providers in the same pass
@@ -2215,6 +2344,8 @@ namespace Velvet
                 ChildBoxOwners,
                 ChildDividerOwners,
                 VariantGateClasses,
+                FontScope.Families,
+                FontScope.Inheritors,
                 ZLayerHosts,
                 ZLayerMembers,
             };

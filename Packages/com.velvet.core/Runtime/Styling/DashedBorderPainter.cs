@@ -13,9 +13,9 @@ namespace Velvet
         Dotted,
     }
 
-    // Arc-length dash/dot marcher on top of Painter2D. UI Toolkit's Painter2D has no dash-array, so a dashed
-    // or dotted outline is walked here: the outline is a flat polyline (SilhouetteFace.BuildShearedRoundedRect-
-    // Polyline for a full border, a 2-point segment for a divide edge), and this walks it by arc length
+    // Arc-length dash/dot marcher on top of Painter2D. A dashed or dotted outline is walked here: the outline
+    // is a flat polyline (SilhouetteFace.BuildShearedRoundedRectPolyline for a full border, a 2-point segment
+    // for a divide edge), and this walks it by arc length
     // emitting alternating painted runs. Dashed: butt-capped straight runs, dash ≈ 3× the line width, gap ≈ 2×.
     // Dotted: zero-length round-capped strokes spaced ≈ 2× the line width — a zero-length round-capped stroke
     // renders a filled dot of the line's diameter (the standard canvas dotted-line trick). `closed` wraps the

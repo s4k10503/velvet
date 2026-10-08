@@ -1170,6 +1170,13 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
+            // Ahead of the empty-tree return: a fiber rendering nothing now can render a presence later.
+            if (_ctx.EnclosingPresenceChild is { } enclosingChild)
+            {
+                fiber.EnclosingPresence = enclosingChild.State;
+                fiber.EnclosingPresenceKey = enclosingChild.Key;
+            }
+
             // MUTANT_SURVIVES(equivalent, clause removed): an empty tree sets and restores the walk's fiber and tree
             // around a descent that expands no node.
             if (tree == null || tree.Length == 0) return;
@@ -1469,14 +1476,12 @@ namespace Velvet
         // diff removes its leaves (no out-of-band DOM mutation that would shift sibling slots).
 
         // Everything one expansion pass writes as it walks its entries, in one place so a PlayExit
-        // completion — which can fire either synchronously (see the Settled comment in
+        // completion — which can fire either synchronously (see the completion comment in
         // ExpandAnimatePresenceInline) or long after this pass's own stack frames are gone — always observes
         // the same mutable cell. Must be a reference type: C# forbids a lambda from capturing a ref
         // parameter, so none of this can be threaded through the entry walkers as `ref`.
         private sealed class PresencePassTally
         {
-            public bool Settled;
-            public List<Action>? Deferred;
             // Stagger ordinals: exits count only the ghosts that actually animate, enters count every child
             // emitted, so the two advance independently.
             public int ExitIndex;
@@ -1619,7 +1624,10 @@ namespace Velvet
                 state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             }
 
-            var newKeyed = _factory.BuildKeyedMapCopy(presence.Children);
+            // Every child counts as removed while the enclosing child is leaving, so each takes the ghost path below.
+            var leaving = ReadEnclosingPresence(state!, presence, walk.Parent, commit != null);
+            var givenKeyed = _factory.BuildKeyedMapCopy(presence.Children);
+            var newKeyed = leaving ? _ctx.BufferPool.RentKeyedList() : givenKeyed;
             var newKeySet = _ctx.BufferPool.RentPresenceKeySet();
             var prevCommitted = _ctx.BufferPool.RentKeyedList();
             var nextCommitted = _ctx.BufferPool.RentKeyedList();
@@ -1637,17 +1645,20 @@ namespace Velvet
                 // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
                 // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. an exit variant whose
                 // only delta is a keyword length like `w-auto` or a semantic theme token, neither of which
-                // carries a number to interpolate) is the one case that completes SYNCHRONOUSLY, from inside
-                // the PlayExit call below,
-                // before this pass has finished building nextCommitted for every other key and before this
-                // pass's own state.ExitComplete.Clear() further down. Running such a completion's bookkeeping
-                // immediately would have that same Clear() wipe the ExitComplete entry it just added, so the
-                // re-render it schedules finds the ghost "not complete" again, replays PlayExit, and repeats
-                // forever. exitPass.Settled tracks whether this pass's own bookkeeping (below) has already
-                // run; a completion that fires before then is queued and drained once it has, so its
-                // ExitComplete.Add survives into the render it schedules — a genuinely async completion
-                // always finds tally.Settled already true (this method returned long before it fires)
-                // and runs immediately, unchanged.
+                // carries a number to interpolate) completes SYNCHRONOUSLY, from inside the PlayExit call below,
+                // and so does a child's exit wait whose last slot is an inner presence that stops propagating
+                // inside this pass's re-emission of that child
+                // (AnimatePresencePropagateTests.Given_PropagateTurnedOffThenOnMidExit_When_TheInnerPresenceIsWaitedOn_Then_TheOuterChildLeavesOnce).
+                // Either reaches the completion before this pass has finished building nextCommitted for every
+                // other key and before its own state.ExitComplete.Clear() further down. Running such a
+                // completion's bookkeeping immediately would have that same Clear() wipe the ExitComplete entry
+                // it just added, so the re-render it schedules finds the ghost "not complete" again, replays
+                // PlayExit, and repeats forever. state.Expanding tracks whether this pass is under way; a
+                // completion that fires meanwhile is queued on the state and drained once the pass's bookkeeping
+                // has run, so its ExitComplete.Add survives into the render it schedules — a genuinely async
+                // completion finds Expanding already false (this method returned long before it fires) and
+                // runs immediately, unchanged.
+                state.Expanding = true;
                 var tally = new PresencePassTally { AnimatedExitCount = exitCount };
                 var pass = new PresenceExpansion
                 {
@@ -1675,11 +1686,17 @@ namespace Velvet
                     ExpandPresenceEnterEntry(in pass, key, node);
                 }
 
+                if (commit != null)
+                {
+                    if (leaving && !firstRender) MountNewChildrenLeaving(in pass, givenKeyed);
+                    RecordGivenKeys(state, givenKeyed);
+                }
+
                 // onExitComplete fires once the exiting children are gone. When every removed child
                 // had NO exit animation (all instant-removed above) no PlayExit callback runs to fire it, so fire it
                 // here — but only when no animated exit is still in flight (those fire it when the Exiting set drains).
                 // Contained the same way as RunExitComplete's animated-exit path above: a throwing callback
-                // must not skip the state.Committed/exitPass.Settled bookkeeping that follows, or the next
+                // must not skip the state.Committed bookkeeping that follows, or the next
                 // render reproduces a stale old side.
                 if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
                 {
@@ -1704,13 +1721,13 @@ namespace Velvet
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
                 state.ExitComplete.Clear();
 
-                // This pass's own bookkeeping has settled — a synchronous exit completion queued above can now
-                // run safely (see PresencePassTally.Settled's declaration comment): its ExitComplete.Add
-                // survives past this point instead of being wiped by the Clear() just above.
-                tally.Settled = true;
-                if (tally.Deferred != null)
+                // This pass's own bookkeeping has settled — a completion queued above can now run safely: its
+                // ExitComplete.Add survives past this point instead of being wiped by the Clear() just above.
+                state.Expanding = false;
+                if (state.DeferredCompletions is { } deferred)
                 {
-                    foreach (var completion in tally.Deferred) completion();
+                    state.DeferredCompletions = null;
+                    foreach (var completion in deferred) completion();
                 }
 
                 // Marked here rather than beside stateKey above, so an expansion that unwound is not
@@ -1719,12 +1736,128 @@ namespace Velvet
             }
             finally
             {
+                state!.Expanding = false;
+                if (!ReferenceEquals(newKeyed, givenKeyed)) _ctx.BufferPool.Return(givenKeyed);
                 _ctx.BufferPool.Return(newKeyed);
                 _ctx.BufferPool.ReturnPresenceKeySet(newKeySet);
                 _ctx.BufferPool.Return(prevCommitted);
                 _ctx.BufferPool.Return(nextCommitted);
                 _ctx.BufferPool.Return(plan);
             }
+        }
+
+        // The keys the expansion was given, kept to tell a key added since the last one.
+        private static void RecordGivenKeys(
+            ReconcilerContext.PresenceBoundaryState state, List<(string key, VNode node)> given)
+        {
+            state.PropKeys.Clear();
+            foreach (var (key, _) in given) state.PropKeys.Add(key);
+        }
+
+        // A key given to this presence since its last expansion, while its enclosing child is leaving, mounts as
+        // Framer's PresenceChild mounts it: not present, so already leaving.
+        private void MountNewChildrenLeaving(in PresenceExpansion pass, List<(string key, VNode node)> given)
+        {
+            foreach (var (key, node) in given)
+            {
+                if (pass.State.PropKeys.Contains(key) || PresenceContainsKey(pass.PrevCommitted, key)) continue;
+                MountChildLeaving(in pass, key, node);
+            }
+        }
+
+        // The child mounts at its initial pose with no enter, and plays its exit from there as a ghost does, so it
+        // counts in the enclosing child's wait while the presence's exits are running. A child that places nothing
+        // is not kept.
+        private void MountChildLeaving(in PresenceExpansion pass, string key, VNode node)
+        {
+            var state = pass.State;
+            var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+            var site = new PresenceChildSite
+            {
+                Walk = pass.Walk, Position = pass.Position, State = state, Absent = true, SuppressInitial = true,
+                MountsLeaving = true,
+            };
+            var before = SnapshotEmission(pass.Walk);
+            var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement, out _);
+            if (anchor == null)
+            {
+                UndoEmission(pass.Walk, before);
+                return;
+            }
+            state.LeavingMounts.Add(key);
+            if (motionElement != null) state.MotionElements[key] = motionElement;
+            state.ExitAnchors[key] = anchor;
+            state.Exiting.Add(key);
+            pass.NextCommitted.Add((key, node));
+            StartPresenceExit(in pass, key, node, anchor, motionElement, motion);
+            pass.Tally.ExitIndex++;
+        }
+
+        // Framer's usePresence(propagate): whether the enclosing presence's keyed child this presence sits in is
+        // leaving, in which case it treats every child of its own as not present. The emission around this
+        // expansion says so itself. A presence mounted in a render of its own has none around it, and takes the
+        // child its host element sits in, else the one its fiber or an ancestor fiber was last expanded inside;
+        // a re-render later on reads what was last recorded. Without propagate the enclosing child is not
+        // consulted, and a slot held in its exit wait is given up, as Framer unregisters when subscribe turns
+        // false. Records are written only by a committing expansion.
+        private bool ReadEnclosingPresence(
+            ReconcilerContext.PresenceBoundaryState state,
+            AnimatePresenceNode presence,
+            VisualElement? host,
+            bool commits)
+        {
+            var emitting = _ctx.EnclosingPresenceChild;
+            if (!emitting.HasValue && presence.Propagate && state.Enclosing == null && host != null)
+            {
+                emitting = NearestPresenceChild(_ctx.PresenceChildOf(host), FiberPresenceChild());
+            }
+            var leaving = presence.Propagate
+                && (emitting.HasValue
+                    ? !emitting.Value.IsPresent
+                    : state.Enclosing != null && state.Enclosing.IsLeaving(state.EnclosingKey!));
+            if (!commits) return leaving;
+
+            if (emitting.HasValue)
+            {
+                state.Enclosing = emitting.Value.State;
+                state.EnclosingKey = emitting.Value.Key;
+            }
+            state.Propagate = presence.Propagate;
+            state.ExitedForEnclosing = leaving;
+            if (!presence.Propagate) state.Registration?.Complete();
+            return leaving;
+        }
+
+        // Of the child the host element sits in and the one the fiber was last expanded inside, the one nested in the
+        // other: a fiber record naming a child below the host's is the nearer, and anything else leaves the host's.
+        private static ReconcilerContext.PresenceChildContext? NearestPresenceChild(
+            ReconcilerContext.PresenceChildContext? byHost,
+            ReconcilerContext.PresenceChildContext? byFiber)
+        {
+            if (!byHost.HasValue || !byFiber.HasValue) return byHost ?? byFiber;
+            for (var state = byFiber.Value.State; state != null; state = state.Enclosing)
+            {
+                if (ReferenceEquals(state.Enclosing, byHost.Value.State) && state.EnclosingKey == byHost.Value.Key)
+                {
+                    return byFiber;
+                }
+            }
+            return byHost;
+        }
+
+        // The presence child the current fiber, else the nearest ancestor fiber that has one, was last expanded inside.
+        private ReconcilerContext.PresenceChildContext? FiberPresenceChild()
+        {
+            for (var fiber = _ctx.FiberStack.Current; fiber != null; fiber = fiber.Parent)
+            {
+                if (fiber.EnclosingPresence != null)
+                {
+                    return new ReconcilerContext.PresenceChildContext(
+                        fiber.EnclosingPresence, fiber.EnclosingPresenceKey!,
+                        !fiber.EnclosingPresence.IsLeaving(fiber.EnclosingPresenceKey!));
+                }
+            }
+            return null;
         }
 
         // Ghost branch of the per-plan-entry walk: a previously-committed key now absent from the new
@@ -1766,18 +1899,20 @@ namespace Velvet
             if (!RemovalPlaysExit(state, key, node))
             {
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
-                state.Exiting.Remove(key);
-                pass.Tally.RemovedInstantThisRender = true;
-                // Same as the finished-exit drop above: leave the committed set, then retire.
-                RemovePresenceCommittedEntry(state.Committed, key);
-                // Same memoized-element retirement as the finished-exit drop above.
-                RetirePresenceKeyEntries(state, key);
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
+                RemoveGhostAtOnce(in pass, key, node);
                 return;
             }
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state };
+            var site = new PresenceChildSite
+            {
+                Walk = walk, Position = pass.Position, State = state, Absent = true,
+                MountsLeaving = state.LeavingMounts.Contains(key),
+            };
+            // Only a child whose exit is a propagating presence's can place nothing and still be emitted.
+            var emissionBefore = commit != null && PropagatingPresenceHoldsChildren(state, key)
+                ? SnapshotEmission(walk)
+                : null;
             var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement, out _);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -1786,6 +1921,15 @@ namespace Velvet
             {
                 if (ghostMotionElement != null) state.MotionElements[key!] = ghostMotionElement;
                 else state.MotionElements.TryGetValue(key!, out ghostMotionElement);
+            }
+
+            // An emission that placed nothing, a propagating presence whose children played no exit and left at
+            // once, leaves no element to keep mounted, so there is no exit to wait for.
+            if (commit != null && ghostAnchor == null)
+            {
+                UndoEmission(walk, emissionBefore);
+                RemoveGhostAtOnce(in pass, key, node);
+                return;
             }
 
             // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
@@ -1801,12 +1945,92 @@ namespace Velvet
             pass.NextCommitted.Add((key, node));
         }
 
-        // Whether removing key plays an exit at all: its anchor's, or a descendant Motion's.
+        private static (HashSet<ComponentFiber> Fibers, int Placements)? SnapshotEmission(InlineWalk walk)
+            => (new HashSet<ComponentFiber>(walk.NewFibers), walk.Commit!.Placements.Count);
+
+        // Takes back a ghost emission that placed nothing: the fibers it walked leave the walk, so the orphan
+        // cleanups and the sweep dispose them as they do a child removed without being emitted, and the
+        // placements it recorded for them go.
+        private void UndoEmission(InlineWalk walk, (HashSet<ComponentFiber> Fibers, int Placements)? before)
+        {
+            if (before == null) return;
+            DropFibersTheFailedOutputAdded(walk, before.Value.Fibers);
+            var placements = walk.Commit!.Placements;
+            placements.RemoveRange(before.Value.Placements, placements.Count - before.Value.Placements);
+        }
+
+        // The removal of a key that has nothing to exit: it leaves the committed set, then its entries and node
+        // retire, and the pass reports an instant removal so the presence's onExitComplete still runs.
+        private void RemoveGhostAtOnce(in PresenceExpansion pass, string key, VNode node)
+        {
+            var state = pass.State;
+            state.Exiting.Remove(key);
+            pass.Tally.RemovedInstantThisRender = true;
+            // Same as the finished-exit drop: leave the committed set, then retire.
+            RemovePresenceCommittedEntry(state.Committed, key);
+            RetirePresenceKeyEntries(state, key);
+            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
+        }
+
+        // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
+        // propagating presence inside it that still holds children, which is when Framer's inner presence
+        // registers with the child and so settles it through its own exit path.
         private bool RemovalPlaysExit(ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
         {
             var anchor = FiberNodeFactory.FindFirstMotionDescendant(node);
             return ResolveExitTransition(anchor)?.HasExitAnimation == true
-                || CollectDescendantExits(state, key, anchor, into: null) > 0;
+                || CollectDescendantExits(state, key, anchor, into: null) > 0
+                || PropagatingPresenceHoldsChildren(state, key);
+        }
+
+        private static bool IsPropagatingPresenceOf(
+            ReconcilerContext.PresenceBoundaryState inner,
+            ReconcilerContext.PresenceBoundaryState outer,
+            string key)
+            => inner.Propagate && ReferenceEquals(inner.Enclosing, outer) && inner.EnclosingKey == key;
+
+        // Read before the removal's emission, which is what puts that presence's children through the ghost path.
+        private bool PropagatingPresenceHoldsChildren(ReconcilerContext.PresenceBoundaryState outer, string key)
+        {
+            if (_ctx.PresenceStates.Count < 2) return false;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, outer, key) && inner.Committed.Count > 0) return true;
+            }
+            return false;
+        }
+
+        // Whether the child being emitted is leaving and holds a propagating presence. Such a presence has to
+        // expand again for the child to take its exits, so a container inside the child reconciles through the
+        // expansion walk even when its nodes are the identical instances on both sides, which the flat diff
+        // skips unread.
+        internal bool EmitsLeavingChildHoldingPropagatingPresence()
+        {
+            var emitting = _ctx.EnclosingPresenceChild;
+            if (emitting == null || emitting.Value.IsPresent || _ctx.PresenceStates.Count < 2) return false;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, emitting.Value.State, emitting.Value.Key)) return true;
+            }
+            return false;
+        }
+
+        // The propagating presences inside key's child whose exits are running for its removal, the ones the
+        // child's exit waits on. A presence that has not expanded for this removal, or has nothing left running,
+        // holds nothing.
+        private List<ReconcilerContext.PresenceBoundaryState>? PresencesRunningExitsUnder(
+            ReconcilerContext.PresenceBoundaryState outer, string key)
+        {
+            List<ReconcilerContext.PresenceBoundaryState>? running = null;
+            if (_ctx.PresenceStates.Count < 2) return running;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, outer, key) && inner.ExitedForEnclosing && inner.Exiting.Count > 0)
+                {
+                    (running ??= new List<ReconcilerContext.PresenceBoundaryState>()).Add(inner);
+                }
+            }
+            return running;
         }
 
         // Walks down from the elements key's last committing emission placed, through z-managed placeholders
@@ -1994,6 +2218,8 @@ namespace Velvet
                 // mirroring HookEffectExecutor's effect-exception containment.
                 if (capturedState.Exiting.Count == 0)
                 {
+                    // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
+                    capturedState.Registration?.Complete();
                     try
                     {
                         capturedOnExitComplete?.Invoke();
@@ -2071,47 +2297,37 @@ namespace Velvet
             // resting variant classes live), which for a wrapped Motion is not the anchor —
             // without a resolved element the variant path is unavailable and the classic,
             // anchor-targeted transition plays instead.
-            var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
+            // A child mounted already leaving rests at its initial pose, which is where its exit starts from.
+            var variantExit = ghostMotionElement != null
+                ? TryResolveVariantExit(ghostMotionNode,
+                    state.LeavingMounts.Contains(key) ? RestingVariantClass(ghostMotionElement) : null)
+                : null;
             var exitTransition = variantExit ?? ghostMotionNode?.Transition;
             var exitTarget = variantExit != null ? ghostMotionElement! : ClassicTarget(ghostAnchor, ghostMotionElement);
-            // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired from
-            // inside one of the PlayExit calls below) is queued instead of run inline.
+            // See the completion comment in ExpandAnimatePresenceInline: a completion that fires while this
+            // presence is expanding, from inside one of the PlayExit calls below or from an inner presence settling
+            // during an expansion of its own, is queued instead of run inline.
             void Settled()
             {
-                if (tally.Settled) runExitComplete();
-                else (tally.Deferred ??= new List<Action>()).Add(runExitComplete);
+                if (state.Expanding) (state.DeferredCompletions ??= new List<Action>()).Add(runExitComplete);
+                else runExitComplete();
             }
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
             CollectDescendantExits(state, key, ghostMotionNode, descendants);
-            if (!anchorPlays && descendants.Count == 0)
+            var inners = PresencesRunningExitsUnder(state, key);
+            if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
                 Settled();
                 return;
             }
 
             ReconcilerContext.PresenceExitWait? wait = null;
-            // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
-            // presence reaches as well. Where either element still has a panel the check below waits for the
-            // next frame, by which that presence's state is retired and no onExitComplete fires; with neither
-            // attached it runs at the teardown itself.
-            void SettledByTeardown(VisualElement tornDown)
-            {
-                void SettleIfStillExiting()
-                {
-                    if (_ctx.PresenceStates.ContainsValue(state) && state.ExitWaits.ContainsValue(wait!))
-                    {
-                        runExitComplete();
-                    }
-                }
-                var panel = tornDown.panel ?? ghostAnchor.panel;
-                if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
-                else SettleIfStillExiting();
-            }
             // Every exit is counted before the first play starts, so a completion one of them fires
             // synchronously cannot settle the wait while the rest are still to start.
-            var exitWait = new ReconcilerContext.PresenceExitWait(anchorPlays, descendants, Settled, SettledByTeardown);
+            var exitWait = new ReconcilerContext.PresenceExitWait(anchorPlays, descendants, inners, Settled,
+                tornDown => SettleExitWaitByTeardown(state, wait!, ghostAnchor, runExitComplete, tornDown));
             wait = exitWait;
             state.ExitWaits[key] = exitWait;
             foreach (var exit in descendants)
@@ -2152,6 +2368,31 @@ namespace Velvet
             {
                 PlayDescendantExit(exit, exitWait, staggerSec);
             }
+        }
+
+        // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
+        // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it
+        // (tornDown is null then, and ghostAnchor is the only element to read a panel from). Where an element
+        // has a panel the check waits for the next frame: a presence unmounted whole has retired its state by
+        // then and fires no onExitComplete, while one still mounted, an enclosing presence whose inner presence
+        // was retired alone, does fire it. With no panel the check runs at the teardown itself.
+        private void SettleExitWaitByTeardown(
+            ReconcilerContext.PresenceBoundaryState state,
+            ReconcilerContext.PresenceExitWait wait,
+            VisualElement ghostAnchor,
+            Action runExitComplete,
+            VisualElement? tornDown)
+        {
+            void SettleIfStillExiting()
+            {
+                if (_ctx.PresenceStates.ContainsValue(state) && state.ExitWaits.ContainsValue(wait))
+                {
+                    runExitComplete();
+                }
+            }
+            var panel = tornDown?.panel ?? ghostAnchor.panel;
+            if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
+            else SettleIfStillExiting();
         }
 
         // Lands the descendant's hold, and writes its exit pose's inline values at the swap, on the anchor's terms
@@ -2202,6 +2443,7 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+            state.LeavingMounts.Remove(key);
             var site = LiveEntrySite(in pass, key);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
                 out var anchorEmission);
@@ -2319,6 +2561,7 @@ namespace Velvet
         private void ReleaseDescendantExits(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             if (!state.ExitWaits.Remove(key, out var wait)) return;
+            foreach (var registration in wait.Registrations) registration.Release();
             for (var i = 0; i < wait.Descendants.Count; i++)
             {
                 var exit = wait.Descendants[i];
@@ -2353,6 +2596,7 @@ namespace Velvet
             state.MotionElements.Remove(key);
             state.ChildRoots.Remove(key);
             state.ExitWaits.Remove(key);
+            state.LeavingMounts.Remove(key);
         }
 
         private void CancelInterruptedPresenceExit(
@@ -2368,7 +2612,13 @@ namespace Velvet
                 ? _patcher.RestingClassSet(motionElement, motion?.ClassNames)
                 : null;
             var anchorResting = ReferenceEquals(anchor, motionElement) ? resting : null;
-            _ctx.StyleAnimationScheduler.CancelExit(anchor, anchorResting?.VariantClasses, anchorResting?.Merged);
+            // Without a Motion of its own the key plays no exit on its anchor, and that anchor can be the element
+            // of an inner presence's child that is exiting for its own reasons (the key rendering nothing but
+            // that presence), which a cancel here would strand mid-exit.
+            if (motion != null)
+            {
+                _ctx.StyleAnimationScheduler.CancelExit(anchor, anchorResting?.VariantClasses, anchorResting?.Merged);
+            }
             // A wrapped Motion's variant exit ran on its own element, not the anchor — the
             // cancel (whose reversal restores the resting variant) must land there too.
             if (motionElement != null && !ReferenceEquals(motionElement, anchor))
@@ -2764,6 +3014,13 @@ namespace Velvet
             var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
+            var previousEnclosing = _ctx.EnclosingPresenceChild;
+            var previousMountsLeaving = _ctx.PresenceMountsLeaving;
+            _ctx.PresenceMountsLeaving = site.MountsLeaving;
+            if (site.State != null && key != null)
+            {
+                _ctx.EnclosingPresenceChild = new ReconcilerContext.PresenceChildContext(site.State, key, !site.Absent);
+            }
             _ctx.PresenceAnchorMotion = anchorMotion;
             _ctx.PresenceAnchorMotionElement = null;
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
@@ -2789,6 +3046,8 @@ namespace Velvet
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
                 _ctx.PresenceAnchorCreated = previousAnchorCreated;
+                _ctx.EnclosingPresenceChild = previousEnclosing;
+                _ctx.PresenceMountsLeaving = previousMountsLeaving;
             }
         }
 
@@ -2809,6 +3068,13 @@ namespace Velvet
             internal ReconcilerContext.PresenceBoundaryState? State { get; init; }
             internal bool SuppressInitial { get; init; }
             internal float AnchorEnterDelaySec { get; init; }
+
+            // The key is leaving: a presence expanding inside its subtree reads that as its enclosing child
+            // not being present.
+            internal bool Absent { get; init; }
+
+            // The key was mounted already leaving, so its Motions rest at their initial pose.
+            internal bool MountsLeaving { get; init; }
         }
 
         // Records the top-level elements this emission of key placed as the key's roots. An element an inner
@@ -2835,7 +3101,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, boundary): no claim carries this emission's number before this loop
                 // writes it, so a claim equal to it is never read.
                 if (_ctx.PresenceChildRoots.GetValueOrDefault(root).Emission > emission) continue;
-                _ctx.PresenceChildRoots[root] = new ReconcilerContext.PresenceChildRootOwner(roots, emission);
+                _ctx.PresenceChildRoots[root] = new ReconcilerContext.PresenceChildRootOwner(roots, emission, state, key);
                 roots.Add(root);
             }
         }
@@ -2916,8 +3182,9 @@ namespace Velvet
         // transition) unless the Motion sets its own Exit + Animate + Variants, the exit label names a pose,
         // and a transition resolves for it. The caller supplies the element the swap targets — the Motion's
         // own, so a wrapped Motion's exit variant animates the same element its resting variant classes
-        // live on.
-        internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
+        // live on. restingOverride stands in for variants[Animate] as the pose the exit starts from, for an
+        // element resting at another.
+        internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion, string? restingOverride = null)
         {
             if (!TryResolveExitVariant(motion, out var restingClass, out var exitClass, out var transition)
                 || transition == null)
@@ -2929,7 +3196,7 @@ namespace Velvet
             // Damping/Mass, so a spring-configured Motion's variant EXIT is also spring-driven and hands off to
             // a reversal spring on an exit-cancel instead of silently falling back to a tween) and replaces
             // only the exit class pair — a single source for that knob list instead of hand-copying it here.
-            return transition.WithExitClasses(restingClass, exitClass);
+            return transition.WithExitClasses(restingOverride ?? restingClass, exitClass);
         }
 
         #endregion

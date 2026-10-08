@@ -94,7 +94,7 @@ namespace Velvet
         // Writes what the layer winner resolves to into slot alone, whatever else the winner's property fans
         // out to.
         public static void WriteLayered(IStyle style, HeldSlot slot, in ArbitraryStyle winner)
-            => Write(style, slot, new StyleLength(new Length(winner.Value, winner.Unit)),
+            => Write(style, slot, winner.ToStyleLength(),
                 new StyleFloat(winner.Value), new StyleColor(winner.Color));
 
         // Each slot takes the one of the three values its style type carries.

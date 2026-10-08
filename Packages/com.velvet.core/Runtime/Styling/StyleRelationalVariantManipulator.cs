@@ -222,11 +222,13 @@ namespace Velvet
         }
 
         // Every source a relational binding reacts to, nearest first: each preceding declared sibling carrying
-        // cls for a peer, each ancestor carrying it for a group.
+        // cls for a peer, each ancestor carrying it for a group. An input box looks from its control, since
+        // the box's only sibling is the control's label.
         internal static void FindSources(VisualElement element, bool isPeer, string cls, ReconcilerContext ctx,
             List<VisualElement> into)
         {
             into.Clear();
+            element = StyleInputBoxSurface.RelationalAnchorOf(element);
             if (isPeer)
             {
                 FindPrevSiblingsWithClass(element, cls, ctx, into);
