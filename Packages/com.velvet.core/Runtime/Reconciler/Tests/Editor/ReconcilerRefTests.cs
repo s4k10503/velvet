@@ -54,7 +54,7 @@ namespace Velvet.Tests
                 "The callback receives the freshly created element");
         }
 
-        // GREEN_ON_BASE(characterization): the base patches this Label and re-runs the callback against it.
+        // GREEN_ON_BASE(characterization): the base patches this Label and runs the new callback against the same instance.
         [Test]
         public void Given_RefCallback_When_ElementPatched_Then_ReceivesTheSameReusedElement()
         {
