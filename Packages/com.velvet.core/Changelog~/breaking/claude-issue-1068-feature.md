@@ -7,7 +7,7 @@
   applies. The same class takes CSS's `flex-shrink: 1` and the parent's `white-space`, so a label that a theme
   kept on one line (`nowrap`, `flex-shrink: 0`) now wraps and shrinks, and a `whitespace-nowrap` on an
   ancestor still reaches it; `whitespace-nowrap` and `shrink-0` on the label still apply. A `Label` UI Toolkit builds inside its own control, such as a `V.TextField`'s label, and a
-  `Button` keep the theme's spacing. The reset the flexbox guide used to suggest for centred labels, which
+  `Button` keep the theme's spacing; a `Button` Velvet creates takes the parent's `white-space` the same way. The reset the flexbox guide used to suggest for centred labels, which
   also set `flex-shrink: 0`, is no longer needed: the minimum size below replaces that half.
 
 - A `Label` or `Button` Velvet creates cannot shrink below its content along its parent's main axis, as a

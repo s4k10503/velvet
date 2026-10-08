@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -155,6 +156,15 @@ namespace Velvet
                 return;
             }
 
+            if (IsStaticFontAsset(resolved))
+            {
+                // Not measured: VariantGatedTypographyPassTests fails on the error the engine logs for text set
+                // in a static font asset.
+                Release(textElement);
+                _hasSignature = false;
+                return;
+            }
+
             var contentMinimum = MeasureContentMinimum(textElement, horizontal, text, resolved.whiteSpace, crossContent);
             if (contentMinimum <= 0f || float.IsNaN(contentMinimum))
             {
@@ -166,6 +176,12 @@ namespace Velvet
             Write(textElement, horizontal, CapMinimum(Mathf.Ceil(contentMinimum) + frame, specified, maximum));
             _lastSignature = signature;
             _hasSignature = true;
+        }
+
+        private static bool IsStaticFontAsset(IResolvedStyle resolved)
+        {
+            var asset = resolved.unityFontDefinition.fontAsset;
+            return asset != null && asset.atlasPopulationMode == AtlasPopulationMode.Static;
         }
 
         private static float FrameInsets(IResolvedStyle resolved, bool horizontal)

@@ -339,7 +339,8 @@ class `velvet-label` those labels carry, and gives them all four values (`white-
 the parent's, so a `whitespace-nowrap` on an ancestor still reaches the label). The sheet is imported ahead of every
 utility, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the label ties with it on specificity and wins on
 order. A label therefore wraps (unless an ancestor says otherwise) and shrinks by default, where a theme may
-have given it `nowrap` and `flex-shrink: 0`. A label centred in a box therefore sits on the
+have given it `nowrap` and `flex-shrink: 0`. A `Button` Velvet creates gets the white-space rule alone (class
+`velvet-button`), so its text wraps like a button's in CSS and keeps the theme's spacing. A label centred in a box therefore sits on the
 box's centre. A `Label` UI Toolkit builds inside its own control (a `V.TextField`'s label, a `V.Toggle`'s)
 and a `Button` keep the spacing the theme gives them, as an `<input>`'s label does on the web, where it is
 author markup.

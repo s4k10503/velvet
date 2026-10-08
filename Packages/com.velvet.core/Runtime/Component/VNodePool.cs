@@ -375,7 +375,16 @@ namespace Velvet
         private static readonly ElementPool<Button> s_buttonPool =
             new(() => new Button(), FiberButtonPoolHelper.ResetButtonForReuse, MaxButtonPoolSize);
 
-        public static Button RentButton() => s_buttonPool.Rent();
+        // The marker _preflight.uss gives a Button Velvet creates its white-space under, added at the rent for
+        // the reason VelvetLabelClassName is.
+        internal const string VelvetButtonClassName = "velvet-button";
+
+        public static Button RentButton()
+        {
+            var button = s_buttonPool.Rent();
+            button.AddToClassList(VelvetButtonClassName);
+            return button;
+        }
 
         // Called by FiberElementCleaner after the button has been removed from the DOM
         // hierarchy and Velvet-managed resources (event bindings, gesture manipulators) have been released.

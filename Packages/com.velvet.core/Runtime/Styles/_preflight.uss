@@ -4,7 +4,8 @@
  * Tailwind v4's preflight zeroes margin and padding on every element, and CSS starts every element at
  * flex-shrink: 1 and, since white-space is inherited, at the white-space of its parent. Velvet gives the
  * Labels it creates (VNodePool.VelvetLabelClassName) those values, `unset` being the inherited property's
- * own spelling of "from the parent"; a Label UI Toolkit builds inside its own control keeps the theme's. The rule is imported
+ * own spelling of "from the parent"; a Label UI Toolkit builds inside its own control keeps the theme's.
+ * A Button Velvet creates (VNodePool.VelvetButtonClassName) gets the white-space alone. The rule is imported
  * ahead of every utility sheet, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the same element ties
  * with it on specificity and wins on order.
  *
@@ -12,3 +13,6 @@
  */
 
 .velvet-label { margin: 0; padding: 0; white-space: unset; flex-shrink: 1; }
+
+/* A Button keeps the theme's spacing; only its white-space is taken from the parent, as a label's is. */
+.velvet-button { white-space: unset; }
