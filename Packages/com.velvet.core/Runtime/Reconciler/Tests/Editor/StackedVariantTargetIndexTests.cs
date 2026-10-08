@@ -25,16 +25,15 @@ namespace Velvet.Tests
         private static void Close(ReconcilerContext context, VisualElement target, object owner, string payload)
             => context.GateStackedVariant(target, owner, payload, false, StyleLayerPriority.Data, 0);
 
-        // The list the element-local settle copied into goes back to the reconciler's pool cleared but keeping
-        // the capacity the copy grew it to, so that capacity bounds how many manipulators the settle copied.
-        private static int CapacityOfLastReturnedStackedList(ReconcilerContext context)
+        // How many manipulators the element-local settle copied is read off the pooled list it copied into, with
+        // the pool emptied just before, so the list read is the one that settle grew and no earlier walk's.
+        private static Stack<List<StyleStackedVariantManipulator>> StackedListPoolOf(ReconcilerContext context)
         {
             const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
             var pool = typeof(ReconcilerBufferPool).GetField("_stackedVariantListPool", Private)!
                 .GetValue(context.BufferPool);
-            var stack = (Stack<List<StyleStackedVariantManipulator>>)pool.GetType().GetField("_pool", Private)!
+            return (Stack<List<StyleStackedVariantManipulator>>)pool.GetType().GetField("_pool", Private)!
                 .GetValue(pool);
-            return stack.Peek().Capacity;
         }
 
         [Test]
@@ -50,13 +49,15 @@ namespace Velvet.Tests
             {
                 Open(context, new VisualElement(), owner, "hover:w-[10px]");
             }
+            var pool = StackedListPoolOf(context);
+            pool.Clear();
 
             // Act
             VariantSettleSweep.ForEach(target, context, static _ => { });
 
             // Assert — a copy of the whole registry would have grown the list past the unrelated count, and a
             // capacity of zero would mean the pool kept nothing to read.
-            Assert.That(CapacityOfLastReturnedStackedList(context), Is.InRange(1, Unrelated - 1));
+            Assert.That(pool.Peek().Capacity, Is.InRange(1, Unrelated - 1));
         }
 
         [Test]
