@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
+using TextElement = UnityEngine.UIElements.TextElement;
 
 namespace Velvet
 {
