@@ -30,7 +30,8 @@ namespace Velvet.Tests
     /// observes it still pending; and a mutation whose <c>OnSuccess</c> threw leaves no data standing under the
     /// resulting error.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
-    /// result but the disposed fiber does not receive a Success state transition.</item>
+    /// result but the disposed fiber does not receive a Success or an Error state transition.</item>
+    /// <item>Committing an outcome re-renders the component.</item>
     /// <item>A cancellation callback that throws while the unmount walks the live sources is reported rather than
     /// raised, and the walk goes on to the sources after it.</item>
     /// </list>
@@ -752,6 +753,65 @@ namespace Velvet.Tests
             Assert.That(captured.Status, Is.Not.EqualTo(MutationStatus.Success),
                 "A disposed fiber does not receive a Success state transition");
         });
+
+        // GREEN_ON_BASE(refactor): the base already skips the commit of a failure that lands after the unmount.
+        // The change moves that skip into the shared commit step while running the handlers, and this pins
+        // that the handle stays pending through the move.
+        [UnityTest]
+        public IEnumerator Given_InFlightMutation_When_ComponentUnmountedAndItThenFails_Then_TheHandleIsNotCommitted() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the rejection is carried into the reading: a call that never failed leaves the
+            // handle pending whether or not the failure is committed.
+            var failingException = new InvalidOperationException("simulated");
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-failure"));
+            var captured = s_captured!;
+            var inflight = captured.MutateAsync(7);
+            Exception? rethrown = null;
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetException(failingException);
+            try { await inflight; } catch (InvalidOperationException caught) { rethrown = caught; }
+
+            // Assert
+            Assert.That((ReferenceEquals(rethrown, failingException), captured.Status),
+                Is.EqualTo((true, MutationStatus.Pending)),
+                "A call that fails after its component unmounted rejects to its caller and writes nothing to the handle");
+        });
+
+        // GREEN_ON_BASE(refactor): the base already re-renders the component when a call's outcome is committed.
+        // The change moves that request into the shared commit step, and this pins that it still reaches the
+        // component after the pending render has been flushed.
+        [UnityTest]
+        public IEnumerator Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the pending render is flushed before the call completes, so the render request the
+            // call made when it started cannot be what shows the outcome.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationStatusRender, key: "outcome-render"));
+            var inFlight = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+            var pendingText = _root.Q<Label>().text;
+
+            // Act
+            gate.TrySetResult(2);
+            await inFlight;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((pendingText, _root.Q<Label>().text), Is.EqualTo(("Pending", "Success")),
+                "Committing an outcome asks the component for a render");
+        });
+
+        [Component]
+        public static VNode CaptureMutationStatusRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn));
+            return V.Label(text: s_captured.Status.ToString());
+        }
 
         [Component]
         public static VNode CaptureMutationRender()
