@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -45,10 +46,16 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
+            AsyncActionsInFlightTestAccess.ResetForTest();
             ResetOptimistic();
             ResetActionHost();
             ResetSubsumingParent();
         }
+
+        // Each case disposes what it mounts before this runs, so a count left here is an action this fixture
+        // gave up on without an unmount, and it must not decide ownership in the fixture that runs next.
+        [TearDown]
+        public void TearDown() => AsyncActionsInFlightTestAccess.ResetForTest();
 
         [Test]
         public void Given_NoOptimisticUpdate_When_FirstRender_Then_ReturnsPassthroughState()
@@ -493,6 +500,21 @@ namespace Velvet.Tests
         }
 
         private static readonly Regex OutsideEveryTransitionWarning = new("added outside every transition");
+
+        [Test]
+        public void Given_TheResetEveryCaseHereRunsFirst_When_ItLooksUpWhatItResets_Then_BothFieldsAreThere()
+        {
+            // Arrange
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+
+            // Act — the reset returns quietly where a field is missing, so this is what notices a rename
+            var count = typeof(FiberWorkLoop).GetField(AsyncActionsInFlightTestAccess.CountFieldName, flags);
+            var owner = typeof(FiberWorkLoop).GetField(AsyncActionsInFlightTestAccess.OwnerFieldName, flags);
+
+            // Assert
+            Assert.That((count != null, owner != null), Is.EqualTo((true, true)),
+                "The set-up reset reaches the in-flight count and its owner slot, or the ownership cases are order-dependent");
+        }
 
         private static void DrainBothTiers(MountedTree mounted)
         {
