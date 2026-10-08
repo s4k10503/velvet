@@ -33,6 +33,10 @@ namespace Velvet.Tests
         private static int s_onMutateCount;
         private static int s_onSettledCount;
         private static readonly List<int> s_delivered = new();
+        // Which case is running. A call an earlier case left paused or waiting still runs its hook callbacks
+        // when its unmount's cancellation surfaces, which for a polled wait is at the next frame, inside
+        // whichever case is running then; each callback below counts only for the case whose render built it.
+        private static int s_case;
 
         // Both signals supplied, so no case reads the Application's own focus or connectivity.
         private static readonly RetryPolicy s_ready = new() { IsOnline = () => true, IsFocused = () => true };
@@ -43,6 +47,7 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
+            s_case++;
             s_captured = null;
             s_voidCaptured = null;
             s_noInputCaptured = null;
@@ -582,12 +587,30 @@ namespace Velvet.Tests
         }
 #endif
 
+        private static Action<T1, T2> ForThisCase<T1, T2>(Action<T1, T2> callback)
+        {
+            var owner = s_case;
+            return (first, second) =>
+            {
+                if (owner == s_case) callback(first, second);
+            };
+        }
+
+        private static Action<T1, T2, T3, T4> ForThisCase<T1, T2, T3, T4>(Action<T1, T2, T3, T4> callback)
+        {
+            var owner = s_case;
+            return (first, second, third, fourth) =>
+            {
+                if (owner == s_case) callback(first, second, third, fourth);
+            };
+        }
+
         [Component]
         public static VNode CaptureMutationRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnError: (_, _) => s_onErrorCount++) { Retry = s_retry });
+                OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry });
             return V.Label(text: "ok");
         }
 
@@ -603,7 +626,7 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnSuccess: (data, _) => s_delivered.Add(data)) { Retry = s_retry });
+                OnSuccess: ForThisCase<int, int>((data, _) => s_delivered.Add(data))) { Retry = s_retry });
             return V.Label(text: "ok");
         }
 
@@ -621,7 +644,7 @@ namespace Velvet.Tests
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, int>(
                 MutationFn: s_mutationFn,
                 OnMutate: _ => ++s_onMutateCount,
-                OnSettled: (_, _, _, _) => s_onSettledCount++) { Retry = s_retry });
+                OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry });
             return V.Label(text: "ok");
         }
 
