@@ -313,6 +313,7 @@ namespace Velvet
                 held = shown;
                 // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
                 var overLimit = field.text.Length > limit;
+                // MUTANT_SURVIVES(equivalent, boundary): measured, a zero limit leaves "" on the second write with or without this bound; TextFieldInputPropTests pins that outcome.
                 edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
                 ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
             }

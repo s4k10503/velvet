@@ -355,6 +355,33 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "abc", string.Empty)));
         }
 
+        // The first tenant commits the text the second then types, so a record the removal left standing
+        // reads that typing as no edit. The second tenant's own commit is what the record must follow.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantCommitsThenTypesWhatTheLastTenantCommittedAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("xy");
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, second, narrowed);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, "abc", "xy")));
+        }
+
         // GREEN_ON_BASE(characterization): the base re-shows the committed value under the new limit, which a
         // zero limit also cuts to nothing; the case pins that the branch's cut of the edit does the same.
         // Zero is a length to cut to, where -1 is no limit. The committed value is "xy" so the cut edit
