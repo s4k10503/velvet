@@ -1753,7 +1753,7 @@ namespace Velvet
             var emitting = _ctx.EnclosingPresenceChild;
             if (!emitting.HasValue && presence.Propagate && state.Enclosing == null && host != null)
             {
-                emitting = _ctx.PresenceChildOf(host) ?? FiberPresenceChild();
+                emitting = NearestPresenceChild(_ctx.PresenceChildOf(host), FiberPresenceChild());
             }
             var leaving = presence.Propagate
                 && (emitting.HasValue
@@ -1770,6 +1770,23 @@ namespace Velvet
             state.ExitedForEnclosing = leaving;
             if (!presence.Propagate) state.Registration?.Complete();
             return leaving;
+        }
+
+        // Of the child the host element sits in and the one the fiber was last expanded inside, the one nested in the
+        // other: a fiber record naming a child below the host's is the nearer, and anything else leaves the host's.
+        private static ReconcilerContext.PresenceChildContext? NearestPresenceChild(
+            ReconcilerContext.PresenceChildContext? byHost,
+            ReconcilerContext.PresenceChildContext? byFiber)
+        {
+            if (!byHost.HasValue || !byFiber.HasValue) return byHost ?? byFiber;
+            for (var state = byFiber.Value.State; state != null; state = state.Enclosing)
+            {
+                if (ReferenceEquals(state.Enclosing, byHost.Value.State) && state.EnclosingKey == byHost.Value.Key)
+                {
+                    return byFiber;
+                }
+            }
+            return byHost;
         }
 
         // The presence child the current fiber, else the nearest ancestor fiber that has one, was last expanded inside.
@@ -1832,6 +1849,10 @@ namespace Velvet
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
             var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state, Absent = true };
+            // Only a child whose exit is a propagating presence's can place nothing and still be emitted.
+            var emissionBefore = commit != null && PropagatingPresenceHoldsChildren(state, key)
+                ? SnapshotEmission(walk)
+                : null;
             var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement, out _);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -1846,6 +1867,7 @@ namespace Velvet
             // once, leaves no element to keep mounted, so there is no exit to wait for.
             if (commit != null && ghostAnchor == null)
             {
+                UndoEmission(walk, emissionBefore);
                 RemoveGhostAtOnce(in pass, key, node);
                 return;
             }
@@ -1861,6 +1883,20 @@ namespace Velvet
             }
 
             pass.NextCommitted.Add((key, node));
+        }
+
+        private static (HashSet<ComponentFiber> Fibers, int Placements)? SnapshotEmission(InlineWalk walk)
+            => (new HashSet<ComponentFiber>(walk.NewFibers), walk.Commit!.Placements.Count);
+
+        // Takes back a ghost emission that placed nothing: the fibers it walked leave the walk, so the orphan
+        // cleanups and the sweep dispose them as they do a child removed without being emitted, and the
+        // placements it recorded for them go.
+        private void UndoEmission(InlineWalk walk, (HashSet<ComponentFiber> Fibers, int Placements)? before)
+        {
+            if (before == null) return;
+            DropFibersTheFailedOutputAdded(walk, before.Value.Fibers);
+            var placements = walk.Commit!.Placements;
+            placements.RemoveRange(before.Value.Placements, placements.Count - before.Value.Placements);
         }
 
         // The removal of a key that has nothing to exit: it leaves the committed set, then its entries and node

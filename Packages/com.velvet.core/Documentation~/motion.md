@@ -132,7 +132,8 @@ completed.
   to it in that time is not mounted.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
-  later render of its own component.
+  later render of its own component. When it mounts that way, the nearest enclosing child is the one that
+  counts: the child of the nearest presence its host element or its component sits inside.
 
 ```csharp
 V.AnimatePresence(key: "pages", children: new VNode[]

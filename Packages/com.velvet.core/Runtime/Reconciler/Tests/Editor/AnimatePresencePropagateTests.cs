@@ -49,6 +49,9 @@ namespace Velvet.Tests
         private static FlagStore s_propagate;
         private static FlagStore s_show;
         private static FlagStore s_showOuter;
+        private static KeySetStore s_midKeys;
+        private static int s_mounts;
+        private static int s_cleanups;
         private static string s_shape;
         private static string s_innerChild;
         private static bool s_middlePropagate;
@@ -72,6 +75,9 @@ namespace Velvet.Tests
             s_propagate = null;
             s_show = null;
             s_showOuter = null;
+            s_midKeys = null;
+            s_mounts = 0;
+            s_cleanups = 0;
             s_shape = null;
             s_innerChild = "motion";
             s_middlePropagate = false;
@@ -91,6 +97,7 @@ namespace Velvet.Tests
             s_propagate?.Dispose();
             s_show?.Dispose();
             s_showOuter?.Dispose();
+            s_midKeys?.Dispose();
             _sim?.Dispose();
             _sim = null;
         }
@@ -159,6 +166,32 @@ namespace Velvet.Tests
         [Component]
         private static VNode MiddleTopRender() => MiddlePresence();
 
+        // A presence between the outer one and the retirable inner one, whose child "x" holds the inner presence at
+        // its top and is the one the case removes.
+        [Component]
+        private static VNode TripleRender()
+        {
+            var keys = Hooks.UseStore(s_midKeys, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Component(RetirableInnerRender, key: key.ToString()));
+            }
+            return V.AnimatePresence(key: "o1", children: children.ToArray());
+        }
+
+        // Counts its effect's mounts and cleanups, and renders a propagating presence whose children play no exit.
+        [Component]
+        private static VNode EffectfulRender()
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_mounts++;
+                return (System.Action)(() => s_cleanups++);
+            }, System.Array.Empty<object>());
+            return InnerPresence("x", true);
+        }
+
         // The outer presence's child for a key, around the inner presence in the shape s_shape names.
         private static VNode OuterChild(string key, string innerKeys, bool propagate)
         {
@@ -177,6 +210,8 @@ namespace Velvet.Tests
                     V.Portal(s_portalTarget, new[] { V.Component(StatefulInnerRender) }),
                 }),
                 "retirable" => V.Div(key: key, children: new[] { V.Component(RetirableInnerRender) }),
+                "triple" => V.Div(key: key, children: new[] { V.Component(TripleRender) }),
+                "effectful" => V.Component(EffectfulRender, key: key),
                 "retirable-top" => V.Component(RetirableInnerRender, key: key),
                 "middle" => V.Div(key: key, children: new[] { MiddlePresence() }),
                 "middle-top" => V.Component(MiddleTopRender, key: key),
@@ -221,6 +256,7 @@ namespace Velvet.Tests
             s_propagate = new FlagStore(true);
             s_show = new FlagStore(innerShown);
             s_showOuter = new FlagStore(true);
+            s_midKeys = new KeySetStore("x");
             if (shape == "portal")
             {
                 s_portalTarget = new VisualElement { name = "target" };
@@ -782,6 +818,44 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((HostChildCount, s_outerCompleted), Is.EqualTo((0, 1)));
+        }
+
+        [Test]
+        public void Given_AnInnerPresenceFirstMountedInAnInnerChildOfANestedPresence_When_ThatChildIsRemoved_Then_ItIsHeldUntilTheInnerExitCompletes()
+        {
+            // Arrange — the nearest enclosing child is the middle presence's "x", not the outer presence's "a".
+            using var mounted = MountSettled("triple", "x", innerShown: false);
+            s_show.Set(true);
+            Drain(mounted);
+            Frames(40);
+            s_midKeys.Set(string.Empty);
+            Drain(mounted);
+            var heldWhileExiting = InnerItem != null;
+
+            // Act — well past the inner Motion's 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((heldWhileExiting, InnerItem == null), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AChildWhoseOnlyOutputIsAPresenceOfChildrenWithNoExit_When_TheKeyIsRemovedAndAddedAgain_Then_ItsEffectCleansUpOnceAndMountsAgain()
+        {
+            // Arrange
+            s_innerChild = "plain";
+            using var mounted = MountSettled("effectful");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            var cleanupsAfterRemoval = s_cleanups;
+
+            // Act
+            s_outerKeys.Set("a");
+            Drain(mounted);
+
+            // Assert — the cleanup ran once at the removal, and the returning child mounted a fresh fiber.
+            Assert.That((cleanupsAfterRemoval, s_cleanups, s_mounts), Is.EqualTo((1, 1, 2)));
         }
 
         [TestCase("wrapper")]
