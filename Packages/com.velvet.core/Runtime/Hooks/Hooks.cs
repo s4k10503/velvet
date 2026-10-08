@@ -1233,38 +1233,52 @@ namespace Velvet
         /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
-            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1);
+            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
 
         /// <summary>
         /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
         /// Web Animations API's <c>iterations</c> and CSS's <c>animation-iteration-count</c>. Each pass after the
         /// first starts at step 0 once the last step's hold elapses, and
         /// <see cref="AnimationSequenceState.IsComplete"/> latches when the last pass's last hold elapses, with
-        /// that pass's last step still current.
+        /// that pass's last step still current. A gap between passes is <paramref name="repeatDelaySec"/>, Framer
+        /// Motion's <c>repeatDelay</c>; under <c>loop</c> a trailing <see cref="AnimationSequenceStep.Wait"/> step
+        /// is the same gap, since no completion waits behind it.
         /// </summary>
         /// <param name="steps">The ordered sequence. Must not be null.</param>
         /// <param name="deps">As on the overload taking <c>loop</c>. A restart, from a changed entry here or
         /// from <c>controls.Restart()</c>, plays every pass again.</param>
         /// <param name="iterations">The number of passes, counting the first: Framer Motion's <c>repeat: n</c>
         /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence reads complete from its
-        /// mount render on. A count a re-render changes reaches a sequence still playing at the end of its
-        /// current pass; a completed one stays complete until a restart. Throws
+        /// mount render on. A count a re-render changes applies to the sequence as it plays, as the Web
+        /// Animations API's <c>updateTiming</c> does: a count no higher than the passes already finished completes
+        /// the sequence at the next frame, the cursor staying on the step it was on, and a count above them
+        /// resumes a completed sequence at the next pass's step 0. Throws
         /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
         /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
+        /// <param name="repeatDelaySec">Seconds the cursor waits on the last step between one pass and the next,
+        /// read as each gap begins. It follows no last pass, so it never delays completion. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative or not finite.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
-            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, int iterations, bool autoplay = true)
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, int iterations, bool autoplay = true,
+            float repeatDelaySec = 0f)
         {
             if (iterations < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(iterations), iterations,
                     "A sequence plays zero or more passes; the overload taking loop plays it without end.");
             }
-            return PlayAnimationSequence(steps, deps, autoplay, iterations);
+            if (float.IsNaN(repeatDelaySec) || float.IsInfinity(repeatDelaySec) || repeatDelaySec < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
+                    "A gap between passes is a finite number of seconds, zero or more.");
+            }
+            return PlayAnimationSequence(steps, deps, autoplay, iterations, repeatDelaySec);
         }
 
         // A null iterations plays without end.
         private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
-            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations)
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
+            float repeatDelaySec)
         {
             if (steps == null) throw new ArgumentNullException(nameof(steps));
             var fiber = Resolve("UseAnimationSequence");
@@ -1279,8 +1293,9 @@ namespace Velvet
             if (!IsStrictDiagnosticPass(fiber))
             {
                 latestSteps.Set(steps);
-                // Under the same latest-render rule: the walker reads it at a reseed and at each pass's end.
+                // Under the same latest-render rule: the walker reads both on its next Advance or reseed.
                 walker.Current.Iterations = iterations;
+                walker.Current.RepeatDelaySec = repeatDelaySec;
             }
 
             UseEffect(() =>
@@ -1293,13 +1308,14 @@ namespace Velvet
 
             UseFrame(dt =>
             {
-                if (walker.Current.IsPaused || walker.Current.IsComplete)
+                if (walker.Current.IsPaused)
                 {
                     return;
                 }
                 var beforeGeneration = walker.Current.Generation;
+                var wasComplete = walker.Current.IsComplete;
                 walker.Current.Advance(dt);
-                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
+                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
                 {
                     bumpRenderVersion.Invoke(v => v + 1);
                 }

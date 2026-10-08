@@ -517,16 +517,21 @@ Motion's `repeat: 2` is `iterations: 3`. Each pass after the first starts again 
 its effect as `loop` does, and `IsComplete` latches once the last pass's last hold elapses, leaving the
 cursor on the last step. `iterations: 0` plays no pass: no step commits, no `Call` fires, and the sequence
 reads complete from its mount render on. A negative count throws `ArgumentOutOfRangeException`. A restart
-plays every pass again. A count changed by a re-render reaches a sequence still playing at the end of its
-current pass; a completed one stays complete until it restarts.
+plays every pass again.
 
-Where this differs from the Web Animations API and CSS: a count lowered below the pass in progress
-finishes the sequence at the end of that pass, where the Web Animations API finishes it at once; the
-count is a whole number, where both accept a fraction such as `2.5`; and a finished sequence keeps its
-last step current, as `animation-fill-mode: forwards` would, while `iterations: 0` commits nothing, as
-the default `animation-fill-mode: none` would. Framer Motion's `repeatDelay` has no counterpart: a
-trailing `Wait` step adds the gap between passes, but it also holds the last pass before the sequence
-completes, which `repeatDelay` does not.
+A count changed by a re-render applies to the sequence as it plays, as the Web Animations API's
+`updateTiming` does: a count no higher than the passes already finished completes the sequence at the next
+frame, the cursor staying on the step it was on, and a count above them resumes a completed sequence at the
+next pass's step 0.
+
+`repeatDelaySec` is Framer Motion's `repeatDelay`: seconds the cursor waits on the last step between one
+pass and the next, never after the last, so it does not delay completion. It throws
+`ArgumentOutOfRangeException` when negative or not finite. Under `loop`, a trailing `Wait` step is the same
+gap, since no completion waits behind it.
+
+Where this differs from the Web Animations API and CSS: the count is a whole number, where both accept a
+fraction such as `2.5`; and a finished sequence keeps its last step current, as `animation-fill-mode:
+forwards` would, while `iterations: 0` commits nothing, as the default `animation-fill-mode: none` would.
 
 An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
 is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires

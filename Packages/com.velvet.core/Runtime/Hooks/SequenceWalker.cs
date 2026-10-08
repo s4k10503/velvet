@@ -29,6 +29,7 @@ namespace Velvet
         private string? _currentLabel;
         private StyleTransitionConfig? _currentTransition;
         private bool _isComplete;
+        private bool _inRepeatGap;
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
@@ -47,8 +48,13 @@ namespace Velvet
         public int Generation => _generation;
 
         // The passes a reseed plays, counting the first; null plays without end. Read at a reseed, where zero
-        // commits no step, and at each pass's end.
+        // commits no step, and on every Advance, where a count the finished passes already reach completes the
+        // sequence at once and a count above them resumes a completed one.
         public int? Iterations { get; set; } = 1;
+
+        // The gap between one pass's end and the next pass's start, read as each gap begins. Never follows the
+        // last pass, so it delays no completion.
+        public float RepeatDelaySec { get; set; }
 
         public bool HasReseeded { get; private set; }
 
@@ -73,8 +79,18 @@ namespace Velvet
         // above one — cannot spin forever inside one call; it carries on over the frames after.
         public int Advance(float dt)
         {
-            if (_isComplete || _steps.Count == 0)
+            if (_steps.Count == 0)
             {
+                return _stepIndex;
+            }
+            if (_isComplete)
+            {
+                ResumeIfPassesRemain();
+                return _stepIndex;
+            }
+            if (!PassesRemain)
+            {
+                _isComplete = true;
                 return _stepIndex;
             }
 
@@ -83,20 +99,48 @@ namespace Velvet
             while (!_isComplete && _elapsedInStepSec >= _currentHoldSec && guard-- > 0)
             {
                 _elapsedInStepSec -= _currentHoldSec;
+                if (_inRepeatGap)
+                {
+                    _inRepeatGap = false;
+                    ArriveAtStart(0);
+                    continue;
+                }
                 var next = _stepIndex + 1;
                 if (next >= _steps.Count)
                 {
-                    // A null Iterations compares false, so an endless sequence always wraps.
-                    if (++_passesCompleted >= Iterations)
+                    _passesCompleted++;
+                    if (!PassesRemain)
                     {
                         _isComplete = true;
                         break;
+                    }
+                    if (RepeatDelaySec > 0f)
+                    {
+                        _inRepeatGap = true;
+                        _currentHoldSec = RepeatDelaySec;
+                        continue;
                     }
                     next = 0;
                 }
                 ArriveAtStart(next);
             }
             return _stepIndex;
+        }
+
+        // A null Iterations plays without end.
+        private bool PassesRemain => Iterations == null || _passesCompleted < Iterations;
+
+        // The frame after a raised count, not the render that raised it: the next pass starts at step 0, and
+        // the time since the sequence completed does not count toward it.
+        private void ResumeIfPassesRemain()
+        {
+            if (!PassesRemain)
+            {
+                return;
+            }
+            _isComplete = false;
+            _elapsedInStepSec = 0f;
+            ArriveAtStart(0);
         }
 
         public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
@@ -125,6 +169,7 @@ namespace Velvet
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
+            _inRepeatGap = false;
             WarnAboutUnvalidatedToSteps();
             if (Iterations == 0)
             {

@@ -16,6 +16,8 @@ namespace Velvet.Tests
 
         private static AnimationSequenceStep[] s_steps;
         private static int s_iterations;
+        private static float s_repeatDelaySec;
+        private static Action s_rerender;
         private static AnimationSequenceState s_state;
         private static AnimationSequenceControls s_controls;
         private static int s_callCount;
@@ -29,6 +31,7 @@ namespace Velvet.Tests
             UseFrameFakeClockHost.Reset();
             s_callCount = 0;
             s_renderCount = 0;
+            s_repeatDelaySec = 0f;
         }
 
         [TearDown]
@@ -43,7 +46,10 @@ namespace Velvet.Tests
         [Component]
         private static VNode IteratingSequenceHost()
         {
-            var (state, controls) = Hooks.UseAnimationSequence(s_steps, Array.Empty<object>(), iterations: s_iterations);
+            var (_, setTick) = Hooks.UseState(0);
+            s_rerender = () => setTick.Invoke(n => n + 1);
+            var (state, controls) = Hooks.UseAnimationSequence(
+                s_steps, Array.Empty<object>(), iterations: s_iterations, repeatDelaySec: s_repeatDelaySec);
             if (s_renderCount++ == 0)
             {
                 s_firstRenderState = state;
@@ -213,21 +219,133 @@ namespace Velvet.Tests
             Assert.That(s_firstRenderState.IsComplete, Is.True);
         }
 
-        [Test]
-        public void Given_ThreeIterationsLoweredToZeroDuringTheFirstPass_When_TheFirstPassEnds_Then_TheSequenceIsCompleteOnTheLastStep()
+        // Three passes of TwoLabels, run to the second pass's first hold (0.272s of ticks, the pass spanning 0.2s
+        // to 0.4s), then the count set and a render forced so the walker reads it.
+        private void LowerDuringSecondPass(int lowered)
         {
-            // Arrange — 0.144s of ticks lands on "b", and that step change's re-render reads the lowered count.
             s_steps = TwoLabels();
             s_iterations = 3;
             Mount();
-            s_iterations = 0;
-            AdvancePast(0.12f);
+            AdvancePast(0.25f);
+            s_iterations = lowered;
+            s_rerender();
+            _mounted.FlushStateForTest();
+        }
 
-            // Act — 0.32s in all, inside the second pass were it still playing.
-            AdvancePast(0.15f);
+        [Test]
+        public void Given_ThreeIterationsLoweredToOneDuringTheSecondPass_When_TheNextFramesTick_Then_TheSequenceIsCompleteBeforeThePassEnds()
+        {
+            // Arrange
+            LowerDuringSecondPass(1);
+
+            // Act — 0.032s more, where the second pass runs to 0.4s and the clock is at 0.304s.
+            AdvancePast(0f);
 
             // Assert
-            Assert.That((s_state.StepIndex, s_state.CurrentLabel, s_state.IsComplete), Is.EqualTo((1, "b", true)));
+            Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_ThreeIterationsLoweredToTwoDuringTheSecondPass_When_TheNextFramesTick_Then_TheSecondPassStillPlays()
+        {
+            // Arrange
+            LowerDuringSecondPass(2);
+
+            // Act — as the case lowering to one, which this count's second pass outlasts.
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.False);
+        }
+
+        [Test]
+        public void Given_TwoIterationsThatCompleted_When_TheCountIsRaisedToThree_Then_ThePassesPlayOnAndTheCallFiresThreeTimes()
+        {
+            // Arrange
+            s_steps = LabelThenCall();
+            s_iterations = 2;
+            Mount();
+            AdvancePast(0.5f);
+            s_iterations = 3;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert
+            Assert.That(s_callCount, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_TwoIterationsThatCompleted_When_TheCountIsRaisedToThree_Then_TheSequenceNoLongerReadsComplete()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            Mount();
+            AdvancePast(0.4f);
+            s_iterations = 3;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.False);
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapOfTwoTenths_When_TheFirstPassHasEnded_Then_TheCursorWaitsOnTheLastStep()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+
+            // Act — 0.24s of ticks, inside the gap that spans 0.2s to 0.4s.
+            AdvancePast(0.22f);
+
+            // Assert
+            Assert.That((s_state.StepIndex, s_state.IsComplete), Is.EqualTo((1, false)));
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapOfTwoTenths_When_TimePassesPastTheSecondPass_Then_TheSequenceIsCompleteWithoutATrailingGap()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+
+            // Act — 0.672s of ticks: the second pass ends at 0.6s, and a gap after it would hold to 0.8s.
+            AdvancePast(0.65f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_ThreeIterationsWithAGapLoweredToOneInsideTheGap_When_TheNextFramesTick_Then_TheSequenceIsComplete()
+        {
+            // Arrange — the clock is at 0.24s, inside the gap that spans 0.2s to 0.4s.
+            s_steps = TwoLabels();
+            s_iterations = 3;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+            AdvancePast(0.22f);
+            s_iterations = 1;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.IsComplete, Is.True);
         }
 
         [Test]
@@ -259,6 +377,21 @@ namespace Velvet.Tests
 
             // Assert — outside a render, so a count that went unchecked would throw InvalidOperationException
             // from the render guard instead.
+            Assert.Throws<ArgumentOutOfRangeException>(call);
+        }
+
+        [TestCase(-0.1f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        public void Given_AGapThatIsNegativeOrNotFinite_When_TheHookIsCalled_Then_ItThrowsArgumentOutOfRange(float gap)
+        {
+            // Arrange
+            var steps = TwoLabels();
+
+            // Act
+            TestDelegate call = () => Hooks.UseAnimationSequence(steps, Array.Empty<object>(), iterations: 2, repeatDelaySec: gap);
+
+            // Assert — outside a render, as the negative count's case.
             Assert.Throws<ArgumentOutOfRangeException>(call);
         }
     }
