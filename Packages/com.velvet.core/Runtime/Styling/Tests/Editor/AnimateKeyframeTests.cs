@@ -179,7 +179,7 @@ namespace Velvet.Tests
                 element.style.opacity = 0.2f;
 
                 // Act
-                StyleAnimateDriver.ReassertLoop(element);
+                StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.Opacity);
 
                 // Assert
                 Assert.That((element.style.opacity.value, element.style.scale.keyword),

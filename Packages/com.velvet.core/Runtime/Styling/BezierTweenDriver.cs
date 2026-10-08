@@ -230,7 +230,7 @@ namespace Velvet
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             MotionNativeTransitionGuard.Release(element, state);
             if (state.NativeLayoutOwner != null) MotionNativeTransitionGuard.Release(state.NativeLayoutOwner, state);
             state.NativeLayoutOwner = null;
@@ -267,7 +267,7 @@ namespace Velvet
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
         }
 
@@ -360,7 +360,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
         }
     }
 }

@@ -227,9 +227,18 @@ namespace Velvet
             var translate = element.style.translate;
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
-            var projection = new LayoutIdProjection(host, translate, scale,
-                translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate,
-                scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value)
+            var ownTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
+            var ownScale = scale.keyword == StyleKeyword.Undefined ? scale.value.value : resolved.scale.value;
+            // A running bounce or ping has its frame in the slot, and the frame is the loop's rather than the element's.
+            if (StyleAnimateDriver.TryReadBounceOwn(element, translate, out var bounceInline, out var bounceOwn))
+            {
+                (translate, ownTranslate) = (bounceInline, Pixels(bounceOwn, element.layout));
+            }
+            if (StyleAnimateDriver.TryReadPingOwn(element, scale, out var pingInline, out var pingOwn))
+            {
+                (scale, ownScale) = (pingInline, pingOwn);
+            }
+            var projection = new LayoutIdProjection(host, translate, scale, ownTranslate, ownScale)
             {
                 From = element.layout,
             };
@@ -401,6 +410,7 @@ namespace Velvet
                 {
                     projection.WritesTranslate = true;
                     MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                    StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnTranslate;
                 element.style.translate = new Translate(new Length(own.x + translate.x), new Length(own.y + translate.y), own.z);
@@ -412,12 +422,18 @@ namespace Velvet
                 {
                     projection.WritesScale = true;
                     MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                    StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnScale;
                 element.style.scale = new Scale(new Vector3(own.x * projection.Scale.x, own.y * projection.Scale.y, own.z));
                 projection.WrittenScale = element.style.scale;
             }
         }
+
+        // The slots a running animate-* loop stays off while the projection writes them.
+        private static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
+            => (projection.WritesTranslate ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
+                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None);
 
         // A slot that no longer holds the last value written here was written by someone else — the element's
         // own arbitrary-value class re-applied by a patch, a drag, another driver — and that value is the
@@ -525,6 +541,7 @@ namespace Velvet
             AdoptForeignWrites(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
+            StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
             WriteOpacity(element, projection, null);
             LayoutIdPicking.Restore(projection);
             MotionNativeTransitionGuard.Release(element, projection);

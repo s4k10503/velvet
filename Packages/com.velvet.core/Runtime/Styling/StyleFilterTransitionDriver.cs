@@ -284,7 +284,7 @@ namespace Velvet
                 list.Add(fn);
             }
             StyleFilterEngineWrite.WriteFrame(element, list);
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.Filter);
         }
 
         private static void StartTick(VisualElement element, StyleFilterTransitionBinding b)
@@ -326,7 +326,7 @@ namespace Velvet
         private static void Settle(VisualElement element, StyleFilterTransitionBinding b)
         {
             StyleFilterEngineWrite.Write(element, b.Target);
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.Filter);
             Cancel(b);
         }
 

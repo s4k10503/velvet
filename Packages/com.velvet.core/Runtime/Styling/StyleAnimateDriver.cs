@@ -17,6 +17,11 @@ namespace Velvet
 
         public void Seed(TStyle inline) => _own = inline;
 
+        // True while the slot still holds the frame this loop last wrote, so it is the loop's rather than anyone's own.
+        public bool HoldsWrittenFrame(TStyle inline) => _hasWritten && inline.Equals(_written);
+
+        public TStyle OwnValue => _own;
+
         // adopt is false for a write the caller knows is not the element's own (a Motion driver's frame, a
         // crossfade's), which leaves the inline value out of the element's own.
         public TStyle Own(TStyle inline, bool adopt)
@@ -58,6 +63,8 @@ namespace Velvet
         public LoopSlot<StyleRotate> Rotation;
         public LoopSlot<StyleScale> Scale;
         public LoopSlot<StyleTranslate> Translation;
+        // What the element's classes give those slots, re-read when the class list changes.
+        public CascadeSnapshot Cascade;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -130,17 +137,68 @@ namespace Velvet
         internal static bool DrivesFilter(VisualElement element)
             => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Hue;
 
-        public static void ReassertLoop(VisualElement element)
+        // driven names the slots the calling driver writes or has just cleared, whose inline value is its own and not
+        // the element's (LoopSlot); a slot outside it that differs from the loop's last frame was written by something
+        // else and is the element's own.
+        public static void ReassertLoop(VisualElement element, MotionTransitionSlots driven)
         {
             if (s_running.TryGetValue(element, out var binding))
             {
-                ApplyCurrentFrame(element, binding, driverWrote: true);
+                ApplyCurrentFrame(element, binding, driven);
             }
         }
 
-        // driverWrote is true when a Motion driver wrote the slots just before this frame, which leaves what it wrote
-        // out of the element's own values (LoopSlot).
-        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
+        /// <summary>
+        /// Keeps the element's loop off <paramref name="slots"/> until it is called again with
+        /// <see cref="MotionTransitionSlots.None"/>: a layoutId projection writes translate and scale over the
+        /// element's own, and a loop writing beside it would be taken for the element's own by the projection and
+        /// the projection's frame for the loop's by the loop.
+        /// </summary>
+        public static void YieldSlots(VisualElement element, object owner, MotionTransitionSlots slots)
+        {
+            var held = s_held.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
+            held.Remove(owner);
+            if (slots != MotionTransitionSlots.None)
+            {
+                held[owner] = slots;
+            }
+        }
+
+        // The element's own translate under a running bounce whose frame sits in the slot: what the bounce moves from,
+        // for a layoutId projection that would otherwise take the frame for the element's own. False when the slot
+        // holds anything else.
+        internal static bool TryReadBounceOwn(VisualElement element, StyleTranslate inline, out StyleTranslate ownInline,
+            out Translate own)
+        {
+            ownInline = default;
+            own = default;
+            if (!s_running.TryGetValue(element, out var binding) || binding.Spec.Mode != AnimateMode.Bounce
+                || !binding.Translation.HoldsWrittenFrame(inline))
+            {
+                return false;
+            }
+            ownInline = binding.Translation.OwnValue;
+            own = ReadTranslate(element, binding, ownInline);
+            return true;
+        }
+
+        // As TryReadBounceOwn, for the scale a running ping writes.
+        internal static bool TryReadPingOwn(VisualElement element, StyleScale inline, out StyleScale ownInline,
+            out Vector3 own)
+        {
+            ownInline = default;
+            own = default;
+            if (!s_running.TryGetValue(element, out var binding) || binding.Spec.Mode != AnimateMode.Ping
+                || !binding.Scale.HoldsWrittenFrame(inline))
+            {
+                return false;
+            }
+            ownInline = binding.Scale.OwnValue;
+            own = ReadScale(element, binding, ownInline);
+            return true;
+        }
+
+        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding, MotionTransitionSlots driven)
         {
             var free = GuardedSlots(binding.Spec.Mode);
             if (s_held.TryGetValue(element, out var held))
@@ -155,7 +213,7 @@ namespace Velvet
                 return;
             }
             var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-            WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driverWrote);
+            WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driven);
         }
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
@@ -378,11 +436,11 @@ namespace Velvet
         // laid-out element); Hue is geometry-independent. Public so tests drive specific phases without the
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
-            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), driverWrote: false);
+            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), MotionTransitionSlots.None);
 
         // free names the slots no Motion driver is holding against the loop (HoldAgainstLoop).
         private static void WriteFrame(VisualElement element, StyleAnimateBinding binding, float t,
-            MotionTransitionSlots free, bool driverWrote)
+            MotionTransitionSlots free, MotionTransitionSlots driven)
         {
             switch (binding.Spec.Mode)
             {
@@ -422,65 +480,67 @@ namespace Velvet
                 case AnimateMode.Pulse:
                     // Geometry-free: opacity is a value-compared float, so writing it each frame dirties the
                     // element correctly (no reference-list pitfall like the filter slot above).
-                    WriteOpacity(element, binding, PulseOpacityOver(OwnOpacity(element, binding, driverWrote), t));
+                    WriteOpacity(element, binding, PulseOpacityOver(OwnOpacity(element, binding, driven), t));
                     break;
                 case AnimateMode.Spin:
                     // Geometry-free, and a value-compared struct like opacity rather than a list like filter.
-                    WriteRotation(element, binding, driverWrote, t);
+                    WriteRotation(element, binding, driven, t);
                     break;
                 case AnimateMode.Ping:
-                    ApplyPing(element, binding, t, free, driverWrote);
+                    ApplyPing(element, binding, t, free, driven);
                     break;
                 case AnimateMode.Bounce:
-                    ApplyBounce(element, binding, t, driverWrote);
+                    ApplyBounce(element, binding, t, driven);
                     break;
             }
         }
 
-        // The value each Own* helper returns is the element's own, ahead of what its classes cascade to, ahead of the
-        // slot's initial value.
-        private static float OwnOpacity(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
+        // The Own* helpers return the element's own value of a slot: the inline value that is not the loop's frame or
+        // a driver's, else what its classes cascade to, else the slot's initial value.
+        private static bool Adopts(MotionTransitionSlots driven, MotionTransitionSlots slot)
+            => (driven & slot) == MotionTransitionSlots.None;
+
+        private static float OwnOpacity(VisualElement element, StyleAnimateBinding binding, MotionTransitionSlots driven)
         {
             // A crossfade's frame sits in the slot while one draws the element, and is not the element's own.
-            var own = binding.Opacity.Own(element.style.opacity, adopt: !driverWrote && !MotionOpacity.Draws(element));
+            var adopt = Adopts(driven, MotionTransitionSlots.Opacity) && !MotionOpacity.Draws(element);
+            var own = binding.Opacity.Own(element.style.opacity, adopt);
             if (own.keyword == StyleKeyword.Undefined)
             {
                 return own.value;
             }
-            return StyleCascade.TryReadOpacity(element, out var cascaded) ? cascaded : 1f;
+            binding.Cascade.Refresh(element);
+            return binding.Cascade.TryOpacity(out var cascaded) ? cascaded : 1f;
         }
 
-        private static float OwnRotationDeg(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
-        {
-            var own = binding.Rotation.Own(element.style.rotate, adopt: !driverWrote);
-            return ReadRotationDeg(element, own);
-        }
-
-        private static float ReadRotationDeg(VisualElement element, StyleRotate own)
+        private static float ReadRotationDeg(VisualElement element, StyleAnimateBinding binding, StyleRotate own)
         {
             if (own.keyword == StyleKeyword.Undefined)
             {
                 return own.value.angle.ToDegrees();
             }
-            return StyleCascade.TryReadRotate(element, out var cascaded) ? cascaded.angle.ToDegrees() : 0f;
+            binding.Cascade.Refresh(element);
+            return binding.Cascade.TryRotate(out var cascaded) ? cascaded.angle.ToDegrees() : 0f;
         }
 
-        private static Vector3 ReadScale(VisualElement element, StyleScale own)
+        private static Vector3 ReadScale(VisualElement element, StyleAnimateBinding binding, StyleScale own)
         {
             if (own.keyword == StyleKeyword.Undefined)
             {
                 return own.value.value;
             }
-            return StyleCascade.TryReadScale(element, out var cascaded) ? cascaded.value : Vector3.one;
+            binding.Cascade.Refresh(element);
+            return binding.Cascade.TryScale(out var cascaded) ? cascaded.value : Vector3.one;
         }
 
-        private static Translate ReadTranslate(VisualElement element, StyleTranslate own)
+        private static Translate ReadTranslate(VisualElement element, StyleAnimateBinding binding, StyleTranslate own)
         {
             if (own.keyword == StyleKeyword.Undefined)
             {
                 return own.value;
             }
-            return StyleCascade.TryReadTranslate(element, out var cascaded) ? cascaded : default;
+            binding.Cascade.Refresh(element);
+            return binding.Cascade.TryTranslate(out var cascaded) ? cascaded : default;
         }
 
         // MotionOpacity.Write rather than the style: a layoutId crossfade holds the slot through it.
@@ -490,33 +550,40 @@ namespace Velvet
             binding.Opacity.Wrote(element.style.opacity);
         }
 
-        // The turn adds to the element's own rotation, as the keyframes' transform composes with `rotate`.
-        private static void WriteRotation(VisualElement element, StyleAnimateBinding binding, bool driverWrote, float t)
+        // The turn adds to the element's own rotation, as the keyframes' transform composes with `rotate`. That is
+        // the CSS result for an even scale; under an uneven one CSS turns the content beneath the scale
+        // (rotate, then scale, then the keyframe turn), which a single rotate and scale cannot express, so the squash
+        // axes turn with the element here.
+        private static void WriteRotation(VisualElement element, StyleAnimateBinding binding,
+            MotionTransitionSlots driven, float t)
         {
-            var turn = OwnRotationDeg(element, binding, driverWrote) + SpinAngleDeg(t);
+            var own = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
+            var turn = ReadRotationDeg(element, binding, own) + SpinAngleDeg(t);
             element.style.rotate = new Rotate(Angle.Degrees(turn));
             binding.Rotation.Wrote(element.style.rotate);
         }
 
         private static void ApplyPing(VisualElement element, StyleAnimateBinding binding, float t,
-            MotionTransitionSlots free, bool driverWrote)
+            MotionTransitionSlots free, MotionTransitionSlots driven)
         {
             var progress = PingProgress(t);
             if ((free & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None)
             {
-                WriteOpacity(element, binding, Mathf.LerpUnclamped(OwnOpacity(element, binding, driverWrote), 0f, progress));
+                WriteOpacity(element, binding, Mathf.LerpUnclamped(OwnOpacity(element, binding, driven), 0f, progress));
             }
             if ((free & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
             {
                 // The keyframes' scale(2) multiplies the element's own `scale` rather than replacing it.
-                var own = ReadScale(element, binding.Scale.Own(element.style.scale, adopt: !driverWrote));
+                var inline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+                var own = ReadScale(element, binding, inline);
                 var factor = Mathf.LerpUnclamped(1f, PingEndScale, progress);
                 element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
                 binding.Scale.Wrote(element.style.scale);
             }
         }
 
-        private static void ApplyBounce(VisualElement element, StyleAnimateBinding binding, float t, bool driverWrote)
+        private static void ApplyBounce(VisualElement element, StyleAnimateBinding binding, float t,
+            MotionTransitionSlots driven)
         {
             var width = element.resolvedStyle.width;
             var height = element.resolvedStyle.height;
@@ -526,9 +593,12 @@ namespace Velvet
             {
                 return;
             }
-            var own = ReadTranslate(element, binding.Translation.Own(element.style.translate, adopt: !driverWrote));
-            var turn = ReadRotationDeg(element, element.style.rotate);
-            var scale = ReadScale(element, element.style.scale);
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
+            var own = ReadTranslate(element, binding, translation);
+            var turnInline = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
+            var scaleInline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
+            var turn = ReadRotationDeg(element, binding, turnInline);
+            var scale = ReadScale(element, binding, scaleInline);
             var lift = BounceOffsetPx(BounceLift(t), height, turn, scale.y);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
@@ -586,7 +656,7 @@ namespace Velvet
             var host = element.panel.visualTree;
             binding.Scheduled = host.schedule.Execute(() =>
             {
-                ApplyCurrentFrame(element, binding, driverWrote: false);
+                ApplyCurrentFrame(element, binding, MotionTransitionSlots.None);
             }).Every(TickMs);
         }
     }
