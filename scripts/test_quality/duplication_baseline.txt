@@ -128,7 +128,7 @@
 845c505f58f9	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleShadowClass.cs
 8486406c6258	Runtime/Styling/MotionNativeTransitionGuard.cs,Runtime/Styling/StyleAnimationScheduler.cs
 850c29b9e905	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-85380b9b0309	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/FiberGradientApplier.cs
+85380b9b0309	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs
 865c4a4175bc	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleBackgroundImageResolver.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleChildVariantClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleFilterValueParser.cs,Runtime/Styling/StyleFontClass.cs,Runtime/Styling/StyleGapClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleGridClass.cs,Runtime/Styling/StyleOutOfFlowChild.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleSkewClass.cs,Runtime/Styling/StyleVariantPayload.cs,Runtime/Styling/StyleZIndexClass.cs
 87509f3699e5	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 879a2e1d7e10	Runtime/Styling/StyleConditionalVariantManipulator.cs,Runtime/Styling/StyleRelationalVariantManipulator.cs
@@ -251,6 +251,5 @@ f9789047d095	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapM
 fa1a44134bd5	Runtime/Preview/VelvetPreviewRegistry.cs,Runtime/Styling/MotionSlotContext.cs
 fbd45f19ece5	Runtime/Styling/GradientBackground.cs,Runtime/Styling/GradientSilhouetteBaker.cs
 fc1c0dd0f836	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-fd9552acc5de	Runtime/Reconciler/FiberAnimateMotionApplier.cs,Runtime/Reconciler/FiberGradientApplier.cs
 fde3aeb8d4e4	Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleVariantPayload.cs,Runtime/Styling/StyleZIndexClass.cs
 ffeed0d2cadf	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs

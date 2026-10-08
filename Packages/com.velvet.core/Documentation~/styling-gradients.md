@@ -5,13 +5,18 @@ texture it sets as the element's background image, stretched to the box and clip
 `rounded-*` radius. On a `skew-*` element the same gradient is drawn by the sheared silhouette instead
 ([player-builds.md](player-builds.md) covers the shader behind it).
 
+A gradient is laid out over the box's real proportions, as CSS lays it out: a diagonal angle
+(`bg-linear-45`) and a conic are baked for the element's aspect, and baked again when a layout changes
+it. An angle along an axis, a corner direction (`bg-gradient-to-tr`) and a radial come out the same in
+every box, so they are baked once.
+
 ## Shapes
 
 | Utility | Shape |
 |---|---|
 | `bg-gradient-to-{dir}` / `bg-linear-to-{dir}` | linear, toward `t` `tr` `r` `br` `b` `bl` `l` `tl` |
 | `bg-linear-{n}` / `-bg-linear-{n}` / `bg-linear-[{n}deg]` | linear at an angle in degrees, 0 pointing up, clockwise |
-| `bg-radial` / `bg-radial-[at_{position}]` | radial from a centre (default the middle) out to the farthest corner |
+| `bg-radial` / `bg-radial-[at_{position}]` | radial from a centre (default the middle), an ellipse out to the farthest corner |
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, x before y: `at_top_left`,
@@ -24,7 +29,8 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 
 `from-{colour}`, `via-{colour}` and `to-{colour}` take a palette name or a bracketed value
 (`from-[#0f172a]`); `from-{n}%`, `via-{n}%` and `to-{n}%` move that stop from its default of 0%, 50% or
-100%. With only one of `from-` and `to-` given, the other end is that colour made transparent.
+100%, and a position behind an earlier stop is raised to it, as in CSS. With only one of `from-` and
+`to-` given, the other end is that colour made transparent.
 
 ## Stop lists in the shape's brackets
 
@@ -43,23 +49,34 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   for linear; `at_{position}` for radial; `from_{n}deg`, `at_{position}`, or `from_{n}deg_at_{position}`
   for conic. Without one, a linear list runs to bottom, a radial one from the middle and a conic one
   from 0deg, as in CSS. An `in_srgb`, `in_oklab` or `in_oklch` at the start or end of it picks the
-  interpolation space (`to_right_in_oklab`, or `in_oklab` alone), and wins over a `/` modifier on the
-  same class.
+  interpolation space (`to_right_in_oklab`, or `in_oklab` alone). An angle is a number with a `deg`,
+  `grad`, `rad` or `turn` unit, or a bare `0`.
 - **Each stop** is a colour, then none, one or two percentages. The colour is a palette name
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
   `rgb(15,23,42)`, or a basic colour name such as `red`. Two percentages make the colour hold between
   them (`red_0%_40%`) and count as two stops.
-- **Between 2 and 16 stops.**
-- **Missing positions are filled in as CSS fills them**: the first stop defaults to 0% and the last to
-  100%, a position behind an earlier one is raised to it, and a run of stops without positions is spread
-  evenly between the positioned stops on either side. Two stops at one position make a hard edge.
+- **Between 2 and 16 stops**, counting the `from-` / `via-` / `to-` stops that follow the list.
+- **`from-` / `via-` / `to-` follow the list.** When a `from-` or `to-` colour is given, its stops are
+  placed after the list's, as Tailwind places them: `bg-linear-[to_right,red,blue] from-green to-white`
+  is `red, blue, green 0%, white 100%`.
+- **Missing positions are filled in as CSS fills them**, over the list and those stops together: the
+  first stop defaults to 0% and the last to 100%, a position behind an earlier one is raised to it, and a
+  run of stops without positions is spread evenly between the positioned stops on either side. Where
+  stops share a position the later one starts there, so `red_0%,blue_0%` is blue throughout and a hard
+  stop at 100% never shows its later colour.
+- **Colours interpolate with their alpha**, as CSS interpolates them, so `to_right,#ff0000,transparent`
+  stays red while it fades.
 - **Underscores are spaces**, so the ones around an argument and doubled within it are ignored: a CSS
   list pasted with a space after each comma (`bg-linear-[90deg,_#0f172a_0%,_#ffffff_100%]`) reads as
   one without.
 - **A malformed list leaves a linear or conic class inert**, as an unknown angle does, so a shape
   utility before it in the class list still applies. Malformed covers an argument that is neither a stop
-  nor the shape's first argument, an unreadable colour or position, more than two positions on one stop,
-  fewer than 2 or more than 16 stops, and a `-` in front of `bg-linear-[…]`.
+  nor the shape's first argument, an unreadable colour or position, an angle that is a bare number other
+  than `0`, an `at_` position with a token that is not `left`, `right`, `top`, `bottom`, `center` or a
+  percentage (or with more than two), more than two positions on one stop, fewer than 2 or more than 16
+  stops, and a `-` in front of `bg-linear-[…]`.
+- **A `/` modifier after a stop list leaves the class inert** on every shape, since Tailwind takes none
+  after a bracketed shape. Name the space inside the bracket instead (`in_oklab`).
 - **A radial bracket that is no stop list keeps its position reading**: its `top` / `left` / … and
   percentage tokens place the centre, every other token is ignored, and `from-` / `via-` / `to-` give
   the stops. So `bg-radial-[circle_at_center,red,blue]` with `from-` / `to-` draws those utilities.
@@ -69,30 +86,10 @@ both.
 
 ## Where this differs from CSS and Tailwind
 
-- **The list owns the stops.** While the winning shape utility carries a list, `from-` / `via-` / `to-`
-  utilities on the element are not read; a later shape utility without a list hands the stops back to
-  them. Tailwind instead appends the `from-` / `via-` / `to-` stops after the bracketed arguments.
-- **The interpolation modifier is accepted after a list** (`bg-linear-[to_right,red,blue]/oklch`), where
-  Tailwind drops a bracketed shape that carries a modifier.
-- **`from-` / `via-` / `to-` positions are not fixed up.** The utilities paint as they did before stop
-  lists existed: at or before the `from` position the `from` colour, at or after the `to` position the
-  `to` colour, and in between `from` to `via` short of the `via` position and `via` to `to` from it
-  on. Out of order, such as `from-60%` with `via-` at its 50% default, that is not what CSS paints for
-  the same stops.
 - Positions are percentages only, and are clamped to 0%–100%. A length (`20px`), a conic stop at an
   angle (`red_90deg`) and a colour hint (a bare position between two stops) make the list malformed.
 - A radial shape or size keyword (`circle`, `ellipse`, `closest-side`, …) is not read, so a list that
   opens with one is no stop list and falls back to the position reading above. `in_{space}` takes only
   the three spaces above, and no hue-interpolation method (`longer_hue`).
-- Colours are interpolated with straight rather than premultiplied alpha, so a stop fading to
-  `transparent` (transparent black) darkens on the way: `to_right,#ff0000,transparent` is a half-dark red
-  at its midpoint, where CSS keeps it red and half transparent. Fade to the colour's own transparent
-  version (`#ff000000`) instead.
-- The first argument is read as leniently as the shape's bracket without a list: an angle may be a bare
-  number (`45`), while `turn`, `rad` and `grad` make the list malformed, and an `at_` position ignores a
-  token it does not recognise rather than rejecting the list.
-- Exactly at the first stop's position the first colour shows, even where a second stop shares that
-  position: `red_0%,blue_0%` keeps a red edge at the gradient's very start.
-- The texture is stretched to the box, so an angle is laid out as if the box were square rather than at
-  its physical angle, and a radial gradient is an ellipse matching the box's aspect. Its 128 texels per
-  side set how sharp a hard edge or a narrow band can be.
+- The gradient is a 128 by 128 texture stretched to the box, so a hard edge or a narrow band is as sharp
+  as 1/128 of the box along each axis allows.

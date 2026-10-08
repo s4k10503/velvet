@@ -43,8 +43,7 @@ namespace Velvet
         private static readonly int CenterId = Shader.PropertyToID("_Center");
         private static readonly int ConicStartId = Shader.PropertyToID("_ConicStart");
         private static readonly int InterpId = Shader.PropertyToID("_Interp");
-        private static readonly int AxisStartId = Shader.PropertyToID("_AxisStart");
-        private static readonly int AxisEndId = Shader.PropertyToID("_AxisEnd");
+        private static readonly int AxisDirId = Shader.PropertyToID("_AxisDir");
         private static readonly int ElementSizeId = Shader.PropertyToID("_ElementSize");
         private static readonly int QuadSizeId = Shader.PropertyToID("_QuadSize");
         private static readonly int RadiiId = Shader.PropertyToID("_Radii");
@@ -119,9 +118,11 @@ namespace Velvet
             m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
             m.SetFloat(InterpId, spec.Interp == GradientInterp.Oklab ? 1f : 0f);
-            GradientBackground.GetAxis(spec.AngleDeg, out var sx, out var sy, out var ex, out var ey);
-            m.SetVector(AxisStartId, new Vector4(sx, sy, 0f, 0f));
-            m.SetVector(AxisEndId, new Vector4(ex, ey, 0f, 0f));
+            // The line's direction, then the box proportions it is laid out over: those of the element, or a
+            // square for a corner direction (see GradientBackground.Bake).
+            var axis = GradientBackground.LinearDirection(spec.AngleDeg);
+            var lineBox = spec.ToCorner ? Vector2.one : new Vector2(w, h);
+            m.SetVector(AxisDirId, new Vector4(axis.x, axis.y, lineBox.x, lineBox.y));
             m.SetVector(ElementSizeId, new Vector4(w, h, 0f, 0f));
             m.SetVector(QuadSizeId, new Vector4(quadW, quadH, 0f, 0f));
             m.SetVector(RadiiId, new Vector4(

@@ -51,6 +51,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStopListBesideUtilitiesReadBefore_When_ExtractedAgain_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(new[] { "bg-linear-[to_right,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" });
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
         public void Given_FromViaToClassesReadBefore_When_ExtractedAgain_Then_NothingIsAllocated()
         {
             // Act

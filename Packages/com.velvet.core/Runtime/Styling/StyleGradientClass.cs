@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -39,13 +40,14 @@ namespace Velvet
     }
 
     // A resolved gradient: shape (linear angle / radial-or-conic centre), interpolation space, and its ordered
-    // colour stops (positions 0..1). A stop list's positions are fixed up into a non-decreasing run; the
-    // from-/via-/to- utilities' positions are kept as written, and GradientBackground.ColorAt paints them
-    // as it did before stop lists existed.
+    // colour stops (positions 0..1, fixed up into a non-decreasing run).
     // Stops arrays are shared between specs through StyleGradientClass's memos and are never written.
     // AngleDeg is the linear axis angle (CSS degrees, 0 = to top, clockwise) and doubles as the conic start
-    // angle. Equality is value-based (quantized) so the baked-texture cache and the reconciler binding skip
-    // redundant work when an unchanged class list re-resolves to the same gradient.
+    // angle. ToCorner marks a linear gradient written as a corner direction (to top right), whose angle
+    // AngleDeg only gives the quadrant of: GradientBackground lays a corner direction out over a square and
+    // an angle written as a number over the box's aspect. Equality is value-based (quantized) so the
+    // baked-texture cache and the reconciler binding skip redundant work when an unchanged class list
+    // re-resolves to the same gradient.
     internal readonly struct GradientSpec : IEquatable<GradientSpec>
     {
         // The skew silhouette shader declares its stop arrays at this length, so the parser rejects a longer
@@ -55,6 +57,7 @@ namespace Velvet
 
         public GradientType Type { get; init; }
         public float AngleDeg { get; init; }
+        public bool ToCorner { get; init; }
         public float CenterX { get; init; }
         public float CenterY { get; init; }
         public GradientInterp Interp { get; init; }
@@ -87,6 +90,10 @@ namespace Velvet
             {
                 return false;
             }
+            if (Type == GradientType.Linear && ToCorner != other.ToCorner)
+            {
+                return false;
+            }
             if (Type != GradientType.Linear
                 && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)))
             {
@@ -115,6 +122,7 @@ namespace Velvet
                 h = h * 31 + (int)Type;
                 h = h * 31 + (int)Interp;
                 h = h * 31 + (Type != GradientType.Radial ? AngleKey(AngleDeg) : 0);
+                h = h * 31 + (Type == GradientType.Linear && ToCorner ? 1 : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterX) : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
                 foreach (var stop in Stops ?? Array.Empty<GradientStop>())
@@ -139,10 +147,9 @@ namespace Velvet
     // extractor (last shape wins; last from/via/to colour and position win).
     //
     // CSS-spec coverage (Images L3/L4, Color 4): linear with arbitrary angle + stop positions, radial-
-    // gradient, conic-gradient, and OKLab interpolation. Deviations: USS has no gradient, so it bakes into
-    // a texture stretched to the box, which makes a non-axis-aligned linear angle (and the radial circle)
-    // box-normalized rather than physical-aspect; the OKLCH cylindrical hue-arc is approximated by OKLab
-    // (cartesian) interpolation; continuously-animated gradients (no CSS gradient type) are out of scope.
+    // gradient, conic-gradient, and OKLab interpolation. Deviations: the OKLCH cylindrical hue-arc is
+    // approximated by OKLab (cartesian) interpolation; continuously-animated gradients (no CSS gradient
+    // type) are out of scope.
     internal static class StyleGradientClass
     {
         private const string DirActivator = "bg-gradient-to-";
@@ -161,15 +168,20 @@ namespace Velvet
         private const string LinearListActivator = LinearActivator + "[";
         private const string ConicListActivator = ConicSuffixActivator + "[";
 
-        // A shape activator's reading. Stops is set only by an activator whose brackets carry a stop list.
+        // A shape activator's reading. Stops and Raw are set only by an activator whose brackets carry a stop
+        // list: Raw is the list as written, a stop's position NaN where it gave none, and Stops is Raw
+        // fixed up. The from-/via-/to- utilities extend Raw rather than Stops, since CSS places an
+        // unpositioned stop among the stops on both sides of it.
         private struct Shape
         {
             public GradientType Type;
             public float Angle;
+            public bool ToCorner;
             public float CenterX;
             public float CenterY;
             public GradientInterp Interp;
             public GradientStop[]? Stops;
+            public GradientStop[]? Raw;
         }
 
         // A class string's reading as a shape activator, Ok false when it is not one.
@@ -230,8 +242,8 @@ namespace Velvet
 
         private static readonly BoundedMemo<string, ActivatorReading> s_activators = new();
         private static readonly BoundedMemo<string, StopToken> s_stopTokens = new();
-        private static readonly BoundedMemo<((bool, Color, float), (bool, Color, float), (bool, Color, float)), GradientStop[]>
-            s_utilityStops = new();
+        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float), (bool, Color, float), (bool, Color, float))),
+            GradientStop[]> s_utilityStops = new();
 
         // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
         // so the two can never drift apart: TryParseActivator consults this SAME table as its first
@@ -289,10 +301,11 @@ namespace Velvet
         }
 
         // Resolves the gradient: last shape activator wins, last from/via/to colour and position each win.
-        // When the winning activator carries a stop list, that list is the gradient's stops and the
-        // from-/via-/to- utilities are not read. Otherwise returns false when neither a from nor a to COLOR
-        // is given (positions alone draw nothing), and a missing from/to colour defaults to the transparent
+        // Returns false when neither a from nor a to COLOR is given and the winning activator carries no stop
+        // list (positions alone draw nothing), and a missing from/to colour defaults to the transparent
         // version of the other stop (the default behavior). Returns false when no shape activator is present.
+        // A stop list's stops are followed by the from-/via-/to- stops when a from or to colour is given (see
+        // ResolveStops).
         public static bool TryExtract(string[] classNames, out GradientSpec spec)
         {
             spec = default;
@@ -333,7 +346,7 @@ namespace Velvet
                 }
             }
 
-            var stops = hasShape ? shape.Stops ?? StopsFromUtilities(in fromStop, in viaStop, in toStop) : null;
+            var stops = hasShape ? ResolveStops(in shape, in fromStop, in viaStop, in toStop) : null;
             if (stops == null)
             {
                 return false;
@@ -343,6 +356,7 @@ namespace Velvet
             {
                 Type = shape.Type,
                 AngleDeg = shape.Angle,
+                ToCorner = shape.ToCorner,
                 CenterX = shape.CenterX,
                 CenterY = shape.CenterY,
                 Interp = shape.Interp,
@@ -351,24 +365,35 @@ namespace Velvet
             return true;
         }
 
-        // The positions are kept as written, not fixed up: see GradientSpec.
-        private static GradientStop[]? StopsFromUtilities(in UtilityStop fromStop, in UtilityStop viaStop, in UtilityStop toStop)
+        // The winning shape's stops: its list, extended by the from-/via-/to- utilities that name a colour —
+        // after the list's stops, as Tailwind places them — or, for a shape with no list, the utilities
+        // alone. Null when no stop results, or when a list and the utilities together exceed
+        // GradientSpec.MaxStops.
+        private static GradientStop[]? ResolveStops(in Shape shape, in UtilityStop fromStop, in UtilityStop viaStop,
+            in UtilityStop toStop)
         {
             if (!fromStop.HasColor && !toStop.HasColor)
             {
+                return shape.Stops;
+            }
+            var extra = viaStop.HasColor ? 3 : 2;
+            if ((shape.Raw?.Length ?? 0) + extra > GradientSpec.MaxStops)
+            {
                 return null;
             }
-            var key = ((fromStop.HasColor, fromStop.Color, fromStop.Position), (viaStop.HasColor, viaStop.Color,
-                viaStop.Position), (toStop.HasColor, toStop.Color, toStop.Position));
+            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position), (viaStop.HasColor,
+                viaStop.Color, viaStop.Position), (toStop.HasColor, toStop.Color, toStop.Position)));
             if (s_utilityStops.TryGet(key, out var cached))
             {
                 return cached;
             }
             var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(toStop.Color), fromStop.Position);
             var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(fromStop.Color), toStop.Position);
-            var stops = viaStop.HasColor
+            var utilities = viaStop.HasColor
                 ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position), last }
                 : new[] { first, last };
+            var raw = shape.Raw == null ? utilities : shape.Raw.Concat(utilities).ToArray();
+            var stops = FixUp(raw);
             s_utilityStops.Add(key, stops);
             return stops;
         }
@@ -440,7 +465,7 @@ namespace Velvet
         // Parses a gradient shape activator, including an optional /interp modifier: type, angle (linear
         // axis / conic start; 0 for radial), centre (radial/conic; 0.5,0.5 default), interp, and the stop
         // list its brackets carry, if any. False when the class is not a recognized activator (incl. an
-        // unknown /modifier or a malformed stop list).
+        // unknown /modifier, a malformed stop list, or a modifier after a stop list).
         private static bool TryParseActivator(string cls, out Shape shape)
         {
             shape = new Shape { CenterX = 0.5f, CenterY = 0.5f };
@@ -472,8 +497,9 @@ namespace Velvet
                 var listShape = shape;
                 if (TryParseStopList(listBody, ref listShape))
                 {
+                    // A bracketed shape takes no modifier: the interpolation space is named inside it.
                     shape = listShape;
-                    return true;
+                    return slash < 0;
                 }
                 if (listType != GradientType.Radial)
                 {
@@ -512,7 +538,7 @@ namespace Velvet
                 shape.Type = GradientType.Conic;
                 return TryParseConicStart(baseTok.Substring(ConicActivator.Length + 1), out shape.Angle);
             }
-            return TryParseAngle(baseTok, out shape.Angle);
+            return TryParseAngle(baseTok, out shape.Angle, out shape.ToCorner);
         }
 
         // A bracket body holding a comma is a CSS gradient argument list, which this file reads as a stop
@@ -563,29 +589,29 @@ namespace Velvet
                 // pasted CSS writes a space after every comma.
                 args[i] = string.Join("_", args[i].Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries));
             }
-            var colors = new List<Color>();
-            var positions = new List<float>();
+            var raw = new List<GradientStop>();
             if (shape.Type == GradientType.Linear)
             {
                 // CSS's default direction, to bottom, for a list with no line argument.
                 shape.Angle = 180f;
             }
-            if (!TryAddColorStop(args[0], colors, positions) && !TryParseLine(args[0], ref shape))
+            if (!TryAddColorStop(args[0], raw) && !TryParseLine(args[0], ref shape))
             {
                 return false;
             }
             for (var i = 1; i < args.Count; i++)
             {
-                if (!TryAddColorStop(args[i], colors, positions))
+                if (!TryAddColorStop(args[i], raw))
                 {
                     return false;
                 }
             }
-            if (colors.Count < 2 || colors.Count > GradientSpec.MaxStops)
+            if (raw.Count < 2 || raw.Count > GradientSpec.MaxStops)
             {
                 return false;
             }
-            shape.Stops = FixUp(colors, positions);
+            shape.Raw = raw.ToArray();
+            shape.Stops = FixUp(shape.Raw);
             return true;
         }
 
@@ -619,7 +645,7 @@ namespace Velvet
         // One colour stop: a colour, then none, one or two percentage positions (CSS Images 4's two-position
         // form is two stops of one colour). An unpositioned stop is recorded as NaN for FixUp to place.
         // Adds nothing when the argument is not a colour stop.
-        private static bool TryAddColorStop(string arg, List<Color> colors, List<float> positions)
+        private static bool TryAddColorStop(string arg, List<GradientStop> stops)
         {
             var tokens = SplitTopLevel(arg, '_');
             if (tokens.Count > 3)
@@ -640,12 +666,10 @@ namespace Velvet
             {
                 return false;
             }
-            colors.Add(color);
-            positions.Add(first);
+            stops.Add(new GradientStop(color, first));
             if (tokens.Count > 2)
             {
-                colors.Add(color);
-                positions.Add(second);
+                stops.Add(new GradientStop(color, second));
             }
             return true;
         }
@@ -662,8 +686,7 @@ namespace Velvet
         }
 
         // The leading line argument: an angle or to_{side}[_{side}] for linear, at_{position} for radial,
-        // from_{angle} and/or at_{position} for conic, each optionally led or followed by in_{space}. An
-        // in_{space} overrides the activator's /modifier.
+        // from_{angle} and/or at_{position} for conic, each optionally led or followed by in_{space}.
         private static bool TryParseLine(string arg, ref Shape shape)
         {
             var tokens = arg.Split('_');
@@ -686,23 +709,18 @@ namespace Velvet
             switch (shape.Type)
             {
                 case GradientType.Radial:
-                    if (!line.StartsWith("at_", StringComparison.Ordinal))
-                    {
-                        return false;
-                    }
-                    ParseRadialPosition(line, ref shape.CenterX, ref shape.CenterY);
-                    return true;
+                    return TryParseListPosition(line, out shape.CenterX, out shape.CenterY);
                 case GradientType.Conic:
                     return TryParseConicLine(line, ref shape);
                 default:
                     return line.StartsWith("to_", StringComparison.Ordinal)
-                        ? TryParseSides(line.Substring(3), out shape.Angle)
-                        : TryParseAngleValue("[" + line + "]", out shape.Angle);
+                        ? TryParseSides(line.Substring(3), out shape.Angle, out shape.ToCorner)
+                        : TryParseCssAngle(line, out shape.Angle);
             }
         }
 
         // to_{side} or to_{side}_{side} in either order → the angle of the matching bg-gradient-to-{dir}.
-        private static bool TryParseSides(string sides, out float angleDeg)
+        private static bool TryParseSides(string sides, out float angleDeg, out bool toCorner)
         {
             angleDeg = 0f;
             var vertical = string.Empty;
@@ -715,10 +733,10 @@ namespace Velvet
                     case "bottom" when vertical.Length == 0: vertical = "b"; break;
                     case "left" when horizontal.Length == 0: horizontal = "l"; break;
                     case "right" when horizontal.Length == 0: horizontal = "r"; break;
-                    default: return false;
+                    default: toCorner = false; return false;
                 }
             }
-            return TryDirectionAngle(vertical + horizontal, out angleDeg);
+            return TryDirectionAngle(vertical + horizontal, out angleDeg, out toCorner);
         }
 
         private static bool TryParseConicLine(string arg, ref Shape shape)
@@ -728,7 +746,7 @@ namespace Velvet
             {
                 // "from", the angle, and whatever follows it.
                 var parts = rest.Split(new[] { '_' }, 3);
-                if (!TryParseAngleValue("[" + parts[1] + "]", out shape.Angle))
+                if (!TryParseCssAngle(parts[1], out shape.Angle))
                 {
                     return false;
                 }
@@ -738,20 +756,72 @@ namespace Velvet
                 }
                 rest = parts[2];
             }
-            if (!rest.StartsWith("at_", StringComparison.Ordinal))
+            return TryParseListPosition(rest, out shape.CenterX, out shape.CenterY);
+        }
+
+        // An angle as CSS writes one: a number with a deg, grad, rad or turn unit, or a bare 0. Any other
+        // bare number is no angle in CSS.
+        private static bool TryParseCssAngle(string s, out float deg)
+        {
+            deg = 0f;
+            foreach (var (unit, degrees) in AngleUnits)
+            {
+                if (s.EndsWith(unit, StringComparison.OrdinalIgnoreCase))
+                {
+                    var ok = float.TryParse(s.Substring(0, s.Length - unit.Length), NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out var value) && !float.IsNaN(value) && !float.IsInfinity(value);
+                    deg = value * degrees;
+                    return ok;
+                }
+            }
+            return s == "0";
+        }
+
+        private static readonly (string Unit, float Degrees)[] AngleUnits =
+        {
+            ("deg", 1f), ("grad", 0.9f), ("rad", 180f / Mathf.PI), ("turn", 360f),
+        };
+
+        // An at_{position} the list reads: one or two of left, right, top, bottom, center and percentages,
+        // after the at. A token it does not know rejects the list, as it does in CSS.
+        private static bool TryParseListPosition(string arg, out float centerX, out float centerY)
+        {
+            centerX = 0.5f;
+            centerY = 0.5f;
+            if (!arg.StartsWith("at_", StringComparison.Ordinal))
             {
                 return false;
             }
-            ParseRadialPosition(rest, ref shape.CenterX, ref shape.CenterY);
+            var tokens = arg.Substring(3).Split('_');
+            if (tokens.Length > 2)
+            {
+                return false;
+            }
+            foreach (var token in tokens)
+            {
+                if (!IsPositionToken(token))
+                {
+                    return false;
+                }
+            }
+            ParseRadialPosition(arg, ref centerX, ref centerY);
             return true;
         }
+
+        private static bool IsPositionToken(string token)
+            => token is "left" or "right" or "top" or "bottom" or "center" || TryParsePercent(token, out _);
 
         // CSS Images 3 colour-stop fix-up, over positions where NaN means unpositioned: an unpositioned first
         // or last stop sits at 0% or 100%; a position behind an earlier one is raised to the largest before
         // it; then each run of unpositioned stops is spread evenly between its positioned neighbours.
-        private static GradientStop[] FixUp(List<Color> colors, List<float> positions)
+        private static GradientStop[] FixUp(GradientStop[] raw)
         {
-            var n = positions.Count;
+            var n = raw.Length;
+            var positions = new float[n];
+            for (var i = 0; i < n; i++)
+            {
+                positions[i] = raw[i].Position;
+            }
             if (float.IsNaN(positions[0]))
             {
                 positions[0] = 0f;
@@ -775,17 +845,17 @@ namespace Velvet
             var stops = new GradientStop[n];
             for (var i = 0; i < n; i++)
             {
-                stops[i] = new GradientStop(colors[i], positions[i]);
+                stops[i] = new GradientStop(raw[i].Color, positions[i]);
             }
             return stops;
         }
 
         // Ordering constraint: runs after the first and last positions are set, so every run of NaN ends
         // at a positioned stop and the inner loop stops there.
-        private static void SpreadUnpositioned(List<float> positions)
+        private static void SpreadUnpositioned(float[] positions)
         {
             var previous = 0;
-            for (var i = 1; i < positions.Count; i++)
+            for (var i = 1; i < positions.Length; i++)
             {
                 if (float.IsNaN(positions[i]))
                 {
@@ -864,22 +934,23 @@ namespace Velvet
 
         // Resolves a linear gradient axis activator to a CSS angle (degrees): bg-gradient-to-{dir},
         // bg-linear-to-{dir} (v4 alias), bg-linear-{deg} / -bg-linear-{deg}, bg-linear-[{deg}deg].
-        private static bool TryParseAngle(string cls, out float angleDeg)
+        private static bool TryParseAngle(string cls, out float angleDeg, out bool toCorner)
         {
             angleDeg = 0f;
+            toCorner = false;
             var negative = cls.Length > 0 && cls[0] == '-';
             var body = negative ? cls.Substring(1) : cls;
 
             if (body.StartsWith(DirActivator, StringComparison.Ordinal))
             {
-                return !negative && TryDirectionAngle(body.Substring(DirActivator.Length), out angleDeg);
+                return !negative && TryDirectionAngle(body.Substring(DirActivator.Length), out angleDeg, out toCorner);
             }
             if (body.StartsWith(LinearActivator, StringComparison.Ordinal))
             {
                 var rest = body.Substring(LinearActivator.Length);
                 if (rest.StartsWith("to-", StringComparison.Ordinal))
                 {
-                    return !negative && TryDirectionAngle(rest.Substring(3), out angleDeg);
+                    return !negative && TryDirectionAngle(rest.Substring(3), out angleDeg, out toCorner);
                 }
                 if (TryParseAngleValue(rest, out var deg))
                 {
@@ -890,9 +961,11 @@ namespace Velvet
             return false;
         }
 
-        // One of the 8 named directions → its CSS angle (0 = to top, clockwise).
-        private static bool TryDirectionAngle(string dir, out float angleDeg)
+        // One of the 8 named directions → its CSS angle (0 = to top, clockwise), and whether it is a corner,
+        // which CSS lays out over the physical box rather than at the angle.
+        private static bool TryDirectionAngle(string dir, out float angleDeg, out bool toCorner)
         {
+            toCorner = dir.Length == 2;
             switch (dir)
             {
                 case "t": angleDeg = 0f; return true;
@@ -903,7 +976,7 @@ namespace Velvet
                 case "bl": angleDeg = 225f; return true;
                 case "l": angleDeg = 270f; return true;
                 case "tl": angleDeg = 315f; return true;
-                default: angleDeg = 0f; return false;
+                default: angleDeg = 0f; toCorner = false; return false;
             }
         }
 

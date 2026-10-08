@@ -8,8 +8,8 @@ Shader "Velvet/GradientSilhouette"
     //
     // The fragment unshears each pixel (the inverse of the [[1,skewX],[skewY,1]] shear about the box
     // centre, matching SkewSilhouette.Shear), evaluates an upright rounded-box SDF for the shape + AA,
-    // and fills with the linear gradient evaluated in the UPRIGHT box's UV space (so the gradient runs
-    // the same way as the non-skew background, then shears with the geometry). Stop colours arrive as raw
+    // and fills with the gradient evaluated on the UPRIGHT box (so the gradient runs the same way as the
+    // non-skew background, then shears with the geometry). Stop colours arrive as raw
     // Vectors (no gamma conversion); the bake target is a Linear RenderTexture.
     //
     // Baked, NOT a live per-element material: UITK freezes a custom-material element's draw order at first
@@ -18,9 +18,9 @@ Shader "Velvet/GradientSilhouette"
     Properties
     {
         [MainTexture] _MainTex("Texture", 2D) = "white" {}
-        // Gradient axis in the UPRIGHT box's UV (origin top-left, y down), matching GradientBackground.GetAxis.
-        _AxisStart("Axis Start", Vector) = (0, 0, 0, 0)
-        _AxisEnd("Axis End", Vector) = (0, 1, 0, 0)
+        // A linear gradient's unit direction (xy; x right, y down) and the box proportions its line is laid
+        // out over (zw), from GradientBackground.LinearDirection.
+        _AxisDir("Axis Direction", Vector) = (0, 1, 1, 1)
         _ElementSize("Element Size (px)", Vector) = (100, 100, 0, 0)
         _QuadSize("Quad Size (px)", Vector) = (120, 120, 0, 0)
         // Per-corner radii (px) in (top-left, top-right, bottom-right, bottom-left) order, matching the
@@ -83,8 +83,7 @@ Shader "Velvet/GradientSilhouette"
             float4 _StopColors[VELVET_MAX_STOPS];
             float _StopPositions[VELVET_MAX_STOPS];
             float _StopCount;
-            float4 _AxisStart;
-            float4 _AxisEnd;
+            float4 _AxisDir;
             float4 _ElementSize;
             float4 _QuadSize;
             float4 _Radii;
@@ -142,15 +141,17 @@ Shader "Velvet/GradientSilhouette"
                 return saturate(float3(v_linearToSrgb(lr), v_linearToSrgb(lg), v_linearToSrgb(lb)));
             }
 
-            // Lerp two stops in the gradient's interpolation space (sRGB channel lerp or OKLab).
+            // Lerp two stops in the gradient's interpolation space (sRGB channels or OKLab), the colour
+            // weighted by alpha as GradientBackground.Lerp weights it; a fully transparent result keeps the
+            // unweighted colour.
             float4 v_gradLerp(float4 a, float4 b, float t)
             {
-                if (_Interp > 0.5)
-                {
-                    float3 rgb = v_fromOklab(lerp(v_toOklab(a.rgb), v_toOklab(b.rgb), t));
-                    return float4(rgb, lerp(a.a, b.a, t));
-                }
-                return lerp(a, b, t);
+                bool oklab = _Interp > 0.5;
+                float3 ca = oklab ? v_toOklab(a.rgb) : a.rgb;
+                float3 cb = oklab ? v_toOklab(b.rgb) : b.rgb;
+                float alpha = lerp(a.a, b.a, t);
+                float3 mixed = alpha > 0.0 ? lerp(ca * a.a, cb * b.a, t) / alpha : lerp(ca, cb, t);
+                return float4(oklab ? v_fromOklab(mixed) : mixed, alpha);
             }
 
             half4 frag(Varyings input) : SV_Target
@@ -178,57 +179,58 @@ Shader "Velvet/GradientSilhouette"
                 float mask = 1.0 - smoothstep(-aa, aa, dist);
 
                 // Gradient parameter t in the box UV, per type (mirrors GradientBackground.ComputeT).
-                float2 guv = (upright + halfSize) / max(_ElementSize.xy, float2(1.0, 1.0));
+                float2 size = max(_ElementSize.xy, float2(1.0, 1.0));
+                float2 guv = (upright + halfSize) / size;
                 float t;
-                if (_Type < 0.5) // linear: project onto the axis
+                if (_Type < 0.5) // linear: project the offset from the centre onto the gradient line
                 {
-                    float2 dir = _AxisEnd.xy - _AxisStart.xy;
-                    float denom = max(dot(dir, dir), 1e-6);
-                    t = dot(guv - _AxisStart.xy, dir) / denom;
+                    float lineLength = max(dot(abs(_AxisDir.xy), _AxisDir.zw), 1e-6);
+                    t = dot((guv - 0.5) * _AxisDir.zw, _AxisDir.xy) / lineLength + 0.5;
                 }
-                else if (_Type < 1.5) // radial: distance / farthest-corner distance
+                else if (_Type < 1.5) // radial: elliptical distance over the farthest-corner ellipse
                 {
                     float2 a = guv - _Center.xy;
-                    float mx = max(_Center.x, 1.0 - _Center.x);
-                    float my = max(_Center.y, 1.0 - _Center.y);
-                    float maxR = max(sqrt((mx * mx) + (my * my)), 1e-5);
-                    t = length(a) / maxR;
+                    float2 r = max(_Center.xy, 1.0 - _Center.xy);
+                    t = length(a / r) * 0.70710678;
                 }
-                else // conic: clockwise angle from up (0°), minus the start angle, over 360°
+                else // conic: clockwise angle from up (0°) in pixel space, minus the start angle, over 360°
                 {
-                    float2 a = guv - _Center.xy;
+                    float2 a = (guv - _Center.xy) * size;
                     float ang = degrees(atan2(a.x, -a.y));
                     // frac(x) = x - floor(x) ∈ [0,1) for any real (incl. negative), so it wraps the angle
                     // exactly like the C# (((x % 360) + 360) % 360) idiom.
                     t = frac((ang - _ConicStart) / 360.0);
                 }
-                t = saturate(t);
-
-                // Position-based stops, the same walk as GradientBackground.ColorAt (whose comment says why
-                // the two ends are tested first), in the gradient's interpolation space.
+                // The same walk and the same ceiling on t as GradientBackground.ColorAt (whose comment says
+                // what the ceiling settles), in the gradient's interpolation space.
+                t = clamp(t, 0.0, 1.0 - 1e-6);
                 int last = (int)_StopCount - 1;
                 float4 col;
-                if (t <= _StopPositions[0])
+                if (t < _StopPositions[0])
                 {
                     col = _StopColors[0];
                 }
-                else if (t >= _StopPositions[last])
-                {
-                    col = _StopColors[last];
-                }
                 else
                 {
-                    int seg = last;
+                    // The first stop after t, or one past the last when none follows.
+                    int next = last + 1;
                     for (int i = 1; i < VELVET_MAX_STOPS; i++)
                     {
-                        if (i >= last || t < _StopPositions[i])
+                        if (i > last || t < _StopPositions[i])
                         {
-                            seg = i;
+                            next = i;
                             break;
                         }
                     }
-                    float p0 = _StopPositions[seg - 1];
-                    col = v_gradLerp(_StopColors[seg - 1], _StopColors[seg], (t - p0) / max(_StopPositions[seg] - p0, 1e-5));
+                    if (next > last)
+                    {
+                        col = _StopColors[last];
+                    }
+                    else
+                    {
+                        float p0 = _StopPositions[next - 1];
+                        col = v_gradLerp(_StopColors[next - 1], _StopColors[next], (t - p0) / (_StopPositions[next] - p0));
+                    }
                 }
 
                 return half4(col.rgb, col.a * mask);

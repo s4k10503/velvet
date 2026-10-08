@@ -857,8 +857,9 @@ namespace Velvet
         // Active gradient background per element (bg-gradient-to-* + from/via/to). Keyed by the element
         // itself — the gradient is baked to a texture set as the element's own background-image, no
         // wrapper. The stored spec lets the patch path skip a redundant re-bake, and cleanup clears the
-        // background-image so a pooled element cannot ghost a prior gradient.
-        public Dictionary<VisualElement, GradientSpec> GradientBackgrounds { get; } = new();
+        // background-image so a pooled element cannot ghost a prior gradient. The binding also holds the
+        // geometry watch a gradient laid out over the box's proportions needs, which cleanup removes.
+        public Dictionary<VisualElement, GradientBinding> GradientBackgrounds { get; } = new();
 
         // Per-element animate-* motion (animate-gradient / -shimmer / -hue). Keyed by the element itself — the
         // motion drives the element's own inline style (a background-position pan or a hue-rotate filter) with
