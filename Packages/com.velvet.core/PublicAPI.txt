@@ -282,6 +282,7 @@
 [Velvet] field Velvet.VirtualListScrollBehavior.Instant: Velvet.VirtualListScrollBehavior
 [Velvet] field Velvet.VirtualListScrollBehavior.Smooth: Velvet.VirtualListScrollBehavior
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
+[Velvet] method Velvet.AnimationSequenceStep.Await(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
@@ -676,6 +677,7 @@
 [Velvet] property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.AnimationSequenceState.IsComplete: System.Boolean
 [Velvet] property Velvet.AnimationSequenceState.StepIndex: System.Int32
+[Velvet] property Velvet.AnimationSequenceStep.AwaitFactory: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]?
 [Velvet] property Velvet.AnimationSequenceStep.Callback: System.Action?
 [Velvet] property Velvet.AnimationSequenceStep.HoldSec: System.Nullable`1[System.Single]
 [Velvet] property Velvet.AnimationSequenceStep.Label: System.String?
