@@ -664,9 +664,32 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ADragOverlayMountedByARenderDuringTheDrag_When_ThePointerMoves_Then_TheOverlayShows()
+        public IEnumerator Given_ADragOverlayMountedByARenderDuringTheDrag_When_TheDrainCommits_Then_TheOverlayShowsAtThePointerWithoutAMove()
         {
-            // Arrange — no start callback mounts it, so only a later join can see it.
+            // Arrange — no start callback mounts it, so only a join after the render's commit can see it.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+
+            // Act — the render commits through the scheduler's drain; the pointer does not move.
+            s_setShowOverlay.Invoke(true);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            yield return null;
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedOutsideADrain_When_ThePointerMoves_Then_TheOverlayShows()
+        {
+            // Arrange — the flush bypasses the scheduler's drain, so only the move can join it.
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(LateOverlayScene, key: "root"));
             yield return null;
@@ -690,7 +713,7 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AnOverlayJoinedAtActivation_When_AnotherOverlayMountsAndThePointerMoves_Then_EachJoinedExactlyOnce()
         {
-            // Arrange — every move walks the bindings again, the joined one included.
+            // Arrange — the second overlay's drain-end join walks the bindings again, the joined one included.
             s_earlyOverlay = true;
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(LateOverlayScene, key: "root"));
@@ -699,7 +722,7 @@ namespace Velvet.Tests
             var item = Main("item");
             SendPointerDown(item, new Vector2(40, 30));
             s_setShowOverlay.Invoke(true);
-            _mounted.FlushStateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
             SendPointerMove(item, new Vector2(60, 30));

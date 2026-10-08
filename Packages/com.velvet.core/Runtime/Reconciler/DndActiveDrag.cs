@@ -339,13 +339,6 @@ namespace Velvet
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
             FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
-            // The start callback's commit can mount an overlay (the activeId recipe), which no earlier
-            // join saw.
-            if (!_closed)
-            {
-                JoinMountedOverlays();
-                SyncOverlays();
-            }
         }
 
         private void CaptureActiveSnapshot()
@@ -426,8 +419,9 @@ namespace Velvet
 
         // Every overlay mounted under this session's scope shows the preview, as every dnd-kit
         // DragOverlay renders its children while its own context's drag is active. Runs at activation,
-        // after the start callback's commit and on every move, so an overlay that mounts mid-drag
-        // joins; a positioner already joined is skipped.
+        // at the end of every drain (JoinOverlaysAfterCommit), where the overlay's placeholder is already
+        // parented into its scope, and on every move for a mount that committed outside a drain; a
+        // positioner already joined is skipped.
         private void JoinMountedOverlays()
         {
             foreach (var (positioner, binding) in _ctx.DragOverlayBindings)
@@ -442,6 +436,17 @@ namespace Velvet
                 }
                 _overlays.Add((positioner, binding));
                 DndOverlayDriver.BeginSession(positioner, _originRect.size);
+            }
+        }
+
+        // Drain-end hook (Reconciler's drain-end callback): an overlay a render mounted joins on the
+        // commit that mounted it rather than on the next move.
+        internal void JoinOverlaysAfterCommit()
+        {
+            if (_active && !_closed)
+            {
+                JoinMountedOverlays();
+                SyncOverlays();
             }
         }
 

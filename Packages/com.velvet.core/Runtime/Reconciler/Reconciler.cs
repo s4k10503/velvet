@@ -102,6 +102,7 @@ namespace Velvet
                         try
                         {
                             FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                            _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
                         }
                         finally
                         {
