@@ -222,15 +222,6 @@ namespace Velvet
             ["12"] = 12f, ["45"] = 45f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // The translate fraction suffixes (percent of the element's own size). The slash form routes
-        // here; translate-x-full (100%) and the spacing-scale presets route to the same TranslateX/Y merge so
-        // an x and a y preset compose instead of clobbering via the `translate` shorthand.
-        private static readonly Dictionary<string, float> s_translateFraction = new()
-        {
-            ["1/2"] = 50f, ["1/3"] = 100f / 3f, ["2/3"] = 200f / 3f,
-            ["1/4"] = 25f, ["2/4"] = 50f, ["3/4"] = 75f,
-        };
-
         // The per-axis scale presets (scale-x-50 -> 0.5), mirroring the uniform .scale-N USS classes in
         // _transforms.uss. These have no standalone USS class because a separate .scale-x-N / .scale-y-N rule
         // would write the whole `scale: x y` and clobber the other axis; instead they route through the
@@ -488,7 +479,10 @@ namespace Velvet
 
             var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
             var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
-            if (s_translateFraction.TryGetValue(suffix, out var pct))
+            // The slash form (percent of the element's own size), translate-x-full (100%) and the spacing-scale
+            // presets route to the same TranslateX/Y merge so an x and a y preset compose instead of clobbering
+            // via the `translate` shorthand.
+            if (TryParseFractionPercent(suffix, out var pct))
             {
                 result = new ArbitraryStyle(property, negate ? -pct : pct, LengthUnit.Percent);
                 return true;
@@ -540,7 +534,7 @@ namespace Velvet
 
         // The fraction families (w-1/2, min-h-1/3, basis-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
         // for any a/b of non-negative integers as in Tailwind (left-3/2 is 150%). Only a position offset takes a
-        // sign (-left-1/2) and a `full` keyword (left-full, -left-full), as in Tailwind.
+        // sign (-left-1/2) and the `full` (left-full, -left-full) and `auto` keywords, as in Tailwind.
         // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
         private static readonly (string Prefix, ArbitraryProperty Property, bool Position)[] s_fractionFamilies =
         {
@@ -576,13 +570,15 @@ namespace Velvet
             return -1;
         }
 
-        // The sizing `*-full` classes are USS rules, so only a position family's `full` is claimed here.
+        // The sizing `*-full` and `*-auto` classes are USS rules, so only a position family's keywords are claimed.
         private static bool IsFractionToken(string cls)
         {
             var family = FractionFamilyOf(cls);
             return family >= 0
                 && (cls.IndexOf('/') >= 0
-                    || (s_fractionFamilies[family].Position && cls.EndsWith("-full", StringComparison.Ordinal)));
+                    || (s_fractionFamilies[family].Position
+                        && (cls.EndsWith("-full", StringComparison.Ordinal)
+                            || cls.EndsWith("-auto", StringComparison.Ordinal))));
         }
 
         // Digits only with no sign or leading zero, as Tailwind's isPositiveInteger reads a fraction's halves.
@@ -605,6 +601,22 @@ namespace Velvet
         }
 
         // A zero denominator does not parse: no percent stands for it.
+        private static bool TryParseFractionPercent(string frac, out float percent)
+        {
+            percent = 0f;
+            var slash = frac.IndexOf('/');
+            if (slash < 0
+                || !TryParseFractionPart(frac.Substring(0, slash), out var n)
+                || !TryParseFractionPart(frac.Substring(slash + 1), out var d)
+                || d == 0)
+            {
+                return false;
+            }
+            percent = 100f * n / d;
+            return true;
+        }
+
+        // `auto` is never negated, as in Tailwind, which has no -top-auto.
         private static bool TryParseFraction(string className, out ArbitraryStyle result)
         {
             result = default;
@@ -617,21 +629,18 @@ namespace Velvet
             var negate = className[0] == '-';
             var frac = className.Substring((negate ? 1 : 0) + prefix.Length);
             float percent;
+            if (position && frac == "auto" && !negate)
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
+            }
             if (position && frac == "full")
             {
                 percent = 100f;
             }
-            else
+            else if (!TryParseFractionPercent(frac, out percent))
             {
-                var slash = frac.IndexOf('/');
-                if (slash < 0
-                    || !TryParseFractionPart(frac.Substring(0, slash), out var n)
-                    || !TryParseFractionPart(frac.Substring(slash + 1), out var d)
-                    || d == 0)
-                {
-                    return false;
-                }
-                percent = 100f * n / d;
+                return false;
             }
             result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
             return true;
@@ -2031,7 +2040,7 @@ namespace Velvet
                 return;
             }
 
-            var length = new StyleLength(new Length(style.Value, style.Unit));
+            var length = style.ToStyleLength();
             var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {

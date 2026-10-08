@@ -374,6 +374,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APositionAutoSide_When_Resolved_Then_NoLengthChannelIsPlanned()
+        {
+            // Arrange / Act — top-auto is an unset offset, not a magnitude, like w-auto above.
+            var plan = MotionSpringClassParser.Resolve(new[] { "top-0" }, new[] { "top-auto" });
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
         public void Given_AColorsOnlySpringVariantEnter_When_Started_Then_TheCompletionDoesNotFireSynchronously()
         {
             // Arrange — the element already carries the resting (to) class, matching PlayVariantEnter's

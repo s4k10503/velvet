@@ -11,3 +11,8 @@
 - Fractions take any `a/b` of whole numbers with a non-zero denominator, as in Tailwind: `left-3/2` is 150%,
   `w-1/7` is a seventh. `min-w-`, `min-h-`, `max-w-`, `max-h-` and `basis-` take them too; each was previously
   added to the class list as a plain class and did nothing. A denominator of zero stays unrecognised.
+- `translate-x-` and `translate-y-` (and their negated forms) take any `a/b` of whole numbers with a non-zero
+  denominator, where they previously took only halves, thirds and quarters.
+- `top-auto`, `right-auto`, `bottom-auto`, `left-auto`, `inset-auto`, `inset-x-auto` and `inset-y-auto` write an
+  inline `auto` offset, which overrides a value the stylesheet supplies. Each was previously added to the class
+  list as a plain class and did nothing.

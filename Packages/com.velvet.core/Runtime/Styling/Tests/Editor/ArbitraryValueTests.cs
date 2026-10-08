@@ -2444,6 +2444,124 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("w-1/2"), Is.True);
         }
 
+        static readonly object[] TranslateFractionCases =
+        {
+            // Given_TranslateXFifthFraction_When_Parsed_Then_ResolvesTwentyPercent
+            new object[] { "translate-x-1/5", ArbitraryProperty.TranslateX, 20f },
+            // Given_TranslateYEighthsFraction_When_Parsed_Then_ResolvesFromEight
+            new object[] { "translate-y-3/8", ArbitraryProperty.TranslateY, 37.5f },
+            // Given_NegatedTranslateXSixthFraction_When_Parsed_Then_ResolvesNegativeFromSix
+            new object[] { "-translate-x-5/6", ArbitraryProperty.TranslateX, -500f / 6f },
+            // Given_ImproperTranslateYFraction_When_Parsed_Then_ResolvesAboveOneHundredPercent
+            new object[] { "translate-y-3/2", ArbitraryProperty.TranslateY, 150f },
+            // Given_NegatedTranslateXTwentyFourthFraction_When_Parsed_Then_ResolvesFromTwentyFour
+            new object[] { "-translate-x-5/24", ArbitraryProperty.TranslateX, -500f / 24f },
+        };
+
+        [TestCaseSource(nameof(TranslateFractionCases))]
+        public void Given_TranslateFractionOutsideThePriorTable_When_Parsed_Then_ResolvesLikeTailwind(
+            string className, object property, float percent)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
+
+            // Assert — a declined parse reads as (false, default) and fails the same comparison.
+            Assert.That((ok, s.Property, s.Unit, Mathf.Abs(s.Value - percent) < 1e-3f),
+                Is.EqualTo((true, (ArbitraryProperty)property, LengthUnit.Percent, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fixed table already declines each of these.
+        // Dropping the digit rules or the zero-denominator rule from the shared parser reddens one.
+        [TestCase("translate-x-1/0")]
+        [TestCase("translate-y-01/2")]
+        [TestCase("translate-x-1/")]
+        [TestCase("-translate-y-a/b")]
+        public void Given_MalformedTranslateFraction_When_Parsed_Then_NotResolved(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("top-auto", ArbitraryProperty.Top)]
+        [TestCase("right-auto", ArbitraryProperty.Right)]
+        [TestCase("bottom-auto", ArbitraryProperty.Bottom)]
+        [TestCase("left-auto", ArbitraryProperty.Left)]
+        [TestCase("inset-auto", ArbitraryProperty.Inset)]
+        [TestCase("inset-x-auto", ArbitraryProperty.InsetX)]
+        [TestCase("inset-y-auto", ArbitraryProperty.InsetY)]
+        public void Given_PositionAuto_When_Parsed_Then_ResolvesTheAutoKeywordOfThatProperty(
+            string className, ArbitraryProperty property)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Auto), Is.EqualTo((true, property, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines each of these. The negated form has no Tailwind
+        // utility, and the sizing `*-auto` classes are USS rules; extending the keyword to either reddens this.
+        [TestCase("-top-auto")]
+        [TestCase("w-auto")]
+        [TestCase("min-w-auto")]
+        [TestCase("top-autos")]
+        public void Given_NonPositionAuto_When_ParsedAndGated_Then_NeitherClaimsIt(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale(className);
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That((claimed, parsed), Is.EqualTo((false, false)));
+        }
+
+        [Test]
+        public void Given_PositionAutoClassAdded_When_Reconciled_Then_WritesTheAutoKeywordInline()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div() };
+            var newTree = new VNode[] { V.Div("top-auto") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.top.keyword, Is.EqualTo(StyleKeyword.Auto));
+        }
+
+        [Test]
+        public void Given_PositionAutoClassRemoved_When_Reconciled_Then_ClearsTheInlineKeyword()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div("left-auto") };
+            var newTree = new VNode[] { V.Div() };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.left.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AutoAndAZeroPixelOffset_When_ValueKeysCompared_Then_TheKeysDiffer()
+        {
+            // Act
+            var same = FiberNodePatcher.ValueKey("top-auto") == FiberNodePatcher.ValueKey("top-[0px]");
+
+            // Assert
+            Assert.That(same, Is.False);
+        }
+
         static readonly object[] PositionFractionCases =
         {
             // Given_LeftHalfFraction_When_Parsed_Then_ResolvesLeftFiftyPercent
