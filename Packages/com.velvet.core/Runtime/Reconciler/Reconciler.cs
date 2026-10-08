@@ -270,9 +270,15 @@ namespace Velvet
             try
             {
                 _childReconciler.DrainPendingPortalMounts();
+                // After the drain, whose own reconciles can tear down a Portal too.
+                foreach (var target in _ctx.PortalTargetsToRestyle)
+                {
+                    _patcher.ApplyStructuralVariants(target);
+                }
             }
             finally
             {
+                _ctx.PortalTargetsToRestyle.Clear();
                 // Always clear the queue at top-level boundary so partially drained passes do
                 // not leak placeholders into the next reconcile; an abort raised DURING the
                 // drain (a boundary inside a portal's children) is consumed at this boundary

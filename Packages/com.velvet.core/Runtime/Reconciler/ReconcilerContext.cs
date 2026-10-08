@@ -1029,6 +1029,11 @@ namespace Velvet
         // still parented by that element, which no caller holds.
         internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
 
+        // Portal targets that lost children to a Portal's teardown this pass. Their remaining children changed
+        // sibling position with no reconcile of the target to re-derive structural variants, so the top-level
+        // boundary does it (Reconciler.FinishTopLevelPass).
+        internal HashSet<VisualElement> PortalTargetsToRestyle { get; } = new();
+
         // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
         // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
         // containers that are ordinary (if empty) children of the key until FiberZLayerCoordinator.DrainTeardowns

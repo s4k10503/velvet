@@ -560,6 +560,16 @@ namespace Velvet
                     ? ReconcilerContext.BoundaryRemovalOutcome.Skipped
                     : ReconcilerContext.BoundaryRemovalOutcome.Ran;
 
+        // The structural pass of the Reconciler entry that parked, which ran over the children committed so far
+        // and cannot see the rest; a resume that parks again leaves it to the one that finishes.
+        private void ApplyStructuralVariantsOnceSettled(VisualElement? parent)
+        {
+            if (PendingIndexedState == null && PendingKeyedState == null)
+            {
+                _patcher.ApplyStructuralVariants(parent!);
+            }
+        }
+
         // Resumes a suspended IndexedReconcile.
         // Does nothing when PendingIndexedState is null.
         internal void ContinueIndexed(double frameBudgetMs)
@@ -577,6 +587,7 @@ namespace Velvet
                 ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
                     state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
                 removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
             }
             finally
             {
@@ -598,6 +609,7 @@ namespace Velvet
             {
                 ReconcileKeyedFrom(state, frameBudgetMs);
                 removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
             }
             finally
             {

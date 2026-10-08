@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Linq;
 using NUnit.Framework;
@@ -9,7 +10,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that structural variants (<c>first:</c>, <c>last:</c>, <c>only:</c>) are evaluated for children
     /// reconciled directly under an element no VNode created: the element a tree is mounted into, and a portal's
-    /// target. As in CSS, the parent's other element children are siblings too, those this tree did not put
+    /// target. They are likewise re-derived for the children of a context-provider wrapper, when a Portal's
+    /// teardown leaves others on its target, and when a time-sliced reconcile finishes. As in CSS, the parent's other element children are siblings too, those this tree did not put
     /// there among them.
     /// </summary>
     /// <remarks>
@@ -22,6 +24,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setCount;
         private static int s_initialCount;
         private static VisualElement? s_portalTarget;
+        private static readonly ComponentContext<string> s_context = ComponentContext<string>.Create("light");
 
         [SetUp]
         public void SetUp()
@@ -178,6 +181,85 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Widths(target), Is.EqualTo(WidthsByCss(target)));
+        }
+
+        [Component]
+        private static VNode RemovablePortals()
+        {
+            var (count, setCount) = Hooks.UseState(2);
+            s_setCount = setCount;
+            return V.Fragment(children: new VNode?[]
+            {
+                V.Portal(s_portalTarget!, key: "first",
+                    children: new VNode?[] { V.Div(name: "row0", className: "last:w-[30px]") }),
+                count == 2
+                    ? V.Portal(s_portalTarget!, key: "second",
+                        children: new VNode?[] { V.Div(name: "row1", className: "last:w-[30px]") })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_TwoPortalsOnOneTarget_When_TheSecondUnmounts_Then_LastMovesToTheRemainingRow()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            _mounted = V.Mount(new VisualElement(), V.Component(RemovablePortals, key: "portals"));
+
+            // Act — the first portal's own children are unchanged, so only the teardown touches the target.
+            s_setCount.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Widths(s_portalTarget!), Is.EqualTo("30"));
+        }
+
+        [Test]
+        public void Given_AProviderWrapperBuiltForAController_When_ItHoldsRows_Then_FirstAndLastLandOnItsEnds()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var bridge = (IReconcilerBridge)reconciler;
+
+            // Act
+            var wrapper = bridge.CreateElementForController(
+                V.Provider(s_context, "value", Rows(3, "first:w-[10px] last:w-[30px]")));
+
+            // Assert
+            Assert.That(Widths(wrapper), Is.EqualTo("10|-|30"));
+        }
+
+        [Test]
+        public void Given_AProviderWrapperBuiltForAController_When_ItIsPatchedWithAnotherRow_Then_LastMovesToIt()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var bridge = (IReconcilerBridge)reconciler;
+            var before = V.Provider(s_context, "value", Rows(2, "last:w-[30px]"));
+            var wrapper = bridge.CreateElementForController(before);
+
+            // Act
+            bridge.PatchNodeForController(wrapper, before, V.Provider(s_context, "value", Rows(3, "last:w-[30px]")));
+
+            // Assert
+            Assert.That(Widths(wrapper), Is.EqualTo("-|-|30"));
+        }
+
+        [Test]
+        public void Given_ABudgetedReconcileUnderAHost_When_ItIsResumedToTheEnd_Then_FirstAndLastLandOnTheEnds()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var host = new VisualElement();
+            reconciler.Reconcile(host, Array.Empty<VNode>(), Rows(3, "first:w-[10px] last:w-[30px]"),
+                frameBudgetMs: 0.001);
+            Assume.That(reconciler.HasPendingWork, Is.True, "Precondition: the budget parked the diff");
+
+            // Act
+            reconciler.ContinueReconcile();
+
+            // Assert
+            Assert.That(Widths(host), Is.EqualTo("10|-|30"));
         }
 
         [Test]
