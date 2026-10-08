@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the arc-length dash/dot marcher (<see cref="DashedBorderPainter.ComputeSegments"/>) and the
     /// polyline flattener it consumes (<see cref="SilhouetteFace.BuildShearedRoundedRectPolyline"/>). A dashed /
-    /// dotted outline is walked by arc length: dashes are butt-capped runs of
-    /// ~3× the line width spaced by ~2× gaps; dots are zero-length round-capped strokes spaced ~2× the width.
+    /// dotted outline is walked by arc length: dashes are butt-capped runs of ~3× the line width spaced by ~2×
+    /// gaps; dots are zero-length round-capped strokes spaced ~2× the width.
     /// A closed polyline wraps its last edge back to point 0; the flattened rounded-rect gains points as its
     /// corners round, matching the corner sampling the shared Painter2D path builder emits. GWT, one assert
     /// per case.
