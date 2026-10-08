@@ -147,19 +147,31 @@ render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets
 `OperationCanceledException` the attempt throws is a failure like any other, retried while the call's own
 token is live; once that token is cancelled, by an unmount or by the caller, no further attempt starts.
 
-Pausing follows the retryer. Under `Online` a call started offline waits for a connection before its first
-attempt; under `OfflineFirst` it does not. Every retry that comes due waits until the application is visible
-and, outside `Always`, a connection. v5 reads the page's visibility for the first; `IsFocused` defaults to true except on a mobile platform while `Application.isFocused`
-is false, so a backgrounded app pauses and an unfocused desktop window does not, and a minimized desktop
-window is not detected. `IsOnline` defaults to `Application.internetReachability`. Both are polled once per
-frame and can be supplied to decide by something else. While a call waits this way `MutationResult.IsPaused`
-is true, and `FailureCount` / `FailureReason` follow v5's reducer: zero and null when a call starts or
-succeeds, one more count and the failure for each failed attempt, the final failure included.
+Pausing follows the retryer and applies to **every** mutation, one without a `Retry` included, as v5 runs every
+mutation under `networkMode: 'online'`. Under `Online` a call started offline waits for a connection before its
+first attempt, with `IsPaused` true and `MutationFn` not yet called; under `OfflineFirst` it does not wait; under
+`Always` nothing waits for a connection. A mutation that needs `Always` and no retries sets
+`Retry = new RetryPolicy { Retry = false, NetworkMode = NetworkMode.Always }`, since the policy is where
+Velvet holds the mode. Every retry that comes due waits until the application is visible and, outside
+`Always`, a connection.
 
-Where v5 differs: the pause applies only to a call whose options carry a `Retry`, whereas v5's retryer
-pauses a mutation started offline with no retry set as well. The default wait is wall-clock time on the main
-thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does, unaffected by
-`Time.timeScale`; supply `Wait` to wait on game time.
+The readings come from `NetworkSignals`, which an application replaces once for every mutation, and from the
+policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per frame.
+
+- Online: `Application.internetReachability` is not `NotReachable`. It can read a local-network-only server as
+  unreachable, which is what `NetworkSignals.IsOnline` is for.
+- Visible, as v5's focus manager reads `document.visibilityState` rather than focus: a window that has lost
+  focus but is still shown counts as visible, so alt-tabbing pauses nothing. A mobile platform reads
+  `Application.isFocused`, since a backgrounded app has lost it. Windows asks whether the process's main window
+  is minimized. macOS asks whether the application is hidden or has no window that is both visible and not
+  miniaturized. Linux and WebGL have no reading and always count as visible.
+
+While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
+zero and null when a call starts or succeeds, one more count and the failure for each failed attempt, the
+final failure included.
+
+The default wait is wall-clock time on the main thread, checked once per frame and lasting at least one frame as
+v5's zero-delay timer does, unaffected by `Time.timeScale`; supply `Wait` to wait on game time.
 
 **Callback error semantics** (TanStack Query v5 parity):
 

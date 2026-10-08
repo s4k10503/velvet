@@ -494,6 +494,62 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_NoIsOnlineOnThePolicy_When_NetworkSignalsReadOffline_Then_NoAttemptRunsUntilItReadsOnline()
+        {
+            // Arrange
+            var previous = NetworkSignals.IsOnline;
+            var online = false;
+            NetworkSignals.IsOnline = () => online;
+            try
+            {
+                var attempts = 0;
+                _ = (s_ready with { IsOnline = null }).RunAsync(_ => VelvetTask.FromResult(++attempts));
+
+                // Act
+                DrainFrames();
+                var attemptsOffline = attempts;
+                online = true;
+                DrainFrames();
+
+                // Assert
+                Assert.That((attemptsOffline, attempts), Is.EqualTo((0, 1)), "The application-wide reading stands in for a policy that supplies none");
+            }
+            finally
+            {
+                NetworkSignals.IsOnline = previous;
+            }
+        }
+
+        [Test]
+        public void Given_NoIsFocusedOnThePolicy_When_NetworkSignalsReadHidden_Then_TheRetryWaitsUntilItReadsVisible()
+        {
+            // Arrange
+            var previous = NetworkSignals.IsVisible;
+            var visible = false;
+            NetworkSignals.IsVisible = () => visible;
+            try
+            {
+                var attempts = 0;
+                var policy = s_noDelay with { IsFocused = null };
+                _ = policy.RunAsync(_ =>
+                    ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts));
+
+                // Act
+                DrainFrames();
+                var attemptsHidden = attempts;
+                visible = true;
+                DrainFrames();
+
+                // Assert
+                Assert.That((attemptsHidden, attempts), Is.EqualTo((1, 2)), "The application-wide visibility stands in for a policy that supplies none");
+            }
+            finally
+            {
+                NetworkSignals.IsVisible = previous;
+            }
+        }
+
+        [Test]
         public void Given_NetworkModeAlways_When_TheDeviceIsOffline_Then_TheFirstAttemptRunsAtOnce()
         {
             // Arrange

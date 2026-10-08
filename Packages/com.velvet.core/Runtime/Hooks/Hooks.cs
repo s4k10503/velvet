@@ -2045,18 +2045,16 @@ namespace Velvet
             {
                 // Each attempt reads the slot's MutationFn, the latest render's, as v5's retryer reads
                 // options.mutationFn on every run.
-                var data = await (slot.Retry is { } retry
-                    ? retry.RunWithStateAsync(
-                        static (call, token) => call.Slot.MutationFn(call.Variables, token),
-                        new MutationCall<TVariables, TData>(fiber, slot, variables, mine),
-                        new RetryCallbacks<MutationCall<TVariables, TData>>
-                        {
-                            OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
-                            OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
-                            OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
-                        },
-                        cts.Token)
-                    : slot.MutationFn(variables, cts.Token));
+                var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
+                    static (call, token) => call.Slot.MutationFn(call.Variables, token),
+                    new MutationCall<TVariables, TData>(fiber, slot, variables, mine),
+                    new RetryCallbacks<MutationCall<TVariables, TData>>
+                    {
+                        OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
+                        OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
+                        OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
+                    },
+                    cts.Token);
                 if (fiber.IsDisposed) return data;
                 // The handler runs before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess reads is the handle as it stands rather than its own

@@ -49,6 +49,78 @@ namespace Velvet.Tests
             s_delivered.Clear();
         }
 
+        [TearDown]
+        public void TearDown() => MutationNetworkFixture.Reset();
+
+        [Test]
+        public void Given_AMutationWithoutARetry_When_ItStartsOffline_Then_ItIsPausedAndHasNotCalledMutationFn()
+        {
+            // Arrange — no policy at all: v5 runs every mutation under networkMode 'online'.
+            var attempts = 0;
+            NetworkSignals.IsOnline = () => false;
+            s_mutationFn = (v, _) => VelvetTask.FromResult(v + ++attempts);
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "network-none-offline"));
+
+            // Act
+            _ = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.IsPaused, s_captured.Status, attempts), Is.EqualTo((true, MutationStatus.Pending, 0)),
+                "A mutation started offline waits for a connection whether or not it retries");
+        }
+
+        [Test]
+        public void Given_AMutationWithoutARetry_When_ItStartsOnline_Then_ItRunsAtOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "network-none-online"));
+
+            // Act
+            _ = s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.IsPaused, s_captured.Status, s_captured.Data), Is.EqualTo((false, MutationStatus.Success, 21)),
+                "Online, a mutation without a retry settles within the call");
+        }
+
+        [Test]
+        public void Given_NetworkModeAlways_When_ARetryFreeMutationStartsOffline_Then_ItRunsAtOnce()
+        {
+            // Arrange
+            s_retry = s_ready with { Retry = false, NetworkMode = NetworkMode.Always, IsOnline = () => false };
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "network-always"));
+
+            // Act
+            _ = s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.IsPaused, s_captured.Status), Is.EqualTo((false, MutationStatus.Success)),
+                "networkMode 'always' never waits for a connection");
+        }
+
+        [Test]
+        public void Given_AMutationWithoutARetry_When_ItFails_Then_ItIsNotRetried()
+        {
+            // Arrange
+            var attempts = 0;
+            s_mutationFn = (_, _) =>
+            {
+                attempts++;
+                throw new InvalidOperationException("down");
+            };
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "network-none-fails"));
+
+            // Act
+            s_captured!.Mutate(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.Status, attempts), Is.EqualTo((MutationStatus.Error, 1)), "Mutations default to retry: 0");
+        }
+
         [UnityTest]
         public IEnumerator Given_ARetryPolicy_When_MutationFnFailsOnceThenSucceeds_Then_TheCallSucceedsWithoutOnError() => VelvetTask.ToCoroutine(async () =>
         {

@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using UnityEngine;
 
 namespace Velvet
 {
@@ -44,15 +43,16 @@ namespace Velvet
 
         /// <summary>
         /// Reads whether the device is online, for <see cref="NetworkMode"/>. When null,
-        /// <c>Application.internetReachability</c> is not <c>NotReachable</c>, which is read on the main thread.
+        /// <see cref="NetworkSignals.IsOnline"/>, which defaults to <c>Application.internetReachability</c> not
+        /// being <c>NotReachable</c>. Read on the main thread.
         /// </summary>
         public Func<bool>? IsOnline { get; init; }
 
         /// <summary>
         /// Reads whether the application is visible, as TanStack's focus manager reads the page's visibility. A
         /// retry that is due while it is not waits until it is, in every <see cref="NetworkMode"/>. When null,
-        /// true except on a mobile platform while <c>Application.isFocused</c> is false, read on the main thread.
-        /// A desktop window that has lost focus but is still shown counts as visible, as a browser tab does.
+        /// <see cref="NetworkSignals.IsVisible"/>, which defaults to a reading of the platform's window state.
+        /// Read on the main thread.
         /// </summary>
         public Func<bool>? IsFocused { get; init; }
 
@@ -87,7 +87,7 @@ namespace Velvet
             if (NetworkMode == NetworkMode.Online)
             {
                 if (IsOnline == null) await VelvetTask.SwitchToMainThread();
-                if (!(IsOnline?.Invoke() ?? ApplicationIsOnline()))
+                if (!(IsOnline?.Invoke() ?? NetworkSignals.ReadOnline()))
                 {
                     await PauseAsync(state, callbacks, cancellationToken);
                 }
@@ -122,18 +122,15 @@ namespace Velvet
             }
         }
 
+        // What a mutation without a Retry runs under: no retry, but the network mode every v5 mutation has.
+        internal static RetryPolicy NoRetry { get; } = new() { Retry = false };
+
         internal static TimeSpan DefaultRetryDelay(int failureCount) =>
             TimeSpan.FromMilliseconds(Math.Min(1000d * Math.Pow(2d, failureCount), 30000d));
 
-        private static bool ApplicationIsOnline() => Application.internetReachability != NetworkReachability.NotReachable;
-
-        // Approximates page visibility, which a focus change alone does not end: a desktop window behind
-        // another stays visible, as a browser tab does, so only a mobile platform is asked about focus.
-        private static bool ApplicationIsVisible() => !Application.isMobilePlatform || Application.isFocused;
-
         private bool CanContinue() =>
-            (IsFocused?.Invoke() ?? ApplicationIsVisible())
-            && (NetworkMode == NetworkMode.Always || (IsOnline?.Invoke() ?? ApplicationIsOnline()));
+            (IsFocused?.Invoke() ?? NetworkSignals.ReadVisible())
+            && (NetworkMode == NetworkMode.Always || (IsOnline?.Invoke() ?? NetworkSignals.ReadOnline()));
 
         // Polled once per frame rather than woken by Application.focusChanged, so one loop serves a supplied
         // IsOnline / IsFocused as well, which have no event to subscribe to.
