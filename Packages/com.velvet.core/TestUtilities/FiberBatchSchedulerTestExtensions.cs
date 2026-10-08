@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 
 namespace Velvet.TestUtilities
 {
@@ -38,9 +39,15 @@ namespace Velvet.TestUtilities
             {
                 throw new MissingMethodException(typeof(FiberBatchScheduler).FullName, methodName);
             }
-            // DoNotWrapExceptions, so a caller catching what a drain throws catches that exception itself rather
-            // than unwrapping a TargetInvocationException at every call site.
-            method.Invoke(scheduler, BindingFlags.DoNotWrapExceptions, null, null, null);
+            // The helper hands callers the drain's own exception, so no call site unwraps one.
+            try
+            {
+                method.Invoke(scheduler, BindingFlags.DoNotWrapExceptions, null, null, null);
+            }
+            catch (TargetInvocationException wrapped) when (wrapped.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(wrapped.InnerException).Throw();
+            }
         }
     }
 }
