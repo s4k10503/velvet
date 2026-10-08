@@ -372,7 +372,7 @@ namespace Velvet.Tests
                 }),
             };
             Mount(SequenceHost);
-            LogAssert.Expect(LogType.Exception, new Regex("AggregateException"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: token probe"));
 
             // Act
             TestDelegate restart = () => s_controls.Restart();
@@ -399,7 +399,7 @@ namespace Velvet.Tests
                     return new VelvetTaskCompletionSource().Task;
                 }),
             };
-            LogAssert.Expect(LogType.Exception, new Regex("AggregateException"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: token probe"));
 
             // Act
             Mount(Boundary, CaughtErrors.Unlogged);
