@@ -524,7 +524,9 @@ Where this differs from the Web Animations API and CSS: a count lowered below th
 finishes the sequence at the end of that pass, where the Web Animations API finishes it at once; the
 count is a whole number, where both accept a fraction such as `2.5`; and a finished sequence keeps its
 last step current, as `animation-fill-mode: forwards` would, while `iterations: 0` commits nothing, as
-the default `animation-fill-mode: none` would.
+the default `animation-fill-mode: none` would. Framer Motion's `repeatDelay` has no counterpart: a
+trailing `Wait` step adds the gap between passes, but it also holds the last pass before the sequence
+completes, which `repeatDelay` does not.
 
 An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
 is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
