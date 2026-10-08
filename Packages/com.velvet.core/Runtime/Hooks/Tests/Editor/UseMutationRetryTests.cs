@@ -256,8 +256,32 @@ namespace Velvet.Tests
             // Assert — the second term is the retries having happened, without which a single failure delivers
             // these two callbacks once whatever the retry does.
             Assert.That((string.Join(";", s_contextCallbacks), attempts),
-                Is.EqualTo(("error:snapshot;settled:snapshot", 3)),
+                Is.EqualTo(("error:InvalidOperationException:snapshot;settled:InvalidOperationException:snapshot", 3)),
                 "The failed attempts before the last deliver nothing, so a rollback in OnError runs once with OnMutate's context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryWaiting_When_TheComponentUnmounts_Then_OnErrorAndOnSettledReceiveTheCancellationOnce() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the wait ignores the token and the second attempt would succeed, so only the policy's
+            // check after the wait keeps that attempt from running.
+            var attempts = 0;
+            var gate = new VelvetTaskCompletionSource();
+            s_retry = new RetryPolicy { Wait = (_, _) => gate.Task };
+            s_mutationFn = (v, _) =>
+                ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(v);
+            var mounted = V.Mount(_root, V.Component(CaptureContextMutationRender, key: "retry-unmount-callbacks"));
+            var call = s_contextCaptured!.MutateAsync(1);
+            mounted.Dispose();
+
+            // Act
+            gate.TrySetResult();
+            await call;
+
+            // Assert
+            Assert.That(string.Join(";", s_contextCallbacks),
+                Is.EqualTo("error:OperationCanceledException:snapshot;settled:OperationCanceledException:snapshot"),
+                "An unmount during a retry wait ends the call in the cancellation, delivered once to OnError and OnSettled");
         });
 
         [Component]
@@ -279,8 +303,10 @@ namespace Velvet.Tests
                     s_onMutateCount++;
                     return "snapshot";
                 },
-                OnError: (_, _, context) => s_contextCallbacks.Add($"error:{context}"),
-                OnSettled: (_, _, _, context) => s_contextCallbacks.Add($"settled:{context}")) { Retry = s_retry });
+                OnSuccess: (_, _, context) => s_contextCallbacks.Add($"success:{context}"),
+                OnError: (error, _, context) => s_contextCallbacks.Add($"error:{error.GetType().Name}:{context}"),
+                OnSettled: (_, error, _, context) =>
+                    s_contextCallbacks.Add($"settled:{error?.GetType().Name}:{context}")) { Retry = s_retry });
             return V.Label(text: "ok");
         }
 

@@ -129,8 +129,10 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
         inventory.Equip(item);                      // optimistic write through a Store action
         return previous;
     },
-    OnError: (_, _, previous) =>
+    OnError: (error, _, previous) =>
     {
+        // An unmount cancelled the request: the server may have applied it, so reload rather than guess.
+        if (error is OperationCanceledException) { inventory.Reload(); return; }
         if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
     },
     OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
@@ -140,9 +142,12 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
 option callbacks outlive the observer; only the handle is no longer written and the component no longer
 re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
 `MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
-`OnSettled` receive with the call's context, so a write `OnMutate` made is rolled back; `MutateAsync`
-then completes with default data rather than rejecting. One that ignores it completes as usual and runs
-`OnSuccess` or `OnError`, then `OnSettled`.
+`OnSettled` receive with the call's context; `MutateAsync` then completes with default data rather than
+rejecting. One that ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`.
+A cancelled request may already have reached the server and been applied, so a cancellation does not say
+the write failed: rolling the optimistic value back on it can undo a write the server kept. Branch on
+`error is OperationCanceledException` in `OnError`, as the sample does, and reload the authoritative state
+there instead of restoring the snapshot.
 
 `OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
 synchronous.
@@ -155,7 +160,8 @@ shows the previous one's result. Not cancelling on re-entry, following the newes
 `Data` when a call starts are all v5's behaviour.
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
-only its variables. It is cancelled when the component unmounts (see **Unmounting** above), which is what
+its variables and a context of the query client, the mutation's `meta` and its `mutationKey`, with no
+cancellation signal. It is cancelled when the component unmounts (see **Unmounting** above), which is what
 a Unity web request wants, and it is never cancelled by a later call.
 
 **`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
@@ -179,7 +185,11 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 attempt's outcome with the context `OnMutate` returned, and a call a newer one has superseded writes nothing
 to the handle when its retry lands, as under **Concurrent calls** above. Each attempt calls the latest
 render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets the call's
-`CancellationToken`, so an unmount ends the retries along with the attempt. The policy itself:
+`CancellationToken`, so an unmount ends the retries along with the attempt. During a retry wait, an
+unmount ends the call in an `OperationCanceledException` whatever `MutationFn` does with its token — by
+the next frame under the default wait, and under a supplied `Wait` once it completes or rejects as
+cancelled — so `OnError` and `OnSettled` receive the cancellation rather than a later attempt's outcome,
+and the **Unmounting** advice on rolling back applies. The policy itself:
 
 | v5 | `RetryPolicy` |
 |----|---------------|

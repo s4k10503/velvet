@@ -25,10 +25,10 @@ namespace Velvet.Tests
     /// the failure path does not cost it its outcome; one on the success path fails the call, which then
     /// settles again with that exception.</item>
     /// <item>Overlapping calls each hand their callbacks their own context.</item>
-    /// <item>A call whose component unmounts while it is in flight still runs its callbacks — with the cancellation
-    /// where the mutation function honours its token — and writes nothing to the handle.</item>
+    /// <item>A call whose component unmounts while it is in flight still runs its callbacks, with the cancellation
+    /// where the mutation function honours its token.</item>
     /// </list>
-    /// <see cref="UseMutationHookTests"/> owns the lifecycle the handle reports.
+    /// <see cref="UseMutationHookTests"/> owns the lifecycle the handle reports, an unmounted call's included.
     /// </summary>
     [TestFixture]
     internal sealed class UseMutationLifecycleTests
@@ -346,29 +346,6 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AnInFlightContextMutation_When_TheComponentUnmountsAndItThenFails_Then_TheHandleIsNotCommitted() => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange — the rejection is carried into the reading: a call that never failed leaves the
-            // handle pending whether or not the failure is committed.
-            var failure = new InvalidOperationException("boom");
-            var gate = new VelvetTaskCompletionSource<int>();
-            s_mutationFn = (_, _) => gate.Task;
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-failure"));
-            var captured = s_captured!;
-            var inFlight = captured.MutateAsync(7);
-            Exception? rethrown = null;
-
-            // Act
-            mounted.Dispose();
-            gate.TrySetException(failure);
-            try { await inFlight; } catch (InvalidOperationException caught) { rethrown = caught; }
-
-            // Assert
-            Assert.That((ReferenceEquals(rethrown, failure), captured.Status), Is.EqualTo((true, MutationStatus.Pending)),
-                "A call that fails after its component unmounted rejects to its caller and writes nothing to the handle");
-        });
-
-        [UnityTest]
         public IEnumerator Given_AContextFreeMutation_When_ItSucceeds_Then_OnSettledRuns() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -414,28 +391,6 @@ namespace Velvet.Tests
                 "MutationOptions.OnSettled runs once on success, with no exception");
         });
 
-        [UnityTest]
-        public IEnumerator Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome() => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange — the pending render is flushed before the call completes, so the render request the
-            // call made when it started cannot be what shows the outcome.
-            var gate = new VelvetTaskCompletionSource<int>();
-            s_mutationFn = (_, _) => gate.Task;
-            using var mounted = V.Mount(_root, V.Component(StatusRender, key: "outcome-render"));
-            var inFlight = s_captured!.MutateAsync(1);
-            mounted.FlushStateForTest();
-            var pendingText = _root.Q<Label>().text;
-
-            // Act
-            gate.TrySetResult(2);
-            await inFlight;
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That((pendingText, _root.Q<Label>().text), Is.EqualTo(("Pending", "Success")),
-                "Committing an outcome asks the component for a render");
-        });
-
         [Test]
         public void Given_NullContextOptions_When_UseMutationCalled_Then_ThrowsArgumentNullException()
         {
@@ -468,13 +423,6 @@ namespace Velvet.Tests
                     if (error != null && s_settledThrowsOnFailure != null) throw s_settledThrowsOnFailure;
                 }));
             return V.Label(text: "ok");
-        }
-
-        [Component]
-        public static VNode StatusRender()
-        {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn));
-            return V.Label(text: s_captured.Status.ToString());
         }
 
         [Component]
