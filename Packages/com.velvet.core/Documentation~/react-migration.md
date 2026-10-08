@@ -204,9 +204,9 @@ component reading it, whatever it has read.
 if the new result is deeply equal to it, and keeps the equal parts of it if it is not, which is
 `replaceEqualDeep`, v5's default `structuralSharing`. An array, a `List<T>` and a `Dictionary<TKey, TValue>`
 are compared element by element and entry by entry, and a dictionary keeps its comparer; a string, a
-number, a struct and a record are equal when `Equals` says so; any other class is kept only as the very
-instance held. A record compares a collection it holds by reference, so one holding a collection equals
-another only if they hold the same instance of it, and its members are not shared when the record differs. `StructuralSharing` replaces all
+number and a struct are equal when `Equals` says so; any other class, a record included, is kept only as
+the very instance held, as v5 keeps anything but a plain array or object, so a refetch landing an equal
+record as a new instance makes that instance the data. `StructuralSharing` replaces all
 of that with a function of the data held, default when there is none, and the data that arrived; one that
 throws fails the request.
 
@@ -238,9 +238,9 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
-- Structural sharing does not enter the members of a record that differs, where v5 shares the equal
-  properties of a changed object: a record is kept or replaced whole, because Velvet does not rebuild
-  one.
+- Structural sharing does not enter the members of a class instance, a record included, where v5 shares
+  the equal properties of a changed plain object: such an instance is kept or replaced whole, because
+  Velvet does not rebuild one.
 - The `CancellationToken` a query function receives is cancelled when a refetch starts that request
   over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
   signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its

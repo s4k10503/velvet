@@ -12,9 +12,8 @@ namespace Velvet.Tests
     /// Specifies the structural sharing of a query's data, TanStack Query's <c>replaceEqualDeep</c>.
     /// <list type="bullet">
     /// <item>New data that is deeply equal to the data held is replaced by it, for an array, a list and a
-    /// dictionary compared element by element and entry by entry, a record and a string compared by
-    /// <c>Equals</c>; a class other than a record is kept only as the very instance held, and a record
-    /// holding a collection compares it by reference.</item>
+    /// dictionary compared element by element and entry by entry, a string compared by <c>Equals</c>; any
+    /// other class, a record included, is kept only as the very instance held.</item>
     /// <item>Where the new data differs, the parts that are equal keep their held instances, at any depth, and
     /// a dictionary keeps its comparer. A length that differs, a previous value of none and a type that
     /// differs each take the new data.</item>
@@ -80,11 +79,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoEqualListsOfRecords_When_Replaced_Then_TheHeldListIsKept()
+        public void Given_TwoListsHoldingTheSameRecordInstances_When_Replaced_Then_TheHeldListIsKept()
         {
             // Arrange
-            var held = new List<Todo> { new(1, "a"), new(2, "b") };
-            var arrived = new List<Todo> { new(1, "a"), new(2, "b") };
+            var first = new Todo(1, "a");
+            var second = new Todo(2, "b");
+            var held = new List<Todo> { first, second };
+            var arrived = new List<Todo> { first, second };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -94,11 +95,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheNewListIsTaken()
+        {
+            // Arrange
+            var held = new List<Todo> { new(1, "a") };
+            var arrived = new List<Todo> { new(1, "a") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That((ReferenceEquals(result, arrived), ReferenceEquals(result[0], arrived[0])), Is.EqualTo((true, true)),
+                "A record is a class instance, which replaceEqualDeep keeps only as the very instance held");
+        }
+
+        [Test]
         public void Given_AListWithOneChangedRecord_When_Replaced_Then_TheEqualRecordKeepsItsInstanceAndTheChangedOneIsNew()
         {
             // Arrange
-            var held = new List<Todo> { new(1, "a"), new(2, "b") };
-            var arrived = new List<Todo> { new(1, "a"), new(2, "B") };
+            var unchanged = new Todo(1, "a");
+            var held = new List<Todo> { unchanged, new(2, "b") };
+            var arrived = new List<Todo> { unchanged, new(2, "B") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -113,8 +130,9 @@ namespace Velvet.Tests
         public void Given_AnArrayWithOneChangedRecord_When_Replaced_Then_TheEqualRecordKeepsItsInstanceAndTheChangedOneIsNew()
         {
             // Arrange
-            var held = new[] { new Todo(1, "a"), new Todo(2, "b") };
-            var arrived = new[] { new Todo(1, "a"), new Todo(2, "B") };
+            var unchanged = new Todo(1, "a");
+            var held = new[] { unchanged, new Todo(2, "b") };
+            var arrived = new[] { unchanged, new Todo(2, "B") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -142,8 +160,9 @@ namespace Velvet.Tests
         public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances()
         {
             // Arrange
-            var held = new List<Todo> { new(1, "a") };
-            var arrived = new List<Todo> { new(1, "a"), new(2, "b") };
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared };
+            var arrived = new List<Todo> { shared, new(2, "b") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -157,8 +176,9 @@ namespace Velvet.Tests
         public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord()
         {
             // Arrange
-            var held = new List<Todo> { new(1, "a"), new(2, "b") };
-            var arrived = new List<Todo> { new(1, "a") };
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared, new(2, "b") };
+            var arrived = new List<Todo> { shared };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -172,8 +192,9 @@ namespace Velvet.Tests
         public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew()
         {
             // Arrange
-            var held = new Dictionary<string, Todo> { ["a"] = new(1, "x"), ["b"] = new(2, "y") };
-            var arrived = new Dictionary<string, Todo> { ["a"] = new(1, "x"), ["b"] = new(2, "Y") };
+            var unchanged = new Todo(1, "x");
+            var held = new Dictionary<string, Todo> { ["a"] = unchanged, ["b"] = new(2, "y") };
+            var arrived = new Dictionary<string, Todo> { ["a"] = unchanged, ["b"] = new(2, "Y") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -187,13 +208,14 @@ namespace Velvet.Tests
         public void Given_ADictionaryWithACustomComparerAndOneChangedValue_When_Replaced_Then_TheResultKeepsTheComparer()
         {
             // Arrange
+            var unchanged = new Todo(1, "x");
             var held = new Dictionary<string, Todo>(StringComparer.OrdinalIgnoreCase)
             {
-                ["a"] = new(1, "x"), ["b"] = new(2, "y"),
+                ["a"] = unchanged, ["b"] = new(2, "y"),
             };
             var arrived = new Dictionary<string, Todo>(StringComparer.OrdinalIgnoreCase)
             {
-                ["a"] = new(1, "x"), ["b"] = new(2, "Y"),
+                ["a"] = unchanged, ["b"] = new(2, "Y"),
             };
 
             // Act
@@ -207,8 +229,9 @@ namespace Velvet.Tests
         public void Given_EqualDictionaries_When_Replaced_Then_TheHeldDictionaryIsKept()
         {
             // Arrange
-            var held = new Dictionary<string, Todo> { ["a"] = new(1, "x") };
-            var arrived = new Dictionary<string, Todo> { ["a"] = new(1, "x") };
+            var shared = new Todo(1, "x");
+            var held = new Dictionary<string, Todo> { ["a"] = shared };
+            var arrived = new Dictionary<string, Todo> { ["a"] = shared };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -221,8 +244,9 @@ namespace Velvet.Tests
         public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance()
         {
             // Arrange
-            var held = new List<List<Todo>> { new() { new(1, "a") }, new() { new(2, "b") } };
-            var arrived = new List<List<Todo>> { new() { new(1, "a") }, new() { new(2, "B") } };
+            var shared = new Todo(1, "a");
+            var held = new List<List<Todo>> { new() { shared }, new() { new(2, "b") } };
+            var arrived = new List<List<Todo>> { new() { shared }, new() { new(2, "B") } };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
@@ -362,12 +386,12 @@ namespace Velvet.Tests
         public void Given_AResolvedQuery_When_ARefetchLandsAnEqualList_Then_DataKeepsTheEarlierInstance()
         {
             // Arrange
-            using var mounted = MountResolved(new List<Todo> { new(1, "a") });
+            using var mounted = MountResolved(new List<int> { 1 });
             var first = Last().Data;
             Last().Refetch();
 
             // Act
-            Land(1, new List<Todo> { new(1, "a") });
+            Land(1, new List<int> { 1 });
             mounted.FlushStateForTest();
 
             // Assert
@@ -380,12 +404,12 @@ namespace Velvet.Tests
         {
             // Arrange
             s_sharing = (_, arrived) => arrived;
-            using var mounted = MountResolved(new List<Todo> { new(1, "a") });
+            using var mounted = MountResolved(new List<int> { 1 });
             var first = Last().Data;
             Last().Refetch();
 
             // Act
-            Land(1, new List<Todo> { new(1, "a") });
+            Land(1, new List<int> { 1 });
             mounted.FlushStateForTest();
 
             // Assert

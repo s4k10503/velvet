@@ -3,8 +3,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 
 namespace Velvet
 {
@@ -15,7 +13,7 @@ namespace Velvet
     {
         private enum Shape
         {
-            // Equal when Equals says so: a string, a number, a struct, a record.
+            // Equal when Equals says so: a string, a number, a struct.
             Leaf,
             // An array of one dimension.
             Array,
@@ -23,7 +21,7 @@ namespace Velvet
             List,
             // Exactly Dictionary<TKey, TValue>.
             Dictionary,
-            // Any other class: kept only as the very instance already held, as v5 treats a class instance.
+            // Any other class, a record included: kept only as the very instance already held, as v5 treats a class instance.
             Reference,
         }
 
@@ -75,12 +73,8 @@ namespace Velvet
                 if (definition == typeof(Dictionary<,>)) return Shape.Dictionary;
             }
 
-            return type.IsValueType || type == typeof(string) || IsRecord(type) ? Shape.Leaf : Shape.Reference;
+            return type.IsValueType || type == typeof(string) ? Shape.Leaf : Shape.Reference;
         }
-
-        // A record class is told by the clone method the compiler declares on it.
-        private static bool IsRecord(Type type)
-            => type.GetMethods(BindingFlags.Public | BindingFlags.Instance).Any(method => method.Name == "<Clone>$");
 
         // Elements of these types hold nothing to share, so two collections of them are the held one or the new
         // one without boxing an element.
