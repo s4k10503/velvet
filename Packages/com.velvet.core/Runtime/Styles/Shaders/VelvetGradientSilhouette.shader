@@ -84,6 +84,7 @@ Shader "Velvet/GradientSilhouette"
             #define VELVET_MAX_STOPS 64
             float4 _StopColors[VELVET_MAX_STOPS];
             float _StopPositions[VELVET_MAX_STOPS];
+            float _StopHints[VELVET_MAX_STOPS];
             float _StopCount;
             float4 _AxisDir;
             float4 _ElementSize;
@@ -230,7 +231,16 @@ Shader "Velvet/GradientSilhouette"
                     else
                     {
                         float p0 = _StopPositions[next - 1];
-                        col = v_gradLerp(_StopColors[next - 1], _StopColors[next], (t - p0) / (_StopPositions[next] - p0));
+                        float span = _StopPositions[next] - p0;
+                        float mixAmount = (t - p0) / span;
+                        // A colour hint moves the half-way mix of the two stops to where it was written.
+                        float hint = _StopHints[next - 1];
+                        if (hint > -500.0)
+                        {
+                            float at = (hint - p0) / span;
+                            mixAmount = at <= 0.0 ? 1.0 : (at >= 1.0 ? 0.0 : pow(mixAmount, log(0.5) / log(at)));
+                        }
+                        col = v_gradLerp(_StopColors[next - 1], _StopColors[next], mixAmount);
                     }
                 }
 

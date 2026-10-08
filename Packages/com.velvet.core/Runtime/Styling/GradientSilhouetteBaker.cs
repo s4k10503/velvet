@@ -33,12 +33,17 @@ namespace Velvet
 
         private static readonly int StopColorsId = Shader.PropertyToID("_StopColors");
         private static readonly int StopPositionsId = Shader.PropertyToID("_StopPositions");
+        private static readonly int StopHintsId = Shader.PropertyToID("_StopHints");
         private static readonly int StopCountId = Shader.PropertyToID("_StopCount");
 
         // Sent whole on every bake, at the MaxStops length the shader declares; the shader reads the first
         // _StopCount entries, so slots a shorter list leaves from an earlier bake are never read.
         private static readonly Vector4[] s_stopColors = new Vector4[GradientSpec.MaxStops];
         private static readonly float[] s_stopPositions = new float[GradientSpec.MaxStops];
+        private static readonly float[] s_stopHints = new float[GradientSpec.MaxStops];
+
+        // What a stop with no colour hint after it sends the shader, which reads anything below -500 as none.
+        private const float NoHint = -1000f;
         private static readonly int TypeId = Shader.PropertyToID("_Type");
         private static readonly int CenterId = Shader.PropertyToID("_Center");
         private static readonly int RadialRadiiId = Shader.PropertyToID("_RadialRadii");
@@ -106,15 +111,17 @@ namespace Velvet
             QuadSize(w, h, tanX, tanY, out var quadW, out var quadH);
 
             var m = s_material;
-            var stops = spec.Stops;
-            for (var i = 0; i < stops.Length; i++)
+            var stops = GradientBackground.ResolveStops(spec, w, h);
+            for (var i = 0; i < stops.Colors.Length; i++)
             {
-                s_stopColors[i] = stops[i].Color;
-                s_stopPositions[i] = stops[i].Position;
+                s_stopColors[i] = stops.Colors[i];
+                s_stopPositions[i] = stops.Positions[i];
+                s_stopHints[i] = float.IsNaN(stops.Hints[i]) ? NoHint : stops.Hints[i];
             }
             m.SetVectorArray(StopColorsId, s_stopColors);
             m.SetFloatArray(StopPositionsId, s_stopPositions);
-            m.SetFloat(StopCountId, stops.Length);
+            m.SetFloatArray(StopHintsId, s_stopHints);
+            m.SetFloat(StopCountId, stops.Colors.Length);
             m.SetFloat(TypeId, (float)(int)spec.Type);
             m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic

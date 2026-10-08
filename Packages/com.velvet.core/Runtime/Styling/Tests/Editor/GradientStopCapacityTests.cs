@@ -25,10 +25,11 @@ namespace Velvet.Tests
             var source = File.ReadAllText(Path.GetFullPath(ShaderPath));
 
             // Act
-            var lengths = DeclaredLength(source, "_StopColors") + "," + DeclaredLength(source, "_StopPositions");
+            var lengths = DeclaredLength(source, "_StopColors") + "," + DeclaredLength(source, "_StopPositions") + ","
+                + DeclaredLength(source, "_StopHints");
 
             // Assert
-            Assert.That(lengths, Is.EqualTo(GradientSpec.MaxStops + "," + GradientSpec.MaxStops));
+            Assert.That(lengths, Is.EqualTo(GradientSpec.MaxStops + "," + GradientSpec.MaxStops + "," + GradientSpec.MaxStops));
         }
 
         [Test]

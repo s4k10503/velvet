@@ -55,10 +55,15 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   from 0deg, as in CSS. An `in_srgb`, `in_oklab` or `in_oklch` at the start or end of it picks the
   interpolation space (`to_right_in_oklab`, or `in_oklab` alone). An angle is a number with a `deg`,
   `grad`, `rad` or `turn` unit, or a bare `0`.
-- **Each stop** is a colour, then none, one or two percentages. The colour is a palette name
+- **Each stop** is a colour, then none, one or two positions. The colour is a palette name
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
-  `rgb(15,23,42)`, or a basic colour name such as `red`. Two percentages make the colour hold between
-  them (`red_0%_40%`) and count as two stops.
+  `rgb(15,23,42)`, or a basic colour name such as `red`. A position is a percentage, a length in pixels
+  (`red_20px`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
+  Two positions make the colour hold between them (`red_0%_40%`) and count as two stops. A position in
+  pixels is a share of the gradient line (a radial's ray), so it is placed once the element's size is
+  known.
+- **A bare position between two stops is a colour hint** (`red,30%,blue`): the half-way mix of those two
+  stops is at the hint. A hint is not a stop, and it can be neither first, last nor beside another hint.
 - **Between 2 and 64 stops**, counting the `from-` / `via-` / `to-` stops that follow the list.
 - **`from-` / `via-` / `to-` follow the list.** When a `from-` or `to-` colour is given, its stops are
   placed after the list's, as Tailwind places them: `bg-linear-[to_right,red,blue] from-green to-white`
@@ -91,8 +96,6 @@ both.
 
 ## Where this differs from CSS and Tailwind
 
-- Stop positions are percentages only. A length (`20px`), a conic stop at an angle (`red_90deg`) and a
-  colour hint (a bare position between two stops) make the list malformed.
 - `in_{space}` takes only the three spaces above, and no hue-interpolation method (`longer_hue`).
 - The gradient is a 128 by 128 texture stretched to the box, so a hard edge or a narrow band is as sharp
   as 1/128 of the box along each axis allows.

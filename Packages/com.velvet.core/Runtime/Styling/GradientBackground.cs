@@ -100,6 +100,10 @@ namespace Velvet
         // axis, a corner direction and a radial come out the same in every box.
         internal static bool DependsOnAspect(in GradientSpec spec)
         {
+            if (spec.HasLengths)
+            {
+                return true;
+            }
             switch (spec.Type)
             {
                 case GradientType.Conic:
@@ -112,11 +116,11 @@ namespace Velvet
             }
         }
 
-        // True when a radial's size is written in pixels, so the texture depends on the box's size and not
-        // only its proportions.
+        // True when a radial's size or a stop's position is written in pixels, so the texture depends on the
+        // box's size and not only its proportions.
         internal static bool NeedsAbsoluteSize(in GradientSpec spec)
-            => spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
-                && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent);
+            => spec.HasLengths || (spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
+                && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent));
 
         // The box a spec is baked for, as the cache keys it, in a box of the given size painted over scale times
         // that box: the quantized aspect (and 0) for a gradient that depends on proportions, the whole-pixel
@@ -360,6 +364,7 @@ namespace Velvet
             var lineAspect = spec.ToCorner ? 1f : aspect;
             var box = widthPx > 0f ? new Vector2(widthPx, widthPx / aspect) : new Vector2(aspect, 1f);
             var frame = new BakeFrame(box, lineAspect, direction, RadialRadii(spec, box.x, box.y));
+            var stops = ResolveStops(spec, box.x, box.y);
             for (var row = 0; row < Resolution; row++)
             {
                 // Texture2D.SetPixels is bottom-up (row 0 = bottom); flip so row 0 is the TOP of the box.
@@ -368,7 +373,7 @@ namespace Velvet
                 {
                     var u = col / (float)(Resolution - 1);
                     var t = ComputeT(spec, u, v, in frame);
-                    pixels[row * Resolution + col] = ColorAt(spec, t);
+                    pixels[row * Resolution + col] = ColorAt(stops, t, spec.Type, spec.Interp);
                 }
             }
 
@@ -472,32 +477,113 @@ namespace Velvet
             return new Vector2(Mathf.Sin(rad), -Mathf.Cos(rad));
         }
 
+        // The stops of a gradient placed in a box: positions, and the position of a colour hint between a
+        // stop and the next (NaN where there is none).
+        internal sealed class ResolvedStops
+        {
+            public Color[] Colors = null!;
+            public float[] Positions = null!;
+            public float[] Hints = null!;
+        }
+
+        // The stops the walk reads for a width x height box. Stops written in pixels are placed by the
+        // length of the gradient line (or a radial's ray) and the fix-up is run again over them.
+        internal static ResolvedStops ResolveStops(in GradientSpec spec, float width, float height)
+        {
+            var stops = spec.Stops;
+            if (spec.HasLengths)
+            {
+                var length = Mathf.Max(GradientLength(spec, width, height), 1e-4f);
+                var placed = new GradientStop[stops.Length];
+                for (var i = 0; i < stops.Length; i++)
+                {
+                    var stop = stops[i];
+                    placed[i] = new GradientStop(stop.Color,
+                        float.IsNaN(stop.PositionPx) ? stop.Position : stop.PositionPx / length,
+                        float.NaN,
+                        float.IsNaN(stop.HintPx) ? stop.Hint : stop.HintPx / length);
+                }
+                stops = StyleGradientClass.FixUp(placed);
+            }
+            var resolved = new ResolvedStops
+            {
+                Colors = new Color[stops.Length],
+                Positions = new float[stops.Length],
+                Hints = new float[stops.Length],
+            };
+            for (var i = 0; i < stops.Length; i++)
+            {
+                resolved.Colors[i] = stops[i].Color;
+                resolved.Positions[i] = stops[i].Position;
+                resolved.Hints[i] = stops[i].Hint;
+            }
+            return resolved;
+        }
+
+        // The length in pixels of what a stop position of 100% is: a linear gradient's line, a radial's
+        // ray along x; a conic has no length.
+        private static float GradientLength(in GradientSpec spec, float width, float height)
+        {
+            switch (spec.Type)
+            {
+                case GradientType.Radial:
+                    return RadialRadii(spec, width, height).x;
+                case GradientType.Conic:
+                    return 1f;
+                default:
+                    var direction = LinearDirection(spec.AngleDeg);
+                    if (spec.ToCorner)
+                    {
+                        direction = new Vector2(Mathf.Sign(direction.x) * height, Mathf.Sign(direction.y) * width).normalized;
+                    }
+                    return (Mathf.Abs(direction.x) * width) + (Mathf.Abs(direction.y) * height);
+            }
+        }
+
         // Colour at axis parameter t, honoring the stop POSITIONS: the first colour before the first stop,
         // otherwise a linear interpolation from the last stop at or before t to the next one, and the last
-        // colour once none follows. t is held inside [0, MaxParameter] (a radial's has no upper bound), which
+        // colour once none follows. A colour hint between the two moves the midpoint of the interpolation
+        // to where it was written. t is held inside [0, MaxParameter] (a radial's has no upper bound), which
         // settles a stop at the very start or end of the line the way CSS does: where stops share a position
         // the later one starts there, and a hard stop at 100% of a box-long line never shows its later
         // colour. The skew silhouette shader evaluates the same walk.
-        private static Color ColorAt(GradientSpec spec, float t)
+        private static Color ColorAt(ResolvedStops stops, float t, GradientType type, GradientInterp interp)
         {
-            t = spec.Type == GradientType.Radial ? Mathf.Max(t, 0f) : Mathf.Clamp(t, 0f, MaxParameter);
-            var stops = spec.Stops;
-            if (t < stops[0].Position)
+            t = type == GradientType.Radial ? Mathf.Max(t, 0f) : Mathf.Clamp(t, 0f, MaxParameter);
+            var positions = stops.Positions;
+            if (t < positions[0])
             {
-                return stops[0].Color;
+                return stops.Colors[0];
             }
             var i = 1;
-            while (i < stops.Length && t >= stops[i].Position)
+            while (i < positions.Length && t >= positions[i])
             {
                 i++;
             }
-            if (i == stops.Length)
+            if (i == positions.Length)
             {
-                return stops[i - 1].Color;
+                return stops.Colors[i - 1];
             }
-            var a = stops[i - 1];
-            var b = stops[i];
-            return Lerp(a.Color, b.Color, (t - a.Position) / (b.Position - a.Position), spec.Interp);
+            var span = positions[i] - positions[i - 1];
+            var weight = ApplyHint((t - positions[i - 1]) / span, stops.Hints[i - 1], positions[i - 1], span);
+            return Lerp(stops.Colors[i - 1], stops.Colors[i], weight, interp);
+        }
+
+        // The interpolation weight with the colour hint written between two stops: the weight is raised to the
+        // power that puts the half-way mix at the hint, a hint at the first stop is an instant change and a
+        // hint at or past the second stop holds the first colour.
+        private static float ApplyHint(float weight, float hint, float start, float span)
+        {
+            if (float.IsNaN(hint))
+            {
+                return weight;
+            }
+            var at = (hint - start) / span;
+            if (at <= 0f)
+            {
+                return 1f;
+            }
+            return at >= 1f ? 0f : Mathf.Pow(weight, Mathf.Log(0.5f) / Mathf.Log(at));
         }
 
         // Lerps two stops in the gradient's interpolation space — plain sRGB channels, or the

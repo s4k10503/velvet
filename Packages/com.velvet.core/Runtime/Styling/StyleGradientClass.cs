@@ -59,17 +59,31 @@ namespace Velvet
             => HashCode.Combine(Circle, (int)Extent, XPercent, YPercent, Mathf.RoundToInt(X * 100f), Mathf.RoundToInt(Y * 100f));
     }
 
-    // One colour stop of a resolved gradient: its colour and its position along the gradient line (0..1).
+    // One colour stop of a resolved gradient: its colour and its position along the gradient line (0..1,
+    // or beyond), and a colour hint between this stop and the next, if one was written there. A position
+    // written in pixels is PositionPx, with Position NaN until the box is known (the same for HintPx), and
+    // a position the list left out is NaN until the colour-stop fix-up places it.
     internal readonly struct GradientStop
     {
-        public GradientStop(Color color, float position)
+        public GradientStop(Color color, float position, float positionPx = float.NaN, float hint = float.NaN,
+            float hintPx = float.NaN)
         {
             Color = color;
             Position = position;
+            PositionPx = positionPx;
+            Hint = hint;
+            HintPx = hintPx;
         }
 
         public Color Color { get; }
         public float Position { get; }
+        public float PositionPx { get; }
+        public float Hint { get; }
+        public float HintPx { get; }
+
+        public GradientStop WithHint(float hint, float hintPx) => new(Color, Position, PositionPx, hint, hintPx);
+
+        public bool HasLength => !float.IsNaN(PositionPx) || !float.IsNaN(HintPx);
     }
 
     // A resolved gradient: shape (linear angle / radial-or-conic centre), interpolation space, and its ordered
@@ -110,7 +124,7 @@ namespace Velvet
         // Angle key at 0.25° precision, normalized mod 360 so -45° and 315° (the same axis — sin/cos are
         // periodic) share one cache entry. Position / centre keys at 0.1% precision.
         private static int AngleKey(float deg) => Mathf.RoundToInt((((deg % 360f) + 360f) % 360f) * 4f);
-        private static int PosKey(float p) => Mathf.RoundToInt(p * 1000f);
+        private static int PosKey(float p) => float.IsNaN(p) ? int.MinValue : Mathf.RoundToInt(p * 1000f);
 
         public bool Equals(GradientSpec other)
         {
@@ -145,9 +159,27 @@ namespace Velvet
             var same = a.Length == b.Length;
             for (var i = 0; same && i < a.Length; i++)
             {
-                same = ColorKey(a[i].Color) == ColorKey(b[i].Color) && PosKey(a[i].Position) == PosKey(b[i].Position);
+                same = ColorKey(a[i].Color) == ColorKey(b[i].Color) && PosKey(a[i].Position) == PosKey(b[i].Position)
+                    && PosKey(a[i].PositionPx) == PosKey(b[i].PositionPx) && PosKey(a[i].Hint) == PosKey(b[i].Hint)
+                    && PosKey(a[i].HintPx) == PosKey(b[i].HintPx);
             }
             return same;
+        }
+
+        // True when a stop or hint is written in pixels, so the stops cannot be placed before the box is known.
+        public bool HasLengths
+        {
+            get
+            {
+                foreach (var stop in Stops ?? Array.Empty<GradientStop>())
+                {
+                    if (stop.HasLength)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
 
         public override bool Equals(object obj) => obj is GradientSpec o && Equals(o);
@@ -166,7 +198,7 @@ namespace Velvet
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
                 foreach (var stop in Stops ?? Array.Empty<GradientStop>())
                 {
-                    h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position));
+                    h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position), PosKey(stop.PositionPx), PosKey(stop.Hint));
                 }
                 return h;
             }
@@ -436,7 +468,7 @@ namespace Velvet
                 ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position), last }
                 : new[] { first, last };
             var raw = shape.Raw == null ? utilities : shape.Raw.Concat(utilities).ToArray();
-            var stops = FixUp(raw);
+            var stops = Place(raw);
             s_utilityStops.Add(key, stops);
             return stops;
         }
@@ -635,13 +667,24 @@ namespace Velvet
                 // CSS's default direction, to bottom, for a list with no line argument.
                 shape.Angle = 180f;
             }
-            if (!TryAddColorStop(args[0], raw) && !TryParseLine(args[0], ref shape))
+            var afterStop = TryAddColorStop(args[0], shape.Type, raw);
+            if (!afterStop && !TryParseLine(args[0], ref shape))
             {
                 return false;
             }
             for (var i = 1; i < args.Count; i++)
             {
-                if (!TryAddColorStop(args[i], raw))
+                if (TryAddColorStop(args[i], shape.Type, raw))
+                {
+                    afterStop = true;
+                }
+                else if (afterStop && i < args.Count - 1 && TryParseStopPosition(args[i], shape.Type, out var hint, out var hintPx))
+                {
+                    // A bare position between two stops is a colour hint on the stop before it.
+                    raw[raw.Count - 1] = raw[raw.Count - 1].WithHint(hint, hintPx);
+                    afterStop = false;
+                }
+                else
                 {
                     return false;
                 }
@@ -651,7 +694,7 @@ namespace Velvet
                 return false;
             }
             shape.Raw = raw.ToArray();
-            shape.Stops = FixUp(shape.Raw);
+            shape.Stops = Place(shape.Raw);
             return true;
         }
 
@@ -682,10 +725,10 @@ namespace Velvet
             return parts;
         }
 
-        // One colour stop: a colour, then none, one or two percentage positions (CSS Images 4's two-position
-        // form is two stops of one colour). An unpositioned stop is recorded as NaN for FixUp to place.
-        // Adds nothing when the argument is not a colour stop.
-        private static bool TryAddColorStop(string arg, List<GradientStop> stops)
+        // One colour stop: a colour, then none, one or two positions (CSS Images 4's two-position form is two
+        // stops of one colour). An unpositioned stop is recorded as NaN for FixUp to place. Adds nothing when
+        // the argument is not a colour stop.
+        private static bool TryAddColorStop(string arg, GradientType type, List<GradientStop> stops)
         {
             var tokens = SplitTopLevel(arg, '_');
             if (tokens.Count > 3)
@@ -696,22 +739,45 @@ namespace Velvet
             {
                 return false;
             }
-            var first = float.NaN;
-            var second = float.NaN;
-            if (tokens.Count > 1 && !TryParsePercent(tokens[1], out first))
+            float first = float.NaN, firstPx = float.NaN, second = float.NaN, secondPx = float.NaN;
+            if (tokens.Count > 1 && !TryParseStopPosition(tokens[1], type, out first, out firstPx))
             {
                 return false;
             }
-            if (tokens.Count > 2 && !TryParsePercent(tokens[2], out second))
+            if (tokens.Count > 2 && !TryParseStopPosition(tokens[2], type, out second, out secondPx))
             {
                 return false;
             }
-            stops.Add(new GradientStop(color, first));
+            stops.Add(new GradientStop(color, first, firstPx));
             if (tokens.Count > 2)
             {
-                stops.Add(new GradientStop(color, second));
+                stops.Add(new GradientStop(color, second, secondPx));
             }
             return true;
+        }
+
+        // A stop or hint position: a percentage, a conic's angle (a fraction of the turn), or any other
+        // shape's length in pixels, which waits for the box. A bare 0 is the start of the line.
+        private static bool TryParseStopPosition(string token, GradientType type, out float fraction, out float px)
+        {
+            px = float.NaN;
+            if (token == "0")
+            {
+                fraction = 0f;
+                return true;
+            }
+            if (TryParsePercent(token, out fraction))
+            {
+                return true;
+            }
+            if (type == GradientType.Conic)
+            {
+                var ok = TryParseCssAngle(token, out var deg);
+                fraction = deg / 360f;
+                return ok;
+            }
+            fraction = float.NaN;
+            return TryParsePixelLength(token, out px);
         }
 
         // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour (#hex, rgb(),
@@ -954,16 +1020,32 @@ namespace Velvet
         private static bool IsPositionToken(string token)
             => token is "left" or "right" or "top" or "bottom" or "center" || TryParseCentrePercent(token, out _);
 
+        // The stops as the spec keeps them: fixed up when every position is known, and as written when one is
+        // in pixels, which GradientBackground.ResolveStops places once it knows the box.
+        private static GradientStop[] Place(GradientStop[] raw)
+        {
+            foreach (var stop in raw)
+            {
+                if (stop.HasLength)
+                {
+                    return raw;
+                }
+            }
+            return FixUp(raw);
+        }
+
         // CSS Images 3 colour-stop fix-up, over positions where NaN means unpositioned: an unpositioned first
-        // or last stop sits at 0% or 100%; a position behind an earlier one is raised to the largest before
-        // it; then each run of unpositioned stops is spread evenly between its positioned neighbours.
-        private static GradientStop[] FixUp(GradientStop[] raw)
+        // or last stop sits at 0% or 100%; a position or hint behind an earlier one is raised to the largest
+        // before it; then each run of unpositioned stops is spread evenly between its positioned neighbours.
+        internal static GradientStop[] FixUp(GradientStop[] raw)
         {
             var n = raw.Length;
             var positions = new float[n];
+            var hints = new float[n];
             for (var i = 0; i < n; i++)
             {
                 positions[i] = raw[i].Position;
+                hints[i] = raw[i].Hint;
             }
             if (float.IsNaN(positions[0]))
             {
@@ -974,21 +1056,25 @@ namespace Velvet
                 positions[n - 1] = 1f;
             }
             var largest = positions[0];
-            for (var i = 1; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                if (float.IsNaN(positions[i]))
+                if (i > 0 && !float.IsNaN(positions[i]))
                 {
-                    continue;
+                    largest = Mathf.Max(largest, positions[i]);
+                    positions[i] = largest;
                 }
-                largest = Mathf.Max(largest, positions[i]);
-                positions[i] = largest;
+                if (!float.IsNaN(hints[i]))
+                {
+                    largest = Mathf.Max(largest, hints[i]);
+                    hints[i] = largest;
+                }
             }
             SpreadUnpositioned(positions);
 
             var stops = new GradientStop[n];
             for (var i = 0; i < n; i++)
             {
-                stops[i] = new GradientStop(raw[i].Color, positions[i]);
+                stops[i] = new GradientStop(raw[i].Color, positions[i], float.NaN, hints[i]);
             }
             return stops;
         }

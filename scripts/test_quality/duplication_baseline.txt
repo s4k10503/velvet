@@ -89,7 +89,7 @@
 55a910e1b222	Runtime/Reconciler/FiberElementFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 571b6482684a	CodeGen/CompilerWeaver.cs,CodeGen/MetadataRegistrationWeaver.cs
 573181af3eab	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
-57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberContextSpine.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleTextBalanceClass.cs
+57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberContextSpine.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleTextBalanceClass.cs
 5913011f3428	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 5a5349e5d244	Runtime/Reconciler/FiberDropShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
 5b0b5b93586c	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs

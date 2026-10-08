@@ -1047,6 +1047,225 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Positions, hints and angles
+
+        private static Color PixelAt(string[] classNames, float aspect, float widthPx, int x, int y)
+        {
+            StyleGradientClass.TryExtract(classNames, out var spec);
+            var tex = GradientBackground.Bake(spec, aspect, widthPx);
+            var pixel = tex.GetPixel(x, y);
+            Object.DestroyImmediate(tex);
+            return pixel;
+        }
+
+        [Test]
+        public void Given_AConicWithStopsAtAngles_When_Baked_Then_TheAngleIsAFractionOfTheTurn()
+        {
+            // Act — straight right of the centre is 90°, halfway to a stop at 180°.
+            var right = PixelAt(new[] { "bg-conic-[#000000_0deg,#ffffff_180deg]" }, 1f, 0f, 127, 64);
+
+            // Assert
+            Assert.That(right.r, Is.EqualTo(0.5f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AConicWithAStopAtAngles_When_BakedPastIt_Then_TheLastColourHolds()
+        {
+            // Act — 270° is past the last stop at 180°.
+            var left = PixelAt(new[] { "bg-conic-[#000000_0deg,#ffffff_180deg]" }, 1f, 0f, 0, 64);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("FFFFFFFF"));
+        }
+
+        [Test]
+        public void Given_AConicStopInTurns_When_Extracted_Then_ItIsAFractionOfTheTurn()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-conic-[#000000,#ffffff_0.25turn,#ff0000]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops[1].Position, Is.EqualTo(0.25f).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_ALinearStopAtAnAngleAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act — only a conic positions its stops by angle.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left,#000000_0deg,#ffffff_90deg]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        [Test]
+        public void Given_AColourHintBetweenTwoStops_When_Extracted_Then_ItIsOnTheStopBeforeAndIsNoStop()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,25%,#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Stops.Length, spec.Stops[0].Hint), Is.EqualTo((2, 0.25f)));
+        }
+
+        [Test]
+        public void Given_AColourHint_When_Baked_Then_TheMidMixIsAtTheHint()
+        {
+            // Act — texel 32 is at t = 0.252: the hint at 25% puts the half-way mix there.
+            var hint = SampleAcross(new[] { "bg-linear-[to_right,#000000,25%,#ffffff]" }, 0.252f);
+
+            // Assert
+            Assert.That(hint.r, Is.EqualTo(0.5f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AColourHintAtTheFirstStop_When_Baked_Then_TheLaterColourStartsAtOnce()
+        {
+            // Act
+            var early = SampleAcross(new[] { "bg-linear-[to_right,#000000_0%,0%,#ffffff]" }, 0.1f);
+
+            // Assert
+            Assert.That(early.r, Is.EqualTo(1f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AColourHintAtTheNextStop_When_Baked_Then_TheEarlierColourHoldsToIt()
+        {
+            // Act
+            var late = SampleAcross(new[] { "bg-linear-[to_right,#000000,100%,#ffffff]" }, 0.9f);
+
+            // Assert
+            Assert.That(late.r, Is.EqualTo(0f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AColourHintFirstInTheList_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act — a hint sits between two stops.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[25%,#000000,#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AColourHintLastInTheList_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left,#000000,#ffffff,25%]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_TwoColourHintsInARow_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left,#000000,25%,50%,#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        [Test]
+        public void Given_AHintBehindTheStopBefore_When_Extracted_Then_ItIsRaisedToIt()
+        {
+            // Act — the hint at 10% follows a stop at 40%.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000_40%,10%,#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops[0].Hint, Is.EqualTo(0.4f));
+        }
+
+        [Test]
+        public void Given_StopsInPixels_When_BakedForAKnownWidth_Then_TheyAreFractionsOfTheLine()
+        {
+            // Act — a 200px line: 100px is half way, so texel 32 (t = 0.252) is half way to it.
+            var texel = PixelAt(new[] { "bg-linear-[to_right,#000000_0px,#ffffff_100px]" }, 2f, 200f, 32, 64);
+
+            // Assert
+            Assert.That(texel.r, Is.EqualTo(0.504f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_APixelStopBesideAPercentStop_When_Baked_Then_TheyAreFixedUpTogether()
+        {
+            // Act — white at 50px (25% of 200px) follows red at 50%, so it is raised to 50% and texel 76
+            // (t = 0.598) is a fifth of the way from white to blue. Left at 25% it would be nearly half way.
+            var texel = PixelAt(
+                new[] { "bg-linear-[to_right,#000000_0%,#ff0000_50%,#ffffff_50px,#0000ff]" }, 2f, 200f, 76, 64);
+
+            // Assert
+            Assert.That(texel.r, Is.EqualTo(0.8f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_AHintInPixels_When_BakedForAKnownWidth_Then_TheMidMixIsAtIt()
+        {
+            // Act — 50px of a 200px line is 25%; texel 32 sits at 0.252.
+            var texel = PixelAt(new[] { "bg-linear-[to_right,#000000,50px,#ffffff]" }, 2f, 200f, 32, 64);
+
+            // Assert
+            Assert.That(texel.r, Is.EqualTo(0.5f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_RadialStopsInPixels_When_Baked_Then_TheyAreFractionsOfTheRay()
+        {
+            // Act — a circle of 100px radius, a stop at 50px: texel 80 is 26px right of the centre.
+            var texel = PixelAt(new[] { "bg-radial-[circle_100px,#000000_0px,#ffffff_50px]" }, 2f, 200f, 80, 64);
+
+            // Assert
+            Assert.That(texel.r, Is.EqualTo(0.52f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AStopInPixels_When_Asked_Then_TheGradientDependsOnTheBoxSize()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000_0px,#ffffff_100px]" }, out var spec);
+
+            // Assert
+            Assert.That(GradientBackground.NeedsAbsoluteSize(spec), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AConicStopInPixels_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act — a conic has no length to measure a pixel by.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-conic-45", "from-[#ff0000]", "bg-conic-[#000000_0px,#ffffff_100px]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(45f));
+        }
+
+        [Test]
+        public void Given_ListsDifferingInAHint_When_Compared_Then_TheyAreNotEqual()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,25%,#ffffff]" }, out var a);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,75%,#ffffff]" }, out var b);
+
+            // Act
+            var equal = a.Equals(b);
+
+            // Assert
+            Assert.That(equal, Is.False);
+        }
+
+        #endregion
+
         #region Cache key
 
         [Test]
