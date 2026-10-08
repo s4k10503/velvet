@@ -218,8 +218,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AListAndUtilitiesTotallingTheCap_When_Extracted_Then_TheGradientResolves()
         {
-            // Arrange — sixty-one listed stops, a from- and a to-.
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 61));
+            // Arrange — sixty-two listed stops, a from- and a to-: sixty-four in all.
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 62));
 
             // Act
             var ok = StyleGradientClass.TryExtract(
@@ -233,8 +233,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AListAndUtilitiesPastTheCap_When_Extracted_Then_TheClassIsInert()
         {
-            // Arrange — sixty-two listed stops, a from- and a to-: more than the skew shader holds.
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 62));
+            // Arrange — sixty-three listed stops, a from- and a to-: sixty-five in all, more than the skew shader holds.
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 63));
 
             // Act
             var ok = StyleGradientClass.TryExtract(
@@ -328,7 +328,7 @@ namespace Velvet.Tests
         {
             // Act
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left_in_hsl,#00ff00,#0000ff]" }, out var spec);
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left_in_nonsense,#00ff00,#0000ff]" }, out var spec);
 
             // Assert
             Assert.That(spec.AngleDeg, Is.EqualTo(90f));
@@ -829,9 +829,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_FromAndToPositionsBeyondTheBox_When_Baked_Then_TheLineRunsOnPastIt()
         {
-            // Act
+            // Act — in sRGB, so the sample is the position along the line rather than an OKLab lightness.
             var left = SampleAcross(
-                new[] { "bg-linear-to-r", "from-[#000000]", "from--50%", "to-[#ffffff]", "to-150%" }, 0f);
+                new[] { "bg-linear-to-r/srgb", "from-[#000000]", "from-[-50%]", "to-[#ffffff]", "to-[150%]" }, 0f);
 
             // Assert
             Assert.That(left.r, Is.EqualTo(0.25f).Within(0.01f));
