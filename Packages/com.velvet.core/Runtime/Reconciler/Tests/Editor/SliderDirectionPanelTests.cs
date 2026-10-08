@@ -121,19 +121,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AVerticalSlider_When_ALaterRenderChangesItsValueDirectionAndFlag_Then_OnValueChangedIsNotCalled()
+        public void Given_AHorizontalSlider_When_ALaterRenderChangesItsValueDirectionAndFlag_Then_OnValueChangedIsNotCalled()
         {
             // Arrange
             var reported = new List<float>();
             var oldTree = new VNode[]
             {
                 V.Slider(value: Start, lowValue: Low, highValue: High, onValueChanged: reported.Add,
-                    direction: SliderDirection.Vertical),
+                    direction: SliderDirection.Horizontal),
             };
             var newTree = new VNode[]
             {
                 V.Slider(value: 7f, lowValue: Low, highValue: High, onValueChanged: reported.Add,
-                    direction: SliderDirection.Horizontal, inverted: true),
+                    direction: SliderDirection.Vertical, inverted: true),
             };
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
             var slider = (Slider)_root.ElementAt(0);
@@ -142,9 +142,11 @@ namespace Velvet.Tests
             // Act
             _reconciler.Reconcile(_root, oldTree, newTree);
 
-            // Assert — the value term is what makes this a reading of a render that reached the slider; one
-            // that never did would report nothing as well.
-            Assert.That((whileMounted, reported.Count, slider.value), Is.EqualTo((0, 0, 7f)));
+            // Assert — the value, direction and flag terms are what make this a reading of a render that
+            // reached the slider with all three; one that never did would report nothing as well.
+            Assert.That(
+                (whileMounted, reported.Count, slider.value, slider.direction, slider.inverted),
+                Is.EqualTo((0, 0, 7f, SliderDirection.Vertical, true)));
         }
     }
 }

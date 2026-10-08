@@ -149,8 +149,10 @@ namespace Velvet
 
     /// <summary>
     /// Slider.lowValue / highValue / direction / inverted. Record structural equality simplifies DiffProps.
-    /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared, on the terms
-    /// <see cref="TextFieldSettings"/> states for its members.
+    /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared: one no render has declared is
+    /// not written, and one a render declared and a later render dropped is restored to what the slider
+    /// carried when a render first declared it. A null bound is written as 0 or 10 whenever either bound's
+    /// declaration changes.
     /// </summary>
     public sealed record SliderSettings(
         float? LowValue = null,

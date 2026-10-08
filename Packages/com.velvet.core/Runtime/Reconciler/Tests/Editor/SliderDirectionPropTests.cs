@@ -320,17 +320,19 @@ namespace Velvet.Tests
             Assert.That((slider.lowValue, slider.highValue), Is.EqualTo((2f, 4f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clamps on this range change as well; this branch
+        // rewrote the range condition, and dropping its `LowValue` comparison reddens this.
         [Test]
-        public void Given_AVerticalSlider_When_ALaterRenderRaisesOnlyItsLowValueAboveTheValue_Then_TheValueIsClamped()
+        public void Given_ADeclaredRange_When_ALaterRenderRaisesOnlyItsLowValueAboveTheValue_Then_TheValueIsClamped()
         {
             // Arrange
             var oldTree = new VNode[]
             {
-                V.Slider(value: 2f, lowValue: 0f, highValue: 10f, direction: SliderDirection.Vertical),
+                V.Slider(value: 2f, lowValue: 0f, highValue: 10f),
             };
             var newTree = new VNode[]
             {
-                V.Slider(value: 2f, lowValue: 5f, highValue: 10f, direction: SliderDirection.Vertical),
+                V.Slider(value: 2f, lowValue: 5f, highValue: 10f),
             };
             var slider = ReconcileAndGet(oldTree);
 
@@ -341,17 +343,19 @@ namespace Velvet.Tests
             Assert.That((slider.lowValue, slider.value), Is.EqualTo((5f, 5f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clamps on this range change as well; this branch
+        // rewrote the range condition, and dropping its `HighValue` comparison reddens this.
         [Test]
-        public void Given_AVerticalSlider_When_ALaterRenderLowersOnlyItsHighValueBelowTheValue_Then_TheValueIsClamped()
+        public void Given_ADeclaredRange_When_ALaterRenderLowersOnlyItsHighValueBelowTheValue_Then_TheValueIsClamped()
         {
             // Arrange
             var oldTree = new VNode[]
             {
-                V.Slider(value: 8f, lowValue: 0f, highValue: 10f, direction: SliderDirection.Vertical),
+                V.Slider(value: 8f, lowValue: 0f, highValue: 10f),
             };
             var newTree = new VNode[]
             {
-                V.Slider(value: 8f, lowValue: 0f, highValue: 5f, direction: SliderDirection.Vertical),
+                V.Slider(value: 8f, lowValue: 0f, highValue: 5f),
             };
             var slider = ReconcileAndGet(oldTree);
 
