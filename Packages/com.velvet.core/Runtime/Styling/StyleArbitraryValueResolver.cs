@@ -2268,9 +2268,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', or no suffix is
-        // pixel (bare numbers default to px, and rem is converted at the fixed 1rem = 16px scale because
-        // UI Toolkit has no rem unit and no document root to resolve a relative font size against).
+        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', an absolute unit (in, cm,
+        // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
+        // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
+        // size against).
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
         internal static bool TryParseValue(ReadOnlySpan<char> valueStr, out float value, out LengthUnit unit)
@@ -2313,6 +2314,15 @@ namespace Velvet
                     CultureInfo.InvariantCulture,
                     out value);
             }
+            else if (TryFindAbsoluteUnit(valueStr, out var unitLength, out var pixelsPerUnit))
+            {
+                parsed = float.TryParse(
+                    valueStr.Slice(0, valueStr.Length - unitLength),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value);
+                value *= pixelsPerUnit;
+            }
             else
             {
                 parsed = float.TryParse(
@@ -2323,6 +2333,29 @@ namespace Velvet
             }
 
             return parsed && float.IsFinite(value);
+        }
+
+        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch); the match is
+        // case-sensitive, as Tailwind's length test is, so Q is upper case and the rest lower.
+        private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
+        {
+            ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
+        };
+
+        private static bool TryFindAbsoluteUnit(ReadOnlySpan<char> valueStr, out int length, out float pixels)
+        {
+            foreach (var (suffix, perUnit) in s_absoluteUnits)
+            {
+                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix.AsSpan(), StringComparison.Ordinal))
+                {
+                    length = suffix.Length;
+                    pixels = perUnit;
+                    return true;
+                }
+            }
+            length = 0;
+            pixels = 0f;
+            return false;
         }
 
         // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.

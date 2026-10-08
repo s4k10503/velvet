@@ -215,7 +215,7 @@ The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
-(`leading-[150%]`), and `px` or `rem` (1rem = 16px, as `w-[…]` takes it), which emit an absolute
+(`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`), which emit an absolute
 `<line-height=Npx>`. A negative value, any other unit, or a malformed value is ignored.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine

@@ -35,7 +35,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.From, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
+            Assert.That(spec.Stops[0].Color, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
         }
 
         [Test]
@@ -46,19 +46,18 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.To, Is.EqualTo(Color.black));
+            Assert.That(spec.Stops[spec.Stops.Length - 1].Color, Is.EqualTo(Color.black));
         }
 
         [Test]
-        public void Given_ViaStop_When_Extracted_Then_HasViaIsTrue()
+        public void Given_ViaStop_When_Extracted_Then_ThreeStopsResolve()
         {
             // Act
             var ok = StyleGradientClass.TryExtract(
                 new[] { "bg-gradient-to-r", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var spec);
 
             // Assert
-            Assume.That(ok, Is.True);
-            Assert.That(spec.HasVia, Is.True);
+            Assert.That((ok, spec.Stops?.Length ?? 0), Is.EqualTo((true, 3)));
         }
 
         [Test]
@@ -91,7 +90,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.To.a, Is.EqualTo(0f));
+            Assert.That(spec.Stops[spec.Stops.Length - 1].Color.a, Is.EqualTo(0f));
         }
 
         [Test]
@@ -113,15 +112,17 @@ namespace Velvet.Tests
             var a = new GradientSpec
             {
                 Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
-                Interp = GradientInterp.Srgb, From = new Color(1f, 0f, 0f), To = new Color(0f, 0f, 1f),
-                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+                Interp = GradientInterp.Srgb,
+                Stops = new[] { new GradientStop(new Color(1f, 0f, 0f), 0f), new GradientStop(new Color(0f, 0f, 1f), 1f) },
             };
             var b = new GradientSpec
             {
                 Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
-                Interp = GradientInterp.Srgb, From = new Color(0.999f, 0.0008f, 0f),
-                To = new Color(0f, 0.0008f, 1f),
-                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+                Interp = GradientInterp.Srgb,
+                Stops = new[]
+                {
+                    new GradientStop(new Color(0.999f, 0.0008f, 0f), 0f), new GradientStop(new Color(0f, 0.0008f, 1f), 1f),
+                },
             };
             Assume.That(a.Equals(b), Is.True, "Precondition: colors quantize equal so the specs are equal");
 
@@ -140,7 +141,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-gradient-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — bake and sample the left edge (t=0 → from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var left = tex.GetPixel(0, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -155,7 +156,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-gradient-to-b", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the TOP texture row (GetPixel y = height-1 is the top, which UITK draws at the top).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var top = tex.GetPixel(tex.width / 2, tex.height - 1);
             Object.DestroyImmediate(tex);
 
@@ -212,7 +213,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.FromPos, Is.EqualTo(0.25f));
+            Assert.That(spec.Stops[0].Position, Is.EqualTo(0.25f));
         }
 
         [Test]
@@ -224,7 +225,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.From, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
+            Assert.That(spec.Stops[0].Color, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
         }
 
         [Test]
@@ -235,7 +236,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-linear-90", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var left = tex.GetPixel(0, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -253,7 +254,7 @@ namespace Velvet.Tests
                 new[] { "bg-gradient-to-b", "from-[#ff0000]", "from-50%", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the box upper quarter (texture row 0.75·H → t≈0.25; bake flips top=from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var upper = tex.GetPixel(tex.width / 2, Mathf.RoundToInt(tex.height * 0.75f));
             Object.DestroyImmediate(tex);
 
@@ -291,12 +292,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OklchModifier_When_Extracted_Then_InterpIsOklab()
+        public void Given_OklchModifier_When_Extracted_Then_InterpIsOklch()
         {
             var ok = StyleGradientClass.TryExtract(
                 new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
             Assume.That(ok, Is.True);
-            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklch));
         }
 
         [Test]
@@ -363,7 +364,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-radial", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample the centre pixel (t≈0 → from).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var center = tex.GetPixel(tex.width / 2, tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -378,7 +379,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-conic", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 
             // Act — sample right of centre (90° clockwise → t≈0.25, near the `from` end of the sweep).
-            var tex = GradientBackground.Bake(spec);
+            var tex = GradientBackground.Bake(spec, 1f);
             var right = tex.GetPixel(Mathf.RoundToInt(tex.width * 0.78f), tex.height / 2);
             Object.DestroyImmediate(tex);
 
@@ -390,12 +391,12 @@ namespace Velvet.Tests
         public void Given_OklabInterp_When_Baked_Then_TheMidpointDiffersFromSrgb()
         {
             // Arrange — the same red→blue stops, baked in sRGB vs OKLab.
-            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var srgb);
-            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var oklab);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/srgb", "from-[#ff0000]", "to-[#0000ff]" }, out var srgb);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample the gradient midpoint (t=0.5) of each.
-            var sTex = GradientBackground.Bake(srgb);
-            var oTex = GradientBackground.Bake(oklab);
+            var sTex = GradientBackground.Bake(srgb, 1f);
+            var oTex = GradientBackground.Bake(oklab, 1f);
             var sMid = sTex.GetPixel(sTex.width / 2, sTex.height / 2);
             var oMid = oTex.GetPixel(oTex.width / 2, oTex.height / 2);
             Object.DestroyImmediate(sTex);
@@ -436,13 +437,13 @@ namespace Velvet.Tests
         {
             // The from→via SEGMENT of a 3-stop gradient must also interpolate in OKLab (not just from→to).
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var srgb);
+                new[] { "bg-linear-to-r/srgb", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var srgb);
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var oklab);
+                new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample t≈0.25 (mid of the from→via segment, via at 0.5).
-            var sTex = GradientBackground.Bake(srgb);
-            var oTex = GradientBackground.Bake(oklab);
+            var sTex = GradientBackground.Bake(srgb, 1f);
+            var oTex = GradientBackground.Bake(oklab, 1f);
             var x = Mathf.RoundToInt(sTex.width * 0.25f);
             var sMid = sTex.GetPixel(x, sTex.height / 2);
             var oMid = oTex.GetPixel(x, oTex.height / 2);
