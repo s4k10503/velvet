@@ -21,6 +21,8 @@
       href: guides/styling-z-index.md
     - name: Variants
       href: guides/styling-variants.md
+    - name: Gradients
+      href: guides/styling-gradients.md
     - name: Filters
       href: guides/styling-filters.md
     - name: Drag and drop

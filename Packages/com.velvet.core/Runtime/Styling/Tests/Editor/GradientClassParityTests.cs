@@ -35,7 +35,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.From, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
+            Assert.That(spec.Stops[0].Color, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
         }
 
         [Test]
@@ -46,19 +46,18 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.To, Is.EqualTo(Color.black));
+            Assert.That(spec.Stops[spec.Stops.Length - 1].Color, Is.EqualTo(Color.black));
         }
 
         [Test]
-        public void Given_ViaStop_When_Extracted_Then_HasViaIsTrue()
+        public void Given_ViaStop_When_Extracted_Then_ThreeStopsResolve()
         {
             // Act
             var ok = StyleGradientClass.TryExtract(
                 new[] { "bg-gradient-to-r", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var spec);
 
             // Assert
-            Assume.That(ok, Is.True);
-            Assert.That(spec.HasVia, Is.True);
+            Assert.That((ok, spec.Stops?.Length ?? 0), Is.EqualTo((true, 3)));
         }
 
         [Test]
@@ -91,7 +90,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.To.a, Is.EqualTo(0f));
+            Assert.That(spec.Stops[spec.Stops.Length - 1].Color.a, Is.EqualTo(0f));
         }
 
         [Test]
@@ -113,15 +112,17 @@ namespace Velvet.Tests
             var a = new GradientSpec
             {
                 Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
-                Interp = GradientInterp.Srgb, From = new Color(1f, 0f, 0f), To = new Color(0f, 0f, 1f),
-                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+                Interp = GradientInterp.Srgb,
+                Stops = new[] { new GradientStop(new Color(1f, 0f, 0f), 0f), new GradientStop(new Color(0f, 0f, 1f), 1f) },
             };
             var b = new GradientSpec
             {
                 Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
-                Interp = GradientInterp.Srgb, From = new Color(0.999f, 0.0008f, 0f),
-                To = new Color(0f, 0.0008f, 1f),
-                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+                Interp = GradientInterp.Srgb,
+                Stops = new[]
+                {
+                    new GradientStop(new Color(0.999f, 0.0008f, 0f), 0f), new GradientStop(new Color(0f, 0.0008f, 1f), 1f),
+                },
             };
             Assume.That(a.Equals(b), Is.True, "Precondition: colors quantize equal so the specs are equal");
 
@@ -212,7 +213,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.FromPos, Is.EqualTo(0.25f));
+            Assert.That(spec.Stops[0].Position, Is.EqualTo(0.25f));
         }
 
         [Test]
@@ -224,7 +225,7 @@ namespace Velvet.Tests
 
             // Assert
             Assume.That(ok, Is.True);
-            Assert.That(spec.From, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
+            Assert.That(spec.Stops[0].Color, Is.EqualTo(new Color(1f, 0f, 0f, 1f)));
         }
 
         [Test]

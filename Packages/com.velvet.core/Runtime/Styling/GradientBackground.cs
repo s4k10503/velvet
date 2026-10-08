@@ -13,7 +13,7 @@ namespace Velvet
     // animating ancestor transform. A texture goes through the normal background-image path and orders
     // correctly.
     //
-    // A linear 2-3 stop gradient is trivial to compute, so it is baked on the CPU (SetPixels) — no
+    // A gradient is trivial to compute, so it is baked on the CPU (SetPixels) — no
     // shader asset to author, and the result is unit-testable off-GPU (sample the baked pixels directly).
     //
     // Cache: keyed by spec (value-equal) and shared across every element that resolves to the same
@@ -26,8 +26,8 @@ namespace Velvet
     // session (textures are HideAndDontSave and would otherwise persist with Reload-Domain off).
     internal static class GradientBackground
     {
-        // Resolution of the baked gradient. Stretched to any element size with bilinear filtering, so a
-        // modest square is plenty for a smooth 2-3 stop linear gradient (incl. the 45° diagonals).
+        // Resolution of the baked gradient, stretched to any element size with bilinear filtering: a stop
+        // list's detail, a hard stop included, lands at 1/128 of the box along each axis.
         private const int Resolution = 128;
 
         private static readonly Dictionary<GradientSpec, Texture2D> s_cache = new();
@@ -178,26 +178,28 @@ namespace Velvet
             return Mathf.Sqrt((dx * dx) + (dy * dy));
         }
 
-        // Colour at axis parameter t (0..1), honoring the stop POSITIONS: flat From before FromPos, flat To
-        // after ToPos, and a linear interpolation between the bracketing stops. Defaults (0 / 0.5 / 1)
-        // reproduce the original even spacing.
+        // Colour at axis parameter t (0..1), honoring the stop POSITIONS: flat first colour before the first
+        // stop, flat last colour from the last stop on, and a linear interpolation between the two stops
+        // bracketing t. A zero-length segment (two stops at one position) is never the bracketing pair, so
+        // it draws as a hard edge with the later colour at the shared position itself. The skew silhouette
+        // shader evaluates the same walk.
         private static Color ColorAt(GradientSpec spec, float t)
         {
-            if (t <= spec.FromPos)
+            var stops = spec.Stops;
+            if (t < stops[0].Position)
             {
-                return spec.From;
+                return stops[0].Color;
             }
-            if (t >= spec.ToPos)
+            for (var i = 1; i < stops.Length; i++)
             {
-                return spec.To;
+                if (t < stops[i].Position)
+                {
+                    var a = stops[i - 1];
+                    var b = stops[i];
+                    return Lerp(a.Color, b.Color, (t - a.Position) / Mathf.Max(b.Position - a.Position, 1e-5f), spec.Interp);
+                }
             }
-            if (!spec.HasVia)
-            {
-                return Lerp(spec.From, spec.To, (t - spec.FromPos) / Mathf.Max(spec.ToPos - spec.FromPos, 1e-5f), spec.Interp);
-            }
-            return t < spec.ViaPos
-                ? Lerp(spec.From, spec.Via, (t - spec.FromPos) / Mathf.Max(spec.ViaPos - spec.FromPos, 1e-5f), spec.Interp)
-                : Lerp(spec.Via, spec.To, (t - spec.ViaPos) / Mathf.Max(spec.ToPos - spec.ViaPos, 1e-5f), spec.Interp);
+            return stops[stops.Length - 1].Color;
         }
 
         // Lerps two stops in the gradient's interpolation space: a plain sRGB channel lerp, or the

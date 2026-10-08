@@ -18,14 +18,6 @@ Shader "Velvet/GradientSilhouette"
     Properties
     {
         [MainTexture] _MainTex("Texture", 2D) = "white" {}
-        _From("From", Vector) = (1, 1, 1, 1)
-        _Via("Via", Vector) = (1, 1, 1, 1)
-        _To("To", Vector) = (0, 0, 0, 0)
-        _HasVia("Has Via", Float) = 0
-        // Stop positions along the axis (0..1; Tailwind defaults 0 / 0.5 / 1).
-        _FromPos("From Pos", Float) = 0
-        _ViaPos("Via Pos", Float) = 0.5
-        _ToPos("To Pos", Float) = 1
         // Gradient axis in the UPRIGHT box's UV (origin top-left, y down), matching GradientBackground.GetAxis.
         _AxisStart("Axis Start", Vector) = (0, 0, 0, 0)
         _AxisEnd("Axis End", Vector) = (0, 1, 0, 0)
@@ -85,13 +77,12 @@ Shader "Velvet/GradientSilhouette"
                 float2 uv : TEXCOORD0;
             };
 
-            float4 _From;
-            float4 _Via;
-            float4 _To;
-            float _HasVia;
-            float _FromPos;
-            float _ViaPos;
-            float _ToPos;
+            // The colour stops, of which the first _StopCount are in use. GradientSilhouetteBaker sets all
+            // three. VELVET_MAX_STOPS is GradientSpec.MaxStops; GradientStopCapacityTests holds the two equal.
+            #define VELVET_MAX_STOPS 16
+            float4 _StopColors[VELVET_MAX_STOPS];
+            float _StopPositions[VELVET_MAX_STOPS];
+            float _StopCount;
             float4 _AxisStart;
             float4 _AxisEnd;
             float4 _ElementSize;
@@ -213,26 +204,27 @@ Shader "Velvet/GradientSilhouette"
                 }
                 t = saturate(t);
 
-                // Position-based stops (matches GradientBackground.ColorAt): flat before From / after To,
-                // linear between the bracketing stops, in the gradient's interpolation space.
-                float4 col;
-                if (t <= _FromPos)
+                // Position-based stops, the same walk as GradientBackground.ColorAt: flat first colour before
+                // the first stop, flat last colour from the last stop on, and a lerp between the two stops
+                // bracketing t, in the gradient's interpolation space.
+                int count = (int)_StopCount;
+                float4 col = _StopColors[0];
+                if (t >= _StopPositions[0])
                 {
-                    col = _From;
-                }
-                else if (t >= _ToPos)
-                {
-                    col = _To;
-                }
-                else if (_HasVia > 0.5)
-                {
-                    col = (t < _ViaPos)
-                        ? v_gradLerp(_From, _Via, (t - _FromPos) / max(_ViaPos - _FromPos, 1e-5))
-                        : v_gradLerp(_Via, _To, (t - _ViaPos) / max(_ToPos - _ViaPos, 1e-5));
-                }
-                else
-                {
-                    col = v_gradLerp(_From, _To, (t - _FromPos) / max(_ToPos - _FromPos, 1e-5));
+                    col = _StopColors[count - 1];
+                    for (int i = 1; i < VELVET_MAX_STOPS; i++)
+                    {
+                        if (i >= count)
+                        {
+                            break;
+                        }
+                        if (t < _StopPositions[i])
+                        {
+                            float p0 = _StopPositions[i - 1];
+                            col = v_gradLerp(_StopColors[i - 1], _StopColors[i], (t - p0) / max(_StopPositions[i] - p0, 1e-5));
+                            break;
+                        }
+                    }
                 }
 
                 return half4(col.rgb, col.a * mask);

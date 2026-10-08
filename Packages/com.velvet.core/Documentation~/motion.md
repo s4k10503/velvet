@@ -438,7 +438,8 @@ mid-loop with each half eased by `cubic-bezier(0.4, 0, 0.6, 1)`, and the spin tu
 
 `animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
-`animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
+`animate-hue-[5s]`. The two gradient modes are inert without a gradient
+([styling-gradients.md](styling-gradients.md)) to pan.
 
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the

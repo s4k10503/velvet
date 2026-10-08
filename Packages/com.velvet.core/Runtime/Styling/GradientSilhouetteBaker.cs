@@ -31,13 +31,14 @@ namespace Velvet
         // mirroring GradientBackground / DropShadowBaker, whose textures live in a static cache.
         private static readonly HashSet<Texture2D> s_baked = new();
 
-        private static readonly int FromId = Shader.PropertyToID("_From");
-        private static readonly int ViaId = Shader.PropertyToID("_Via");
-        private static readonly int ToId = Shader.PropertyToID("_To");
-        private static readonly int HasViaId = Shader.PropertyToID("_HasVia");
-        private static readonly int FromPosId = Shader.PropertyToID("_FromPos");
-        private static readonly int ViaPosId = Shader.PropertyToID("_ViaPos");
-        private static readonly int ToPosId = Shader.PropertyToID("_ToPos");
+        private static readonly int StopColorsId = Shader.PropertyToID("_StopColors");
+        private static readonly int StopPositionsId = Shader.PropertyToID("_StopPositions");
+        private static readonly int StopCountId = Shader.PropertyToID("_StopCount");
+
+        // Sent whole on every bake, at the MaxStops length the shader declares; the shader reads the first
+        // _StopCount entries, so slots a shorter list leaves from an earlier bake are never read.
+        private static readonly Vector4[] s_stopColors = new Vector4[GradientSpec.MaxStops];
+        private static readonly float[] s_stopPositions = new float[GradientSpec.MaxStops];
         private static readonly int TypeId = Shader.PropertyToID("_Type");
         private static readonly int CenterId = Shader.PropertyToID("_Center");
         private static readonly int ConicStartId = Shader.PropertyToID("_ConicStart");
@@ -105,13 +106,15 @@ namespace Velvet
             QuadSize(w, h, tanX, tanY, out var quadW, out var quadH);
 
             var m = s_material;
-            m.SetVector(FromId, (Vector4)spec.From);
-            m.SetVector(ToId, (Vector4)spec.To);
-            m.SetVector(ViaId, (Vector4)(spec.HasVia ? spec.Via : spec.From));
-            m.SetFloat(HasViaId, spec.HasVia ? 1f : 0f);
-            m.SetFloat(FromPosId, spec.FromPos);
-            m.SetFloat(ViaPosId, spec.ViaPos);
-            m.SetFloat(ToPosId, spec.ToPos);
+            var stops = spec.Stops;
+            for (var i = 0; i < stops.Length; i++)
+            {
+                s_stopColors[i] = stops[i].Color;
+                s_stopPositions[i] = stops[i].Position;
+            }
+            m.SetVectorArray(StopColorsId, s_stopColors);
+            m.SetFloatArray(StopPositionsId, s_stopPositions);
+            m.SetFloat(StopCountId, stops.Length);
             m.SetFloat(TypeId, (float)(int)spec.Type);
             m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
