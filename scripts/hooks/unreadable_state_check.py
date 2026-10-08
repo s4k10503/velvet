@@ -167,8 +167,8 @@ def declaration(path):
     return policy, probe, sorted(tools) if isinstance(tools, set) else [], missing
 
 
-def _stubs(mode, directory, log, table=None):
-    for name, body in (table or MODES)[mode].items():
+def _stubs(stubs, directory):
+    for name, body in stubs.items():
         script = directory / name
         script.write_text(f'#!/bin/sh\nprintf \'{name}\\n\' >> "${STUB_LOG}"\n{body}\n')
         script.chmod(0o755)
@@ -180,11 +180,21 @@ SESSION = "velvet-unreadable-state-check"
 
 def run_guard(hook, payload, mode, cwd, home, table=None):
     """(exit code, stdout, stderr, whether the broken program was consulted) for one run."""
+    return run_hook(hook, payload, cwd, home, (table or MODES)[mode])
+
+
+def run_hook(hook, payload, cwd, home, stubs, environment=None):
+    """(exit code, stdout, stderr, whether a stubbed program was consulted) for one run.
+
+    `stubs` maps a program name to the shell body that stands in for it, first on PATH.
+    `environment` is laid over this process's own before the pins below, so a case can add what a
+    hook reads and cannot move HOME, the session or the project out from under it.
+    """
     workspace = Path(tempfile.mkdtemp(prefix="velvet-unreadable-"))
     try:
         log = workspace / "consulted"
         log.write_text("")
-        environment = dict(os.environ)
+        environment = {**os.environ, **(environment or {})}
         environment["HOME"] = str(home)
         environment[STUB_LOG] = str(log)
         # The session's own project would otherwise decide what a guard reads instead of `cwd`.
@@ -194,7 +204,7 @@ def run_guard(hook, payload, mode, cwd, home, table=None):
         # and not a session. Pinned rather than popped: with no id at all every line suppresses,
         # which is the reading a case has to be able to fail against.
         environment["CLAUDE_CODE_SESSION_ID"] = SESSION
-        _stubs(mode, workspace, log, table)
+        _stubs(stubs, workspace)
         environment["PATH"] = str(workspace) + os.pathsep + environment.get("PATH", "")
 
         finished = subprocess.run(
@@ -212,10 +222,16 @@ def answer(hook, tool, probe, mode, cwd, home):
     """(verdict, whether the broken program was consulted) for one guard under one mode."""
     payload = json.dumps({"tool_name": tool, "cwd": str(cwd), "tool_input": probe})
     code, out, _, consulted = run_guard(hook, payload, mode, cwd, home)
-    # Not the exit code alone: blind_git_add.py refuses by printing a deny decision and exiting
-    # 0, so reading 0 as a pass would score its refusal as a guard that let the tool through.
-    denied = '"permissionDecision"' in out and '"deny"' in out
-    return (REFUSE if code == 2 or denied else ALLOW), consulted
+    return (REFUSE if refused(code, out) else ALLOW), consulted
+
+
+def refused(code, out):
+    """Whether a `PreToolUse` run refused the tool, from its exit code and its stdout.
+
+    Not the exit code alone: blind_git_add.py refuses by printing a deny decision and exiting 0, so
+    reading 0 as a pass would score its refusal as a guard that let the tool through.
+    """
+    return code == 2 or ('"permissionDecision"' in out and '"deny"' in out)
 
 
 def _backed(hook, tool, probe, mode, cwd, home, siblings):

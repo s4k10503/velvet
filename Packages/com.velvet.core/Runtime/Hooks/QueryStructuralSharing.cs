@@ -83,12 +83,13 @@ namespace Velvet
 
         // Elements of these types hold nothing to share, so two collections of them are the held one or the new
         // one without boxing an element.
-        // MUTANT_SURVIVES(equivalent, clause removed): a type left to the general path reaches the same instance, boxing each element.
         private static bool TryCompareUnmanaged(object previous, object next, out bool equal)
-            => TryCompare<int>(previous, next, out equal) || TryCompare<float>(previous, next, out equal)
+        {
+            return TryCompare<int>(previous, next, out equal) || TryCompare<float>(previous, next, out equal)
                 || TryCompare<double>(previous, next, out equal) || TryCompare<long>(previous, next, out equal)
                 || TryCompare<byte>(previous, next, out equal) || TryCompare<bool>(previous, next, out equal)
                 || TryCompare<char>(previous, next, out equal);
+        }
 
         private static bool TryCompare<TItem>(object previous, object next, out bool equal) where TItem : unmanaged
         {
