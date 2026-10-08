@@ -63,7 +63,7 @@ namespace Velvet
                 return;
             }
             // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
-            // removes from the stacked registry (see VariantSettleSweep.SnapshotStacked).
+            // removes from the stacked registry (see ReconcilerContext.CopyStackedVariantsOn).
             foreach (var manipulator in new List<StyleRelationalVariantManipulator>(ctx.RelationalVariantManipulators.Values))
             {
                 manipulator.Retarget();

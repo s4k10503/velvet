@@ -790,7 +790,7 @@ namespace Velvet
                 stacked.target?.RemoveManipulator(stacked);
             }
 
-            _ctx.StackedVariantManipulators.Clear();
+            _ctx.ClearStackedVariants();
             foreach (var (element, manipulator) in _ctx.GapManipulators)
             {
                 element.RemoveManipulator(manipulator);

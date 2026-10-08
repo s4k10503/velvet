@@ -248,32 +248,9 @@ namespace Velvet
             // ReconcilerContext, not by adding a line here. Dropping these also prevents a pooled widget from
             // ghosting a prior consumer's attributes / propagated-variant classes into its next mount.
             _ctx.ClearElementSideTables(element);
-            // Stacked-variant manipulators are keyed by a tuple (not the element), so collect this element's
-            // entries and detach them — releasing their inner-variant subscriptions (incl. a stacked dark:'s
-            // process-wide VelvetTheme.DarkModeChanged) so they do not leak past unmount.
-            if (_ctx.StackedVariantManipulators.Count > 0)
-            {
-                List<(VisualElement, object, long, StyleVariantKind, string, string?)>? stale = null;
-                foreach (var kv in _ctx.StackedVariantManipulators)
-                {
-                    if (kv.Key.target == element)
-                    {
-                        (stale ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
-                    }
-                }
-                if (stale != null)
-                {
-                    // Removed before detaching, and read by Remove: a detach closes its leaf through
-                    // GateStackedVariant, which can remove a key listed after it.
-                    foreach (var key in stale)
-                    {
-                        if (_ctx.StackedVariantManipulators.Remove(key, out var stacked))
-                        {
-                            element.RemoveManipulator(stacked);
-                        }
-                    }
-                }
-            }
+            // Detaching the element's stacked manipulators releases their inner-variant subscriptions (incl. a
+            // stacked dark:'s process-wide VelvetTheme.DarkModeChanged), which would otherwise outlive unmount.
+            _ctx.DetachStackedVariants(element);
             DetachManipulator(element, _ctx.GapManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
