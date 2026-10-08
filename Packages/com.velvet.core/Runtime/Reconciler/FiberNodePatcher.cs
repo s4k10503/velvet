@@ -2578,11 +2578,12 @@ namespace Velvet
             }
         }
 
-        // A class the projection took off an element to let a variant win still matches: :has(.foo) tests
-        // the class attribute, which the cascade never edits.
+        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
+        // an element to let a variant win still matches, and one a variant payload put on it does not.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
         {
-            if (root.ClassListContains(cls) || StyleClassProjection.SuppressesDeclared(root, cls))
+            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                || StyleClassProjection.SuppressesDeclared(root, cls))
             {
                 return true;
             }
@@ -3068,10 +3069,10 @@ namespace Velvet
         // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
         internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
             => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
-                ResolveGateClasses(element, newClassNames));
+                ResolveGateClasses(element, newClassNames), _ctx.FontScope);
 
         internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
-            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames));
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames), _ctx.FontScope);
 
         // Same rule as ApplyFontLayer, over the same guard's other half.
         internal void ApplyTextEffects(VisualElement element, string[] classNames)
@@ -3124,7 +3125,9 @@ namespace Velvet
             // predecessor than a patch would.
             if (reconciled != null)
             {
-                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved);
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved, _ctx.FontScope);
+                // No pass boundary follows a variant toggle, so the inheritors it queued are settled here.
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             }
             ApplyResolvedLayoutManipulators(element, resolved);
             if (reconciled != null)

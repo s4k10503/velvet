@@ -295,6 +295,42 @@ namespace Velvet.Tests
             Assert.That((before, Parent(scope).ClassListContains("bg-mark")), Is.EqualTo((true, false)));
         }
 
+        // A class only a variant payload put on the descendant is not in its className, which is what
+        // :has(.bg-white) tests, so the live class list showing it is not a match.
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantHoldsTheClassOnlyThroughAVariantPayload_Then_PayloadAbsent()
+        {
+            // Act — first: is on for the only child, so bg-white sits on the live list without being declared.
+            var state = HasWhiteAcross("first:bg-white");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a declared class matches on the base too; the case holds the match
+        // that the payload-only case above must not take away.
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantDeclaresTheClassAndAVariantPayloadAddsItToo_Then_PayloadApplied()
+        {
+            // Act
+            var state = HasWhiteAcross("bg-white first:bg-white");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the live list, which holds the class. The case holds
+        // the match for a class declared important, whose base entry sits in the important band.
+        [Test]
+        public void Given_HasClassParent_When_TheDescendantDeclaresTheClassImportantAndAVariantPayloadAddsItToo_Then_PayloadApplied()
+        {
+            // Act
+            var state = HasWhiteAcross("!bg-white first:bg-white");
+
+            // Assert
+            Assert.That(state, Is.EqualTo((true, true)));
+        }
+
         [Test]
         public void Given_HasClassParent_When_TheCarryingDescendantIsRemoved_Then_PayloadClears()
         {

@@ -12,11 +12,9 @@ namespace Velvet
     // hook-slot commit in FiberHookCommit and committed-tree pooling in FiberTreeReturn; this class drives it.
     internal static class FiberWorkLoop
     {
-        private const int DelayedTierDelayMs = 100;
-
         // The FlushState invocation at which a continuously-pending Transition lane is promoted
         // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
-        private const int TransitionStarvationThreshold = 30;
+        internal const int TransitionStarvationThreshold = 30;
 
         // Set while a discrete user-input event handler (click, change, pointer down/up, key down/up, focus/blur)
         // is executing. A hook-triggered render requested during a discrete event takes the Urgent lane and the
@@ -64,6 +62,12 @@ namespace Velvet
         // Saved and restored, so a flush nested inside a render leaves the enclosing answer intact.
         internal static bool IsRenderingTransitionLane;
 
+        // The fiber whose drain of Transition work the render in progress belongs to, null wherever
+        // IsRenderingTransitionLane is false. A descendant its pass renders commits with it, which is how a
+        // component holding optimistic entries learns the commit it is in lands its transition's work
+        // (HookTransitionSlot.SettlesWithCommitOf). Saved and restored beside the flag.
+        internal static ComponentFiber? TransitionDrainFiber;
+
         // Internal API that requests a render via a Hook (UseState / UseReducer setter, UseStore subscription).
         // Takes the Transition lane while a StartTransition callback is running synchronously; otherwise the
         // Urgent lane while a discrete event handler is running (IsInDiscreteEvent), and the Normal lane elsewhere.
@@ -72,6 +76,77 @@ namespace Velvet
         // The request is silently ignored if the fiber is disposed or not mounted.
         // fiber: Fiber whose state changed.
         public static void RequestRenderFromHook(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: true);
+
+        // addOptimistic's own render is never a transition's: on the Transition lane it would wait out the
+        // delayed tier, and enrol the optimistic component on the transition whose pending lifetime the value
+        // exists to cover.
+        internal static void RequestOptimisticRender(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: false);
+
+        // The transition an addOptimistic call belongs to, whose settle retires the entry: the innermost open
+        // scope whose slot still has an owner, on the rule MarkTransitionWorkQueued skips a released slot by;
+        // failing that, every async action in flight together. Null where neither is there.
+        internal static HookTransitionSlot? CurrentOptimisticOwner
+        {
+            get
+            {
+                for (var i = OpenTransitionScopes.Count - 1; i >= 0; i--)
+                {
+                    if (OpenTransitionScopes[i].HasActiveOwner)
+                    {
+                        return OpenTransitionScopes[i];
+                    }
+                }
+                return s_asyncActionsInFlight > 0 ? AsyncActionsInFlight : null;
+            }
+        }
+
+        internal static bool IsInTransitionScope => OpenTransitionScopes.Count > 0;
+
+        // Stands for no single slot: its isPending is lit while the count holds an action that has not completed,
+        // so the entries it owns retire when the last of those does. Outside every scope nothing says which
+        // in-flight action's code made the call, so the entry waits for all of them. A transition settling
+        // while any action is in flight hands its entries to this slot as well (see
+        // HookTransitionSlot.RetireOptimisticEntries).
+        internal static readonly HookTransitionSlot AsyncActionsInFlight = new();
+        private static int s_asyncActionsInFlight;
+        // Bumped by the reset below, so an action counted in before it cannot count itself out of the new count.
+        private static int s_asyncActionsEpoch;
+
+        // Returns the epoch the action was counted in, which its completion hands back to CountAsyncActionOut.
+        internal static int CountAsyncActionIn()
+        {
+            s_asyncActionsInFlight++;
+            AsyncActionsInFlight.IsPending = true;
+            return s_asyncActionsEpoch;
+        }
+
+        // Called once per counted action when its task completes, whether or not the component that started
+        // it is still mounted: the count follows the task.
+        internal static void CountAsyncActionOut(int epoch)
+        {
+            if (epoch != s_asyncActionsEpoch)
+            {
+                return;
+            }
+            s_asyncActionsInFlight--;
+            AsyncActionsInFlight.IsPending = s_asyncActionsInFlight > 0;
+        }
+
+        // Without a domain reload between play sessions the count would carry an action the previous session
+        // never completed, and every transition settling afterwards would hand its entries to a slot that stays
+        // lit. The entries the slot holds retire through the setter like any other settle: a render requested
+        // for a fiber that is no longer mounted is ignored, and one still mounted drops its entries.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAsyncActionsInFlight()
+        {
+            s_asyncActionsEpoch++;
+            s_asyncActionsInFlight = 0;
+            AsyncActionsInFlight.IsPending = false;
+        }
+
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
         {
             if (fiber.IsDisposed || !fiber.IsMounted)
             {
@@ -97,7 +172,7 @@ namespace Velvet
 
             // Tested ahead of the discrete-event gate below, because a discrete handler calling
             // startTransition is the ordinary way to start one and its updates are still the transition's.
-            if (OpenTransitionScopes.Count > 0)
+            if (joinsTransition && OpenTransitionScopes.Count > 0)
             {
                 // Attributed on this branch rather than inside ScheduleRerender, which would also charge
                 // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a
@@ -221,10 +296,9 @@ namespace Velvet
 
         // Routes the fiber's flush through the tree-wide FiberBatchScheduler so concurrent
         // dirty fibers sharing one ReconcilerContext coalesce into a single frame-boundary
-        // drain. Normal / Urgent enqueue on the next-frame tier; Transition enqueues on the
-        // delayed tier (kept at DelayedTierDelayMs). The per-fiber lane queue is still drained
-        // one lane per FlushState inside the batch, preserving priority ordering and the
-        // delayed-tier delay.
+        // drain. Normal / Urgent enqueue on the immediate tier; Transition enqueues on the
+        // delayed tier. The per-fiber lane queue is still drained one lane per FlushState
+        // inside the batch, preserving priority ordering.
         internal static void ScheduleFlush(ComponentFiber fiber, FiberUpdatePriority priority)
         {
             var scheduler = fiber.Reconciler?.Context.BatchScheduler;
@@ -242,7 +316,7 @@ namespace Velvet
             }
             else
             {
-                scheduler.ScheduleDelayed(fiber, DelayedTierDelayMs);
+                scheduler.ScheduleDelayed(fiber);
             }
         }
 
@@ -381,7 +455,9 @@ namespace Velvet
             fiber.PendingReconcileBudgetMs = flushBudget;
             fiber.PendingReconcileDrainsTransitionWork = drainsTransitionWork;
             var wasRenderingTransitionLane = IsRenderingTransitionLane;
+            var wasTransitionDrainFiber = TransitionDrainFiber;
             IsRenderingTransitionLane = drainsTransitionWork;
+            TransitionDrainFiber = drainsTransitionWork ? fiber : null;
             var suspended = false;
             try
             {
@@ -396,6 +472,7 @@ namespace Velvet
             finally
             {
                 IsRenderingTransitionLane = wasRenderingTransitionLane;
+                TransitionDrainFiber = wasTransitionDrainFiber;
             }
             // Defer layout / passive effects while a time-sliced reconcile is still paused: a parked commit has
             // only partially mutated the DOM, so a UseLayoutEffect reading a UseRef to a not-yet-attached node
@@ -493,7 +570,9 @@ namespace Velvet
                 // The resumed slice can still expand components, so it answers the deferred-commit question
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
+                var wasTransitionDrainFiber = TransitionDrainFiber;
                 IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
+                TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
                 // A resume continues the pass whose output is already this fiber's PreviousTree, so the
                 // children it reaches are stamped against that array exactly as the slice that parked
                 // stamped the ones it reached. Without it they are stamped against nothing, and
@@ -524,11 +603,12 @@ namespace Velvet
                 {
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
+                    TransitionDrainFiber = wasTransitionDrainFiber;
                 }
 
                 if (fiber.Reconciler.HasPendingWork)
                 {
-                    mountPoint.schedule.Execute(() => ContinueReconcile(fiber));
+                    mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
                 }
                 else
                 {
@@ -775,15 +855,21 @@ namespace Velvet
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
-            // Same disposed guard as the sync overload: the scope, without the flag or the error.
+            // Same disposed guard as the sync overload: the scope, without the flag or the error. The action is
+            // still counted, since the count follows the task and not the component.
             if (fiber.IsDisposed)
             {
+                var disposedEpoch = CountAsyncActionIn();
                 try
                 {
                     await RunInTransitionScope(slot, asyncUpdates);
                 }
                 catch (Exception)
                 {
+                }
+                finally
+                {
+                    CountAsyncActionOut(disposedEpoch);
                 }
                 return;
             }
@@ -797,6 +883,7 @@ namespace Velvet
             // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
             // empty lane queue as this transition having settled (see SettleTransitionPending).
             slot.AsyncOwnerDepth++;
+            var countEpoch = CountAsyncActionIn();
             slot.OwnerDepth++;
             var ownerGeneration = slot.OwnerGeneration;
             var suspended = false;
@@ -829,6 +916,7 @@ namespace Velvet
             }
             finally
             {
+                CountAsyncActionOut(countEpoch);
                 // An unmount forces the release this task can no longer perform, so a task settling afterwards
                 // must not write over whatever took the slot since — see ReleaseTransitionSlotOwnership.
                 if (slot.OwnerGeneration == ownerGeneration)

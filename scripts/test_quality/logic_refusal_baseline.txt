@@ -42,7 +42,6 @@ Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	15
 Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	2
-Packages/com.velvet.core/Runtime/Styling/StyleFontResolver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleHasVariantManipulator.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleLogicalUtilities.cs	3
