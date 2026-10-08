@@ -59,6 +59,8 @@ namespace Velvet.Tests
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string FlexMinSizeScanReader =
+            "System.Void Velvet.StyleFlexMinSizeManipulator.Scan(UnityEngine.UIElements.TextElement)";
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
@@ -81,6 +83,12 @@ namespace Velvet.Tests
 
             public string Reader { get; }
         }
+
+        private static readonly MethodInfo ScanFlexMinSizeClasses = typeof(StyleFlexMinSizeManipulator)
+            .GetMethod("Scan", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        private static readonly FieldInfo FlexMinSizeSpecifiedWidth = typeof(StyleFlexMinSizeManipulator)
+            .GetField("_specifiedWidth", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
         private static readonly MethodInfo RouteOneClass = typeof(FiberNodePatcher)
             .GetMethod("AddClass", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -109,6 +117,8 @@ namespace Velvet.Tests
         {
             "System.Boolean Velvet.StyleGridClass.HasGridClass(System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyDivideManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyFlexMinSizeManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
@@ -153,6 +163,20 @@ namespace Velvet.Tests
                 RouteOneClass.Invoke(null, new object[] { element, cls });
             }
             return element;
+        }
+
+        private static Label Labelled(params string[] classNames)
+        {
+            var label = new Label();
+            FiberElementFactory.ApplyClassNames(label, classNames);
+            return label;
+        }
+
+        private static bool ScannedWidthIsDeclared(Label label)
+        {
+            var manipulator = new StyleFlexMinSizeManipulator(null!, System.Array.Empty<string>());
+            ScanFlexMinSizeClasses.Invoke(manipulator, new object[] { label });
+            return FlexMinSizeSpecifiedWidth.GetValue(manipulator) != null;
         }
 
         private static string[] LiveClasses(VisualElement element)
@@ -320,8 +344,8 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): the base already hands the array to these five and no others.
-        // What shows the case can fail is a fifth applier beside them — measured with an
+        // GREEN_ON_BASE(characterization): the base already hands the array to these six and no others.
+        // What shows the case can fail is a seventh reading beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
         [Test]
@@ -633,6 +657,26 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
+        }
+
+        // What shows the case can fail is making the width keyword leave an earlier width in place: the
+        // arrangement ending on w-auto then still declares one. The verdict is that the order decides, by the
+        // last width token, which is what a reader moving to a cascade-ordered answer has to settle.
+        [Test]
+        [ReaderVerdict(FlexMinSizeScanReader)]
+        public void Given_AWidthTokenBesideAWidthKeyword_When_TheOrderTheyWereAddedInIsReversed_Then_TheFlexMinSizeScanTakesTheLastTokenBothWays()
+        {
+            // Arrange — w-auto declares no definite width, so the answer depends on which token arrived last.
+            var added = Labelled("w-32", "w-auto");
+            var reversed = Labelled("w-auto", "w-32");
+
+            // Act
+            var fromAdded = ScannedWidthIsDeclared(added);
+            var fromReversed = ScannedWidthIsDeclared(reversed);
+
+            // Assert — one of each rather than merely different from nothing: two falses would agree too.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((false, true)),
+                "the automatic minimum caps at the width of the last width token in the list");
         }
 
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
