@@ -29,6 +29,13 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ReconcilerRefTests : ReconcilerTestFixture
     {
+        public override void TearDown()
+        {
+            base.TearDown();
+            // The saturating cases below fill a process-wide pool, which the rest of the run would inherit.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+        }
+
         [Test]
         public void Given_RefCallback_When_ElementCreated_Then_ReceivesTheCreatedElement()
         {
@@ -47,10 +54,11 @@ namespace Velvet.Tests
                 "The callback receives the freshly created element");
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this Label and re-runs the callback against it.
         [Test]
         public void Given_RefCallback_When_ElementPatched_Then_ReceivesTheSameReusedElement()
         {
-            // Arrange
+            // Arrange — saturated for the reason SaturateLabelPoolForTest gives.
             VisualElement capturedOnCreate = null;
             VisualElement capturedOnPatch = null;
             var tree1 = new VNode[]
@@ -58,6 +66,7 @@ namespace Velvet.Tests
                 V.Label(text: "old", refCallback: el => { capturedOnCreate = el; return null; }),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
+            var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
 
             // Act
             var tree2 = new VNode[]
@@ -67,7 +76,9 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, tree1, tree2);
 
             // Assert
-            Assert.That(capturedOnPatch, Is.SameAs(capturedOnCreate),
+            Assert.That(
+                (poolSaturated, ReferenceEquals(capturedOnPatch, capturedOnCreate)),
+                Is.EqualTo((true, true)),
                 "A patch reuses the element and re-invokes the callback with that same instance");
         }
 
@@ -200,23 +211,26 @@ namespace Velvet.Tests
             Assert.That(newSetupCount, Is.EqualTo(1), "After the old cleanup, the new callback runs as setup");
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this Label, so Current keeps the mounted one.
         [Test]
         public void Given_TypedRef_When_PatchedRepeatedly_Then_CurrentStaysTheLiveInstance()
         {
-            // Arrange
+            // Arrange — saturated for the reason SaturateLabelPoolForTest gives.
             var labelRef = new Ref<Label>();
             var tree1 = new VNode[] { V.Label(text: "v1", refCallback: labelRef.SetElement) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             var firstElement = labelRef.Current;
-            Assume.That(firstElement, Is.Not.Null, "Precondition: the ref captured an element on mount");
+            var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
 
             // Act
             var tree2 = new VNode[] { V.Label(text: "v2", refCallback: labelRef.SetElement) };
             Reconciler.Reconcile(Root, tree1, tree2);
 
-            // Assert
-            Assert.That(labelRef.Current, Is.SameAs(firstElement),
-                "Across a patch the cleanup-then-resetup never leaves Current transiently null");
+            // Assert — the mount's capture is folded in, since a ref that never captured leaves both null.
+            Assert.That(
+                (poolSaturated, firstElement != null, ReferenceEquals(labelRef.Current, firstElement)),
+                Is.EqualTo((true, true, true)),
+                "Across a patch Current ends on the instance the mount captured");
         }
 
         [Test]

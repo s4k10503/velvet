@@ -40,6 +40,14 @@ namespace Velvet.Tests
             }
         }
 
+        public override void TearDown()
+        {
+            base.TearDown();
+            // The saturating cases below fill a process-wide pool, which the rest of the run would inherit —
+            // the pooled-field case among them, whose first unmount needs the room.
+            VNodePoolTestAccess.ClearTextFieldPoolForTest();
+        }
+
         [Test]
         public void Given_ADeclaredPlaceholder_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
@@ -307,10 +315,9 @@ namespace Velvet.Tests
         // a second render redeclares only the first. The undeclared member is nobody's to write, so it has
         // to survive. One callback instance stands in both trees, so the patch does not re-run it
         // (ReconcilerContext.SyncRefCallback's identity skip) and a second assignment cannot stand in for
-        // a survival.
-        // GREEN_ON_BASE(refactor): the props are applied before the ref writes, here as on the base.
-        // Moving the setup out to the pass boundary keeps that, and the comment above is the only text
-        // of this case the branch touched.
+        // a survival. Each saturates the TextField pool before the second render, for the reason
+        // VNodePoolTestAccess.SaturateTextFieldPoolForTest gives.
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_APasswordFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -324,16 +331,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the hint.
         [Test]
         public void Given_APlaceholderWrittenFromARefCallback_When_ALaterRenderRedeclaresTheMaxLength_Then_TheHintSurvives()
         {
@@ -347,16 +356,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
-                Is.EqualTo((true, "from ref")));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
+                Is.EqualTo((true, true, "from ref")));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the limit.
         [Test]
         public void Given_AMaxLengthWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheLimitSurvives()
         {
@@ -370,16 +381,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setLimit) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
-                Is.EqualTo((true, 4)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
+                Is.EqualTo((true, true, 4)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_AReadOnlyFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -393,16 +406,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_ADelayedFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -416,21 +431,25 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base re-rents the pooled field and patches it, keeping the hint.
         [Test]
         public void Given_APooledFieldWhoseLastTenantDeclaredAPlaceholder_When_ItsNextTenantWritesOneFromARefCallback_Then_TheHintSurvives()
         {
             // Arrange — the first tenancy records a placeholder default and then unmounts, which is what
-            // hands the element to the shared pool; the second declares only the length limit.
+            // hands the element to the shared pool; the second declares only the length limit. The pool is
+            // saturated only once the second tenancy holds the field, since the first unmount needs the room,
+            // and from there for the reason VNodePoolTestAccess.SaturateTextFieldPoolForTest gives.
             var declaring = new VNode[] { V.TextField(placeholder: "previous tenant") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), declaring);
             var pooled = (TextField)Root!.ElementAt(0);
@@ -443,6 +462,7 @@ namespace Velvet.Tests
             var oldTree = new VNode[] { V.TextField(maxLength: 12, refCallback: setHint) };
             var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
@@ -450,9 +470,9 @@ namespace Velvet.Tests
             // Assert — the identity term is what makes this a reading of the recycled element; a fresh one
             // would carry no record from either tenancy and satisfy the hint on its own.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), pooled),
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), pooled),
                     ((TextField)Root!.ElementAt(0)).textEdition.placeholder),
-                Is.EqualTo((true, "from ref")));
+                Is.EqualTo((true, true, "from ref")));
         }
     }
 }

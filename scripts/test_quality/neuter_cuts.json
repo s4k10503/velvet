@@ -927,6 +927,38 @@
       ],
       "caseScopes": [],
       "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ReconcilerIndexedTests",
+      "cuts": [
+        "patch-reuse-gate"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ReconcilerKeyedTests",
+      "cuts": [
+        "patch-reuse-gate"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ReconcilerRefTests",
+      "cuts": [
+        "patch-reuse-gate"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.TextFieldInputPropTests",
+      "cuts": [
+        "patch-reuse-gate"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
     }
   ]
 }
