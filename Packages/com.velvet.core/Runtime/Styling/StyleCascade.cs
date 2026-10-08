@@ -67,13 +67,16 @@ namespace Velvet
     }
 
     // What an element's classes give the four slots a loop writes, read once and kept until the element's class list
-    // changes, so that a steady tick does not go through reflection again. The class list is the change signal
-    // because hover: and dark: act by changing it (Given_APulseOverAHoverOpacity_... and
-    // Given_APulseOverADarkOpacity_... in AnimateBaseValueTests). A rule that matches by pseudo-state or by an
-    // ancestor alone, with no class change on the element, is not seen until the next class change.
+    // changes or Invalidate is called, so that a steady tick does not go through reflection again. The class list is
+    // the change signal for hover: and dark: (Given_APulseOverAHoverOpacity_... and Given_APulseOverADarkOpacity_...
+    // in AnimateBaseValueTests); StyleAnimateDriver calls Invalidate for what changes the rules without it.
     internal struct CascadeSnapshot
     {
+        private const int StaleTicks = 2;
+
         private int _key;
+        private int _stale;
+        private bool _force;
         private bool _read;
         private bool _hasOpacity;
         private bool _hasRotate;
@@ -87,7 +90,7 @@ namespace Velvet
         public void Refresh(VisualElement element)
         {
             var key = ClassKey(element);
-            if (_read && key == _key) return;
+            if (_read && key == _key && !_force) return;
             _read = false;
             if (StyleCascade.Of(element) is not { } style) return;
             _hasOpacity = StyleCascade.TryReadOpacity(style, out _opacity);
@@ -97,6 +100,18 @@ namespace Velvet
             // The sentinel key of a list that cannot be read stays unmatched, so such an element reads every time.
             _key = key;
             _read = key != UnreadableKey;
+        }
+
+        // A signal that the element's rules may have changed without its class list doing so. The styles resolve after
+        // the scheduler item that reads this runs, so the next read still sees the old rules; reading again on the tick
+        // after catches the new ones.
+        public void Invalidate() => _stale = StaleTicks;
+
+        // Called once per frame ahead of its reads: a frame that follows an Invalidate reads the rules again.
+        public void BeginFrame()
+        {
+            _force = _stale > 0;
+            if (_force) _stale--;
         }
 
         public bool TryOpacity(out float opacity)

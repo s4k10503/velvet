@@ -413,7 +413,10 @@ namespace Velvet
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnTranslate;
-                element.style.translate = new Translate(new Length(own.x + translate.x), new Length(own.y + translate.y), own.z);
+                // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
+                var lift = StyleAnimateDriver.CurrentLiftPx(element) * projection.Scale.y;
+                element.style.translate = new Translate(
+                    new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z);
                 projection.WrittenTranslate = element.style.translate;
             }
             if (projection.WritesScale || !IsUnit(projection.Scale))
@@ -425,12 +428,14 @@ namespace Velvet
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnScale;
-                element.style.scale = new Scale(new Vector3(own.x * projection.Scale.x, own.y * projection.Scale.y, own.z));
+                var ping = StyleAnimateDriver.CurrentPingFactor(element);
+                element.style.scale = new Scale(
+                    new Vector3(own.x * projection.Scale.x * ping, own.y * projection.Scale.y * ping, own.z));
                 projection.WrittenScale = element.style.scale;
             }
         }
 
-        // The slots a running animate-* loop stays off while the projection writes them.
+        // The slots a running animate-* loop leaves to the projection, which adds the loop's share to its own frame.
         private static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
             => (projection.WritesTranslate ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
                 | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None);
@@ -542,6 +547,8 @@ namespace Velvet
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
+            // The loop's frame follows at once, rather than the element standing at its own value until its next tick.
+            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
             WriteOpacity(element, projection, null);
             LayoutIdPicking.Restore(projection);
             MotionNativeTransitionGuard.Release(element, projection);

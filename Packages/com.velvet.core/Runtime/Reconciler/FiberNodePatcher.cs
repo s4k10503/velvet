@@ -418,6 +418,11 @@ namespace Velvet
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {
+            if (classesChanged)
+            {
+                // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
+                StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+            }
             _appliers.ApplyGradientOnPatch(element, classNames, skewable: paintTail);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);

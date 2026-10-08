@@ -71,10 +71,7 @@ namespace Velvet.Tests
             var started = MoveRuns(element);
             for (var i = 0; i < MaxFrames && MoveRuns(element); i++)
             {
-                _now += 0.02;
-                EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
-                ForcePanelUpdate(_window.rootVisualElement.panel);
-                EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
+                Frame();
             }
             return (started, !MoveRuns(element));
         }
@@ -115,6 +112,37 @@ namespace Velvet.Tests
             // Assert
             Assert.That((started, ended, Mathf.Abs(element.style.scale.value.value.x - 1f) < 0.01f),
                 Is.EqualTo((true, true, true)));
+        }
+
+        [Test]
+        public void Given_ABounceOnACardMidMove_When_TheLoopIsAtTheTopOfItsLiftThenAtTheBottom_Then_TheCardIsHigherAtTheTop()
+        {
+            // Arrange — the move is a spring along the row, so the card's y is the bounce's alone.
+            const string classes = "w-[40px] h-[40px] bg-red-500 animate-bounce";
+            var (element, binding) = MountRow(classes);
+            Patch(200, classes, classes);
+            for (var i = 0; i < 3; i++) Frame();
+
+            // Act — the real ticks of the loop run at the phase each start time gives.
+            binding.StartTime = Time.realtimeSinceStartupAsDouble;
+            Frame();
+            Frame();
+            var atTheTop = element.style.translate.value.y.value;
+            binding.StartTime = Time.realtimeSinceStartupAsDouble - 0.5;
+            Frame();
+            Frame();
+            var atTheBottom = element.style.translate.value.y.value;
+
+            // Assert
+            Assert.That((MoveRuns(element), atTheTop - atTheBottom < -5f), Is.EqualTo((true, true)));
+        }
+
+        private void Frame()
+        {
+            _now += 0.02;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(_window.rootVisualElement.panel);
         }
     }
 }

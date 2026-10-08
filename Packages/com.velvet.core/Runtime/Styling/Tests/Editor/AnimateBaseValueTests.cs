@@ -1,3 +1,5 @@
+using System;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -442,6 +444,87 @@ namespace Velvet.Tests
             {
                 StyleAnimateDriver.Detach(element, pulse);
             }
+        }
+
+        // The hover pseudo-state, set the way the panel does when the pointer is over the element but without the
+        // pointer events, so that a case chooses which signal reaches the loop.
+        private static void SetHover(VisualElement element, bool on)
+        {
+            var property = typeof(VisualElement).GetProperty("pseudoStates",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+            var hover = Convert.ToInt32(Enum.Parse(property.PropertyType, "Hover"));
+            var current = Convert.ToInt32(property.GetValue(element));
+            property.SetValue(element, Enum.ToObject(property.PropertyType, on ? current | hover : current & ~hover));
+        }
+
+        // A card whose scale a bundled rule sets under :hover, with a ping attached and warm.
+        private (VisualElement card, StyleAnimateBinding binding) MountHoverCardUnder(string outerClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "outer", className: outerClassName, children: new VNode[]
+            {
+                V.Div(name: "card", className: "w-[40px] h-[40px] bg-red-500 hover-scale-105"),
+            }));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            _attachedTo = card;
+            _attached = StyleAnimateDriver.Attach(card, new AnimateSpec(AnimateMode.Ping, 1f), panVertical: false);
+            StyleAnimateDriver.ApplyFrame(card, _attached, 0f);
+            return (card, _attached);
+        }
+
+        [Test]
+        public void Given_APingOverAHoverRule_When_ThePointerEventsReachTheElement_Then_ItStartsFromTheHoverScale()
+        {
+            // Arrange — the rule matches by pseudo-state, so the element's class list does not change.
+            var (card, binding) = MountHoverCardUnder("a");
+            SetHover(card, true);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                card.SimulateEvent(over);
+            }
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.scale.value.value.x, Is.EqualTo(1.05f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APingOverAHoverRule_When_AnAncestorsClassesChange_Then_ItStartsFromTheHoverScale()
+        {
+            // Arrange — the pointer is over the card with no event delivered, and the signal is the ancestor's patch.
+            var (card, binding) = MountHoverCardUnder("a");
+            SetHover(card, true);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            VNode Tree(string outer) => V.Div(name: "outer", className: outer, children: new VNode[]
+            {
+                V.Div(name: "card", className: "w-[40px] h-[40px] bg-red-500 hover-scale-105"),
+            });
+            _mounted!.Root.Reconciler.Reconcile(_window.rootVisualElement, new[] { Tree("a") }, new[] { Tree("b") });
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.scale.value.value.x, Is.EqualTo(1.05f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APingOverAHoverRule_When_TheThemeSwitches_Then_ItStartsFromTheHoverScale()
+        {
+            // Arrange
+            var (card, binding) = MountHoverCardUnder("a");
+            SetHover(card, true);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            VelvetTheme.IsDark = true;
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.scale.value.value.x, Is.EqualTo(1.05f).Within(1e-4f));
         }
     }
 }

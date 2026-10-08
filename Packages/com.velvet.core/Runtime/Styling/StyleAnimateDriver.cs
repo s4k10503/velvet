@@ -63,8 +63,15 @@ namespace Velvet
         public LoopSlot<StyleRotate> Rotation;
         public LoopSlot<StyleScale> Scale;
         public LoopSlot<StyleTranslate> Translation;
-        // What the element's classes give those slots, re-read when the class list changes.
+        // What the element's classes give those slots, re-read when the class list or anything else that decides the
+        // element's rules changes.
         public CascadeSnapshot Cascade;
+        public VisualElement? Element;
+        // The loop's share of the slots it writes, kept current whether or not the loop writes them: the offset in the
+        // element's pixels a bounce lifts it by, and the factor a ping scales it by. A layoutId projection that holds
+        // the slots adds these to its own frame.
+        public Vector2 LiftPx;
+        public float PingFactor = 1f;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -98,6 +105,13 @@ namespace Velvet
         // The slots each driver on the element writes over its loop, by driver.
         private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_held = new();
 
+        // The slots a layoutId projection writes, whose frame the loop's share is added to instead of the loop writing
+        // them. Kept apart from s_held, which stops the loop computing a frame at all.
+        private static readonly ConditionalWeakTable<VisualElement, Dictionary<object, MotionTransitionSlots>> s_yielded = new();
+
+        // Every running loop, so a change to what decides an element's rules can reach the loops it affects.
+        private static readonly List<StyleAnimateBinding> s_loops = new();
+
         // The slots a Motion driver keeps from a loop while it drives them. Framer Motion hands opacity to
         // the browser's own animation engine, whose animations outrank a CSS animation; the transform
         // shorthands it writes as inline style on the main thread, which a CSS animation outranks.
@@ -123,7 +137,11 @@ namespace Velvet
         /// Forgets every hold on an element being torn down or returned to a pool — the backstop for a teardown
         /// that pre-empts a driver's own release, on the terms of <see cref="MotionNativeTransitionGuard.ReleaseAll"/>.
         /// </summary>
-        public static void ForgetHolds(VisualElement element) => s_held.Remove(element);
+        public static void ForgetHolds(VisualElement element)
+        {
+            s_held.Remove(element);
+            s_yielded.Remove(element);
+        }
 
         /// <summary>
         /// Writes the element's running loop over whatever a per-frame driver just wrote or released, unless a
@@ -149,20 +167,78 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Keeps the element's loop off <paramref name="slots"/> until it is called again with
-        /// <see cref="MotionTransitionSlots.None"/>: a layoutId projection writes translate and scale over the
-        /// element's own, and a loop writing beside it would be taken for the element's own by the projection and
-        /// the projection's frame for the loop's by the loop.
+        /// Records the slots a layoutId projection writes on the element until it is called again with
+        /// <see cref="MotionTransitionSlots.None"/>. The loop leaves them unwritten and keeps its share current
+        /// (<see cref="CurrentLiftPx"/>, <see cref="CurrentPingFactor"/>) for the projection to add to its own frame,
+        /// so that neither takes the other's frame for the element's own.
         /// </summary>
         public static void YieldSlots(VisualElement element, object owner, MotionTransitionSlots slots)
         {
-            var held = s_held.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
-            held.Remove(owner);
+            var yielded = s_yielded.GetValue(element, static _ => new Dictionary<object, MotionTransitionSlots>());
+            yielded.Remove(owner);
             if (slots != MotionTransitionSlots.None)
             {
-                held[owner] = slots;
+                yielded[owner] = slots;
             }
         }
+
+        // The offset in the element's pixels a running bounce lifts it by, or zero.
+        internal static Vector2 CurrentLiftPx(VisualElement element)
+            => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Bounce
+                ? binding.LiftPx
+                : Vector2.zero;
+
+        // The factor a running ping scales the element by, or one.
+        internal static float CurrentPingFactor(VisualElement element)
+            => s_running.TryGetValue(element, out var binding) && binding.Spec.Mode == AnimateMode.Ping
+                ? binding.PingFactor
+                : 1f;
+
+        /// <summary>
+        /// Marks the loops on <paramref name="element"/> and beneath it as needing the element's class values read
+        /// again: a rule can match by an ancestor's classes without anything changing on the loop's own element.
+        /// </summary>
+        public static void NotifySubtreeStyleChanged(VisualElement element)
+        {
+            foreach (var binding in s_loops)
+            {
+                if (binding.Element is { } loop && (loop == element || element.Contains(loop)))
+                {
+                    binding.Cascade.Invalidate();
+                }
+            }
+        }
+
+        private static void NotifyAllStyleChanged()
+        {
+            foreach (var binding in s_loops)
+            {
+                binding.Cascade.Invalidate();
+            }
+        }
+
+        // The events that move an element between pseudo-states, which a rule can match on with no class change.
+        private static void RegisterStyleInputs(VisualElement element, StyleAnimateBinding binding)
+        {
+            element.RegisterCallback<PointerOverEvent, StyleAnimateBinding>(OnStyleInput, binding);
+            element.RegisterCallback<PointerOutEvent, StyleAnimateBinding>(OnStyleInput, binding);
+            element.RegisterCallback<FocusInEvent, StyleAnimateBinding>(OnStyleInput, binding);
+            element.RegisterCallback<FocusOutEvent, StyleAnimateBinding>(OnStyleInput, binding);
+            element.RegisterCallback<PointerDownEvent, StyleAnimateBinding>(OnStyleInput, binding);
+            element.RegisterCallback<PointerUpEvent, StyleAnimateBinding>(OnStyleInput, binding);
+        }
+
+        private static void UnregisterStyleInputs(VisualElement element)
+        {
+            element.UnregisterCallback<PointerOverEvent, StyleAnimateBinding>(OnStyleInput);
+            element.UnregisterCallback<PointerOutEvent, StyleAnimateBinding>(OnStyleInput);
+            element.UnregisterCallback<FocusInEvent, StyleAnimateBinding>(OnStyleInput);
+            element.UnregisterCallback<FocusOutEvent, StyleAnimateBinding>(OnStyleInput);
+            element.UnregisterCallback<PointerDownEvent, StyleAnimateBinding>(OnStyleInput);
+            element.UnregisterCallback<PointerUpEvent, StyleAnimateBinding>(OnStyleInput);
+        }
+
+        private static void OnStyleInput(EventBase evt, StyleAnimateBinding binding) => binding.Cascade.Invalidate();
 
         // The element's own translate under a running bounce whose frame sits in the slot: what the bounce moves from,
         // for a layoutId projection that would otherwise take the frame for the element's own. False when the slot
@@ -201,6 +277,14 @@ namespace Velvet
         private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding, MotionTransitionSlots driven)
         {
             var free = GuardedSlots(binding.Spec.Mode);
+            var yielded = MotionTransitionSlots.None;
+            if (s_yielded.TryGetValue(element, out var yields))
+            {
+                foreach (var slots in yields.Values)
+                {
+                    yielded |= slots;
+                }
+            }
             if (s_held.TryGetValue(element, out var held))
             {
                 foreach (var slots in held.Values)
@@ -213,7 +297,7 @@ namespace Velvet
                 return;
             }
             var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-            WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driven);
+            WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driven | yielded, yielded);
         }
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
@@ -238,6 +322,13 @@ namespace Velvet
             }
 
             SeedOwnValues(element, binding);
+            binding.Element = element;
+            RegisterStyleInputs(element, binding);
+            if (s_loops.Count == 0)
+            {
+                VelvetTheme.DarkModeChanged += NotifyAllStyleChanged;
+            }
+            s_loops.Add(binding);
             SyncTransitionSuspension(element, binding);
             ScheduleOrDefer(element, binding);
             s_running.AddOrUpdate(element, binding);
@@ -287,6 +378,13 @@ namespace Velvet
         {
             MotionNativeTransitionGuard.Release(element, binding);
             s_running.Remove(element);
+            UnregisterStyleInputs(element);
+            if (s_loops.Remove(binding) && s_loops.Count == 0)
+            {
+                VelvetTheme.DarkModeChanged -= NotifyAllStyleChanged;
+            }
+            binding.LiftPx = Vector2.zero;
+            binding.PingFactor = 1f;
             binding.Scheduled?.Pause();
             binding.Scheduled = null;
             if (binding.PendingAttach != null)
@@ -436,12 +534,15 @@ namespace Velvet
         // laid-out element); Hue is geometry-independent. Public so tests drive specific phases without the
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
-            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), MotionTransitionSlots.None);
+            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), MotionTransitionSlots.None, MotionTransitionSlots.None);
 
-        // free names the slots no Motion driver is holding against the loop (HoldAgainstLoop).
+        // free names the slots no Motion driver is holding against the loop (HoldAgainstLoop), driven the slots whose
+        // inline value is somebody's frame rather than the element's own, and yielded the ones a layoutId projection
+        // writes.
         private static void WriteFrame(VisualElement element, StyleAnimateBinding binding, float t,
-            MotionTransitionSlots free, MotionTransitionSlots driven)
+            MotionTransitionSlots free, MotionTransitionSlots driven, MotionTransitionSlots yielded)
         {
+            binding.Cascade.BeginFrame();
             switch (binding.Spec.Mode)
             {
                 case AnimateMode.Gradient:
@@ -487,10 +588,10 @@ namespace Velvet
                     WriteRotation(element, binding, driven, t);
                     break;
                 case AnimateMode.Ping:
-                    ApplyPing(element, binding, t, free, driven);
+                    ApplyPing(element, binding, t, free, driven, yielded);
                     break;
                 case AnimateMode.Bounce:
-                    ApplyBounce(element, binding, t, driven);
+                    ApplyBounce(element, binding, t, driven, yielded);
                     break;
             }
         }
@@ -564,26 +665,27 @@ namespace Velvet
         }
 
         private static void ApplyPing(VisualElement element, StyleAnimateBinding binding, float t,
-            MotionTransitionSlots free, MotionTransitionSlots driven)
+            MotionTransitionSlots free, MotionTransitionSlots driven, MotionTransitionSlots yielded)
         {
             var progress = PingProgress(t);
+            var factor = Mathf.LerpUnclamped(1f, PingEndScale, progress);
+            binding.PingFactor = factor;
             if ((free & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None)
             {
                 WriteOpacity(element, binding, Mathf.LerpUnclamped(OwnOpacity(element, binding, driven), 0f, progress));
             }
-            if ((free & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
+            if ((free & ~yielded & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
             {
                 // The keyframes' scale(2) multiplies the element's own `scale` rather than replacing it.
                 var inline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
                 var own = ReadScale(element, binding, inline);
-                var factor = Mathf.LerpUnclamped(1f, PingEndScale, progress);
                 element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
                 binding.Scale.Wrote(element.style.scale);
             }
         }
 
         private static void ApplyBounce(VisualElement element, StyleAnimateBinding binding, float t,
-            MotionTransitionSlots driven)
+            MotionTransitionSlots driven, MotionTransitionSlots yielded)
         {
             var width = element.resolvedStyle.width;
             var height = element.resolvedStyle.height;
@@ -593,13 +695,18 @@ namespace Velvet
             {
                 return;
             }
-            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
-            var own = ReadTranslate(element, binding, translation);
             var turnInline = binding.Rotation.Own(element.style.rotate, Adopts(driven, MotionTransitionSlots.Rotate));
             var scaleInline = binding.Scale.Own(element.style.scale, Adopts(driven, MotionTransitionSlots.Scale));
             var turn = ReadRotationDeg(element, binding, turnInline);
             var scale = ReadScale(element, binding, scaleInline);
             var lift = BounceOffsetPx(BounceLift(t), height, turn, scale.y);
+            binding.LiftPx = lift;
+            if ((yielded & MotionTransitionSlots.Translate) != MotionTransitionSlots.None)
+            {
+                return;
+            }
+            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
+            var own = ReadTranslate(element, binding, translation);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
             element.style.translate = new Translate(new Length(x), new Length(y), own.z);

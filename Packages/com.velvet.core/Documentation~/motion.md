@@ -448,16 +448,17 @@ from 45 degrees, `scale-50 animate-ping` starts at half size and grows to full s
 `translate-y-[10px] animate-bounce` bounces about that offset. The element's own value is what its classes give
 the slot, a named class or an arbitrary one, or a value written into the slot by anything other than the loop or a
 Motion play driving that slot. Class values are re-read whenever the element's class list changes, which is how
-`hover:` and `dark:` variants reach them; a
-rule that matches by pseudo-state or ancestor alone, with no change to the element's own class list, is not seen
-until the next change. A bounce is measured in the element's own pixels, so it moves nothing until the element has
+`hover:` and `dark:` variants reach them, and when something else that decides which rules match the element
+changes: a pointer, focus or press event on it or beneath it, a theme switch, or a class change on an ancestor made
+through a render. A bounce is measured in the element's own pixels, so it moves nothing until the element has
 a laid-out height. The keyframes' `transform` applies beneath the `scale` and `rotate` properties, so a bounce on a
 scaled or turned element is scaled and turned with it. `animate-spin` on an element with an uneven `scale` does
 not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
 while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
 
-While a layoutId move writes an element's translate or scale, a running `animate-bounce` or `animate-ping` leaves
-that slot to the move and carries on from the element's own value when the move ends.
+A layoutId move on an element with a running `animate-bounce` or `animate-ping` composes with it as CSS composes a
+layout animation with a keyframe one: the move writes the element's translate or scale, and the bounce's lift or
+the ping's growth is added to its frame, so the element keeps bouncing or pinging while it moves.
 
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
