@@ -7,7 +7,11 @@ Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs	4
 Packages/com.velvet.core/Runtime/Component/SceneViewDriver.cs	4
 Packages/com.velvet.core/Runtime/Component/V.Mount.cs	1
 Packages/com.velvet.core/Runtime/EngineMember.cs	3
+Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs	1
 Packages/com.velvet.core/Runtime/Hooks/Hooks.cs	3
+Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs	1
+Packages/com.velvet.core/Runtime/Hooks/QueryKey.cs	1
+Packages/com.velvet.core/Runtime/Hooks/QueryStructuralSharing.cs	5
 Packages/com.velvet.core/Runtime/Hooks/StateUpdater.cs	1
 Packages/com.velvet.core/Runtime/Hooks/TransitionStarter.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs	1

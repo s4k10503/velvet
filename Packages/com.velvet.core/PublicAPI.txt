@@ -90,6 +90,10 @@
 [Velvet] ctor Velvet.PointerMoveBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PointerUpBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PortalNode.ctor(): System.Void
+[Velvet] ctor Velvet.QueryClient.ctor(Velvet.QueryClientOptions?): System.Void
+[Velvet] ctor Velvet.QueryClientOptions.ctor(): System.Void
+[Velvet] ctor Velvet.QueryKey.ctor(System.Object?[]): System.Void
+[Velvet] ctor Velvet.QueryOptions`1[T].ctor(Velvet.QueryKey, System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]]): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
 [Velvet] ctor Velvet.RouteActionContext.ctor(): System.Void
@@ -190,6 +194,22 @@
 [Velvet] field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
 [Velvet] field Velvet.PlayTrigger.Mount: Velvet.PlayTrigger
+[Velvet] field Velvet.QueryClientContext.Ref: Velvet.ComponentContext`1[Velvet.QueryClient?]
+[Velvet] field Velvet.QueryProperties.All: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Data: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Error: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.FailureCount: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.FailureReason: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsError: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetching: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsPending: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsStale: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsSuccess: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.None: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Status: Velvet.QueryProperties
+[Velvet] field Velvet.QueryStatus.Error: Velvet.QueryStatus
+[Velvet] field Velvet.QueryStatus.Pending: Velvet.QueryStatus
+[Velvet] field Velvet.QueryStatus.Success: Velvet.QueryStatus
 [Velvet] field Velvet.ResolvedFont.Asset: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.ResolvedFont.HasAsset: System.Boolean
 [Velvet] field Velvet.ResolvedFont.ResidualBold: System.Boolean
@@ -378,6 +398,7 @@
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
 [Velvet] method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] method Velvet.Hooks.UseQuery`1(Velvet.QueryOptions`1[T], Velvet.QueryClient?): Velvet.QueryResult`1[T]
 [Velvet] method Velvet.Hooks.UseReducer`2(System.Func`3[TState, TAction, TState], TState): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseReducer`3(System.Func`3[TState, TAction, TState], TArg, System.Func`2[TArg, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseRef`1(): Velvet.Ref`1[T]
@@ -415,6 +436,13 @@
 [Velvet] method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
+[Velvet] method Velvet.QueryClient.Clear(): System.Void
+[Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): System.Void
+[Velvet] method Velvet.QueryKey.Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.QueryKey.Equals(Velvet.QueryKey?): System.Boolean
+[Velvet] method Velvet.QueryKey.GetHashCode(): System.Int32
+[Velvet] method Velvet.QueryKey.ToString(): System.String
+[Velvet] method Velvet.QueryResult`1[T].Refetch(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
 [Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
 [Velvet] method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
@@ -934,6 +962,33 @@
 [Velvet] property Velvet.PortalNode.Layer: System.Nullable`1[Velvet.UILayer]
 [Velvet] property Velvet.PortalNode.TargetElement: UnityEngine.UIElements.VisualElement?
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
+[Velvet] property Velvet.QueryClient.DefaultGcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClient.DefaultRetry: System.Int32
+[Velvet] property Velvet.QueryClient.DefaultRetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]
+[Velvet] property Velvet.QueryClient.DefaultStaleTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.Clock: System.Func`1[System.TimeSpan]?
+[Velvet] property Velvet.QueryClientOptions.GcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.Retry: System.Int32
+[Velvet] property Velvet.QueryClientOptions.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.QueryClientOptions.StaleTime: System.TimeSpan
+[Velvet] property Velvet.QueryOptions`1[T].GcTime: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.QueryOptions`1[T].NotifyOnChangeProps: System.Nullable`1[Velvet.QueryProperties]
+[Velvet] property Velvet.QueryOptions`1[T].QueryFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]]
+[Velvet] property Velvet.QueryOptions`1[T].QueryKey: Velvet.QueryKey
+[Velvet] property Velvet.QueryOptions`1[T].Retry: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.QueryOptions`1[T].RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.QueryOptions`1[T].StaleTime: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.QueryOptions`1[T].StructuralSharing: System.Func`3[T?, T, T]?
+[Velvet] property Velvet.QueryResult`1[T].Data: T?
+[Velvet] property Velvet.QueryResult`1[T].Error: System.Exception?
+[Velvet] property Velvet.QueryResult`1[T].FailureCount: System.Int32
+[Velvet] property Velvet.QueryResult`1[T].FailureReason: System.Exception?
+[Velvet] property Velvet.QueryResult`1[T].IsError: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsFetching: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsPending: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsStale: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsSuccess: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].Status: Velvet.QueryStatus
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
 [Velvet] property Velvet.RouteActionContext.FormData: System.Object?
@@ -1189,6 +1244,14 @@
 [Velvet] type Velvet.PointerMoveBinding
 [Velvet] type Velvet.PointerUpBinding
 [Velvet] type Velvet.PortalNode
+[Velvet] type Velvet.QueryClient
+[Velvet] type Velvet.QueryClientContext
+[Velvet] type Velvet.QueryClientOptions
+[Velvet] type Velvet.QueryKey
+[Velvet] type Velvet.QueryOptions`1[T]
+[Velvet] type Velvet.QueryProperties
+[Velvet] type Velvet.QueryResult`1[T]
+[Velvet] type Velvet.QueryStatus
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.ResolvedFont
 [Velvet] type Velvet.RouteActionContext
