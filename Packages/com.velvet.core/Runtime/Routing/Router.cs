@@ -226,9 +226,9 @@ namespace Velvet
         /// for <c>UseActionData</c> or its failure as that route's error. A method no form takes commits React
         /// Router's 405 error.
         /// </summary>
-        /// <param name="formData">What the submission sends. A <c>get</c> submission encodes null, an
-        /// <see cref="ISearchParams"/>, a query string or name/value pairs as its query string; any other form data
-        /// commits an error in the navigation, as <c>routing.md</c> describes.</param>
+        /// <param name="formData">What the submission sends. A <c>get</c> submission encodes the body as
+        /// <c>routing.md</c> lists, in order, as its query string; a body that cannot be encoded commits an error in
+        /// the navigation.</param>
         /// <param name="options">How to submit; null takes every default. A null
         /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
         /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
@@ -248,7 +248,7 @@ namespace Velvet
         {
             options ??= DefaultSubmitOptions;
             var action = SubmissionPath(string.IsNullOrEmpty(options.Action) ? null : options.Action, baseRouteIndex);
-            var encodable = RouteQuery.TryEncodeBody(formData, out var query);
+            var encodable = SubmissionBody.TryEncode(formData, out var query);
             var submission = new Submission(
                 string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace,
                 encodable);
@@ -1079,7 +1079,7 @@ namespace Velvet
             internal readonly string Action;
             internal readonly object? FormData;
             internal readonly bool? Replace;
-            // The error for a method no form takes or a get body that cannot be encoded as a query string, committed in place
+            // The error for a method no form takes or a get body that cannot be encoded, committed in place
             // of an action's result. It carries no status.
             internal readonly Exception? Refusal;
 

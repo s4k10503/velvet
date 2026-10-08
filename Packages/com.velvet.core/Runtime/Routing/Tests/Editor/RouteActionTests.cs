@@ -394,13 +394,40 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGetSubmissionOfABodyNoQueryStringEncodes_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
+        public void Given_AGetSubmissionOfAStringRepeatingAKey_When_Submitted_Then_TheQueryKeepsTheBodysOrder()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
 
             // Act
-            Submit(router, new object(), new SubmitOptions { Action = "/items" });
+            Submit(router, "a=1&b=2&a=3", new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&b=2&a=3"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObject_When_Submitted_Then_ItsPublicPropertiesAreTheQueryStringifiedAsJavaScriptDoes()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { q = "lamp", page = 2, all = true, none = (string?)null },
+                new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp&page=2&all=true&none=null"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfASequenceOfNonPairs_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { 1, 2 }, new SubmitOptions { Action = "/items" });
 
             // Assert
             Assert.That(
@@ -415,7 +442,7 @@ namespace Velvet.Tests
             var router = ItemsRouter("/items?q=1", Created);
 
             // Act
-            Submit(router, new object(), new SubmitOptions());
+            Submit(router, new[] { 1, 2 }, new SubmitOptions());
 
             // Assert
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=1"));

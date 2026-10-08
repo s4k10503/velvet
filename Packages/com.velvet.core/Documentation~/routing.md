@@ -188,11 +188,14 @@ in front of the query string, and any other route takes a bare one out, as React
 does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
-  data as the query string. Null, an `ISearchParams`, a string (parsed as `new URLSearchParams(string)`
-  does: one leading `?` dropped, `&`-separated, `+` and percent escapes decoded) and name/value pairs such
-  as a dictionary are encoded. Any other form data is a body React Router cannot encode either: the
-  navigation commits "Unable to encode submission body" as the error of the leaf route and runs no action,
-  to the target a submission with no body would have.
+  data as the query string, in the order the body holds its pairs, as React Router does with
+  `new URLSearchParams(body)`. Null, an `ISearchParams`, a string (one leading `?` dropped, `&`-separated,
+  `+` and percent escapes decoded), a dictionary or a sequence of key/value pairs or two-element lists,
+  and any other object, whose public instance properties stand for a plain object's own enumerable
+  ones, are encoded; a value is stringified as JavaScript's `String` does, so `null` is `"null"`. A
+  sequence with an entry that is no pair is a body React Router cannot encode either: the navigation
+  commits "Unable to encode submission body" as the error of the leaf route and runs no action, to the
+  target a submission with no body would have.
 - `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
   with a path, or the index route when the query string holds a bare `index`. The action receives a
   `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it
