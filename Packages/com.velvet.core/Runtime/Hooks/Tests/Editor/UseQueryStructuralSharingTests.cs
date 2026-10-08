@@ -110,36 +110,34 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AListWithOneChangedRecord_When_Replaced_Then_TheEqualRecordKeepsItsInstanceAndTheChangedOneIsNew()
+        public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew()
         {
             // Arrange
-            var unchanged = new Todo(1, "a");
-            var held = new List<Todo> { unchanged, new(2, "b") };
-            var arrived = new List<Todo> { unchanged, new(2, "B") };
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared, new(2, "b") };
+            var arrived = new List<Todo> { shared, new(2, "B") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), ReferenceEquals(result[1], arrived[1]), ReferenceEquals(result, arrived)),
-                Is.EqualTo((true, true, false)),
-                "A part that did not change keeps the instance the component already compared");
+            Assert.That((ReferenceEquals(result[0], shared), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
+                "A record changed in place of the held one is the new instance");
         }
 
         [Test]
-        public void Given_AnArrayWithOneChangedRecord_When_Replaced_Then_TheEqualRecordKeepsItsInstanceAndTheChangedOneIsNew()
+        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_EveryRecordIsTheNewInstance()
         {
             // Arrange
-            var unchanged = new Todo(1, "a");
-            var held = new[] { unchanged, new Todo(2, "b") };
-            var arrived = new[] { unchanged, new Todo(2, "B") };
+            var held = new[] { new Todo(1, "a"), new Todo(2, "b") };
+            var arrived = new[] { new Todo(1, "a"), new Todo(2, "B") };
 
             // Act
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), ReferenceEquals(result[1], arrived[1]), ReferenceEquals(result, arrived)),
-                Is.EqualTo((true, true, false)));
+            Assert.That((ReferenceEquals(result[0], arrived[0]), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
+                "A record is a class instance, which replaceEqualDeep keeps only as the very instance held");
         }
 
         [Test]
