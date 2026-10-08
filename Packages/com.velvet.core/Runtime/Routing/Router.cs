@@ -248,14 +248,12 @@ namespace Velvet
         {
             options ??= DefaultSubmitOptions;
             var action = SubmissionPath(string.IsNullOrEmpty(options.Action) ? null : options.Action, baseRouteIndex);
-            var encodable = SubmissionBody.TryEncode(formData, out var query);
             var submission = new Submission(
-                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace,
-                encodable);
+                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace);
             var path = action;
             if (submission.Method == "GET" && submission.Refusal == null)
             {
-                path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery(query);
+                path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery(submission.Query);
             }
             // React Router replaces on a mutation submitted to the location it is on, so the entry the form was
             // on is not left under the one it produced.
@@ -1082,8 +1080,10 @@ namespace Velvet
             // The error for a method no form takes or a get body that cannot be encoded, committed in place
             // of an action's result. It carries no status.
             internal readonly Exception? Refusal;
+            // A get's body as its query, encoded only for a get.
+            internal readonly List<KeyValuePair<string, string>> Query = new();
 
-            internal Submission(string method, string action, object? formData, bool? replace, bool encodable)
+            internal Submission(string method, string action, object? formData, bool? replace)
             {
                 Method = method.ToUpperInvariant();
                 FormMethod = method.ToLowerInvariant();
@@ -1094,7 +1094,7 @@ namespace Velvet
                 {
                     Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
                 }
-                else if (Method == "GET" && !encodable)
+                else if (Method == "GET" && !SubmissionBody.TryEncode(formData, out Query))
                 {
                     Refusal = new InvalidOperationException("Unable to encode submission body");
                 }

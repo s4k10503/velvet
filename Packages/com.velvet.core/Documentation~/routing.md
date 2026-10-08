@@ -188,14 +188,17 @@ in front of the query string, and any other route takes a bare one out, as React
 does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
-  data as the query string, in the order the body holds its pairs, as React Router does with
-  `new URLSearchParams(body)`. Null, an `ISearchParams`, a string (one leading `?` dropped, `&`-separated,
-  `+` and percent escapes decoded), a dictionary or a sequence of key/value pairs or two-element lists,
-  and any other object, whose public instance properties stand for a plain object's own enumerable
-  ones, are encoded; a value is stringified as JavaScript's `String` does, so `null` is `"null"`. A
-  sequence with an entry that is no pair is a body React Router cannot encode either: the navigation
-  commits "Unable to encode submission body" as the error of the leaf route and runs no action, to the
-  target a submission with no body would have.
+  data as the query string, which only a `get` encodes. The body is read as React Router reads it with
+  `new URLSearchParams(body)`: null, an `ISearchParams`, a string (one leading `?` dropped,
+  `&`-separated, `+` and percent escapes decoded), a dictionary, a sequence of key/value pairs, tuples
+  or two-element lists, and any other object, whose members it declares itself stand for a plain object's
+  own enumerable ones, in declaration order. A value is stringified as JavaScript's `String` does: `null`
+  is `"null"`, a number has no culture, and a list is its elements joined by `,`. Strings, dictionaries
+  and pair sequences keep the order they were written in; an `ISearchParams` groups the values of a
+  repeated key, as its interface does. The serialiser is the one every Velvet query uses, so a space
+  is `%20`. A body that throws while it is read, or a sequence with an entry that is no pair, is one React
+  Router cannot encode either: the navigation commits "Unable to encode submission body" as the error of
+  the leaf route and runs no action, to the action's path with its query.
 - `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
   with a path, or the index route when the query string holds a bare `index`. The action receives a
   `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it

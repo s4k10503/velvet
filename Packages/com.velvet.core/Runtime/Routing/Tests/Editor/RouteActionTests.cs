@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -418,6 +419,176 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp&page=2&all=true&none=null"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAKeyValuePairSequence_When_Submitted_Then_ThePairsAreTheQueryInOrder()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new List<KeyValuePair<string, string>> { new("b", "1"), new("a", "2"), new("b", "3") }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?b=1&a=2&b=3"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAListOfTwoElementLists_When_Submitted_Then_ThePairsAreTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { new[] { "q", "lamp" } }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfATuple_When_Submitted_Then_ItIsAPairOfTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { ("q", "lamp") }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAPrimitive_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, 5, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?5="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfNull_When_Submitted_Then_TheQueryIsEmpty()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, null, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAListMember_When_Submitted_Then_TheListIsItsElementsJoinedByCommas()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { tags = new[] { "a", "b" } }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?tags=a%2Cb"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfASearchParams_When_Submitted_Then_ItsRepeatedKeysAreGrouped()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var query = new SearchParams();
+            query.Append("a", "1");
+            query.Append("b", "2");
+            query.Append("a", "3");
+
+            // Act
+            Submit(router, query, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&a=3&b=2"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfADoubleUnderACommaCulture_When_Submitted_Then_TheNumberHasNoCulture()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var culture = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+
+            // Act
+            try
+            {
+                Submit(router, new { price = 1.5 }, new SubmitOptions { Action = "/items" });
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = culture;
+            }
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?price=1.5"));
+        }
+
+        [TestCase(-0.0, "0")]
+        [TestCase(1e21, "1e%2B21")]
+        [TestCase(1e-7, "1e-7")]
+        [TestCase(123456789012345680000.0, "123456789012345680000")]
+        public void Given_AGetSubmissionOfADoubleMember_When_Submitted_Then_ItIsWrittenAsJavaScriptWritesIt(double value, string written)
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { n = value }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?n=" + written));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionWhoseMemberThrows_When_Submitted_Then_ItCommitsTheEncodingError()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new ThrowingBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo("Unable to encode submission body"));
+        }
+
+        [Test]
+        public void Given_APostOfAOneShotSequence_When_Submitted_Then_ItIsNotEnumerated()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var reads = 0;
+            IEnumerable<int> OneShot()
+            {
+                reads++;
+                yield return 1;
+            }
+
+            // Act
+            Submit(router, OneShot(), PostToItems);
+
+            // Assert
+            Assert.That(reads, Is.EqualTo(0));
+        }
+
+        private sealed class ThrowingBody
+        {
+            public string Name => throw new InvalidOperationException();
         }
 
         [Test]
