@@ -161,10 +161,10 @@ namespace Velvet
 
             // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
             // drain wave instead of the live store.Current. An ancestor on the immediate tier and a
-            // descendant on the delayed tier (separated by up to DelayedTierDelayMs) therefore observe the SAME
-            // store value even if the store mutates between their tier drains; the mutation re-schedules every
-            // reader, and that follow-up render lands on the next immediate drain, which re-pins to the now-
-            // current snapshot so readers converge. Falls back to store.Current
+            // descendant on the delayed tier therefore observe the SAME store value even if the store mutates
+            // between their tier drains; the mutation re-schedules each reader whose selection changed, and a
+            // follow-up render on the immediate tier opens a fresh wave that re-pins to the now-current
+            // snapshot so readers converge. Falls back to store.Current
             // outside a reconcile context (e.g. a fiber not yet attached to a Reconciler).
             var snapshot = PinStoreSnapshot(fiber, store);
 

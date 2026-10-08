@@ -16,11 +16,10 @@ namespace Velvet.Tests
     /// <item>Unmount disposes the store subscription, so later store changes no longer reach the component.</item>
     /// <item>Re-mounting establishes a fresh subscription.</item>
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
-    /// <item>Every reader of the same store within one batch drain wave observes the SAME snapshot, even when an
-    /// ancestor lands on the immediate tier (Normal lane, this frame) and a descendant on the delayed tier
-    /// (Transition lane, +DelayedTierDelayMs) and the store mutates between their tier drains — no tearing within a
-    /// commit — and both converge to the latest snapshot once the mutation's follow-up render reaches the next
-    /// immediate drain.</item>
+    /// <item>Every reader of the same store within one batch drain wave observes the SAME snapshot. When an
+    /// ancestor lands on the immediate tier (Normal lane) and a descendant on the delayed tier (Transition lane)
+    /// and the store mutates between their tier drains, the delayed drain commits the mutation's follow-up
+    /// renders first, so both readers commit the latest snapshot.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -203,42 +202,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AncestorImmediateAndDescendantDelayed_When_StoreMutatesBetweenDrains_Then_BothObserveSameSnapshot()
+        public void Given_AncestorImmediateAndDescendantDelayed_When_StoreMutatesBetweenDrains_Then_TheDelayedDrainCommitsTheMutationToBoth()
         {
-            // Arrange — ancestor and descendant both read the same store value.
-            using var store = new TestCounterStore(initial: 0);
-            s_store = store;
-            using var mounted = MountAncestorDescendant();
-            Assume.That((s_ancestorValue, s_descendantValue), Is.EqualTo((0, 0)),
-                "Precondition: both read the initial snapshot on mount");
-            Assume.That(s_ancestorFiber, Is.Not.Null);
-            Assume.That(s_descendantFiber, Is.Not.Null);
-
-            // Ancestor re-renders on the Normal lane (immediate tier); descendant on the Transition lane
-            // (delayed tier). They now sit on different tiers separated by DelayedTierDelayMs.
-            s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-
-            // Act — the immediate tier commits the ancestor; the store then mutates inside the window before
-            // the delayed tier commits the descendant.
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            var ancestorAfterImmediate = s_ancestorValue;
-            store.SetValue(1);
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-
-            // Assert — the descendant observes the same snapshot the ancestor committed in this wave, not the
-            // newer live store.Current. Without the tearing guard the descendant reads 1 while the ancestor
-            // committed 0 (torn for up to DelayedTierDelayMs).
-            Assert.AreEqual(ancestorAfterImmediate, s_descendantValue,
-                "The delayed-tier descendant observes the same store snapshot the immediate-tier ancestor committed");
-            Assert.AreEqual(0, s_descendantValue,
-                "Both readers stay pinned to the snapshot of the wave the immediate drain opened");
-        }
-
-        [Test]
-        public void Given_StoreMutatedMidWave_When_NextImmediateDrains_Then_BothConvergeToLatestSnapshot()
-        {
-            // Arrange
+            // Arrange — the immediate drain pins the old snapshot for the wave a delayed drain would continue,
+            // and the mutation then re-schedules both readers on the immediate tier.
             using var store = new TestCounterStore(initial: 0);
             s_store = store;
             using var mounted = MountAncestorDescendant();
@@ -246,18 +213,13 @@ namespace Velvet.Tests
             s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             store.SetValue(1);
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
-            Assume.That((s_ancestorValue, s_descendantValue), Is.EqualTo((0, 0)),
-                "Precondition: this wave stayed pinned to the old snapshot");
 
-            // Act — the mutation re-scheduled both readers; the next immediate drain opens a fresh wave that
-            // re-pins to the now-current snapshot.
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            // Act
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual((1, 1), (s_ancestorValue, s_descendantValue),
-                "After the mutation's follow-up render, both readers converge to the latest snapshot");
+            Assert.That((s_ancestorValue, s_descendantValue), Is.EqualTo((1, 1)),
+                "The delayed drain commits the mutation's follow-up renders in a fresh wave before its own queue");
         }
 
         private sealed record PairState(int Number, string Text);

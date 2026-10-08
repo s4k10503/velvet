@@ -12,8 +12,6 @@ namespace Velvet
     // hook-slot commit in FiberHookCommit and committed-tree pooling in FiberTreeReturn; this class drives it.
     internal static class FiberWorkLoop
     {
-        private const int DelayedTierDelayMs = 100;
-
         // The FlushState invocation at which a continuously-pending Transition lane is promoted
         // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
         private const int TransitionStarvationThreshold = 30;
@@ -221,10 +219,9 @@ namespace Velvet
 
         // Routes the fiber's flush through the tree-wide FiberBatchScheduler so concurrent
         // dirty fibers sharing one ReconcilerContext coalesce into a single frame-boundary
-        // drain. Normal / Urgent enqueue on the next-frame tier; Transition enqueues on the
-        // delayed tier (kept at DelayedTierDelayMs). The per-fiber lane queue is still drained
-        // one lane per FlushState inside the batch, preserving priority ordering and the
-        // delayed-tier delay.
+        // drain. Normal / Urgent enqueue on the immediate tier; Transition enqueues on the
+        // delayed tier. The per-fiber lane queue is still drained one lane per FlushState
+        // inside the batch, preserving priority ordering.
         internal static void ScheduleFlush(ComponentFiber fiber, FiberUpdatePriority priority)
         {
             var scheduler = fiber.Reconciler?.Context.BatchScheduler;
@@ -242,7 +239,7 @@ namespace Velvet
             }
             else
             {
-                scheduler.ScheduleDelayed(fiber, DelayedTierDelayMs);
+                scheduler.ScheduleDelayed(fiber);
             }
         }
 

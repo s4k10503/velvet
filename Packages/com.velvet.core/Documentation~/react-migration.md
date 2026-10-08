@@ -49,6 +49,9 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 > - `UseEffect` runs **asynchronously after paint** (at the next frame boundary). Network requests, subscriptions, and heavy work belong here
 > Note that writing heavy work in `UseLayoutEffect` blocks the frame
 
+> **Note — When Transition-lane work renders**  
+> An update `startTransition` marks and a `UseDeferredValue` derivation render at the next frame boundary, with no fixed delay, as in React. Normal- and Urgent-lane work still queued at that point commits first, in the same frame. The synchronous flush at the end of a discrete event handler commits only those lanes, so a transition the handler started renders at the next frame boundary rather than inside the handler's flush. A transition a Transition-lane render requests renders at the frame boundary after it.
+
 > **Note — `UseContext` live propagation (React parity)**  
 > Like React, Velvet's `UseContext` automatically re-renders consumers when the Provider's value changes.  
 > In a sub-tree under a masking inner Provider, the masked consumer is still re-scheduled and re-rendered, but it live-reads the same value from the context cursor, so its output is identical and the reconciler collapses it to a no-op. Velvet does not detect masking (that would be a pure optimization); the observable behavior matches React, which likewise re-renders consumers across `React.memo`.  

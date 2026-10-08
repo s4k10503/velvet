@@ -8,11 +8,12 @@ namespace Velvet
     // single frame-boundary flush. A single event handler that calls
     // setState on N different fibers commits in one reconcile pass with no intermediate render between
     // the updates, instead of scheduling N independent IVisualElementScheduler callbacks.
-    // Two tiers exist because the Transition lane intentionally defers its flush by
-    // DelayedTierDelayMs while Normal / Urgent flush on the next frame. Each tier registers exactly
+    // Two tiers exist so the Transition lane renders behind Normal / Urgent work: both register for the
+    // next frame boundary, and the delayed drain commits the immediate tier's queue before its own (see
+    // DrainDelayed). Each tier registers exactly
     // one schedule.Execute callback per pending batch (guarded by a flag) and drains its whole
     // set in one pass. The per-fiber lane queue is still popped one lane per FiberWorkLoop.FlushState
-    // call inside the drain, so lane priority ordering, starvation promotion, and the delayed-tier delay are
+    // call inside the drain, so lane priority ordering and starvation promotion are
     // preserved — only the scheduler-callback count collapses to one per tier.
     internal sealed class FiberBatchScheduler
     {
@@ -147,24 +148,19 @@ namespace Velvet
             _anchor.schedule.Execute(DrainImmediate);
         }
 
-        // Enqueues fiber for a batched flush deferred by delayMs
-        // (Transition priority) and registers the single shared delayed drain callback if not
-        // already pending.
-        // Intentional: this is fixed-delay deferral — each scheduled delayed drain fires
-        // delayMs after it was scheduled. A fiber that re-defers itself from inside a
-        // delayed drain therefore pushes its next cycle a further delayMs out; this is the
-        // expected behaviour of repeated deferral and affects only when the work runs (latency), never
-        // correctness. Multiple fibers within one pending window coalesce into a single drain via
-        // _delayedScheduled and do NOT accumulate. Anchoring to a fixed base time instead would change
-        // the deferral semantics, so the simple per-schedule delay is kept.
-        internal void ScheduleDelayed(ComponentFiber fiber, int delayMs)
+        // Registered with no delay of its own: what keeps this tier behind the immediate one is the order
+        // DrainDelayed drains them in. A fiber that re-defers from inside a delayed drain arms a fresh
+        // callback, which has to land on the panel's next tick rather than the one already running, or a
+        // render that re-requests its own transition every pass would never yield the frame —
+        // TransitionFrameSchedulingTests holds that.
+        internal void ScheduleDelayed(ComponentFiber fiber)
         {
             if (fiber?.MountPoint == null) return;
             if (_delayedSet.Add(fiber)) _delayedOrder.Add(fiber);
             if (_delayedScheduled || _anchor == null) return;
             _delayedScheduled = true;
             ScheduledCallbackCount++;
-            _anchor.schedule.Execute(DrainDelayed).ExecuteLater(delayMs);
+            _anchor.schedule.Execute(DrainDelayed);
         }
 
         private void DrainImmediate()
@@ -250,24 +246,29 @@ namespace Velvet
 
         internal void DrainDelayed()
         {
+            // Both tiers register for the same frame boundary, so the immediate queue is drained here rather
+            // than trusting the panel to run its callback first. Ahead of clearing _delayedScheduled: a
+            // Transition lane that pass re-enrols then joins this drain instead of arming a callback of its
+            // own, and DrainImmediate's hand-off makes this drain continue the wave it opened.
+            if (_immediateOrder.Count > 0)
+            {
+                DrainImmediate();
+            }
             _delayedScheduled = false;
             // Reuse the immediate drain's pins ONLY when continuing its wave; a SOLO delayed drain (no immediate
             // drain pinned a snapshot this cycle) opens a fresh wave so it reads the current store value rather
             // than a stale pin retained from a prior wave.
             var continuesImmediateWave = _delayedContinuesWave;
             _delayedContinuesWave = false;
-            // Immediate-tier work that PRE-DATES this drain belongs to the next frame callback (its own
-            // wave); only work this drain's commits spawn is owed the setState-in-commit guarantee, so
-            // the boundary pass below is gated on the monotonic intake marker (never on a net count,
-            // which the drain's own removals or a dedup onto an already-queued fiber would mask).
+            // Only work this drain's commits spawn is owed the setState-in-commit guarantee, so the boundary
+            // pass below is gated on the monotonic intake marker (never on a net count, which the drain's
+            // own removals or a dedup onto an already-queued fiber would mask).
             _immediateWorkArrivedMidDrain = false;
             Drain(_delayedOrder, _delayedSet, resetWave: !continuesImmediateWave);
             // A commit-phase write during a DELAYED-tier commit enqueues on the immediate tier; the
             // setState-in-commit guarantee (the follow-up render commits before this frame callback
             // yields) is tier-agnostic, so drain it now rather than leaving a one-frame slot/UI
-            // desync for the next immediate callback to converge. (When new and pre-dated work mixed
-            // in the window, the boundary pass carries both — the write's immediacy outranks holding
-            // unrelated work back for one frame.)
+            // desync for the next immediate callback to converge.
             if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
             {
                 DrainImmediate();
