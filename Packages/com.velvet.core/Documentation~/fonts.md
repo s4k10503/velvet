@@ -110,10 +110,12 @@ stylesheet.
 
 A weight or italic class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
-The family is the one named by the nearest ancestor carrying a `font-<name>` class; an ancestor that has
-only a weight class names none. `DefaultFamily` applies only when no ancestor names a family, so a
-`font-sans` root does not need `sans` registered as the default for `font-bold` below it to select
-`sans`'s `Bold` entry. `InheritedFontFamilyPanelTests` pins this.
+The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
+an ancestor that has only a weight class names none. `DefaultFamily` applies when no such ancestor
+exists. A root whose `font-<name>` class Velvet did not render (a portal target, layer root or
+world-space panel root, or the root of another `V.Mount`) is not seen, so under one register the same
+family as the default as well, or `font-bold` below it selects the default family's `Bold` entry.
+`InheritedFontFamilyPanelTests` pins the inheritance.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
 [Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.

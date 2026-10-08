@@ -168,6 +168,36 @@ namespace Velvet.Tests
             Assert.That(TargetAsset(), Is.SameAs(_serifBold));
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves the default family everywhere; this pins that the
+        // label leaves the former family once the container stops naming it.
+        [Test]
+        public void Given_ABoldLabelInAFamilyContainer_When_TheContainerDropsItsFamilyClass_Then_TheLabelFallsBackToTheDefaultFamily()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(className: "font-serif", children: new[] { Target("font-bold") }));
+
+            // Act
+            _mounted.Render(V.Div(children: new[] { Target("font-bold") }));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_sansBold));
+        }
+
+        // GREEN_ON_BASE(characterization): the base resolves the default family everywhere; this pins that the
+        // label leaves the former family once the container stops naming it.
+        [Test]
+        public void Given_ABoldLabelInAFamilyContainer_When_TheContainerSwapsItsFamilyForAWeight_Then_TheLabelFallsBackToTheDefaultFamily()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Div(className: "font-serif", children: new[] { Target("font-bold") }));
+
+            // Act
+            _mounted.Render(V.Div(className: "font-normal", children: new[] { Target("font-bold") }));
+
+            // Assert
+            Assert.That(TargetAsset(), Is.SameAs(_sansBold));
+        }
+
         // GREEN_ON_BASE(characterization): the family a label names itself still wins over an ancestor's.
         [Test]
         public void Given_ALabelNamingItsOwnFamily_When_MountedInAFamilyContainer_Then_ItsOwnFamilyDecides()

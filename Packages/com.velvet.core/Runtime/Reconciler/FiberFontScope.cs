@@ -96,8 +96,10 @@ namespace Velvet
             }
         }
 
-        // Re-resolves each queued inheritor against the family it now inherits. An inheritor with no parent
-        // yet stays queued: a parked pass reaches this boundary with elements it has not placed yet.
+        // Re-resolves each queued inheritor against the family it now inherits. An inheritor stays queued
+        // until its parent chain ends at an element a panel holds: a parked pass reaches this boundary with
+        // subtrees it has created and not yet placed, and a chain ending at an unplaced ancestor says
+        // nothing about the family that ancestor will be given.
         internal void Drain()
         {
             if (_pending.Count != 0)
@@ -113,11 +115,6 @@ namespace Velvet
                 return true;
             }
 
-            if (element.parent == null)
-            {
-                return false;
-            }
-
             var family = InheritedFamily(element);
             if (family != entry.Family)
             {
@@ -125,7 +122,18 @@ namespace Velvet
                 Inheritors[element] = (entry.Intent, family);
             }
 
-            return true;
+            return IsPlaced(element);
+        }
+
+        private static bool IsPlaced(VisualElement element)
+        {
+            var top = element;
+            while (top.parent != null)
+            {
+                top = top.parent;
+            }
+
+            return top.panel != null;
         }
     }
 }
