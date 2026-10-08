@@ -856,9 +856,9 @@ namespace Velvet
             var catchesBeforeTheRender = context.NextCaughtErrorSequence;
             // The render below is settled as a subsuming one is (SubsumeFiberIntoThisPass), or the boundary's re-walk
             // finds the fiber still dirty and renders it a second time for work this render already did. Two fibers
-            // are left to that re-walk instead. A wrapper-mounted one commits through its own flush, which the
-            // settle would retire. One holding a transition's work would have it discharged ahead of a render that
-            // can suspend again, which can clear isPending while the content it waits on is still off screen.
+            // keep the unsettled path. A wrapper-mounted one is excluded conservatively. One holding a transition's
+            // work would have it discharged ahead of a render that can suspend again, which can clear isPending
+            // while the content it waits on is still off screen.
             var settles = fiber.IsInlineMounted && fiber.EnrolledTransitionSlots is not { Count: > 0 };
             if (settles) fiber.OpenSubsumedRenderWindow();
             bool retainedOutput;
