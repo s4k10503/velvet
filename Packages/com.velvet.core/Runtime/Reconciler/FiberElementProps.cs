@@ -180,7 +180,8 @@ namespace Velvet
         ScrollView.TouchScrollBehavior? TouchScrollBehavior = null);
 
     /// <summary>
-    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly and isDelayed.
+    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly, isDelayed, multiline,
+    /// keyboardType and autoCorrection.
     /// A null member is undeclared: <see cref="FiberPropApplier.ApplyTextField"/> leaves a member no render
     /// has declared untouched, and restores what the element was constructed with once a render that did
     /// declare one drops it. An empty <see cref="Placeholder"/> is a declared empty placeholder.
@@ -190,7 +191,20 @@ namespace Velvet
         string? Placeholder = null,
         int? MaxLength = null,
         bool? IsReadOnly = null,
-        bool? IsDelayed = null);
+        bool? IsDelayed = null)
+    {
+        // Init-only rather than positional: a positional member would change the constructor and the
+        // Deconstruct that existing callers bind to.
+
+        /// <summary>TextField.multiline (HTML <c>&lt;textarea&gt;</c>).</summary>
+        public bool? Multiline { get; init; }
+
+        /// <summary>TextField.keyboardType (HTML <c>inputmode</c>).</summary>
+        public TouchScreenKeyboardType? KeyboardType { get; init; }
+
+        /// <summary>TextField.autoCorrection (HTML <c>autocorrect</c>).</summary>
+        public bool? AutoCorrection { get; init; }
+    }
 
     /// <summary>List of choices for DropdownField / RadioButtonGroup.</summary>
     public sealed record ChoicesSettings(

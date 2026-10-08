@@ -563,8 +563,9 @@ namespace Velvet
         /// Creates a TextField.
         /// </summary>
         /// <remarks>
-        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
-        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/>,
+        /// <paramref name="isDelayed"/>, <paramref name="multiline"/>, <paramref name="keyboardType"/> and
+        /// <paramref name="autoCorrection"/> are undeclared when null rather than reset to a default;
         /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
         /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
@@ -585,6 +586,9 @@ namespace Velvet
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
+        /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
+        /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
+        /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -607,13 +611,17 @@ namespace Velvet
             string? placeholder = null,
             int? maxLength = null,
             bool? isReadOnly = null,
-            bool? isDelayed = null)
+            bool? isDelayed = null,
+            bool? multiline = null,
+            TouchScreenKeyboardType? keyboardType = null,
+            bool? autoCorrection = null)
         {
             VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
-                                    || isReadOnly.HasValue || isDelayed.HasValue;
+                                    || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
+                                    || keyboardType.HasValue || autoCorrection.HasValue;
 
             FiberElementProps? props = null;
             if (value != null || label != null || declaresTextField || enabled.HasValue)
@@ -624,6 +632,11 @@ namespace Velvet
                 props.Enabled = enabled;
                 props.TextField = declaresTextField
                     ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
+                    {
+                        Multiline = multiline,
+                        KeyboardType = keyboardType,
+                        AutoCorrection = autoCorrection,
+                    }
                     : null;
             }
             props = WithAttributes(props, data, aria);

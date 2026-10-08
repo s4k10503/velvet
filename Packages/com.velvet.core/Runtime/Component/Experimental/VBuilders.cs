@@ -274,6 +274,15 @@ namespace Velvet.Experimental
         /// and on a later render taking the flag off.</summary>
         public bool? IsDelayed { get; set; }
 
+        /// <summary>When true, the field is multi-line.</summary>
+        public bool? Multiline { get; set; }
+
+        /// <summary>Written to the field's keyboardType (HTML <c>inputmode</c>).</summary>
+        public UnityEngine.TouchScreenKeyboardType? KeyboardType { get; set; }
+
+        /// <summary>Written to the field's autoCorrection (HTML <c>autocorrect</c>).</summary>
+        public bool? AutoCorrection { get; set; }
+
         /// <summary>When false, disables user input.</summary>
         public bool? Enabled { get; set; }
 
@@ -284,7 +293,8 @@ namespace Velvet.Experimental
         public override VNode Build() =>
             V.TextField(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
                 label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
-                isReadOnly: IsReadOnly, isDelayed: IsDelayed, enabled: Enabled);
+                isReadOnly: IsReadOnly, isDelayed: IsDelayed, multiline: Multiline, keyboardType: KeyboardType,
+                autoCorrection: AutoCorrection, enabled: Enabled);
     }
 
     /// <summary>
