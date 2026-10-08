@@ -190,6 +190,13 @@ namespace Velvet
                 asset = uprightAsset;
             }
 
+            // An upright request over a family that holds only italic faces takes the italic one, as CSS
+            // does when no face of the requested style exists.
+            if (asset == null && !italic && TryGetAsset(entry.italic, entry.italicAddress, out var onlyItalicAsset))
+            {
+                asset = onlyItalicAsset;
+            }
+
             if (asset == null)
             {
                 return fallback;

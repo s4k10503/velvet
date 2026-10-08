@@ -42,7 +42,8 @@ intent and asks `VelvetFonts.Resolve`:
    weight; for a request from 400 to 500, the lightest weight from the request up to 500, then the
    heaviest below the request, then the lightest above 500; under 400, the heaviest at or below the
    request, then the lightest above; over 500, the lightest at or above the request, then the
-   heaviest below. Only the part the asset can't satisfy is synthesized through
+   heaviest below. An upright request over a family whose entries all hold only italic faces takes an
+   italic face, as CSS does when no face of the requested style exists. Only the part the asset can't satisfy is synthesized through
    `-unity-font-style`: bold for a request of 600 or more on a face under 600, and italic when no
    italic face is available.
 2. **No family / no asset** → the same synthesis over the default face: weight `>= 600` renders
