@@ -129,13 +129,8 @@ namespace Velvet
             }
 
             var resolved = textElement.resolvedStyle;
-            var frame = horizontal
-                ? resolved.paddingLeft + resolved.paddingRight + resolved.borderLeftWidth + resolved.borderRightWidth
-                : resolved.paddingTop + resolved.paddingBottom + resolved.borderTopWidth + resolved.borderBottomWidth;
-            var crossContent = horizontal
-                ? 0f
-                : resolved.width - resolved.paddingLeft - resolved.paddingRight
-                    - resolved.borderLeftWidth - resolved.borderRightWidth;
+            var frame = FrameInsets(resolved, horizontal);
+            var crossContent = CrossContentWidth(resolved, horizontal);
             if (!horizontal && (float.IsNaN(crossContent) || crossContent <= 0f))
             {
                 // No width to wrap against yet; the geometry event that supplies one re-enters here.
@@ -144,15 +139,9 @@ namespace Velvet
             }
 
             var parentContent = horizontal ? parent.contentRect.width : parent.contentRect.height;
-            var specified = ResolveLength(
-                horizontal ? textElement.style.width : textElement.style.height,
-                horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
-            var maximum = ResolveLength(
-                horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
-                horizontal ? _maxWidth : _maxHeight, parentContent);
-            var signature = ComputeSignature(
-                horizontal, text, resolved.fontSize, resolved.whiteSpace, frame, crossContent,
-                resolved.flexShrink > 0f, specified, maximum);
+            var specified = SpecifiedLength(textElement, horizontal, parentContent);
+            var maximum = MaximumLength(textElement, horizontal, parentContent);
+            var signature = ComputeSignature(horizontal, text, resolved, crossContent, specified, maximum);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -166,11 +155,7 @@ namespace Velvet
                 return;
             }
 
-            var contentMinimum = horizontal
-                ? MeasureMinContentWidth(textElement, text, resolved.whiteSpace)
-                : textElement.MeasureTextSize(
-                    text, crossContent, VisualElement.MeasureMode.Exactly,
-                    float.NaN, VisualElement.MeasureMode.Undefined).y;
+            var contentMinimum = MeasureContentMinimum(textElement, horizontal, text, resolved.whiteSpace, crossContent);
             if (contentMinimum <= 0f || float.IsNaN(contentMinimum))
             {
                 // The font has not resolved yet; recording the signature would early-out the valid
@@ -178,7 +163,43 @@ namespace Velvet
                 return;
             }
 
-            var value = Mathf.Ceil(contentMinimum) + frame;
+            Write(textElement, horizontal, CapMinimum(Mathf.Ceil(contentMinimum) + frame, specified, maximum));
+            _lastSignature = signature;
+            _hasSignature = true;
+        }
+
+        private static float FrameInsets(IResolvedStyle resolved, bool horizontal)
+            => horizontal
+                ? resolved.paddingLeft + resolved.paddingRight + resolved.borderLeftWidth + resolved.borderRightWidth
+                : resolved.paddingTop + resolved.paddingBottom + resolved.borderTopWidth + resolved.borderBottomWidth;
+
+        // Zero on a row, where the cross axis is not wrapped against.
+        private static float CrossContentWidth(IResolvedStyle resolved, bool horizontal)
+            => horizontal
+                ? 0f
+                : resolved.width - resolved.paddingLeft - resolved.paddingRight
+                    - resolved.borderLeftWidth - resolved.borderRightWidth;
+
+        private float? SpecifiedLength(TextElement textElement, bool horizontal, float parentContent)
+            => ResolveLength(
+                horizontal ? textElement.style.width : textElement.style.height,
+                horizontal ? _specifiedWidth : _specifiedHeight, parentContent);
+
+        private float? MaximumLength(TextElement textElement, bool horizontal, float parentContent)
+            => ResolveLength(
+                horizontal ? textElement.style.maxWidth : textElement.style.maxHeight,
+                horizontal ? _maxWidth : _maxHeight, parentContent);
+
+        private static float MeasureContentMinimum(
+            TextElement textElement, bool horizontal, string text, WhiteSpace whiteSpace, float crossContent)
+            => horizontal
+                ? MeasureMinContentWidth(textElement, text, whiteSpace)
+                : textElement.MeasureTextSize(
+                    text, crossContent, VisualElement.MeasureMode.Exactly,
+                    float.NaN, VisualElement.MeasureMode.Undefined).y;
+
+        private static float CapMinimum(float value, float? specified, float? maximum)
+        {
             if (specified.HasValue)
             {
                 value = Mathf.Min(value, specified.Value);
@@ -187,9 +208,7 @@ namespace Velvet
             {
                 value = Mathf.Min(value, maximum.Value);
             }
-            Write(textElement, horizontal, Mathf.Max(0f, value));
-            _lastSignature = signature;
-            _hasSignature = true;
+            return Mathf.Max(0f, value);
         }
 
         // An absolutely positioned or hidden element is not a flex item, so the automatic minimum does not
@@ -427,19 +446,19 @@ namespace Velvet
         // The text in full rather than its length, which would miss a same-length swap. The white-space is a
         // term because a variant can switch the wrap mode without moving anything else here.
         private static int ComputeSignature(
-            bool horizontal, string text, float fontSize, WhiteSpace whiteSpace, float frame, float crossContent,
-            bool canShrink, float? specified, float? maximum)
+            bool horizontal, string text, IResolvedStyle resolved, float crossContent,
+            float? specified, float? maximum)
         {
             unchecked
             {
                 var hash = 17;
                 hash = hash * 31 + (horizontal ? 1 : 0);
                 hash = hash * 31 + text.GetHashCode();
-                hash = hash * 31 + fontSize.GetHashCode();
-                hash = hash * 31 + (int)whiteSpace;
-                hash = hash * 31 + Mathf.RoundToInt(frame);
+                hash = hash * 31 + resolved.fontSize.GetHashCode();
+                hash = hash * 31 + (int)resolved.whiteSpace;
+                hash = hash * 31 + Mathf.RoundToInt(FrameInsets(resolved, horizontal));
                 hash = hash * 31 + Mathf.RoundToInt(crossContent);
-                hash = hash * 31 + (canShrink ? 1 : 0);
+                hash = hash * 31 + (resolved.flexShrink > 0f ? 1 : 0);
                 hash = hash * 31 + (specified.HasValue ? Mathf.RoundToInt(specified.Value) + 1 : 0);
                 hash = hash * 31 + (maximum.HasValue ? Mathf.RoundToInt(maximum.Value) + 1 : 0);
                 return hash;

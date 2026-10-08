@@ -19,13 +19,24 @@ namespace Velvet
         private const string NoBreakAfter = "([{（［｛〔〈《「『【〖〘〝";
 
         // Characters that break against any neighbour (UAX #14 class ID, minus the punctuation sets above).
+        private static readonly (int First, int Last)[] IdeographicRanges =
+        {
+            (0x2E80, 0x303F), (0x3041, 0x33FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xA000, 0xA4CF),
+            (0xAC00, 0xD7A3), (0xF900, 0xFAFF), (0xFE30, 0xFE4F), (0xFF01, 0xFF60), (0xFFE0, 0xFFE6),
+            (0x20000, 0x3FFFD),
+        };
+
         private static bool IsIdeographic(int cp)
-            => (cp >= 0x2E80 && cp <= 0x303F) || (cp >= 0x3041 && cp <= 0x33FF)
-                || (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF)
-                || (cp >= 0xA000 && cp <= 0xA4CF) || (cp >= 0xAC00 && cp <= 0xD7A3)
-                || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE4F)
-                || (cp >= 0xFF01 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6)
-                || (cp >= 0x20000 && cp <= 0x3FFFD);
+        {
+            foreach (var (first, last) in IdeographicRanges)
+            {
+                if (cp >= first && cp <= last)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         private static bool IsHyphen(int cp) => cp == '-' || cp == 0x2010 || cp == 0x2013;
 
