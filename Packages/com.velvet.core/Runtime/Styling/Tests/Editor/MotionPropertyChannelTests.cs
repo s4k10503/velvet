@@ -373,6 +373,8 @@ namespace Velvet.Tests
             Assert.That(plan.IsEmpty, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves no top-auto, so it plans no channel there either.
+        // What shows the case can fail is the auto keyword being read as a length the spring interpolates.
         [Test]
         public void Given_APositionAutoSide_When_Resolved_Then_NoLengthChannelIsPlanned()
         {
