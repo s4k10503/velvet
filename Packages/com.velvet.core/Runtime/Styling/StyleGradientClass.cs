@@ -342,7 +342,8 @@ namespace Velvet
 
         private static readonly BoundedMemo<string, ActivatorReading> s_activators = new();
         private static readonly BoundedMemo<string, StopToken> s_stopTokens = new();
-        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float), (bool, Color, float), (bool, Color, float))),
+        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float, float), (bool, Color, float, float),
+            (bool, Color, float, float))),
             GradientStop[]> s_utilityStops = new();
 
         // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
