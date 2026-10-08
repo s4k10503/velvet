@@ -26,8 +26,8 @@ namespace Velvet.Tests
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
     /// at all. Neither is mechanical, and both stay a reviewer's to check, as does the residual below.
     /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
-    /// returns rather than an element sits outside it — which is eight of the ten values below. Cases pin
-    /// those eight, but no roster obliges one: the case listing what the layout dispatcher hands that array
+    /// returns rather than an element sits outside it — which is every case marked
+    /// ReaderVerdict(LiveClassesReader) below. Those cases pin such readings, but no roster obliges one: the case listing what the layout dispatcher hands that array
     /// on to reddens when a reading joins that callee set, and a reading taking the array anywhere else
     /// costs nothing here, including inside one of those callees, beside the dispatcher call in the re-sync
     /// that binds the array, and at a second call site of LiveClasses.
@@ -192,6 +192,15 @@ namespace Velvet.Tests
         private static string PointerEventsOf(string[] classNames)
             => ReadPointerEvents?.Invoke(null, new object[] { classNames })?.ToString() ?? "no reader";
 
+        // Null on a tree without the pointer-events utilities, which then has no such family to filter for.
+        private static readonly MethodInfo PointerEventsTokenPredicate = typeof(V).Assembly
+            .GetType("Velvet.StylePointerEventsClass")
+            ?.GetMethod("IsPointerEventsToken", BindingFlags.Public | BindingFlags.Static);
+
+        private static bool IsPointerEventsToken(string cls)
+            => PointerEventsTokenPredicate != null
+                && (bool)PointerEventsTokenPredicate.Invoke(null, new object[] { cls })!;
+
         // The name is kept beside the definition so the composed order can be read back by name rather than
         // by definition reference.
         private void RegisterCustomFilter(string name)
@@ -334,9 +343,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
         {
-            // Arrange — the roster above quantifies over GetClasses() call sites, and eight of the ten
-            // values below resolve from the ARRAY this dispatcher hands on rather than from an element, so
-            // the roster obliges no case for them. The set rather than the call sequence: which of gap and
+            // Arrange — the roster above quantifies over GetClasses() call sites, and every case marked
+            // ReaderVerdict(LiveClassesReader) resolves from the ARRAY this dispatcher hands on rather than from
+            // an element, so the roster obliges no case for them. The set rather than the call sequence: which of gap and
             // grid runs first is the departing manipulator's handoff, which the dispatcher's own comment
             // owns.
             using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
@@ -825,8 +834,8 @@ namespace Velvet.Tests
                 + "filter applied there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(construction): the base reads its own generated table; adding a `divide-dashed`
-        // entry with a nonempty property set would make this guard fail.
+        // GREEN_ON_BASE(construction): the table and the family predicates are both the repository's own content.
+        // Adding a `divide-dashed` entry with a nonempty property set would make this guard fail.
         [Test]
         public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()
         {
@@ -845,6 +854,7 @@ namespace Velvet.Tests
                     || StyleGapClass.IsGapToken(cls)
                     || StyleGridClass.IsGridToken(cls)
                     || StyleDivideClass.IsDivideToken(cls)
+                    || IsPointerEventsToken(cls)
                     || StyleFilterValueParser.IsFilterLeaf(cls))
                 .Where(cls => StyleUtilityProperties.TryGet(cls, out var rule) && !rule.Properties.IsEmpty)
                 .OrderBy(cls => cls, StringComparer.Ordinal);

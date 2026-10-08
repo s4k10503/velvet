@@ -436,14 +436,41 @@ namespace Velvet.Tests
                 Is.EqualTo(((PickingMode?)PickingMode.Ignore, (PickingMode?)PickingMode.Ignore)));
         }
 
+        // Read by name, so a tree without the set reads -1 rather than failing to build.
+        private static int PendingWalkAnchors(MountedTree mounted)
+        {
+            var context = mounted.Root.Reconciler!.Context;
+            var anchors = typeof(ReconcilerContext).GetProperty("PointerEventsAnchors")?.GetValue(context);
+            return anchors?.GetType().GetProperty("Count")?.GetValue(anchors) as int? ?? -1;
+        }
+
+        [Test]
+        public void Given_APortalIntoAnotherTreesNoneScope_When_ThePassThatMountsItEnds_Then_TheContentIsHeldAndNoElementIsLeftToWalkAgain()
+        {
+            // Arrange — every later pass of the portalling tree would otherwise walk the outer scope again from the
+            // Portal's target, whether or not the Portal still renders there.
+            using var show = new PointerEventsFlagStore(false);
+            s_show = show;
+            using var outer = V.Mount(_root, V.Div(name: "scope", className: "pointer-events-none",
+                children: new VNode[] { V.Div(name: "layer") }));
+            s_layer = _root.Q<VisualElement>("layer");
+
+            // Act
+            using var portalling = V.Mount(new VisualElement(), V.Component(PortalOpener, key: "opener"));
+
+            // Assert
+            Assert.That((s_layer.Q<VisualElement>("portalled-first")?.pickingMode, PendingWalkAnchors(portalling)),
+                Is.EqualTo(((PickingMode?)PickingMode.Ignore, 0)));
+        }
+
         private static PickingMode? RowMode(ScrollView scrollView, string text)
             => scrollView.Query<Label>().ToList().FirstOrDefault(label => label.text == text)?.pickingMode;
 
         [Test]
-        public void Given_AVirtualListInsideANoneScope_When_ItRendersRowsFromItsGeometryAndScrollEntries_Then_TheRowsIgnorePicking()
+        public void Given_AVirtualListInsideANoneScope_When_ItsVisibleRangeIsUpdatedTwice_Then_TheRowsEachUpdatePlacesIgnorePicking()
         {
-            // Arrange — a list of 100 rows 20 tall. Its geometry and scroll callbacks both render through
-            // UpdateVisibleRange, outside any reconcile pass; it is called with the viewport they would measure.
+            // Arrange — a list of 100 rows 20 tall. UpdateVisibleRange is what the list's geometry and scroll
+            // callbacks call, outside any reconcile pass; it is called here directly, with a 200-tall viewport.
             var items = Enumerable.Range(0, 100).Select(i => "item-" + i).ToArray();
             using var mounted = V.Mount(_root, V.Div(className: "pointer-events-none", children: new VNode[]
             {
@@ -454,12 +481,12 @@ namespace Velvet.Tests
 
             // Act
             controller.UpdateVisibleRange(400f, 200f);
-            var afterGeometry = RowMode(scrollView, "item-21");
+            var afterFirst = RowMode(scrollView, "item-21");
             controller.UpdateVisibleRange(1000f, 200f);
-            var afterScroll = RowMode(scrollView, "item-51");
+            var afterSecond = RowMode(scrollView, "item-51");
 
             // Assert
-            Assert.That((afterGeometry, afterScroll),
+            Assert.That((afterFirst, afterSecond),
                 Is.EqualTo(((PickingMode?)PickingMode.Ignore, (PickingMode?)PickingMode.Ignore)));
         }
 
@@ -616,33 +643,48 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DarkVariantAutosInsideAnotherTreesNoneScope_When_TheThemeTurnsDark_Then_TheyTakePointersWithoutTheOuterTreeRendering()
+        public void Given_ADarkVariantAutoInATreeMountedInsideAnotherTreesNoneScope_When_TheThemeTurnsDark_Then_ItTakesPointersWithoutTheOuterTreeRendering()
         {
-            // Arrange — one tree is mounted inside the outer scope, the other outside it with a Portal into it, so
-            // the first is reached from its mount target and the second only from its Portal's target.
-            var outside = new VisualElement();
+            // Arrange — the inner tree is mounted inside the outer scope, so its toggle reaches that scope from its
+            // mount target. It is the only element here a theme flip changes.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "scope", className: "pointer-events-none",
-                children: new VNode[] { V.Div(name: "host"), V.Div(name: "layer") }));
+                children: new VNode[] { V.Div(name: "host") }));
             var root = _window.rootVisualElement;
             using var direct = V.Mount(root.Q<VisualElement>("host"),
                 V.Div(name: "direct", className: "dark:pointer-events-auto"));
-            using var portalling = V.Mount(outside, V.Div(children: new VNode[]
+            var element = root.Q<VisualElement>("direct");
+            var light = element.pickingMode;
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That((light, element.pickingMode), Is.EqualTo((PickingMode.Ignore, PickingMode.Position)));
+        }
+
+        [Test]
+        public void Given_ADarkVariantAutoPortalledIntoAnotherTreesNoneScope_When_TheThemeTurnsDark_Then_ItTakesPointersWithoutTheOuterTreeRendering()
+        {
+            // Arrange — the portalling tree is mounted outside the outer scope, so its toggle reaches that scope only
+            // from its Portal's target. It is the only element here a theme flip changes.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "scope", className: "pointer-events-none",
+                children: new VNode[] { V.Div(name: "layer") }));
+            var root = _window.rootVisualElement;
+            using var portalling = V.Mount(new VisualElement(), V.Div(children: new VNode[]
             {
                 V.Portal(root.Q<VisualElement>("layer"), children: new VNode[]
                 {
                     V.Div(name: "portalled", className: "dark:pointer-events-auto"),
                 }),
             }));
-            var directElement = root.Q<VisualElement>("direct");
-            var portalledElement = root.Q<VisualElement>("portalled");
-            var light = (directElement.pickingMode, portalledElement.pickingMode);
+            var element = root.Q<VisualElement>("portalled");
+            var light = element.pickingMode;
 
             // Act
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That((light, (directElement.pickingMode, portalledElement.pickingMode)),
-                Is.EqualTo(((PickingMode.Ignore, PickingMode.Ignore), (PickingMode.Position, PickingMode.Position))));
+            Assert.That((light, element.pickingMode), Is.EqualTo((PickingMode.Ignore, PickingMode.Position)));
         }
 
         [Test]

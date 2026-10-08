@@ -51,16 +51,14 @@ namespace Velvet
         // Setting it takes and drops nothing: Sync does that.
         public PointerEventsMode Mode { get; set; }
 
-        // Outside a pass — a variant toggle, a VirtualList range render — the walk runs now; inside one, the pass's
-        // own end (OnPassEnd) runs it, by which point every element the pass mounts is in place. The tree's mount
-        // target and its Portal targets are walked up from too: an enclosing scope another tree owns is walked by
-        // that tree's passes, and none of them sees this tree change.
+        // A utility came, went or changed mode on an element. The tree's mount target and its Portal targets are
+        // noted as well: an enclosing scope another tree owns is walked by that tree's passes, and none of them
+        // sees this tree change. The walk itself runs now only outside any pass, as for a variant toggle or a
+        // VirtualList range render from the list's own callbacks. Within a pass — FinishTopLevelPass included,
+        // where SharedReconcileDepth is already back at zero — the pass's end walks (OnPassEnd), and within a
+        // batch drain the drain's end does (OnDrainEnd), so a run of requests costs one walk.
         internal static void RequestSyncAll(ReconcilerContext ctx)
         {
-            if (ctx.SharedReconcileDepth > 0)
-            {
-                return;
-            }
             if (ctx.MainPanelRoot != null)
             {
                 NoteReconciledInto(ctx, ctx.MainPanelRoot);
@@ -71,6 +69,18 @@ namespace Velvet
                 {
                     NoteReconciledInto(ctx, slot.Target);
                 }
+            }
+            if (ctx.SharedReconcileDepth > 0)
+            {
+                return;
+            }
+            if (ctx.PointerEventsWalkHeld > 0)
+            {
+                return;
+            }
+            if (ctx.DeferDrainLayoutEffects)
+            {
+                return;
             }
             WalkAll(ctx);
         }
@@ -114,8 +124,6 @@ namespace Velvet
             {
                 SyncEnclosing(ctx, anchor);
             }
-            // MUTANT_SURVIVES(equivalent): an anchor kept is walked again at the next walk, and walking a scope over
-            // an unchanged tree takes and drops nothing; clearing only stops the set holding elements.
             ctx.PointerEventsAnchors.Clear();
         }
 

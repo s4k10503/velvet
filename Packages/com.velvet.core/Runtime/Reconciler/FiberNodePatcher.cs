@@ -1269,8 +1269,8 @@ namespace Velvet
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
-                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
                 PointerEventsScope.NoteReconciledInto(_ctx, target);
+                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
             {

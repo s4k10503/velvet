@@ -259,6 +259,7 @@ namespace Velvet
         // top-level Reconcile happens to run.
         private void FinishTopLevelPass(VisualElement? reconciledInto)
         {
+            _ctx.PointerEventsWalkHeld++;
             LastTopLevelWasAborted = _ctx.IsAborted;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
@@ -297,7 +298,9 @@ namespace Velvet
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
-                // After the portal drain for the same reason: a Portal's target can sit inside a scope.
+                // After the portal drain for the same reason: a Portal's target can sit inside a scope. Every walk
+                // requested since the pass started was held for this one.
+                _ctx.PointerEventsWalkHeld--;
                 PointerEventsScope.OnPassEnd(_ctx, reconciledInto);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
