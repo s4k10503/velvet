@@ -197,9 +197,9 @@ namespace Velvet
                 return stops[last].Color;
             }
             var i = 1;
-            // MUTANT_SURVIVES(equivalent): > and >= paint the same colour wherever CSS defines one.
-            // They part only at a t exactly on an interior position two stops share, the point CSS's
-            // infinitesimal transition between those stops leaves without a colour of its own.
+            // MUTANT_SURVIVES(equivalent): > and >= agree unless t lands exactly on an interior stop position.
+            // Even there they agree unless the next stop shares that position or it sits under 1e-5, the
+            // divisor's floor below, past the stop before it; no case here samples a t on such a position.
             while (t >= stops[i].Position)
             {
                 i++;

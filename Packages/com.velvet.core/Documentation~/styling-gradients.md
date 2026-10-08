@@ -53,10 +53,16 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
 - **Missing positions are filled in as CSS fills them**: the first stop defaults to 0% and the last to
   100%, a position behind an earlier one is raised to it, and a run of stops without positions is spread
   evenly between the positioned stops on either side. Two stops at one position make a hard edge.
-- **A malformed list leaves the class inert**, as an unknown angle does, so a shape utility before it
-  in the class list still applies. Malformed covers an argument that is neither a stop nor the shape's
-  first argument, an unreadable colour or position, more than two positions on one stop, fewer than 2
-  or more than 16 stops, and a `-` in front of `bg-linear-[…]`.
+- **Underscores are spaces**, so the ones around an argument and doubled within it are ignored: a CSS
+  list pasted with a space after each comma (`bg-linear-[90deg,_#0f172a_0%,_#ffffff_100%]`) reads as
+  one without.
+- **A malformed list leaves a linear or conic class inert**, as an unknown angle does, so a shape
+  utility before it in the class list still applies. Malformed covers an argument that is neither a stop
+  nor the shape's first argument, an unreadable colour or position, more than two positions on one stop,
+  fewer than 2 or more than 16 stops, and a `-` in front of `bg-linear-[…]`.
+- **A radial bracket that is no stop list keeps its position reading**: its `top` / `left` / … and
+  percentage tokens place the centre, every other token is ignored, and `from-` / `via-` / `to-` give
+  the stops. So `bg-radial-[circle_at_center,red,blue]` with `from-` / `to-` draws those utilities.
 
 A list does not change what `animate-gradient` and `animate-shimmer` do; [motion.md](motion.md) covers
 both.
@@ -76,8 +82,12 @@ both.
 - Positions are percentages only, and are clamped to 0%–100%. A length (`20px`), a conic stop at an
   angle (`red_90deg`) and a colour hint (a bare position between two stops) make the list malformed.
 - A radial shape or size keyword (`circle`, `ellipse`, `closest-side`, …) is not read, so a list that
-  opens with one is malformed. `in_{space}` takes only the three spaces above, and no hue-interpolation
-  method (`longer_hue`).
+  opens with one is no stop list and falls back to the position reading above. `in_{space}` takes only
+  the three spaces above, and no hue-interpolation method (`longer_hue`).
+- Colours are interpolated with straight rather than premultiplied alpha, so a stop fading to
+  `transparent` (transparent black) darkens on the way: `to_right,#ff0000,transparent` is a half-dark red
+  at its midpoint, where CSS keeps it red and half transparent. Fade to the colour's own transparent
+  version (`#ff000000`) instead.
 - The first argument is read as leniently as the shape's bracket without a list: an angle may be a bare
   number (`45`), while `turn`, `rad` and `grad` make the list malformed, and an `at_` position ignores a
   token it does not recognise rather than rejecting the list.

@@ -5,8 +5,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that resolving a class list the parser has already read allocates nothing, since the
-    /// reconciler resolves a gradient element's class list again on every patch. GWT, one assert per case.
+    /// Specifies that resolving a class list the parser has already read allocates nothing while the
+    /// parser's memo still holds it, since the reconciler resolves a gradient element's class list again on
+    /// every patch. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     [Category("Performance")]

@@ -469,7 +469,20 @@ namespace Velvet
             if (TryGetStopListBody(baseTok, out var listType, out var listBody))
             {
                 shape.Type = listType;
-                return TryParseStopList(listBody, ref shape);
+                var listShape = shape;
+                if (TryParseStopList(listBody, ref listShape))
+                {
+                    shape = listShape;
+                    return true;
+                }
+                if (listType != GradientType.Radial)
+                {
+                    return false;
+                }
+                // A radial body that is no stop list keeps the reading it had before stop lists existed —
+                // a position, its unknown tokens ignored — so the from-/via-/to- gradient it drew still draws.
+                ParseRadialPosition(listBody, ref shape.CenterX, ref shape.CenterY);
+                return true;
             }
             if (baseTok == RadialActivator)
             {
@@ -544,6 +557,12 @@ namespace Velvet
         private static bool TryParseStopList(string body, ref Shape shape)
         {
             var args = SplitTopLevel(body, ',');
+            for (var i = 0; i < args.Count; i++)
+            {
+                // Each _ is a space, so the ones around and doubled within an argument are padding:
+                // pasted CSS writes a space after every comma.
+                args[i] = string.Join("_", args[i].Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries));
+            }
             var colors = new List<Color>();
             var positions = new List<float>();
             if (shape.Type == GradientType.Linear)

@@ -366,15 +366,40 @@ namespace Velvet.Tests
             Assert.That(spec.Type, Is.EqualTo(GradientType.Radial));
         }
 
+        // GREEN_ON_BASE(characterization): the base draws from- and to- for a radial bracket naming a shape keyword.
         [Test]
-        public void Given_ARadialListLedByAShapeKeyword_When_Extracted_Then_NoGradientResolves()
+        public void Given_ARadialBracketLedByAShapeKeyword_When_Extracted_Then_TheUtilityStopsStillDraw()
         {
-            // Act — circle is not a line argument this parser reads, so the list is malformed.
+            // Act — circle is not a line argument the stop list reads, so the bracket keeps its position
+            // reading and the from-/to- utilities supply the stops.
             var ok = StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[circle,#ff0000,#0000ff]", "from-[#ff0000]", "to-[#0000ff]" }, out _);
+                new[] { "bg-radial-[circle_at_center,#ff0000,#0000ff]", "from-[#ff0000]", "to-[#0000ff]" }, out _);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(ok, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a centre from a radial bracket its stop list rejects.
+        [Test]
+        public void Given_ARadialBracketThatIsNoStopList_When_Extracted_Then_ItsPositionTokensStillPlaceTheCentre()
+        {
+            // Act — notacolor makes this no stop list. Read as a position, top places the centre's y, and
+            // the token "left,#ff0000,notacolor" is ignored, as it always was.
+            var ok = StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[at_top_left,#ff0000,notacolor]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((ok, spec.CenterX, spec.CenterY), Is.EqualTo((true, 0.5f, 0f)));
+        }
+
+        [Test]
+        public void Given_AListPastedWithASpaceAfterEachComma_When_Baked_Then_ItReadsAsWithout()
+        {
+            // Act — each comma is followed by _, as a CSS list with a space after each comma becomes.
+            var left = SampleAcross(new[] { "bg-linear-[to_right,_#ff0000_0%,_#0000ff_100%_]" }, 0f);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("FF0000FF"));
         }
 
         [Test]

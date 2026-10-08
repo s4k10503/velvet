@@ -6,6 +6,6 @@
   `bg-linear-[90deg,#0f172a_0%,#0f172a_45%,#ffffff_50%,#0f172a_55%,#0f172a_100%]` draws a narrow highlight on
   a steady background. Missing positions are filled in by CSS's colour-stop fix-up, a list with no first
   argument runs to bottom, a malformed list leaves the class inert, and skewed elements and
-  `animate-gradient` / `animate-shimmer` draw the list as they draw `from-` / `via-` / `to-`, whose output
-  is unchanged. A new gradients guide, styling-gradients.md, covers the gradient utilities and where they
+  `animate-gradient` / `animate-shimmer` draw the list as they draw `from-` / `via-` / `to-`. A radial bracket
+  that is no stop list keeps its earlier reading as a centre. A new gradients guide, styling-gradients.md, covers the gradient utilities and where they
   differ from CSS and Tailwind.
