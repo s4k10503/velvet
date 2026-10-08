@@ -66,7 +66,7 @@ VelvetFonts.Register(new VelvetFontFamily("sans",
     new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = interRegular, italic = interItalic },
     new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold,   uprightAddress = "Fonts/Inter-Bold" }));
 
-VelvetFonts.DefaultFamily = "sans"; // applied to elements that set a weight/style but no family
+VelvetFonts.DefaultFamily = "sans"; // see What DefaultFamily reaches, below
 ```
 
 **From CSV / MasterMemory / a ScriptableObject / any other source** — map your rows to
@@ -83,6 +83,38 @@ VelvetFonts.Register(families, defaultFamily: "sans");
 With the `Bold` entry registered, `font-bold` renders a **true** bold asset rather than faux bold;
 `font-medium` with no `Medium` entry picks the registered weight CSS's search order reaches first
 (see [How resolution works](#how-resolution-works)).
+
+### What `DefaultFamily` reaches
+
+`DefaultFamily` supplies the family only to an element that has a weight or italic class
+(`font-normal`, `font-bold`, `italic`, …) and no `font-<name>`. **A label with no font class gets no
+font from Velvet**: it keeps the font its stylesheets and ancestors give it, which without a family
+class on an ancestor is the panel theme's. Registering a default family therefore does not, by
+itself, change unadorned text.
+
+To have every label start from the registered family, put that family's class on the root of the
+mounted tree and register the same family as the default:
+
+```csharp
+VelvetFonts.Register(families, defaultFamily: "sans");
+V.Mount(root, V.Div("font-sans", app));
+```
+
+A label under that root inherits the root's asset unless the label, or an element between them, is
+assigned another one, or a stylesheet sets a font on the label itself. `DefaultFamilyScopePanelTests`
+pins this inheritance and the scope above. Registering the default as well matters for the
+descendants that do carry a weight or italic class: those resolve their family from `DefaultFamily`,
+never from an ancestor's class. Without it, `font-bold` under a `font-sans` root
+writes `-unity-font-style: bold` over the asset the root resolved instead of selecting the registered
+`Bold` entry.
+
+That is also where Velvet deviates from CSS: in CSS a weight class keeps the family it inherits, so
+`font-bold` inside a `font-serif` container is a bold serif. Velvet resolves it against
+`DefaultFamily` instead; when that names another family, the bold text switches to it. Give such a
+descendant its family explicitly (`font-serif font-bold`).
+
+Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
+[Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.
 
 ## Multilingual / CJK fallback
 
