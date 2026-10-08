@@ -32,20 +32,17 @@ namespace Velvet
         private string? _currentLabel;
         private StyleTransitionConfig? _currentTransition;
         private bool _isComplete;
-        private bool _isCancelled;
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
 
-        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play() and by Cancel; Advance is simply never
-        // called while true (the caller gates it), so there is nothing more for this flag to do here.
+        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
+        // true (the caller gates it), so there is nothing more for this flag to do here.
         public bool IsPaused { get; set; }
 
         public bool IsComplete => _isComplete;
 
         public int StepIndex => _stepIndex;
-
-        public bool IsCancelled => _isCancelled;
 
         public float TimeSec => (float)(_timeBeforeStepSec + _elapsedInStepSec);
 
@@ -66,21 +63,6 @@ namespace Velvet
                 return;
             }
             ResetImmediate(steps);
-        }
-
-        // A pending reentrant Reset is dropped: a Call callback that restarts and then cancels asked for the
-        // cancel last.
-        public void Cancel()
-        {
-            _pendingResetSteps = null;
-            _stepIndex = 0;
-            _elapsedInStepSec = 0f;
-            _timeBeforeStepSec = 0f;
-            _currentLabel = null;
-            _currentTransition = null;
-            _isComplete = false;
-            _isCancelled = true;
-            IsPaused = true;
         }
 
         // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
@@ -114,12 +96,6 @@ namespace Velvet
                     next = 0;
                 }
                 ArriveAtStart(next);
-                // A Call callback that cancelled leaves the Call's zero hold and the cursor at step 0, from
-                // which this loop would go on to arrive at step 1.
-                if (_isCancelled)
-                {
-                    break;
-                }
             }
             return _stepIndex;
         }
@@ -149,7 +125,6 @@ namespace Velvet
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
-            _isCancelled = false;
             WarnAboutUnvalidatedToSteps();
             return _isComplete;
         }

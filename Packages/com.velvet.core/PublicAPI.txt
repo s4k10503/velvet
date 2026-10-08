@@ -663,7 +663,6 @@
 [Velvet] property Velvet.AnimatePresenceNode.OnExitComplete: System.Action?
 [Velvet] property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
 [Velvet] property Velvet.AnimatePresenceNode.StaggerSec: System.Single
-[Velvet] property Velvet.AnimationSequenceControls.Cancel: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Restart: System.Action

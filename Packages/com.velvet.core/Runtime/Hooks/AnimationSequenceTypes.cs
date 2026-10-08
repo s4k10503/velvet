@@ -123,10 +123,7 @@ namespace Velvet
     {
         private readonly SequenceWalker _walker;
 
-        /// <summary>
-        /// Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount. After
-        /// <see cref="Cancel"/>, starts the sequence again from step 0.
-        /// </summary>
+        /// <summary>Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount.</summary>
         public Action Play { get; }
 
         /// <summary>Freezes the cursor at its current step — elapsed time stops accumulating toward the next hold.</summary>
@@ -136,26 +133,16 @@ namespace Velvet
         public Action Restart { get; }
 
         /// <summary>
-        /// Stops the sequence and returns its state to how it reads before step 0 commits: the Web Animations API's
-        /// <c>cancel()</c>. With <c>deps: null</c>, the render this causes re-commits step 0, as every render there
-        /// does, and the sequence then plays only under <c>autoplay: true</c>. The motion guide's Timelines section
-        /// owns what else reseeds it.
-        /// </summary>
-        public Action Cancel { get; }
-
-        /// <summary>
         /// Seconds into the sequence's timeline, counting each step's hold at its authored length. Read live, not
         /// per render; the motion guide's Timelines section owns the rest.
         /// </summary>
         public float TimeSec => _walker.TimeSec;
 
-        internal AnimationSequenceControls(Action play, Action pause, Action restart, Action cancel,
-            SequenceWalker walker)
+        internal AnimationSequenceControls(Action play, Action pause, Action restart, SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
-            Cancel = cancel;
             _walker = walker;
         }
     }

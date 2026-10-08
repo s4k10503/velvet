@@ -5,8 +5,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins <c>AnimationSequenceControls</c>' <c>Cancel</c> and <c>TimeSec</c> on the
-    /// fake clock <see cref="UseAnimationSequenceTests"/> walks the steps on. Every tick is 16ms.
+    /// Pins <c>AnimationSequenceControls</c>' <c>TimeSec</c> on the fake clock
+    /// <see cref="UseAnimationSequenceTests"/> walks the steps on. Every tick is 16ms.
     /// </summary>
     internal sealed class UseAnimationSequenceControlsTests
     {
@@ -17,7 +17,6 @@ namespace Velvet.Tests
         private static bool s_loop;
         private static AnimationSequenceState s_state;
         private static AnimationSequenceControls s_controls;
-        private static int s_callCount;
 
         [SetUp]
         public void SetUp()
@@ -25,7 +24,6 @@ namespace Velvet.Tests
             _host = new HeadlessEditorPanelHost();
             UseFrameFakeClockHost.Reset();
             s_loop = false;
-            s_callCount = 0;
         }
 
         [TearDown]
@@ -67,196 +65,6 @@ namespace Velvet.Tests
 
         private static AnimationSequenceStep To(string label, float durationSec)
             => AnimationSequenceStep.To(label, new StyleTransitionConfig { DurationSec = durationSec });
-
-        [Test]
-        public void Given_AMountedSequence_When_Cancelled_Then_CurrentLabelIsNull()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.5f), To("b", 0.5f) };
-            Mount();
-
-            // Act
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.Null);
-        }
-
-        [Test]
-        public void Given_AMountedSequence_When_Cancelled_Then_CurrentTransitionIsNull()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.5f), To("b", 0.5f) };
-            Mount();
-
-            // Act
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_state.CurrentTransition, Is.Null);
-        }
-
-        [Test]
-        public void Given_ASequenceOnItsSecondStep_When_Cancelled_Then_StepIndexIsBackAtZero()
-        {
-            // Arrange — 160ms is past step 0's 100ms hold.
-            s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
-            Mount();
-            AdvanceTicks(10);
-            var indexBeforeCancel = s_state.StepIndex;
-
-            // Act
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That((indexBeforeCancel, s_state.StepIndex), Is.EqualTo((1, 0)));
-        }
-
-        [Test]
-        public void Given_ACompletedSequence_When_Cancelled_Then_IsCompleteIsFalse()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.1f) };
-            Mount();
-            AdvanceTicks(10);
-            var completeBeforeCancel = s_state.IsComplete;
-
-            // Act
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That((completeBeforeCancel, s_state.IsComplete), Is.EqualTo((true, false)));
-        }
-
-        [Test]
-        public void Given_ASequenceTenTicksIntoItsFirstHold_When_Cancelled_Then_TimeSecIsZero()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.5f), To("b", 0.5f) };
-            Mount();
-            AdvanceTicks(10);
-
-            // Act
-            s_controls.Cancel();
-
-            // Assert
-            Assert.That(s_controls.TimeSec, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void Given_ASequenceIntoItsSecondHold_When_Cancelled_Then_TimeSecIsZero()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
-            Mount();
-            AdvanceTicks(10);
-
-            // Act
-            s_controls.Cancel();
-
-            // Assert
-            Assert.That(s_controls.TimeSec, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void Given_ACallStepThatCancelsTheSequence_When_TheWalkerCrossesIt_Then_ItsCallbackRunsOnce()
-        {
-            // Arrange
-            s_steps = new[]
-            {
-                To("a", 0.1f),
-                AnimationSequenceStep.Call(() =>
-                {
-                    s_callCount++;
-                    s_controls.Cancel();
-                }),
-                To("b", 0.5f),
-            };
-            Mount();
-
-            // Act
-            AdvanceTicks(10);
-
-            // Assert
-            Assert.That(s_callCount, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_ACallStepThatRestartsAndThenCancels_When_TheWalkerCrossesIt_Then_CurrentLabelIsNull()
-        {
-            // Arrange
-            s_steps = new[]
-            {
-                To("a", 0.1f),
-                AnimationSequenceStep.Call(() =>
-                {
-                    s_controls.Restart();
-                    s_controls.Cancel();
-                }),
-                To("b", 0.5f),
-            };
-            Mount();
-
-            // Act
-            AdvanceTicks(10);
-
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.Null);
-        }
-
-        [Test]
-        public void Given_ACancelledSequence_When_Played_Then_CurrentLabelIsTheFirstStepsAgain()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
-            Mount();
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Act
-            s_controls.Play();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
-        }
-
-        [Test]
-        public void Given_ACancelledSequence_When_PlayedAndTheFirstHoldElapses_Then_TheSecondStepIsCurrent()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
-            Mount();
-            s_controls.Cancel();
-            _mounted.FlushStateForTest();
-
-            // Act
-            s_controls.Play();
-            AdvanceTicks(10);
-
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
-        }
-
-        [Test]
-        public void Given_ACancelledSequence_When_RestartedAndTimePasses_Then_TheCursorStaysOnARecommittedStepZero()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
-            Mount();
-            s_controls.Cancel();
-
-            // Act
-            s_controls.Restart();
-            AdvanceTicks(10);
-
-            // Assert
-            Assert.That((s_state.StepIndex, s_state.CurrentLabel), Is.EqualTo((0, "a")));
-        }
 
         [Test]
         public void Given_ASequenceTenTicksIntoItsFirstHold_When_TimeSecIsRead_Then_ItIsTheTimeElapsed()

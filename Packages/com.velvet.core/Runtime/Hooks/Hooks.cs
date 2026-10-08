@@ -1253,7 +1253,7 @@ namespace Velvet
 
             UseEffect(() =>
             {
-                // Before the Reset: step 0's Call callback can pause or cancel the walker it is arriving on.
+                // Before the Reset: step 0's Call callback can pause the walker it is arriving on.
                 walker.Current.IsPaused = !autoplay;
                 walker.Current.Reset(steps);
                 Rerender();
@@ -1275,25 +1275,11 @@ namespace Velvet
             });
 
             var controls = new AnimationSequenceControls(
-                play: () =>
-                {
-                    // Before the Reset, for the same reason as in the effect above.
-                    walker.Current.IsPaused = false;
-                    if (walker.Current.IsCancelled)
-                    {
-                        walker.Current.Reset(latestSteps.Current ?? steps);
-                        Rerender();
-                    }
-                },
+                play: () => walker.Current.IsPaused = false,
                 pause: () => walker.Current.IsPaused = true,
                 restart: () =>
                 {
                     walker.Current.Reset(latestSteps.Current ?? steps);
-                    Rerender();
-                },
-                cancel: () =>
-                {
-                    walker.Current.Cancel();
                     Rerender();
                 },
                 walker: walker.Current!);
