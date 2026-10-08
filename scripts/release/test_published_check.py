@@ -466,6 +466,10 @@ class GitReadingTests(unittest.TestCase):
         git(path, "init", "--quiet", "--initial-branch", "main")
         git(path, "config", "user.email", "test@example.invalid")
         git(path, "config", "user.name", "Test")
+        # Automatic maintenance is off so no process the reading's fetch starts outlives the test
+        # in this directory.
+        git(path, "config", "maintenance.auto", "false")
+        git(path, "config", "gc.auto", "0")
         for relative, text in ((CHANGELOG_PATH, changelog), (PACKAGE_JSON_PATH, package or package_json())):
             written = path / relative
             written.parent.mkdir(parents=True, exist_ok=True)
